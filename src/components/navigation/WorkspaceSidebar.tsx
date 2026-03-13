@@ -82,6 +82,7 @@ import {
   Check,
   MessageCircleQuestion,
   ClipboardCheck,
+  Link,
 } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
@@ -986,6 +987,11 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onGitHubRepos,
                       </DropdownMenuSubContent>
                     </DropdownMenuSub>
                   )}
+                  <DropdownMenuItem onClick={() => window.dispatchEvent(new CustomEvent('create-from-pr'))}>
+                    <Link className="h-4 w-4" />
+                    Create from...
+                    <DropdownMenuShortcut>⌘⇧O</DropdownMenuShortcut>
+                  </DropdownMenuItem>
                   <DropdownMenuSeparator />
                 </>
               )}

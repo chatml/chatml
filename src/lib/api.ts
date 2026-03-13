@@ -1304,6 +1304,61 @@ export async function listSessionSummaries(
   return handleResponse<SummaryDTO[]>(res);
 }
 
+// GitHub Issue DTOs and functions
+
+export interface GitHubIssueLabel {
+  name: string;
+  color: string;
+}
+
+export interface GitHubIssueUser {
+  login: string;
+  avatarUrl: string;
+}
+
+export interface GitHubIssueListItem {
+  number: number;
+  title: string;
+  state: string;
+  htmlUrl: string;
+  labels: GitHubIssueLabel[];
+  user: GitHubIssueUser;
+  assignees: GitHubIssueUser[];
+  comments: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface GitHubIssueDetails extends GitHubIssueListItem {
+  body: string;
+  milestone?: {
+    title: string;
+    number: number;
+  };
+}
+
+export interface SearchGitHubIssuesResult {
+  totalCount: number;
+  issues: GitHubIssueListItem[];
+}
+
+export async function listGitHubIssues(workspaceId: string): Promise<GitHubIssueListItem[]> {
+  const res = await fetchWithAuth(`${getApiBase()}/api/repos/${workspaceId}/issues`);
+  return handleResponse<GitHubIssueListItem[]>(res);
+}
+
+export async function searchGitHubIssues(workspaceId: string, query: string): Promise<SearchGitHubIssuesResult> {
+  const res = await fetchWithAuth(
+    `${getApiBase()}/api/repos/${workspaceId}/issues/search?q=${encodeURIComponent(query)}`
+  );
+  return handleResponse<SearchGitHubIssuesResult>(res);
+}
+
+export async function getGitHubIssueDetails(workspaceId: string, issueNumber: number): Promise<GitHubIssueDetails> {
+  const res = await fetchWithAuth(`${getApiBase()}/api/repos/${workspaceId}/issues/${issueNumber}`);
+  return handleResponse<GitHubIssueDetails>(res);
+}
+
 // Linear Issue DTOs and functions
 
 export interface LinearIssueDTO {
