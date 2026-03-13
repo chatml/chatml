@@ -385,7 +385,26 @@ const FileDiffViewer = memo(function FileDiffViewer({
     );
   }
 
-  if (!diffData || !fileDiff) return null;
+  if (!diffData) return null;
+
+  // Server indicated file exceeded size limit — show unified diff fallback
+  if (diffData.truncated) {
+    return (
+      <div className="px-3 py-2 space-y-1.5">
+        <div className="flex items-center gap-1.5 text-2xs text-amber-500">
+          <AlertTriangle className="w-3 h-3 shrink-0" />
+          <span>File too large for inline diff</span>
+        </div>
+        {diffData.unifiedDiff && (
+          <pre className="max-h-[350px] overflow-auto text-2xs bg-muted/50 rounded p-2 whitespace-pre font-mono">
+            {diffData.unifiedDiff}
+          </pre>
+        )}
+      </div>
+    );
+  }
+
+  if (!fileDiff) return null;
 
   // Guard against very large files
   const totalSize = (diffData.oldContent?.length ?? 0) + (diffData.newContent?.length ?? 0);

@@ -226,20 +226,14 @@ func (h *Handlers) GetSessionFileDiff(w http.ResponseWriter, r *http.Request) {
 		oldContent = ""
 	}
 
-	// Check for conflict markers
-	hasConflict := strings.Contains(string(newContent), "<<<<<<<") &&
-		strings.Contains(string(newContent), "=======") &&
-		strings.Contains(string(newContent), ">>>>>>>")
-
-	response := FileDiffResponse{
-		Path:        cleanPath,
-		OldContent:  oldContent,
-		NewContent:  string(newContent),
-		OldFilename: cleanPath + " (base)",
-		NewFilename: cleanPath,
-		HasConflict: hasConflict,
-		IsDeleted:   isDeleted,
-	}
+	response := buildDiffResponse(ctx, h.repoManager, diffInput{
+		repoPath:   workingPath,
+		baseRef:    baseRef,
+		path:       cleanPath,
+		oldContent: oldContent,
+		newContent: newContent,
+		isDeleted:  isDeleted,
+	})
 
 	// Cache the result
 	if h.diffCache != nil {

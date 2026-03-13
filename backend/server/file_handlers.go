@@ -1,14 +1,17 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 
+	"github.com/chatml/chatml-backend/git"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -152,6 +155,12 @@ type FileContentResponse struct {
 	Size    int64  `json:"size"`
 }
 
+// maxDiffContentBytes is the maximum size (per file side) before falling back to unified diff.
+const maxDiffContentBytes = 1 * 1024 * 1024 // 1MB
+
+// maxUnifiedDiffBytes caps the unified diff fallback payload.
+const maxUnifiedDiffBytes = 256 * 1024 // 256KB
+
 // FileDiffResponse represents a diff between two versions of a file
 type FileDiffResponse struct {
 	Path        string `json:"path"`
@@ -161,6 +170,65 @@ type FileDiffResponse struct {
 	NewFilename string `json:"newFilename"`
 	HasConflict bool   `json:"hasConflict"`
 	IsDeleted   bool   `json:"isDeleted"`
+	Truncated   bool   `json:"truncated,omitempty"`
+	UnifiedDiff string `json:"unifiedDiff,omitempty"`
+}
+
+// diffInput groups the parameters needed to build a FileDiffResponse.
+type diffInput struct {
+	repoPath   string
+	baseRef    string
+	path       string
+	oldContent string
+	newContent []byte
+	isDeleted  bool
+}
+
+// conflictMarkersPresent checks for git conflict markers in the first limit bytes of data.
+func conflictMarkersPresent(data []byte, limit int) bool {
+	if limit > 0 && len(data) > limit {
+		data = data[:limit]
+	}
+	s := string(data)
+	return strings.Contains(s, "<<<<<<<") &&
+		strings.Contains(s, "=======") &&
+		strings.Contains(s, ">>>>>>>")
+}
+
+// buildDiffResponse constructs a FileDiffResponse, falling back to a unified diff
+// when either file side exceeds maxDiffContentBytes.
+func buildDiffResponse(ctx context.Context, rm *git.RepoManager, in diffInput) FileDiffResponse {
+	truncated := len(in.oldContent) > maxDiffContentBytes || len(in.newContent) > maxDiffContentBytes
+
+	// Check conflict markers — scan only the first 64KB for truncated files.
+	scanLimit := 0 // 0 = no limit
+	if truncated {
+		scanLimit = 64 * 1024
+	}
+	hasConflict := conflictMarkersPresent(in.newContent, scanLimit)
+
+	resp := FileDiffResponse{
+		Path:        in.path,
+		OldFilename: in.path + " (base)",
+		NewFilename: in.path,
+		HasConflict: hasConflict,
+		IsDeleted:   in.isDeleted,
+		Truncated:   truncated,
+	}
+
+	if truncated {
+		diff, err := rm.GetFileDiffUnified(ctx, in.repoPath, in.baseRef, in.path, maxUnifiedDiffBytes)
+		if err != nil {
+			slog.Warn("unified diff fallback failed", "path", in.path, "err", err)
+		} else {
+			resp.UnifiedDiff = diff
+		}
+	} else {
+		resp.OldContent = in.oldContent
+		resp.NewContent = string(in.newContent)
+	}
+
+	return resp
 }
 
 // GetFileDiff returns the diff between the base branch and current state for a file
@@ -217,21 +285,14 @@ func (h *Handlers) GetFileDiff(w http.ResponseWriter, r *http.Request) {
 		oldContent = ""
 	}
 
-	// Check for conflict markers
-	hasConflict := strings.Contains(string(newContent), "<<<<<<<") &&
-		strings.Contains(string(newContent), "=======") &&
-		strings.Contains(string(newContent), ">>>>>>>")
-
-	response := FileDiffResponse{
-		Path:        cleanPath,
-		OldContent:  oldContent,
-		NewContent:  string(newContent),
-		OldFilename: cleanPath + " (base)",
-		NewFilename: cleanPath,
-		HasConflict: hasConflict,
-		IsDeleted:   isDeleted,
-	}
-
+	response := buildDiffResponse(ctx, h.repoManager, diffInput{
+		repoPath:   repo.Path,
+		baseRef:    baseBranch,
+		path:       cleanPath,
+		oldContent: oldContent,
+		newContent: newContent,
+		isDeleted:  isDeleted,
+	})
 	writeJSON(w, response)
 }
 
