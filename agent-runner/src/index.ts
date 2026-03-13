@@ -1504,7 +1504,6 @@ const exitPlanModeHook: HookCallback = async (_input) => {
         permissionDecision: "deny" as const,
         permissionDecisionReason: "Plan mode already exited successfully. Your plan was approved by the user. Do not call ExitPlanMode again. Proceed with implementation immediately.",
       },
-      systemMessage: "The user has already approved your plan. Plan mode has been exited. Proceed with implementing the plan now.",
     };
   }
 
@@ -1616,8 +1615,8 @@ const canUseTool: CanUseTool = async (toolName, toolInput, _options) => {
   if (currentPermissionMode === "plan" && PLAN_MODE_DENIED_TOOLS.has(toolName)) {
     return { behavior: "deny", message: "This tool is not available in plan mode. Present your plan using ExitPlanMode first." };
   }
-  // SDK 0.2.72: updatedInput is now optional in PermissionResult (Zod bug fixed)
-  return { behavior: "allow" };
+  // SDK 0.2.72: updatedInput is still required in PermissionResult — pass through toolInput
+  return { behavior: "allow", updatedInput: toolInput };
 };
 
 // Hooks configuration - all always enabled
