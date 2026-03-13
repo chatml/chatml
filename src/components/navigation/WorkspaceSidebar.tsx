@@ -989,7 +989,7 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onGitHubRepos,
                   )}
                   <DropdownMenuItem onClick={() => window.dispatchEvent(new CustomEvent('create-from-pr'))}>
                     <Link className="h-4 w-4" />
-                    Create from...
+                    Create Session from...
                     <DropdownMenuShortcut>⌘⇧O</DropdownMenuShortcut>
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
