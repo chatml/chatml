@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useMemo } from 'react';
-import { X, File, FileText, FileCode, Image, FileJson, Terminal, FileType, ScrollText, type LucideIcon } from 'lucide-react';
+import { X, File, FileText, FileCode, Image, FileJson, Terminal, FileType, ScrollText, CircleDot, type LucideIcon } from 'lucide-react';
 import type { Attachment } from '@/lib/types';
 import { getFileCategory, getAttachmentSubtitle } from '@/lib/attachments';
 import { cn } from '@/lib/utils';
@@ -36,19 +36,51 @@ export function AttachmentCard({ attachment, onRemove, onClick, readOnly = false
   const filePath = attachment.path || attachment.name;
   const category = useMemo(() => getFileCategory(filePath), [filePath]);
   const isInstruction = attachment.isInstruction;
-  const Icon = isInstruction ? ScrollText : (CATEGORY_ICONS[category] || FileType);
-  const subtitle = isInstruction ? 'Instructions' : getAttachmentSubtitle(attachment);
+  const isContext = !!attachment.contextType;
+  const isGitHub = attachment.contextType === 'github-issue';
+  const isLinear = attachment.contextType === 'linear-issue';
+
+  // Resolve icon
+  const Icon = isContext
+    ? CircleDot
+    : isInstruction
+      ? ScrollText
+      : (CATEGORY_ICONS[category] || FileType);
+
+  // Resolve subtitle
+  const subtitle = isContext
+    ? (isGitHub ? 'GitHub Issue' : 'Linear Issue')
+    : isInstruction
+      ? 'Instructions'
+      : getAttachmentSubtitle(attachment);
 
   // CSS truncate on the span handles ellipsis; full name shown via title tooltip
   const displayName = attachment.name;
+
+  // Context color: green for open GitHub issues, purple for closed, blue for Linear
+  const contextColorClass = isGitHub
+    ? (attachment.contextMeta?.state === 'open'
+      ? 'border-green-500/30 bg-green-500/10 hover:bg-green-500/15'
+      : 'border-purple-500/30 bg-purple-500/10 hover:bg-purple-500/15')
+    : isLinear
+      ? 'border-blue-500/30 bg-blue-500/10 hover:bg-blue-500/15'
+      : '';
+
+  const contextIconClass = isGitHub
+    ? (attachment.contextMeta?.state === 'open' ? 'text-green-500' : 'text-purple-500')
+    : isLinear
+      ? 'text-blue-500'
+      : '';
 
   return (
     <div
       className={cn(
         'group relative flex items-center gap-2 rounded-md border px-2.5 py-1.5',
-        isInstruction
-          ? 'border-purple-500/30 bg-purple-500/10 hover:bg-purple-500/15'
-          : 'border-border bg-muted/50 hover:bg-muted/80',
+        isContext
+          ? contextColorClass
+          : isInstruction
+            ? 'border-purple-500/30 bg-purple-500/10 hover:bg-purple-500/15'
+            : 'border-border bg-muted/50 hover:bg-muted/80',
         'transition-colors',
         'min-w-0 max-w-[220px]',
         onClick && 'cursor-pointer'
@@ -58,7 +90,14 @@ export function AttachmentCard({ attachment, onRemove, onClick, readOnly = false
       onMouseLeave={() => setIsHovered(false)}
     >
       {/* Icon */}
-      <div className={cn('flex-shrink-0', isInstruction ? 'text-purple-500' : 'text-muted-foreground')}>
+      <div className={cn(
+        'flex-shrink-0',
+        isContext
+          ? contextIconClass
+          : isInstruction
+            ? 'text-purple-500'
+            : 'text-muted-foreground'
+      )}>
         <Icon className="h-4 w-4" />
       </div>
 

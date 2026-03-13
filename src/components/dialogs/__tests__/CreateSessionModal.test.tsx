@@ -3,7 +3,7 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { server } from '../../../__mocks__/server';
-import { CreateFromPRModal } from '../CreateFromPRModal';
+import { CreateSessionModal } from '../CreateSessionModal';
 import { useAppStore } from '@/stores/appStore';
 
 const API_BASE = 'http://localhost:9876';
@@ -86,7 +86,7 @@ vi.mock('@/lib/navigation', () => ({
   navigate: vi.fn(),
 }));
 
-describe('CreateFromPRModal', () => {
+describe('CreateSessionModal', () => {
   const defaultProps = {
     isOpen: true,
     onClose: vi.fn(),
@@ -144,7 +144,7 @@ describe('CreateFromPRModal', () => {
   });
 
   it('renders with three tabs: Pull requests, Branches, Issues', () => {
-    render(<CreateFromPRModal {...defaultProps} />);
+    render(<CreateSessionModal {...defaultProps} />);
 
     expect(screen.getByText('Pull requests')).toBeInTheDocument();
     expect(screen.getByText('Branches')).toBeInTheDocument();
@@ -152,7 +152,7 @@ describe('CreateFromPRModal', () => {
   });
 
   it('renders the search input', () => {
-    render(<CreateFromPRModal {...defaultProps} />);
+    render(<CreateSessionModal {...defaultProps} />);
 
     expect(
       screen.getByPlaceholderText('Search by title, number, or author...')
@@ -160,7 +160,7 @@ describe('CreateFromPRModal', () => {
   });
 
   it('shows PR list on the Pull requests tab', async () => {
-    render(<CreateFromPRModal {...defaultProps} />);
+    render(<CreateSessionModal {...defaultProps} />);
 
     await waitFor(
       () => {
@@ -172,7 +172,7 @@ describe('CreateFromPRModal', () => {
   });
 
   it('shows draft PR with draft icon styling', async () => {
-    render(<CreateFromPRModal {...defaultProps} />);
+    render(<CreateSessionModal {...defaultProps} />);
 
     await waitFor(
       () => {
@@ -186,7 +186,7 @@ describe('CreateFromPRModal', () => {
   it('shows the Branches tab content when clicked', async () => {
     const user = userEvent.setup();
 
-    render(<CreateFromPRModal {...defaultProps} />);
+    render(<CreateSessionModal {...defaultProps} />);
 
     await user.click(screen.getByText('Branches'));
 
@@ -199,7 +199,7 @@ describe('CreateFromPRModal', () => {
   it('shows the Issues tab with GitHub and Linear issues', async () => {
     const user = userEvent.setup();
 
-    render(<CreateFromPRModal {...defaultProps} />);
+    render(<CreateSessionModal {...defaultProps} />);
 
     await user.click(screen.getByText('Issues'));
 
@@ -220,7 +220,7 @@ describe('CreateFromPRModal', () => {
   });
 
   it('does not render when isOpen is false', () => {
-    render(<CreateFromPRModal isOpen={false} onClose={vi.fn()} />);
+    render(<CreateSessionModal isOpen={false} onClose={vi.fn()} />);
 
     expect(
       screen.queryByText('Pull requests')
@@ -228,14 +228,14 @@ describe('CreateFromPRModal', () => {
   });
 
   it('shows workspace selector', () => {
-    render(<CreateFromPRModal {...defaultProps} />);
+    render(<CreateSessionModal {...defaultProps} />);
 
     expect(screen.getByText('test-repo')).toBeInTheDocument();
   });
 
   it('filters PRs by search term', async () => {
     const user = userEvent.setup();
-    render(<CreateFromPRModal {...defaultProps} />);
+    render(<CreateSessionModal {...defaultProps} />);
 
     // Wait for PRs to load
     await waitFor(() => {

@@ -483,7 +483,7 @@ export default function Home() {
     onOpenSettings: (category?: string) => dialogRef.current?.openSettings(category),
     onCloseSettings: () => dialogRef.current?.closeSettings(),
     onShowAddWorkspace: () => dialogRef.current?.showAddWorkspace(),
-    onShowCreateFromPR: () => dialogRef.current?.showCreateFromPR(),
+    onShowCreateSession: () => dialogRef.current?.showCreateSession(),
     onShowShortcuts: () => dialogRef.current?.showShortcuts(),
     onShowBottomTerminal: () => {
       if (layout.selectedSessionId) {
@@ -620,7 +620,7 @@ export default function Home() {
                     onOpenShortcuts={() => dialogRef.current?.showShortcuts()}
                     onOpenWorkspaceSettings={(workspaceId) => dialogRef.current?.openWorkspaceSettings(workspaceId)}
                     onNewSession={handleNewSession}
-                    onCreateFromPR={() => dialogRef.current?.showCreateFromPR()}
+                    onCreateSession={() => dialogRef.current?.showCreateSession()}
                   />
                 ) : (
                   // INNER GROUP: Conversation + Terminal | Right Sidebar

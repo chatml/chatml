@@ -7,7 +7,7 @@ import { useShortcut } from '@/hooks/useShortcut';
 import { SettingsPage } from '@/components/settings/SettingsPage';
 import type { WorkspaceSettingsSection } from '@/components/settings/settingsRegistry';
 import { AddWorkspaceModal } from '@/components/dialogs/AddWorkspaceModal';
-import { CreateFromPRModal } from '@/components/dialogs/CreateFromPRModal';
+import { CreateSessionModal } from '@/components/dialogs/CreateSessionModal';
 import { CloneFromUrlDialog } from '@/components/dialogs/CloneFromUrlDialog';
 import { GitHubReposDialog } from '@/components/dialogs/GitHubReposDialog';
 import { CloseTabConfirmDialog } from '@/components/dialogs/CloseTabConfirmDialog';
@@ -59,7 +59,7 @@ export const DialogManager = forwardRef<DialogManagerHandles, DialogManagerProps
   expandWorkspace,
 }, ref) {
   const [showAddWorkspace, setShowAddWorkspace] = useState(false);
-  const [showCreateFromPR, setShowCreateFromPR] = useState(false);
+  const [showCreateSession, setShowCreateSession] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [settingsInitialCategory, setSettingsInitialCategory] = useState<string | undefined>(undefined);
   const [settingsInitialWorkspaceId, setSettingsInitialWorkspaceId] = useState<string | undefined>(undefined);
@@ -93,8 +93,8 @@ export const DialogManager = forwardRef<DialogManagerHandles, DialogManagerProps
     return () => window.removeEventListener('show-shortcuts', handleShowShortcuts);
   }, []);
 
-  useShortcut('createFromPR', useCallback(() => {
-    setShowCreateFromPR(true);
+  useShortcut('createSession', useCallback(() => {
+    setShowCreateSession(true);
   }, []));
 
   // Expose dialog openers for use by parent via the returned object
@@ -148,7 +148,7 @@ export const DialogManager = forwardRef<DialogManagerHandles, DialogManagerProps
     openSettings,
     closeSettings,
     showAddWorkspace: () => setShowAddWorkspace(true),
-    showCreateFromPR: () => setShowCreateFromPR(true),
+    showCreateSession: () => setShowCreateSession(true),
     showCloneFromUrl: () => setShowCloneFromUrl(true),
     showGitHubRepos: () => setShowGitHubRepos(true),
     showShortcuts: () => setShowShortcuts(true),
@@ -177,9 +177,9 @@ export const DialogManager = forwardRef<DialogManagerHandles, DialogManagerProps
       />
 
       {/* Create Session from PR/Branch Modal */}
-      <CreateFromPRModal
-        isOpen={showCreateFromPR}
-        onClose={() => setShowCreateFromPR(false)}
+      <CreateSessionModal
+        isOpen={showCreateSession}
+        onClose={() => setShowCreateSession(false)}
       />
 
       {/* Clone from URL Dialog */}
@@ -250,7 +250,7 @@ export type DialogManagerHandles = {
   openSettings: (category?: string) => void;
   closeSettings: () => void;
   showAddWorkspace: () => void;
-  showCreateFromPR: () => void;
+  showCreateSession: () => void;
   showCloneFromUrl: () => void;
   showGitHubRepos: () => void;
   showShortcuts: () => void;

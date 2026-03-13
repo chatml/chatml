@@ -14,7 +14,7 @@ interface EmptyViewProps {
   onOpenProject: () => void;
   onCloneFromUrl: () => void;
   onNewSession: () => void;
-  onCreateFromPR: () => void;
+  onCreateSession: () => void;
   onOpenSettings?: () => void;
   onOpenShortcuts?: () => void;
   showLeftSidebar?: boolean;
@@ -24,7 +24,7 @@ export function EmptyView({
   onOpenProject,
   onCloneFromUrl,
   onNewSession,
-  onCreateFromPR,
+  onCreateSession,
   onOpenSettings,
   onOpenShortcuts,
   showLeftSidebar = true,
@@ -92,7 +92,7 @@ export function EmptyView({
               onOpenProject={onOpenProject}
               onCloneFromUrl={onCloneFromUrl}
               onNewSession={onNewSession}
-              onCreateFromPR={onCreateFromPR}
+              onCreateSession={onCreateSession}
               hasWorkspace={hasWorkspace}
             />
           </div>

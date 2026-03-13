@@ -34,7 +34,7 @@ const mockDialogRef = {
     openSettings: vi.fn(),
     closeSettings: vi.fn(),
     showAddWorkspace: vi.fn(),
-    showCreateFromPR: vi.fn(),
+    showCreateSession: vi.fn(),
     showCloneFromUrl: vi.fn(),
     showGitHubRepos: vi.fn(),
     showShortcuts: vi.fn(),

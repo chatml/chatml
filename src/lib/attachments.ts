@@ -346,6 +346,33 @@ export async function loadAllAttachmentContents(attachments: Attachment[]): Prom
 }
 
 // ============================================================================
+// Context Attachment Builder
+// ============================================================================
+
+/**
+ * Build an in-memory context attachment for an issue (GitHub or Linear).
+ * The attachment has base64Data pre-populated so no file path is needed.
+ */
+export function buildContextAttachment(opts: {
+  contextType: 'github-issue' | 'linear-issue';
+  title: string;
+  markdownBody: string;
+  meta: Attachment['contextMeta'];
+}): Attachment {
+  const encoded = btoa(String.fromCharCode(...new TextEncoder().encode(opts.markdownBody)));
+  return {
+    id: generateAttachmentId(),
+    type: 'file',
+    name: opts.title,
+    mimeType: 'text/markdown',
+    size: new Blob([opts.markdownBody]).size,
+    base64Data: encoded,
+    contextType: opts.contextType,
+    contextMeta: opts.meta,
+  };
+}
+
+// ============================================================================
 // Display Helpers
 // ============================================================================
 

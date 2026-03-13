@@ -51,12 +51,13 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { getWorkspaceColor } from '@/lib/workspace-colors';
+import { buildContextAttachment } from '@/lib/attachments';
 
 // ============================================================================
 // Types
 // ============================================================================
 
-interface CreateFromPRModalProps {
+interface CreateSessionModalProps {
   isOpen: boolean;
   onClose: () => void;
 }
@@ -182,7 +183,7 @@ function TabButton({ active, onClick, children }: { active: boolean; onClick: ()
 // Main Component
 // ============================================================================
 
-export function CreateFromPRModal({ isOpen, onClose }: CreateFromPRModalProps) {
+export function CreateSessionModal({ isOpen, onClose }: CreateSessionModalProps) {
   const [tab, setTab] = useState<TabId>('pr');
   const [search, setSearch] = useState('');
   const [creating, setCreating] = useState(false);
@@ -305,7 +306,9 @@ export function CreateFromPRModal({ isOpen, onClose }: CreateFromPRModalProps) {
     return () => { cancelled = true; clearTimeout(timer); };
   }, [isOpen, tab, selectedWorkspaceId, search]);
 
-  // Fetch issues when workspace changes or issues tab is active
+  // Fetch issues when workspace changes or issues tab is active.
+  // No guard on selectedWorkspaceId: Linear issues are workspace-independent,
+  // and GitHub issues gracefully fall back to [] when no workspace is selected.
   useEffect(() => {
     if (!isOpen || tab !== 'issues') {
       return;
@@ -371,6 +374,7 @@ export function CreateFromPRModal({ isOpen, onClose }: CreateFromPRModalProps) {
   const createSessionAndNavigate = useCallback(async (
     workspaceId: string,
     params: { branch: string; checkoutExisting: boolean; task?: string; systemMessage?: string },
+    draft?: { text: string; attachments: import('@/lib/types').Attachment[] },
   ) => {
     const session = await createSessionApi(workspaceId, params);
 
@@ -397,6 +401,11 @@ export function CreateFromPRModal({ isOpen, onClose }: CreateFromPRModalProps) {
         updatedAt: conv.updatedAt,
       });
     });
+
+    // Set draft BEFORE navigation so ChatInput picks it up on mount
+    if (draft) {
+      useAppStore.getState().setDraftInput(session.id, draft);
+    }
 
     expandWorkspace(workspaceId);
     navigate({
@@ -459,12 +468,28 @@ export function CreateFromPRModal({ isOpen, onClose }: CreateFromPRModalProps) {
     try {
       // Fetch full issue body
       const details = await getGitHubIssueDetails(selectedWorkspaceId, issue.number);
+      const systemMessage = buildGitHubIssueSystemMessage(issue, details.body);
+
+      // Build context attachment so the issue appears in the composer
+      const issueAttachment = buildContextAttachment({
+        contextType: 'github-issue',
+        title: `#${issue.number} ${issue.title}`,
+        markdownBody: systemMessage,
+        meta: {
+          number: issue.number,
+          title: issue.title,
+          url: issue.htmlUrl,
+          state: issue.state,
+        },
+      });
+
+      // Empty branch tells the backend to auto-create a new session branch
       await createSessionAndNavigate(selectedWorkspaceId, {
         branch: '',
         checkoutExisting: false,
         task: issue.title,
-        systemMessage: buildGitHubIssueSystemMessage(issue, details.body),
-      });
+        systemMessage,
+      }, { text: '', attachments: [issueAttachment] });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create session');
     } finally {
@@ -480,12 +505,27 @@ export function CreateFromPRModal({ isOpen, onClose }: CreateFromPRModalProps) {
     setCreating(true);
     setError('');
     try {
+      const systemMessage = buildLinearIssueSystemMessage(issue);
+
+      // Build context attachment so the issue appears in the composer
+      const linearAttachment = buildContextAttachment({
+        contextType: 'linear-issue',
+        title: `${issue.identifier} ${issue.title}`,
+        markdownBody: systemMessage,
+        meta: {
+          identifier: issue.identifier,
+          title: issue.title,
+          state: issue.stateName,
+        },
+      });
+
+      // Empty branch tells the backend to auto-create a new session branch
       await createSessionAndNavigate(selectedWorkspaceId, {
         branch: '',
         checkoutExisting: false,
         task: issue.title,
-        systemMessage: buildLinearIssueSystemMessage(issue),
-      });
+        systemMessage,
+      }, { text: '', attachments: [linearAttachment] });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create session');
     } finally {
@@ -524,13 +564,13 @@ export function CreateFromPRModal({ isOpen, onClose }: CreateFromPRModalProps) {
       {/* Tab bar + workspace selector */}
       <div className="flex items-center justify-between border-b px-3 py-1.5">
         <div className="flex gap-1">
-          <TabButton active={tab === 'pr'} onClick={() => { setTab('pr'); setSearch(''); }}>
+          <TabButton active={tab === 'pr'} onClick={() => { setTab('pr'); setSearch(''); setError(''); }}>
             Pull requests
           </TabButton>
-          <TabButton active={tab === 'branch'} onClick={() => { setTab('branch'); setSearch(''); }}>
+          <TabButton active={tab === 'branch'} onClick={() => { setTab('branch'); setSearch(''); setError(''); }}>
             Branches
           </TabButton>
-          <TabButton active={tab === 'issues'} onClick={() => { setTab('issues'); setSearch(''); }}>
+          <TabButton active={tab === 'issues'} onClick={() => { setTab('issues'); setSearch(''); setError(''); }}>
             Issues
           </TabButton>
         </div>

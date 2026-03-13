@@ -44,7 +44,7 @@ export function computeMenuState(inputs: MenuContextInputs): Record<string, bool
     // File menu
     new_session: hasWorkspace,
     new_conversation: hasSession,
-    create_from_pr: hasWorkspace,
+    create_session: hasWorkspace,
     add_workspace: true,
     save_file: hasDirtyFileTabs,
     close_tab: hasSession || hasBrowserTabs,
