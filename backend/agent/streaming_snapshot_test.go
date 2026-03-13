@@ -114,7 +114,7 @@ func TestHandleConversationOutput_SnapshotClearedOnResult(t *testing.T) {
 	assert.Nil(t, snapshot)
 
 	// But the message should be persisted
-	page, err := s.GetConversationMessages(ctx, "conv-1", nil, 50)
+	page, err := s.GetConversationMessages(ctx, "conv-1", nil, 50, false)
 	require.NoError(t, err)
 	assert.True(t, len(page.Messages) >= 1, "expected at least 1 persisted message")
 }

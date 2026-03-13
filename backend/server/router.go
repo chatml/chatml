@@ -208,6 +208,7 @@ func NewRouter(s *store.SQLiteStore, hub *Hub, agentMgr *agent.Manager, ghClient
 		r.Get("/interrupted", h.GetInterruptedConversations)
 		r.Get("/{convId}", h.GetConversation)
 		r.Get("/{convId}/messages", h.GetConversationMessages)
+		r.Get("/{convId}/messages/{msgId}", h.GetMessage)
 		r.With(messageRateLimiter).Post("/{convId}/messages", h.SendConversationMessage)
 		r.Post("/{convId}/system-message", h.AddSystemMessage)
 		r.Post("/{convId}/stop", h.StopConversation)

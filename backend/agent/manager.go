@@ -2558,7 +2558,7 @@ func (m *Manager) generateInputSuggestion(convID string) {
 	defer cancel()
 
 	// Fetch last 2 messages to find the most recent assistant message
-	page, err := m.store.GetConversationMessages(ctx, convID, nil, 2)
+	page, err := m.store.GetConversationMessages(ctx, convID, nil, 2, false)
 	if err != nil || len(page.Messages) == 0 {
 		return
 	}

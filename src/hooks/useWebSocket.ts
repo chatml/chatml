@@ -1226,8 +1226,8 @@ export function useWebSocket(enabled: boolean = true) {
 
           // Reload messages to pick up any assistant responses we missed
           try {
-            const page = await getConversationMessages(convId);
-            const messages = page.messages.map(m => toStoreMessage(m, convId));
+            const page = await getConversationMessages(convId, { compact: true });
+            const messages = page.messages.map(m => toStoreMessage(m, convId, { compacted: true }));
             store.setMessagePage(convId, messages, page.hasMore, page.oldestPosition ?? 0, page.totalCount);
           } catch (err) {
             console.warn(`Failed to reload messages for ${convId} after reconnect:`, err);
@@ -1244,8 +1244,8 @@ export function useWebSocket(enabled: boolean = true) {
               // No snapshot (race: result just persisted but process hasn't exited yet)
               // Reload messages as safety net, keep streaming active
               try {
-                const page = await getConversationMessages(convId);
-                const messages = page.messages.map(m => toStoreMessage(m, convId));
+                const page = await getConversationMessages(convId, { compact: true });
+                const messages = page.messages.map(m => toStoreMessage(m, convId, { compacted: true }));
                 store.setMessagePage(convId, messages, page.hasMore, page.oldestPosition ?? 0, page.totalCount);
               } catch (innerErr) {
                 console.warn(`Failed to reload messages for ${convId} during snapshot fallback:`, innerErr);

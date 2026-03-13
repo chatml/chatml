@@ -35,7 +35,7 @@ import { ApprovedPlanBlock } from '@/components/conversation/ApprovedPlanBlock';
 import { TurnStatusIndicator } from '@/components/conversation/TurnStatusIndicator';
 
 // Collapsed tool summary with individual ToolUsageBlock instances when expanded
-const ToolUsageSummary = memo(function ToolUsageSummary({ tools, worktreePath }: { tools: ToolUsage[]; worktreePath?: string }) {
+const ToolUsageSummary = memo(function ToolUsageSummary({ tools, worktreePath, conversationId, messageId, compacted }: { tools: ToolUsage[]; worktreePath?: string; conversationId?: string; messageId?: string; compacted?: boolean }) {
   const [isOpen, setIsOpen] = useState(false);
   if (tools.length === 0) return null;
 
@@ -67,6 +67,9 @@ const ToolUsageSummary = memo(function ToolUsageSummary({ tools, worktreePath }:
               stdout={tool.stdout}
               stderr={tool.stderr}
               metadata={tool.metadata}
+              conversationId={conversationId}
+              messageId={messageId}
+              compacted={compacted}
             />
           ))}
         </div>
@@ -230,6 +233,9 @@ export const MessageBlock = memo(function MessageBlock({
                         stderr={tool.stderr}
                         worktreePath={worktreePath}
                         metadata={tool.metadata}
+                        conversationId={message.conversationId}
+                        messageId={message.id}
+                        compacted={message.compacted}
                       />
                     );
                   } else if (entry.type === 'plan') {
@@ -282,7 +288,7 @@ export const MessageBlock = memo(function MessageBlock({
                 section="ToolUsage"
                 fallback={<InlineErrorFallback message="Unable to display tool usage" />}
               >
-                <ToolUsageSummary tools={message.toolUsage} worktreePath={worktreePath} />
+                <ToolUsageSummary tools={message.toolUsage} worktreePath={worktreePath} conversationId={message.conversationId} messageId={message.id} compacted={message.compacted} />
               </ErrorBoundary>
             )}
 
