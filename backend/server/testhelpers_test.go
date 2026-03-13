@@ -48,7 +48,7 @@ func setupTestHandlers(t *testing.T) (*Handlers, *store.SQLiteStore) {
 	err = sqliteStore.SetSetting(context.Background(), "workspaces-base-dir", tmpWorkspaces)
 	require.NoError(t, err)
 
-	prCache := github.NewPRCache(5*time.Minute, 10*time.Minute)
+	prCache := github.NewPRCache(5*time.Minute, 10*time.Minute, 100)
 
 	t.Cleanup(func() {
 		sqliteStore.Close()
@@ -74,7 +74,7 @@ func setupTestHandlersWithAgentManager(t *testing.T) (*Handlers, *store.SQLiteSt
 
 	worktreeManager := git.NewWorktreeManager()
 	agentManager := agent.NewManager(context.Background(), sqliteStore, worktreeManager, 9876)
-	prCache := github.NewPRCache(5*time.Minute, 10*time.Minute)
+	prCache := github.NewPRCache(5*time.Minute, 10*time.Minute, 100)
 
 	t.Cleanup(func() {
 		sqliteStore.Close()
@@ -227,7 +227,7 @@ func setupTestHandlersWithAIClient(t *testing.T, aiServerURL string) (*Handlers,
 	err = sqliteStore.SetSetting(context.Background(), "workspaces-base-dir", tmpWorkspaces)
 	require.NoError(t, err)
 
-	prCache := github.NewPRCache(5*time.Minute, 10*time.Minute)
+	prCache := github.NewPRCache(5*time.Minute, 10*time.Minute, 100)
 	aiClient := ai.NewTestClient("sk-test-key", aiServerURL)
 
 	t.Cleanup(func() {
@@ -247,7 +247,7 @@ func setupTestHandlersWithGitHub(t *testing.T, ghServer *httptest.Server) (*Hand
 	sqliteStore, err := store.NewSQLiteStoreInMemory()
 	require.NoError(t, err)
 
-	prCache := github.NewPRCache(5*time.Minute, 10*time.Minute)
+	prCache := github.NewPRCache(5*time.Minute, 10*time.Minute, 100)
 
 	ghClient := github.NewClient("", "")
 	ghClient.SetAPIURL(ghServer.URL)
