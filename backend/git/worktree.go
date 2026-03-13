@@ -76,7 +76,7 @@ func (wm *WorktreeManager) CreateWithBranch(ctx context.Context, repoPath, workt
 // The worktree branch is based on the specified targetBranch (e.g. "origin/main", "origin/develop").
 func (wm *WorktreeManager) CreateAtPath(ctx context.Context, repoPath, worktreePath, branchName, targetBranch string) (string, string, string, error) {
 	// Capture target branch commit - this is the base commit for the new worktree
-	cmd, cancel := gitCmdWithContext(ctx, repoPath, "rev-parse", targetBranch)
+	cmd, cancel := gitCmdWithContext(ctx, TimeoutFast, repoPath, "rev-parse", targetBranch)
 	out, err := cmd.Output()
 	cancel()
 	if err != nil {
@@ -90,7 +90,7 @@ func (wm *WorktreeManager) CreateAtPath(ctx context.Context, repoPath, worktreeP
 		return "", "", "", fmt.Errorf("failed to create parent dir %s: %w", parentDir, err)
 	}
 
-	cmd, cancel = gitCmdWithContext(ctx, repoPath, "worktree", "add", "-b", branchName, worktreePath, targetBranch)
+	cmd, cancel = gitCmdWithContext(ctx, TimeoutMedium, repoPath, "worktree", "add", "-b", branchName, worktreePath, targetBranch)
 	defer cancel()
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return "", "", "", fmt.Errorf("failed to create worktree: %s: %w", string(out), err)
@@ -105,7 +105,7 @@ func (wm *WorktreeManager) CreateAtPath(ctx context.Context, repoPath, worktreeP
 // The worktree branch is based on the specified targetBranch (e.g. "origin/main", "origin/develop").
 func (wm *WorktreeManager) CreateInExistingDir(ctx context.Context, repoPath, worktreePath, branchName, targetBranch string) (string, string, string, error) {
 	// Capture target branch commit - this is the base commit for the new worktree
-	cmd, cancel := gitCmdWithContext(ctx, repoPath, "rev-parse", targetBranch)
+	cmd, cancel := gitCmdWithContext(ctx, TimeoutFast, repoPath, "rev-parse", targetBranch)
 	out, err := cmd.Output()
 	cancel()
 	if err != nil {
@@ -115,7 +115,7 @@ func (wm *WorktreeManager) CreateInExistingDir(ctx context.Context, repoPath, wo
 
 	// Create worktree in the existing directory
 	// git worktree add will work with an existing empty directory
-	cmd, cancel = gitCmdWithContext(ctx, repoPath, "worktree", "add", "-b", branchName, worktreePath, targetBranch)
+	cmd, cancel = gitCmdWithContext(ctx, TimeoutMedium, repoPath, "worktree", "add", "-b", branchName, worktreePath, targetBranch)
 	defer cancel()
 	if out, err := cmd.CombinedOutput(); err != nil {
 		errMsg := string(out)
@@ -144,7 +144,7 @@ func (wm *WorktreeManager) CheckoutExistingBranchInDir(ctx context.Context, repo
 	}
 
 	// Fetch the specific branch from origin (targeted fetch is faster than fetching all refs)
-	cmd, cancel := gitCmdWithContext(ctx, repoPath, "fetch", "origin", remoteBranch)
+	cmd, cancel := gitCmdWithContext(ctx, TimeoutHeavy, repoPath, "fetch", "origin", remoteBranch)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		cancel()
 		return "", "", "", fmt.Errorf("failed to fetch origin: %s: %w", string(out), err)
@@ -153,7 +153,7 @@ func (wm *WorktreeManager) CheckoutExistingBranchInDir(ctx context.Context, repo
 
 	// Resolve the remote branch ref to get the base commit SHA
 	remoteRef := fmt.Sprintf("origin/%s", remoteBranch)
-	cmd, cancel = gitCmdWithContext(ctx, repoPath, "rev-parse", remoteRef)
+	cmd, cancel = gitCmdWithContext(ctx, TimeoutFast, repoPath, "rev-parse", remoteRef)
 	out, err := cmd.Output()
 	cancel()
 	if err != nil {
@@ -166,7 +166,7 @@ func (wm *WorktreeManager) CheckoutExistingBranchInDir(ctx context.Context, repo
 	// tracking the remote. Possible errors:
 	// - "already checked out" / "is already used by worktree" → branch is in use by another worktree
 	// - "already exists" → local branch exists but is not checked out in a worktree
-	cmd, cancel = gitCmdWithContext(ctx, repoPath, "worktree", "add", "-b", remoteBranch, "--track", worktreePath, remoteRef)
+	cmd, cancel = gitCmdWithContext(ctx, TimeoutMedium, repoPath, "worktree", "add", "-b", remoteBranch, "--track", worktreePath, remoteRef)
 	defer cancel()
 	if out, err := cmd.CombinedOutput(); err != nil {
 		errMsg := string(out)
@@ -198,7 +198,7 @@ func (wm *WorktreeManager) RestoreSessionWorktree(ctx context.Context, repoPath,
 	// Step 1: Check if worktree already exists and is valid
 	if _, err := os.Stat(worktreePath); err == nil {
 		// Directory exists — check if it's a valid worktree
-		cmd, cancel := gitCmdWithContext(ctx, repoPath, "worktree", "list", "--porcelain")
+		cmd, cancel := gitCmdWithContext(ctx, TimeoutMedium, repoPath, "worktree", "list", "--porcelain")
 		out, listErr := cmd.Output()
 		cancel()
 		if listErr == nil {
@@ -216,7 +216,7 @@ func (wm *WorktreeManager) RestoreSessionWorktree(ctx context.Context, repoPath,
 	}
 
 	// Prune stale worktree entries before trying to create a new one
-	cmd, cancel := gitCmdWithContext(ctx, repoPath, "worktree", "prune")
+	cmd, cancel := gitCmdWithContext(ctx, TimeoutMedium, repoPath, "worktree", "prune")
 	if pruneOut, pruneErr := cmd.CombinedOutput(); pruneErr != nil {
 		logger.Cleanup.Warnf("git worktree prune failed: %s", strings.TrimSpace(string(pruneOut)))
 	}
@@ -229,14 +229,14 @@ func (wm *WorktreeManager) RestoreSessionWorktree(ctx context.Context, repoPath,
 	}
 
 	// Step 2: Check if local branch still exists
-	cmd, cancel = gitCmdWithContext(ctx, repoPath, "rev-parse", "--verify", "refs/heads/"+branchName)
+	cmd, cancel = gitCmdWithContext(ctx, TimeoutFast, repoPath, "rev-parse", "--verify", "refs/heads/"+branchName)
 	_, localErr := cmd.Output()
 	cancel()
 
 	if localErr == nil {
 		// Local branch exists — just create a worktree from it
 		logger.Cleanup.Infof("Restoring worktree from existing local branch %s", branchName)
-		cmd, cancel = gitCmdWithContext(ctx, repoPath, "worktree", "add", worktreePath, branchName)
+		cmd, cancel = gitCmdWithContext(ctx, TimeoutMedium, repoPath, "worktree", "add", worktreePath, branchName)
 		out, err := cmd.CombinedOutput()
 		cancel()
 		if err != nil {
@@ -247,18 +247,18 @@ func (wm *WorktreeManager) RestoreSessionWorktree(ctx context.Context, repoPath,
 
 	// Step 3: Check if remote branch exists
 	remoteRef := "refs/remotes/origin/" + branchName
-	cmd, cancel = gitCmdWithContext(ctx, repoPath, "rev-parse", "--verify", remoteRef)
+	cmd, cancel = gitCmdWithContext(ctx, TimeoutFast, repoPath, "rev-parse", "--verify", remoteRef)
 	_, remoteErr := cmd.Output()
 	cancel()
 
 	if remoteErr == nil {
 		// Remote branch exists — fetch and create tracking worktree
 		logger.Cleanup.Infof("Restoring worktree from remote branch origin/%s", branchName)
-		cmd, cancel = gitCmdWithContext(ctx, repoPath, "fetch", "origin", branchName)
+		cmd, cancel = gitCmdWithContext(ctx, TimeoutHeavy, repoPath, "fetch", "origin", branchName)
 		cmd.CombinedOutput()
 		cancel()
 
-		cmd, cancel = gitCmdWithContext(ctx, repoPath, "worktree", "add", "-b", branchName, "--track", worktreePath, "origin/"+branchName)
+		cmd, cancel = gitCmdWithContext(ctx, TimeoutMedium, repoPath, "worktree", "add", "-b", branchName, "--track", worktreePath, "origin/"+branchName)
 		out, err := cmd.CombinedOutput()
 		cancel()
 		if err != nil {
@@ -270,7 +270,7 @@ func (wm *WorktreeManager) RestoreSessionWorktree(ctx context.Context, repoPath,
 	// Step 4: Fall back to BaseCommitSHA
 	if baseCommitSHA != "" {
 		logger.Cleanup.Infof("Restoring worktree from base commit %s for branch %s", baseCommitSHA, branchName)
-		cmd, cancel = gitCmdWithContext(ctx, repoPath, "worktree", "add", "-b", branchName, worktreePath, baseCommitSHA)
+		cmd, cancel = gitCmdWithContext(ctx, TimeoutMedium, repoPath, "worktree", "add", "-b", branchName, worktreePath, baseCommitSHA)
 		out, err := cmd.CombinedOutput()
 		cancel()
 		if err != nil {
@@ -282,7 +282,7 @@ func (wm *WorktreeManager) RestoreSessionWorktree(ctx context.Context, repoPath,
 	// Step 5: Fall back to targetBranch (e.g. origin/main) as last resort
 	if targetBranch != "" {
 		logger.Cleanup.Infof("Restoring worktree from target branch %s for branch %s", targetBranch, branchName)
-		cmd, cancel = gitCmdWithContext(ctx, repoPath, "worktree", "add", "-b", branchName, worktreePath, targetBranch)
+		cmd, cancel = gitCmdWithContext(ctx, TimeoutMedium, repoPath, "worktree", "add", "-b", branchName, worktreePath, targetBranch)
 		out, err := cmd.CombinedOutput()
 		cancel()
 		if err != nil {
@@ -312,7 +312,7 @@ func (wm *WorktreeManager) RemoveAtPath(ctx context.Context, repoPath, worktreeP
 	logger.Cleanup.Infof("Removing worktree: path=%s branch=%s repo=%s", worktreePath, branchName, repoPath)
 
 	// Remove the worktree
-	cmd, cancel := gitCmdWithContext(ctx, repoPath, "worktree", "remove", worktreePath, "--force")
+	cmd, cancel := gitCmdWithContext(ctx, TimeoutMedium, repoPath, "worktree", "remove", worktreePath, "--force")
 	out, err := cmd.CombinedOutput()
 	cancel()
 	if err != nil {
@@ -320,7 +320,7 @@ func (wm *WorktreeManager) RemoveAtPath(ctx context.Context, repoPath, worktreeP
 	}
 
 	// Prune stale worktree entries from git's internal tracking (.git/worktrees/)
-	cmd, cancel = gitCmdWithContext(ctx, repoPath, "worktree", "prune")
+	cmd, cancel = gitCmdWithContext(ctx, TimeoutMedium, repoPath, "worktree", "prune")
 	pruneOut, pruneErr := cmd.CombinedOutput()
 	cancel()
 	if pruneErr != nil {
@@ -329,7 +329,7 @@ func (wm *WorktreeManager) RemoveAtPath(ctx context.Context, repoPath, worktreeP
 
 	// Delete the branch if specified
 	if branchName != "" {
-		cmd, cancel = gitCmdWithContext(ctx, repoPath, "branch", "-D", branchName)
+		cmd, cancel = gitCmdWithContext(ctx, TimeoutMedium, repoPath, "branch", "-D", branchName)
 		if branchOut, branchErr := cmd.CombinedOutput(); branchErr != nil {
 			logger.Cleanup.Warnf("Failed to delete branch %q in %s: %s: %v", branchName, repoPath, string(branchOut), branchErr)
 		}
@@ -340,7 +340,7 @@ func (wm *WorktreeManager) RemoveAtPath(ctx context.Context, repoPath, worktreeP
 }
 
 func (wm *WorktreeManager) List(ctx context.Context, repoPath string) ([]string, error) {
-	cmd, cancel := gitCmdWithContext(ctx, repoPath, "worktree", "list", "--porcelain")
+	cmd, cancel := gitCmdWithContext(ctx, TimeoutMedium, repoPath, "worktree", "list", "--porcelain")
 	defer cancel()
 	out, err := cmd.Output()
 	if err != nil {
@@ -367,7 +367,7 @@ func (wm *WorktreeManager) GetDiff(ctx context.Context, repoPath, agentID string
 	branchName := fmt.Sprintf("agent/%s", agentID)
 
 	// Get the base branch
-	cmd, cancel := gitCmdWithContext(ctx, repoPath, "rev-parse", "--abbrev-ref", "HEAD")
+	cmd, cancel := gitCmdWithContext(ctx, TimeoutFast, repoPath, "rev-parse", "--abbrev-ref", "HEAD")
 	baseOut, err := cmd.Output()
 	cancel()
 	if err != nil {
@@ -376,12 +376,12 @@ func (wm *WorktreeManager) GetDiff(ctx context.Context, repoPath, agentID string
 	baseBranch := strings.TrimSpace(string(baseOut))
 
 	// Get diff
-	cmd, cancel = gitCmdWithContext(ctx, repoPath, "diff", baseBranch+"..."+branchName)
+	cmd, cancel = gitCmdWithContext(ctx, TimeoutHeavy, repoPath, "diff", baseBranch+"..."+branchName)
 	out, err := cmd.Output()
 	cancel()
 	if err != nil {
 		// If diff fails, try without the three-dot syntax
-		cmd, cancel = gitCmdWithContext(ctx, repoPath, "diff", baseBranch, branchName)
+		cmd, cancel = gitCmdWithContext(ctx, TimeoutHeavy, repoPath, "diff", baseBranch, branchName)
 		out, err = cmd.Output()
 		cancel()
 		if err != nil {
@@ -395,7 +395,7 @@ func (wm *WorktreeManager) GetDiff(ctx context.Context, repoPath, agentID string
 func (wm *WorktreeManager) Merge(ctx context.Context, repoPath, agentID string) error {
 	branchName := fmt.Sprintf("agent/%s", agentID)
 
-	cmd, cancel := gitCmdWithContext(ctx, repoPath, "merge", branchName, "--no-edit")
+	cmd, cancel := gitCmdWithContext(ctx, TimeoutHeavy, repoPath, "merge", branchName, "--no-edit")
 	defer cancel()
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("merge failed: %s: %w", string(out), err)
@@ -407,7 +407,7 @@ func (wm *WorktreeManager) Merge(ctx context.Context, repoPath, agentID string) 
 // RenameBranch renames a git branch. The command must be run from within the worktree
 // that has the branch checked out, as you cannot rename a branch from outside.
 func (wm *WorktreeManager) RenameBranch(ctx context.Context, worktreePath, oldBranchName, newBranchName string) error {
-	cmd, cancel := gitCmdWithContext(ctx, worktreePath, "branch", "-m", oldBranchName, newBranchName)
+	cmd, cancel := gitCmdWithContext(ctx, TimeoutFast, worktreePath, "branch", "-m", oldBranchName, newBranchName)
 	defer cancel()
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("failed to rename branch: %s: %w", string(out), err)
