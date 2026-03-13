@@ -545,13 +545,42 @@ type Handlers struct {
 	diffCache        *DiffCache
 	aiClient         ai.Provider
 	scriptRunner     *scripts.Runner
+	serverCtx        context.Context
+	serverCancel     context.CancelFunc
+	bgWg             sync.WaitGroup
 }
 
-// Close releases resources owned by Handlers (caches with background goroutines).
+// Close cancels background goroutines, waits for them to drain, then releases
+// resources owned by Handlers (caches with background goroutines).
 func (h *Handlers) Close() {
+	h.serverCancel()
+
+	done := make(chan struct{})
+	go func() { h.bgWg.Wait(); close(done) }()
+	select {
+	case <-done:
+		logger.Handlers.Info("All background goroutines completed")
+	case <-time.After(5 * time.Second):
+		logger.Handlers.Warn("Timed out waiting for background goroutines")
+	}
+
 	h.dirCache.Close()
 	h.branchCache.Close()
 	h.avatarCache.Close()
+}
+
+// goBackground launches fn as a tracked background goroutine.
+// The goroutine is counted in bgWg so Close() can wait for completion.
+// It is a no-op if the server context is already cancelled (shutting down).
+func (h *Handlers) goBackground(fn func()) {
+	if h.serverCtx.Err() != nil {
+		return
+	}
+	h.bgWg.Add(1)
+	go func() {
+		defer h.bgWg.Done()
+		fn()
+	}()
 }
 
 // getAIClient returns an AI provider using the agent manager's multi-source
@@ -622,7 +651,9 @@ func (h *Handlers) getWorkspacesBaseDir(ctx context.Context) (string, error) {
 	return git.WorkspacesBaseDirWithOverride(configured)
 }
 
-func NewHandlers(s *store.SQLiteStore, am *agent.Manager, dirCacheConfig DirListingCacheConfig, bw *branch.Watcher, prw *branch.PRWatcher, hub *Hub, ghClient *github.Client, prCache *github.PRCache, issueCache *github.IssueCache, statsCache *SessionStatsCache, diffCache *DiffCache, aiClient ai.Provider, scriptRunner *scripts.Runner) *Handlers {
+func NewHandlers(ctx context.Context, s *store.SQLiteStore, am *agent.Manager, dirCacheConfig DirListingCacheConfig, bw *branch.Watcher, prw *branch.PRWatcher, hub *Hub, ghClient *github.Client, prCache *github.PRCache, issueCache *github.IssueCache, statsCache *SessionStatsCache, diffCache *DiffCache, aiClient ai.Provider, scriptRunner *scripts.Runner) *Handlers {
+	serverCtx, serverCancel := context.WithCancel(ctx)
+
 	// Initialize session name cache with workspaces directory
 	// Cache initializes lazily on first use
 	workspacesDir, err := git.WorkspacesBaseDir()
@@ -650,6 +681,8 @@ func NewHandlers(s *store.SQLiteStore, am *agent.Manager, dirCacheConfig DirList
 		diffCache:        diffCache,
 		aiClient:         aiClient,
 		scriptRunner:     scriptRunner,
+		serverCtx:        serverCtx,
+		serverCancel:     serverCancel,
 	}
 }
 
@@ -770,7 +803,7 @@ type uncachedSession struct {
 func (h *Handlers) computeAndBroadcastStats(sessions []uncachedSession) {
 	sem := make(chan struct{}, 10)
 	var wg sync.WaitGroup
-	ctx := context.Background()
+	ctx := h.serverCtx
 
 	for _, us := range sessions {
 		wg.Add(1)

@@ -476,7 +476,7 @@ func main() {
 	// AI client: nil at init — handlers.getAIClient() resolves dynamically via
 	// agentMgr.CreateAIClient() on each call, picking up credentials as they
 	// become available (env var, keychain, credentials file, cached SDK token).
-	router, routerCleanup := server.NewRouter(s, hub, agentMgr, ghClient, linearClient, branchWatcher, prWatcher, prCache, issueCache, statsCache, diffCache, nil, scriptRunner)
+	router, routerCleanup := server.NewRouter(ctx, s, hub, agentMgr, ghClient, linearClient, branchWatcher, prWatcher, prCache, issueCache, statsCache, diffCache, nil, scriptRunner)
 	defer routerCleanup()
 
 	// Pre-warm session stats cache in background so the first getDashboardData
