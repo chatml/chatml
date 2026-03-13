@@ -2552,7 +2552,7 @@ function handleMessage(message: SDKMessage): void {
           usage: taskMsg.usage,
           lastToolName: taskMsg.last_tool_name,
           status: (taskMsg as any).status, // SDK 0.2.75: includes "queued_to_running"
-          sessionId: taskMsg.session_id,
+          sessionId: taskMsg.session_id as string,
         });
       } else if (sysMsg.subtype === "files_persisted") {
         // File checkpoint persisted to disk (SDK 0.2.51+)
