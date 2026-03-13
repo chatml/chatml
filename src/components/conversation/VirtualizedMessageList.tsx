@@ -1,6 +1,6 @@
 'use client';
 
-import { forwardRef, useCallback, useMemo, useRef, useImperativeHandle } from 'react';
+import { forwardRef, useCallback, useEffect, useMemo, useRef, useImperativeHandle } from 'react';
 import { Virtuoso, type VirtuosoHandle, type ListRange } from 'react-virtuoso';
 import { MessageBlock } from '@/components/conversation/MessageBlock';
 import { ErrorBoundary } from '@/components/shared/ErrorBoundary';
@@ -67,6 +67,13 @@ export const VirtualizedMessageList = forwardRef<VirtualizedMessageListHandle, V
     const virtuosoRef = useRef<VirtuosoHandle>(null);
     const scrollerElRef = useRef<HTMLElement | null>(null);
 
+    const messageOffsetsRef = useRef(searchMatches.messageOffsets);
+    const messageHasMatchesRef = useRef(messageHasMatches);
+    useEffect(() => {
+      messageOffsetsRef.current = searchMatches.messageOffsets;
+      messageHasMatchesRef.current = messageHasMatches;
+    });
+
     const scrollerRefCallback = useCallback((el: HTMLElement | Window | null) => {
       scrollerElRef.current = el instanceof HTMLElement ? el : null;
     }, []);
@@ -104,13 +111,13 @@ export const VirtualizedMessageList = forwardRef<VirtualizedMessageListHandle, V
               worktreePath={worktreePath}
               searchQuery={searchQuery}
               currentMatchIndex={currentMatchIndex}
-              matchOffset={searchMatches.messageOffsets[index] ?? 0}
-              hasMatches={messageHasMatches[index] ?? false}
+              matchOffset={messageOffsetsRef.current[index] ?? 0}
+              hasMatches={messageHasMatchesRef.current[index] ?? false}
             />
           </ErrorBoundary>
         </div>
       ),
-      [worktreePath, searchQuery, currentMatchIndex, searchMatches.messageOffsets, messageHasMatches]
+      [worktreePath, searchQuery, currentMatchIndex, searchMatches.total]
     );
 
     // Determine follow output behavior: auto-scroll when at bottom.
