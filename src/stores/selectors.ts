@@ -459,6 +459,17 @@ export const useTerminalPanelVisible = (sessionId: string | null) =>
   useAppStore((s) => (sessionId ? s.terminalPanelVisible[sessionId] ?? false : false));
 
 // ============================================================================
+// Script Output State
+// ============================================================================
+
+/**
+ * Per-run script output version counter.
+ * Use in: ScriptsPanel (ScriptRunCard)
+ */
+export const useScriptOutputVersion = (sessionId: string | undefined, runId: string | undefined) =>
+  useAppStore((s) => (sessionId && runId) ? s.scriptOutputVersions[`${sessionId}:${runId}`] ?? 0 : 0);
+
+// ============================================================================
 // Todo State
 // ============================================================================
 

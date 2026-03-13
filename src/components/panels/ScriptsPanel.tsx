@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useAppStore, getScriptOutputLines } from '@/stores/appStore';
-import { useSelectedIds } from '@/stores/selectors';
+import { useSelectedIds, useScriptOutputVersion } from '@/stores/selectors';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { EmptyState } from '@/components/ui/empty-state';
 import { ScriptLogViewer } from './ScriptLogViewer';
@@ -318,8 +318,8 @@ function ScriptRunItem({
   onStop?: () => void;
 }) {
   const [expanded, setExpanded] = useState(false);
-  // Subscribe to output version counter to re-render when new lines arrive
-  const outputVersion = useAppStore((s) => s.scriptOutputVersion);
+  // Subscribe to per-run output version counter to re-render when new lines arrive
+  const outputVersion = useScriptOutputVersion(run?.sessionId, run?.id);
   const outputLines = useMemo(
     () => run ? getScriptOutputLines(run.sessionId, run.id) : [],
     // eslint-disable-next-line react-hooks/exhaustive-deps

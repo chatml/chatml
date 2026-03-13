@@ -308,8 +308,8 @@ interface AppState {
   // Script runs state (keyed by sessionId)
   scriptRuns: Record<string, ScriptRun[]>;
   setupProgress: Record<string, SetupProgress>;
-  // Monotonic counter bumped on each output line to trigger re-renders
-  scriptOutputVersion: number;
+  // Per-run version counters bumped on each output line to trigger re-renders
+  scriptOutputVersions: Record<string, number>;  // keyed by "sessionId:runId"
 
   // Draft input actions
   setDraftInput: (sessionId: string, draft: { text: string; attachments: Attachment[] }) => void;
@@ -610,7 +610,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   // Script state
   scriptRuns: {},
   setupProgress: {},
-  scriptOutputVersion: 0,
+  scriptOutputVersions: {},
 
   // Draft input actions
   setDraftInput: (sessionId, draft) => set((state) => ({
@@ -655,8 +655,10 @@ export const useAppStore = create<AppState>((set, get) => ({
       scriptOutputBuffers.set(key, buf);
     }
     buf.push(line);
-    // Bump version counter to trigger re-renders
-    set((state) => ({ scriptOutputVersion: state.scriptOutputVersion + 1 }));
+    // Bump per-run version counter to trigger re-renders.
+    // Use get() + shallow clone to avoid the set(fn) callback spreading on every line.
+    const prev = get().scriptOutputVersions;
+    set({ scriptOutputVersions: { ...prev, [key]: (prev[key] ?? 0) + 1 } });
   },
 
   setSetupProgress: (sessionId, progress) => set((state) => ({
@@ -829,6 +831,9 @@ export const useAppStore = create<AppState>((set, get) => ({
       const { [id]: _panelVisible, ...remainingTerminalPanelVisible } = state.terminalPanelVisible;
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
       const { [id]: _convsBySession, ...remainingConversationsBySession } = state.conversationsBySession;
+      const cleanedScriptOutputVersions = Object.fromEntries(
+        Object.entries(state.scriptOutputVersions).filter(([k]) => !k.startsWith(`${id}:`))
+      );
 
       return {
         sessions: state.sessions.filter((s) => s.id !== id),
@@ -855,6 +860,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         terminalInstances: remainingTerminalInstances,
         activeTerminalId: remainingActiveTerminalId,
         terminalPanelVisible: remainingTerminalPanelVisible,
+        scriptOutputVersions: cleanedScriptOutputVersions,
         selectedFileTabId: null,
         fileTabs: [],
       };
