@@ -451,6 +451,44 @@ func TestListAllSessions_ReadsArchivedField(t *testing.T) {
 	assert.True(t, sessions[0].Archived, "Archived field should be read from DB")
 }
 
+func TestGetReposByIDs(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+	createTestRepo(t, s, "ws-1")
+	createTestRepo(t, s, "ws-2")
+	createTestRepo(t, s, "ws-3")
+
+	// Empty IDs returns empty map
+	result, err := s.GetReposByIDs(ctx, nil)
+	require.NoError(t, err)
+	assert.Empty(t, result)
+
+	// Subset of IDs
+	result, err = s.GetReposByIDs(ctx, []string{"ws-1", "ws-3"})
+	require.NoError(t, err)
+	assert.Len(t, result, 2)
+	assert.Equal(t, "ws-1", result["ws-1"].ID)
+	assert.Equal(t, "ws-3", result["ws-3"].ID)
+
+	// Non-existent ID is silently skipped
+	result, err = s.GetReposByIDs(ctx, []string{"ws-1", "nonexistent"})
+	require.NoError(t, err)
+	assert.Len(t, result, 1)
+	assert.Equal(t, "ws-1", result["ws-1"].ID)
+
+	// Batching: create enough repos to span multiple batches (batch size is 500)
+	const total = 502
+	allIDs := make([]string, total)
+	for i := 0; i < total; i++ {
+		id := fmt.Sprintf("batch-%d", i)
+		allIDs[i] = id
+		createTestRepo(t, s, id)
+	}
+	result, err = s.GetReposByIDs(ctx, allIDs)
+	require.NoError(t, err)
+	assert.Len(t, result, total, "all repos across multiple batches should be returned")
+}
+
 func TestUpdateSession_SetArchived(t *testing.T) {
 	ctx := context.Background()
 	s := newTestStore(t)

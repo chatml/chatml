@@ -40,32 +40,48 @@ func (h *Handlers) ListAllSessions(w http.ResponseWriter, r *http.Request) {
 
 	// Serve cached stats immediately; compute uncached ones in background via WebSocket.
 	if h.statsCache != nil {
-		// Build workspace map for branch lookup
-		repos, repoErr := h.store.ListRepos(ctx)
-		if repoErr != nil {
-			logger.Handlers.Warnf("ListSessions: failed to list repos for stats: %v", repoErr)
+		// First pass: apply cached stats and collect workspace IDs for uncached sessions
+		type pendingSession struct {
+			session     *models.Session
+			workspaceID string
 		}
-		workspaceByID := make(map[string]*models.Repo)
-		for _, repo := range repos {
-			workspaceByID[repo.ID] = repo
-		}
-
-		var uncached []uncachedSession
+		var pending []pendingSession
+		needWorkspaceIDs := make(map[string]bool)
 		for _, session := range sessions {
 			if session.Archived {
 				continue
 			}
 			if cached, ok := h.statsCache.Get(session.ID); ok {
 				session.Stats = cached
-			} else if ws := workspaceByID[session.WorkspaceID]; ws != nil {
-				uncached = append(uncached, uncachedSession{
-					session:   session,
-					workspace: ws,
-				})
+			} else {
+				pending = append(pending, pendingSession{session: session, workspaceID: session.WorkspaceID})
+				needWorkspaceIDs[session.WorkspaceID] = true
 			}
 		}
-		if len(uncached) > 0 && h.hub != nil {
-			go h.computeAndBroadcastStats(uncached)
+
+		// Batch-fetch only the workspaces needed for uncached sessions
+		if len(pending) > 0 {
+			ids := make([]string, 0, len(needWorkspaceIDs))
+			for id := range needWorkspaceIDs {
+				ids = append(ids, id)
+			}
+			workspaceByID, repoErr := h.store.GetReposByIDs(ctx, ids)
+			if repoErr != nil {
+				logger.Handlers.Warnf("ListAllSessions: failed to get repos for stats: %v", repoErr)
+			}
+
+			var uncached []uncachedSession
+			for _, p := range pending {
+				if ws := workspaceByID[p.workspaceID]; ws != nil {
+					uncached = append(uncached, uncachedSession{
+						session:   p.session,
+						workspace: ws,
+					})
+				}
+			}
+			if len(uncached) > 0 && h.hub != nil {
+				go h.computeAndBroadcastStats(uncached)
+			}
 		}
 	}
 
