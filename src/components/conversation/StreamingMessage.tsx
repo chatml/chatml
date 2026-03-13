@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useMemo, memo } from 'react';
 import { useAppStore } from '@/stores/appStore';
-import { useStreamingState, useActiveTools, useSubAgents } from '@/stores/selectors';
+import { useStreamingMeta, useStreamingThinking, useStreamingSegmentIds, useStreamingSegmentText, useActiveTools, useSubAgents } from '@/stores/selectors';
 import { AlertCircle, Brain, ChevronDown, ChevronRight, Clock } from 'lucide-react';
 import { ToolUsageBlock } from '@/components/conversation/ToolUsageBlock';
 import { ThinkingNode } from '@/components/conversation/ThinkingNode';
@@ -16,10 +16,12 @@ import { PROSE_CLASSES } from '@/lib/constants';
 import { getModelInfo, buildTurnConfigLabel } from '@/lib/models';
 
 // Timeline item types for interleaved display
+// Note: 'text' items are structural placeholders — actual text is fetched per-segment
+// by StreamingTextSegment to avoid recomputing the timeline on every text delta.
 type TimelineItem =
-  | { type: 'text'; id: string; text: string; timestamp: number }
+  | { type: 'text'; id: string; timestamp: number }
   | { type: 'tool'; id: string; tool: string; params?: Record<string, unknown>; startTime: number; endTime?: number; success?: boolean; summary?: string; stdout?: string; stderr?: string; elapsedSeconds?: number; metadata?: import('@/lib/types').ToolMetadata }
-  | { type: 'thinking'; id: string; text: string; isActive: boolean; timestamp: number }
+  | { type: 'thinking'; id: string; isActive: boolean; timestamp: number }
   | { type: 'plan'; id: string; content: string; timestamp: number }
   | { type: 'status'; id: string; content: string; variant?: string; timestamp: number }
   | { type: 'subagent'; agent: import('@/lib/types').SubAgent }
@@ -164,9 +166,51 @@ function ErrorDisplay({ error, onDismiss }: { error: string; onDismiss: () => vo
   );
 }
 
+// Per-segment text renderer — subscribes only to its own segment's text,
+// so text deltas only re-render this leaf component, not the full timeline.
+const StreamingTextSegment = memo(function StreamingTextSegment({
+  conversationId,
+  segmentId,
+  isLast,
+}: {
+  conversationId: string;
+  segmentId: string;
+  isLast: boolean;
+}) {
+  const text = useStreamingSegmentText(conversationId, segmentId);
+  // Empty segments are briefly possible when a segment is created before text arrives.
+  // Render nothing but keep the element mounted so React doesn't unmount/remount.
+  if (!text) return <div className={PROSE_CLASSES} />;
+  return (
+    <div className={PROSE_CLASSES}>
+      {isLast ? (
+        <StreamingMarkdown id={segmentId} content={text} />
+      ) : (
+        <CachedMarkdown cacheKey={`seg:${segmentId}`} content={text} />
+      )}
+    </div>
+  );
+});
+
+// Per-thinking renderer — subscribes only to thinking text,
+// so thinking deltas only re-render this leaf, not the full timeline.
+const StreamingThinkingSegment = memo(function StreamingThinkingSegment({
+  conversationId,
+  isActive,
+}: {
+  conversationId: string;
+  isActive: boolean;
+}) {
+  const text = useStreamingThinking(conversationId);
+  if (!text) return null;
+  return <ThinkingNode content={text} isStreaming={isActive} />;
+});
+
 export function StreamingMessage({ conversationId, worktreePath }: StreamingMessageProps) {
-  // Use scoped selectors for this conversation only - prevents re-renders from other conversations
-  const streaming = useStreamingState(conversationId);
+  // Use fine-grained selectors — meta changes only on structural events,
+  // segmentIds changes only when a new segment is created, not on every text delta.
+  const meta = useStreamingMeta(conversationId);
+  const segmentIds = useStreamingSegmentIds(conversationId);
   const tools = useActiveTools(conversationId);
   const subAgents = useSubAgents(conversationId);
   const clearStreamingText = useAppStore((s) => s.clearStreamingText);
@@ -174,27 +218,24 @@ export function StreamingMessage({ conversationId, worktreePath }: StreamingMess
   const conversationModel = useAppStore((s) => s.conversations.find(c => c.id === conversationId)?.model);
   const isExtendedThinkingEnabled = conversationModel ? (getModelInfo(conversationModel)?.supportsThinking ?? false) : false;
 
-  // Build interleaved timeline from segments, tools, and thinking
+  // Build interleaved timeline from segment stubs, tools, and thinking.
+  // Text content is NOT included here — each StreamingTextSegment subscribes independently.
   const timeline = useMemo((): TimelineItem[] => {
     const items: TimelineItem[] = [];
 
-    // Add thinking as a timeline item
-    if (streaming?.thinking) {
+    // Add thinking as a timeline placeholder — actual text fetched by StreamingThinkingSegment
+    if (meta?.hasThinking) {
       items.push({
         type: 'thinking',
         id: 'thinking-current',
-        text: streaming.thinking,
-        isActive: !!streaming.isThinking,
-        timestamp: streaming.startTime || 0,
+        isActive: !!meta.isThinking,
+        timestamp: meta.startTime || 0,
       });
     }
 
-    // Add text segments
-    const segments = streaming?.segments || [];
-    for (const seg of segments) {
-      if (seg.text) {
-        items.push({ type: 'text', id: seg.id, text: seg.text, timestamp: seg.timestamp });
-      }
+    // Add text segment placeholders (no text content — rendered by StreamingTextSegment)
+    for (const seg of segmentIds) {
+      items.push({ type: 'text', id: seg.id, timestamp: seg.timestamp });
     }
 
     // Collect Task tool IDs that spawned sub-agents — these are rendered by SubAgentRow instead
@@ -223,35 +264,35 @@ export function StreamingMessage({ conversationId, worktreePath }: StreamingMess
     }
 
     // Add approved plan content at its chronological position
-    if (streaming?.approvedPlanContent && streaming?.approvedPlanTimestamp) {
+    if (meta?.approvedPlanContent && meta?.approvedPlanTimestamp) {
       items.push({
         type: 'plan',
         id: 'approved-plan',
-        content: streaming.approvedPlanContent,
-        timestamp: streaming.approvedPlanTimestamp,
+        content: meta.approvedPlanContent,
+        timestamp: meta.approvedPlanTimestamp,
       });
     }
 
     // Add pending plan content (awaiting approval) — place at end of current content
-    if (streaming?.pendingPlanApproval?.planContent) {
+    if (meta?.pendingPlanApproval?.planContent) {
       items.push({
         type: 'plan',
         id: 'pending-plan',
-        content: streaming.pendingPlanApproval.planContent,
+        content: meta.pendingPlanApproval.planContent,
         timestamp: Number.MAX_SAFE_INTEGER, // Sort to end of current timeline
       });
     }
 
     // Add turn-start configuration status entry
-    if (streaming?.turnStartMeta) {
-      const label = buildTurnConfigLabel(streaming.turnStartMeta);
+    if (meta?.turnStartMeta) {
+      const label = buildTurnConfigLabel(meta.turnStartMeta);
       if (label) {
         items.push({
           type: 'status',
           id: 'turn-config',
           content: label,
           variant: 'config',
-          timestamp: (streaming.startTime || 0) - 1, // Sort before thinking
+          timestamp: (meta.startTime || 0) - 1, // Sort before thinking
         });
       }
     }
@@ -302,10 +343,10 @@ export function StreamingMessage({ conversationId, worktreePath }: StreamingMess
     }
 
     return grouped;
-  }, [streaming, tools, subAgents]);
+  }, [meta, segmentIds, tools, subAgents]);
 
   // Don't render if no streaming content, no active tools, no sub-agents, no thinking, and no error
-  if (timeline.length === 0 && !streaming?.error && !streaming?.isThinking && !streaming?.isStreaming) {
+  if (timeline.length === 0 && !meta?.error && !meta?.isThinking && !meta?.isStreaming) {
     return null;
   }
 
@@ -313,7 +354,7 @@ export function StreamingMessage({ conversationId, worktreePath }: StreamingMess
     <div className="py-2" role="status" aria-live="polite" aria-atomic="false">
       <div className="space-y-1.5">
           {/* Extended thinking mode indicator - shows when thinking is enabled but no content yet */}
-          {isExtendedThinkingEnabled && streaming?.isStreaming && !streaming?.isThinking && !streaming?.thinking && timeline.length === 0 && (
+          {isExtendedThinkingEnabled && meta?.isStreaming && !meta?.isThinking && !meta?.hasThinking && timeline.length === 0 && (
             <div className="flex items-center gap-2 animate-fade-in" aria-label="Extended thinking enabled">
               <Brain className="w-3.5 h-3.5 text-ai-thinking shrink-0 animate-thinking-pulse" aria-hidden="true" />
               <span className="text-xs text-ai-thinking">Extended thinking active</span>
@@ -328,28 +369,20 @@ export function StreamingMessage({ conversationId, worktreePath }: StreamingMess
             return timeline.map((item) => {
             if (item.type === 'thinking') {
               return (
-                <ThinkingNode
+                <StreamingThinkingSegment
                   key={item.id}
-                  content={item.text}
-                  isStreaming={item.isActive}
+                  conversationId={conversationId}
+                  isActive={item.isActive}
                 />
               );
             } else if (item.type === 'text') {
-              const isLastText = item.id === lastTextId;
               return (
-                <div
+                <StreamingTextSegment
                   key={item.id}
-                  className={PROSE_CLASSES}
-                >
-                  {isLastText ? (
-                    <StreamingMarkdown id={item.id} content={item.text} />
-                  ) : (
-                    <CachedMarkdown
-                      cacheKey={`seg:${item.id}`}
-                      content={item.text}
-                    />
-                  )}
-                </div>
+                  conversationId={conversationId}
+                  segmentId={item.id}
+                  isLast={item.id === lastTextId}
+                />
               );
             } else if (item.type === 'plan') {
               const isPending = item.id === 'pending-plan';
@@ -433,16 +466,16 @@ export function StreamingMessage({ conversationId, worktreePath }: StreamingMess
           })()}
 
           {/* Enhanced error display */}
-          {streaming?.error && (
+          {meta?.error && (
             <ErrorDisplay
-              error={streaming.error}
+              error={meta.error}
               onDismiss={() => clearStreamingText(conversationId)}
             />
           )}
 
           {/* Persistent working indicator with elapsed time */}
-          {streaming?.isStreaming && !streaming?.error && (
-            <ElapsedTimer startTime={streaming.startTime} isStreaming={streaming.isStreaming} />
+          {meta?.isStreaming && !meta?.error && (
+            <ElapsedTimer startTime={meta.startTime} isStreaming={meta.isStreaming} />
           )}
       </div>
     </div>

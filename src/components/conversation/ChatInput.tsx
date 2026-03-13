@@ -45,7 +45,7 @@ import { AttachmentGrid } from './AttachmentGrid';
 import { AttachmentPreviewModal } from './AttachmentPreviewModal';
 import { processDroppedFiles, validateAttachments, SUPPORTED_EXTENSIONS, loadAllAttachmentContents, generateAttachmentId, ATTACHMENT_LIMITS } from '@/lib/attachments';
 import { UserQuestionPrompt } from './UserQuestionPrompt';
-import { usePendingUserQuestion, useStreamingState, useSelectedIds, useConversationState, useChatInputActions, useConversationHasMessages } from '@/stores/selectors';
+import { usePendingUserQuestion, useStreamingChatInput, useSelectedIds, useConversationState, useChatInputActions, useConversationHasMessages } from '@/stores/selectors';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { THINKING_LEVELS, type ThinkingLevel, resolveThinkingParams, clampThinkingLevel, canDisableThinking } from '@/lib/thinkingLevels';
 import { useSlashCommandStore, type UnifiedSlashCommand } from '@/stores/slashCommandStore';
@@ -202,7 +202,7 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
   } = useChatInputActions();
   currentSessionIdRef.current = selectedSessionId;
   // Session-scoped streaming state — prevents cross-session plan/state leakage
-  const streaming = useStreamingState(selectedConversationId);
+  const streamingInput = useStreamingChatInput(selectedConversationId);
   const queuedCount = useAppStore(
     (s) => selectedConversationId ? (s.queuedMessages[selectedConversationId]?.length ?? 0) : 0
   );
@@ -407,10 +407,10 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
   }, [setInstalledSkills, selectedSessionId]);
 
   // Check if currently streaming
-  const isStreaming = streaming?.isStreaming ?? false;
+  const isStreaming = streamingInput.isStreaming;
 
   // Check if there's a pending plan approval request
-  const pendingPlanApproval = streaming?.pendingPlanApproval ?? null;
+  const pendingPlanApproval = streamingInput.pendingPlanApproval;
 
   // Derive compose button mode from streaming + text + queue state
   const hasText = message.trim().length > 0;
@@ -423,7 +423,7 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
   })();
 
   // Check if plan mode is active (agent-driven state from backend events)
-  const planModeActive = streaming?.planModeActive ?? false;
+  const planModeActive = streamingInput.planModeActive;
 
   // Check if conversation has messages (for ghost text vs placeholder)
   const conversationHasMessages = useConversationHasMessages(selectedConversationId);
