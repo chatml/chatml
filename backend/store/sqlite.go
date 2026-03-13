@@ -1377,13 +1377,8 @@ func (s *SQLiteStore) GetConversationMessages(ctx context.Context, convID string
 		limit = 200
 	}
 
-	// Get total count
-	var totalCount int
-	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM messages WHERE conversation_id = ?`, convID).Scan(&totalCount); err != nil {
-		return nil, fmt.Errorf("GetConversationMessages count: %w", err)
-	}
-
-	// Fetch limit+1 rows to determine hasMore
+	// Fetch limit+1 rows to determine hasMore.
+	// The scalar subquery gets total count in the same round-trip.
 	fetchLimit := limit + 1
 	var rows *sql.Rows
 	var err error
@@ -1391,20 +1386,22 @@ func (s *SQLiteStore) GetConversationMessages(ctx context.Context, convID string
 		rows, err = s.db.QueryContext(ctx, `
 			SELECT id, role, content, setup_info, run_summary,
 				tool_usage, thinking_content, duration_ms, timeline,
-				plan_content, checkpoint_uuid, timestamp, position
+				plan_content, checkpoint_uuid, timestamp, position,
+				(SELECT COUNT(*) FROM messages WHERE conversation_id = ?) as total_count
 			FROM messages
 			WHERE conversation_id = ? AND position < ?
 			ORDER BY position DESC
-			LIMIT ?`, convID, *beforePosition, fetchLimit)
+			LIMIT ?`, convID, convID, *beforePosition, fetchLimit)
 	} else {
 		rows, err = s.db.QueryContext(ctx, `
 			SELECT id, role, content, setup_info, run_summary,
 				tool_usage, thinking_content, duration_ms, timeline,
-				plan_content, checkpoint_uuid, timestamp, position
+				plan_content, checkpoint_uuid, timestamp, position,
+				(SELECT COUNT(*) FROM messages WHERE conversation_id = ?) as total_count
 			FROM messages
 			WHERE conversation_id = ?
 			ORDER BY position DESC
-			LIMIT ?`, convID, fetchLimit)
+			LIMIT ?`, convID, convID, fetchLimit)
 	}
 	if err != nil {
 		return nil, fmt.Errorf("GetConversationMessages query: %w", err)
@@ -1416,6 +1413,7 @@ func (s *SQLiteStore) GetConversationMessages(ctx context.Context, convID string
 		position int
 	}
 
+	var totalCount int
 	var items []messageWithPos
 	for rows.Next() {
 		var msg models.Message
@@ -1426,7 +1424,7 @@ func (s *SQLiteStore) GetConversationMessages(ctx context.Context, convID string
 		var position int
 		if err := rows.Scan(&msg.ID, &msg.Role, &msg.Content, &setupInfoJSON, &runSummaryJSON,
 			&toolUsageJSON, &thinkingContentNull, &durationMsNull, &timelineJSON,
-			&planContentNull, &checkpointUuidNull, &msg.Timestamp, &position); err != nil {
+			&planContentNull, &checkpointUuidNull, &msg.Timestamp, &position, &totalCount); err != nil {
 			return nil, fmt.Errorf("GetConversationMessages scan: %w", err)
 		}
 		if setupInfoJSON.Valid {
