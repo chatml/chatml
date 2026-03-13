@@ -508,7 +508,7 @@ export function CreateFromPRModal({ isOpen, onClose }: CreateFromPRModalProps) {
     <CommandDialog
       open={isOpen}
       onOpenChange={(open) => { if (!open) onClose(); }}
-      title="Create from..."
+      title="Create Session from..."
       description="Create a session from a pull request, branch, or issue"
       shouldFilter={false}
       variant="centered"
@@ -538,13 +538,7 @@ export function CreateFromPRModal({ isOpen, onClose }: CreateFromPRModalProps) {
         {workspaces.length > 0 && (
           <Select value={selectedWorkspaceId} onValueChange={setSelectedWorkspaceId}>
             <SelectTrigger className="h-7 w-auto max-w-[160px] text-xs gap-1.5 border-none shadow-none px-2">
-              <div className="flex items-center gap-1.5 min-w-0">
-                <div
-                  className="w-2 h-2 rounded-full shrink-0"
-                  style={{ backgroundColor: workspaceColors[selectedWorkspaceId] || getWorkspaceColor(selectedWorkspaceId) }}
-                />
-                <SelectValue />
-              </div>
+              <SelectValue />
             </SelectTrigger>
             <SelectContent>
               {workspaces.map((ws) => (
@@ -563,7 +557,7 @@ export function CreateFromPRModal({ isOpen, onClose }: CreateFromPRModalProps) {
         )}
       </div>
 
-      <CommandList className="max-h-[320px]">
+      <CommandList className="h-[320px]">
         {/* Error display */}
         {error && (
           <div className="px-3 py-2 text-xs text-destructive bg-destructive/10 mx-2 mt-2 rounded">

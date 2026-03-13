@@ -186,7 +186,7 @@ const COMMANDS: Command[] = [
   {
     id: 'create-from-pr',
     category: 'Actions',
-    label: 'Create from...',
+    label: 'Create Session from...',
     icon: Link,
     shortcutId: 'createFromPR',
     keywords: ['pull request', 'pr', 'branch', 'issue', 'linear', 'github', 'checkout', 'review'],
