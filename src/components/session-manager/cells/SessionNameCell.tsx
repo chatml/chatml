@@ -1,5 +1,6 @@
 'use client';
 
+import { GitBranch } from 'lucide-react';
 import type { WorktreeSession } from '@/lib/types';
 import { cn } from '@/lib/utils';
 
@@ -13,10 +14,11 @@ export function SessionNameCell({ session }: SessionNameCellProps) {
   return (
     <span
       className={cn(
-        'text-sm truncate flex items-center min-w-0',
+        'text-sm truncate flex items-center gap-1.5 min-w-0',
         session.archived && 'text-muted-foreground'
       )}
     >
+      <GitBranch className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
       <span className="font-medium truncate shrink-0">
         {session.branch || session.name}
       </span>
