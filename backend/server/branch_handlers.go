@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"sync"
 
 	"github.com/chatml/chatml-backend/git"
 	"github.com/chatml/chatml-backend/logger"
@@ -441,32 +442,52 @@ func (h *Handlers) GetAvatars(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Look up missing emails from GitHub API
+	// Look up missing emails from GitHub API (parallel with bounded concurrency)
+	sem := make(chan struct{}, 5)
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+
 	for _, email := range needLookup {
 		email = strings.TrimSpace(email)
 		if email == "" {
 			continue
 		}
 
-		avatarURL, err := h.ghClient.GetAvatarByEmail(ctx, email)
-		if err != nil {
-			// Log error but continue - don't fail the whole batch
-			logger.Handlers.Debugf("Failed to get avatar for %s: %v", email, err)
-			// Cache as not found to avoid repeated failed lookups
-			h.avatarCache.SetNotFound(email)
-			cached[email] = ""
-			continue
-		}
+		wg.Add(1)
+		go func(email string) {
+			defer wg.Done()
 
-		if avatarURL == "" {
-			// No user found - cache as not found
-			h.avatarCache.SetNotFound(email)
-			cached[email] = ""
-		} else {
-			h.avatarCache.Set(email, avatarURL)
-			cached[email] = avatarURL
-		}
+			// Context-aware semaphore acquisition
+			select {
+			case sem <- struct{}{}:
+				defer func() { <-sem }()
+			case <-ctx.Done():
+				return
+			}
+
+			avatarURL, err := h.ghClient.GetAvatarByEmail(ctx, email)
+			if err != nil {
+				// Don't cache on error (e.g. rate limit, transient 5xx) —
+				// let the next request retry instead of poisoning the cache.
+				logger.Handlers.Debugf("Failed to get avatar for %s: %v", email, err)
+				return
+			}
+
+			if avatarURL == "" {
+				h.avatarCache.SetNotFound(email)
+				mu.Lock()
+				cached[email] = ""
+				mu.Unlock()
+			} else {
+				h.avatarCache.Set(email, avatarURL)
+				mu.Lock()
+				cached[email] = avatarURL
+				mu.Unlock()
+			}
+		}(email)
 	}
+
+	wg.Wait()
 
 	writeJSON(w, map[string]interface{}{"avatars": cached})
 }
