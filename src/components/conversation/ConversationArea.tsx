@@ -471,24 +471,25 @@ export function ConversationArea({ children }: ConversationAreaProps) {
   // session switches to avoid expensive Shiki re-tokenization cold starts.
   // Each entry pairs a session ID with its last-active file tab ID so the
   // downstream memo can resolve cached tabs without reading refs during render.
+  // Uses useState (not useRef) so the value is render-safe for downstream memos.
   type RecentSession = { sessionId: string; activeTabId: string | null };
-  const recentSessionsRef = useRef<RecentSession[]>([]);
-  const recentSessions = useMemo((): RecentSession[] => {
-    if (!selectedSessionId) return recentSessionsRef.current;
-    const entries = recentSessionsRef.current;
-    // Update active tab for the current session
-    const existing = entries.find(e => e.sessionId === selectedSessionId);
-    if (existing) {
-      if (selectedFileTabId) existing.activeTabId = selectedFileTabId;
-      // Move to front (LRU)
-      const idx = entries.indexOf(existing);
-      if (idx > 0) { entries.splice(idx, 1); entries.unshift(existing); }
-    } else {
-      entries.unshift({ sessionId: selectedSessionId, activeTabId: selectedFileTabId });
-    }
-    if (entries.length > MAX_CACHED_SESSIONS) entries.length = MAX_CACHED_SESSIONS;
-    recentSessionsRef.current = entries;
-    return [...entries]; // new array so downstream memos see a changed reference
+  const [recentSessions, setRecentSessions] = useState<RecentSession[]>([]);
+  useEffect(() => {
+    if (!selectedSessionId) return;
+    setRecentSessions(prev => {
+      const entries = [...prev];
+      const idx = entries.findIndex(e => e.sessionId === selectedSessionId);
+      if (idx !== -1) {
+        const entry = { ...entries[idx] };
+        if (selectedFileTabId) entry.activeTabId = selectedFileTabId;
+        entries.splice(idx, 1);
+        entries.unshift(entry);
+      } else {
+        entries.unshift({ sessionId: selectedSessionId, activeTabId: selectedFileTabId });
+      }
+      if (entries.length > MAX_CACHED_SESSIONS) entries.length = MAX_CACHED_SESSIONS;
+      return entries;
+    });
   }, [selectedSessionId, selectedFileTabId]);
 
   // Only the last-active tab from each recently-viewed session is kept mounted
