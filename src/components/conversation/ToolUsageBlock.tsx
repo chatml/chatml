@@ -19,7 +19,7 @@ import {
   Pencil,
   Terminal,
   FileSearch,
-  FolderSearch2,
+  Search,
   Globe,
   FolderOpen,
   ClipboardCheck,
@@ -155,7 +155,7 @@ export const ToolUsageBlock = memo(function ToolUsageBlock({
       case 'search':
         return FileSearch;
       case 'Glob':
-        return FolderSearch2;
+        return Search;
       case 'WebFetch':
       case 'WebSearch':
       case 'web':
