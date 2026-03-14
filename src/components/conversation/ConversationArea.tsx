@@ -78,6 +78,12 @@ const EMPTY_QUEUED_MESSAGES: readonly QueuedMessage[] = [];
 // render to compute initialTopMostItemIndex for Virtuoso.
 const scrollPositions = new Map<string, { dataIndex: number; wasAtBottom: boolean }>();
 
+// Module-level LRU of recently-viewed sessions. Stored outside the component so
+// useMemo can read it during render without violating react-hooks/refs or
+// react-hooks/set-state-in-effect rules.
+type RecentSession = { sessionId: string; activeTabId: string | null };
+const recentSessionLRU: RecentSession[] = [];
+
 interface ConversationAreaProps {
   children?: React.ReactNode;
 }
@@ -304,18 +310,9 @@ export function ConversationArea({ children }: ConversationAreaProps) {
   const searchQuery = searchState.convId === selectedConversationId ? searchState.query : '';
   const currentMatchIndex = searchState.convId === selectedConversationId ? searchState.matchIndex : 0;
 
-  // Debounced search query — delays expensive match computation by 200ms.
-  // The raw searchQuery updates instantly (for input display), but match
-  // counting only runs against debouncedSearchQuery.
-  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState(searchQuery);
-  useEffect(() => {
-    if (!searchQuery) {
-      setDebouncedSearchQuery('');
-      return;
-    }
-    const id = setTimeout(() => setDebouncedSearchQuery(searchQuery), 200);
-    return () => clearTimeout(id);
-  }, [searchQuery]);
+  // Deferred search query — React deprioritizes re-renders from this value,
+  // so the input stays responsive while match computation runs at lower priority.
+  const debouncedSearchQuery = useDeferredValue(searchQuery);
 
   const setSearchQuery = useCallback((query: string) => {
     setSearchState({ convId: selectedConversationId, query, matchIndex: 0 });
@@ -469,27 +466,20 @@ export function ConversationArea({ children }: ConversationAreaProps) {
 
   // LRU cache of recent sessions — keeps Pierre Shadow DOMs alive across
   // session switches to avoid expensive Shiki re-tokenization cold starts.
-  // Each entry pairs a session ID with its last-active file tab ID so the
-  // downstream memo can resolve cached tabs without reading refs during render.
-  // Uses useState (not useRef) so the value is render-safe for downstream memos.
-  type RecentSession = { sessionId: string; activeTabId: string | null };
-  const [recentSessions, setRecentSessions] = useState<RecentSession[]>([]);
-  useEffect(() => {
-    if (!selectedSessionId) return;
-    setRecentSessions(prev => {
-      const entries = [...prev];
-      const idx = entries.findIndex(e => e.sessionId === selectedSessionId);
-      if (idx !== -1) {
-        const entry = { ...entries[idx] };
-        if (selectedFileTabId) entry.activeTabId = selectedFileTabId;
-        entries.splice(idx, 1);
-        entries.unshift(entry);
-      } else {
-        entries.unshift({ sessionId: selectedSessionId, activeTabId: selectedFileTabId });
-      }
-      if (entries.length > MAX_CACHED_SESSIONS) entries.length = MAX_CACHED_SESSIONS;
-      return entries;
-    });
+  // Reads/writes a module-level array (like scrollPositions above) so it's
+  // safe to access during render without refs or setState-in-effect.
+  const recentSessions = useMemo((): RecentSession[] => {
+    if (!selectedSessionId) return recentSessionLRU.slice();
+    const idx = recentSessionLRU.findIndex(e => e.sessionId === selectedSessionId);
+    if (idx !== -1) {
+      const entry = recentSessionLRU[idx];
+      if (selectedFileTabId) entry.activeTabId = selectedFileTabId;
+      if (idx > 0) { recentSessionLRU.splice(idx, 1); recentSessionLRU.unshift(entry); }
+    } else {
+      recentSessionLRU.unshift({ sessionId: selectedSessionId, activeTabId: selectedFileTabId });
+    }
+    if (recentSessionLRU.length > MAX_CACHED_SESSIONS) recentSessionLRU.length = MAX_CACHED_SESSIONS;
+    return recentSessionLRU.slice();
   }, [selectedSessionId, selectedFileTabId]);
 
   // Only the last-active tab from each recently-viewed session is kept mounted
