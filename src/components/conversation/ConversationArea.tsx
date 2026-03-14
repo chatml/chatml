@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback, useMemo, startTransition, useDeferredValue } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo, useReducer, startTransition, useDeferredValue } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { useAppStore } from '@/stores/appStore';
 import { captureClosedConversation, useRestoreConversation } from '@/hooks/useRecentlyClosed';
@@ -82,7 +82,26 @@ const scrollPositions = new Map<string, { dataIndex: number; wasAtBottom: boolea
 // useMemo can read it during render without violating react-hooks/refs or
 // react-hooks/set-state-in-effect rules.
 type RecentSession = { sessionId: string; activeTabId: string | null };
-const recentSessionLRU: RecentSession[] = [];
+type RecentSessionAction = { selectedSessionId: string | null; selectedFileTabId: string | null };
+
+// Maximum number of recently-viewed sessions whose Pierre Shadow DOMs are
+// kept alive (hidden) to avoid expensive Shiki re-tokenization cold starts.
+const MAX_CACHED_SESSIONS = 3;
+
+function recentSessionReducer(state: RecentSession[], action: RecentSessionAction): RecentSession[] {
+  const { selectedSessionId, selectedFileTabId } = action;
+  if (!selectedSessionId) return state;
+  const next = state.map(e => ({ ...e })); // shallow clone all entries
+  const idx = next.findIndex(e => e.sessionId === selectedSessionId);
+  if (idx !== -1) {
+    const entry = { ...next[idx], activeTabId: selectedFileTabId ?? next[idx].activeTabId };
+    next.splice(idx, 1);
+    next.unshift(entry);
+  } else {
+    next.unshift({ sessionId: selectedSessionId, activeTabId: selectedFileTabId });
+  }
+  return next.length > MAX_CACHED_SESSIONS ? next.slice(0, MAX_CACHED_SESSIONS) : next;
+}
 
 interface ConversationAreaProps {
   children?: React.ReactNode;
@@ -466,21 +485,16 @@ export function ConversationArea({ children }: ConversationAreaProps) {
 
   // LRU cache of recent sessions — keeps Pierre Shadow DOMs alive across
   // session switches to avoid expensive Shiki re-tokenization cold starts.
-  // Reads/writes a module-level array (like scrollPositions above) so it's
-  // safe to access during render without refs or setState-in-effect.
-  const recentSessions = useMemo((): RecentSession[] => {
-    if (!selectedSessionId) return recentSessionLRU.slice();
-    const idx = recentSessionLRU.findIndex(e => e.sessionId === selectedSessionId);
-    if (idx !== -1) {
-      const entry = recentSessionLRU[idx];
-      if (selectedFileTabId) entry.activeTabId = selectedFileTabId;
-      if (idx > 0) { recentSessionLRU.splice(idx, 1); recentSessionLRU.unshift(entry); }
-    } else {
-      recentSessionLRU.unshift({ sessionId: selectedSessionId, activeTabId: selectedFileTabId });
-    }
-    if (recentSessionLRU.length > MAX_CACHED_SESSIONS) recentSessionLRU.length = MAX_CACHED_SESSIONS;
-    return recentSessionLRU.slice();
-  }, [selectedSessionId, selectedFileTabId]);
+  // useReducer computes new state purely from previous state + action.
+  // Dispatch during render (React-endorsed "adjust state during rendering" pattern)
+  // to avoid lint issues with refs-in-render, setState-in-effect, and immutability.
+  const [recentSessions, dispatchRecentSession] = useReducer(recentSessionReducer, []);
+  const [prevSessionKey, setPrevSessionKey] = useState('');
+  const sessionKey = `${selectedSessionId ?? ''}:${selectedFileTabId ?? ''}`;
+  if (sessionKey !== prevSessionKey) {
+    setPrevSessionKey(sessionKey);
+    dispatchRecentSession({ selectedSessionId, selectedFileTabId });
+  }
 
   // Only the last-active tab from each recently-viewed session is kept mounted
   // (hidden) so its Pierre Shadow DOM survives session switches. This caps
@@ -1402,10 +1416,6 @@ export function ConversationArea({ children }: ConversationAreaProps) {
     </div>
   );
 }
-
-// Maximum number of recently-viewed sessions whose Pierre Shadow DOMs are
-// kept alive (hidden) to avoid expensive Shiki re-tokenization cold starts.
-const MAX_CACHED_SESSIONS = 3;
 
 const QUICK_ACTIONS = [
   { icon: Bug, label: 'Fix a bug', prompt: 'Fix a bug: ' },
