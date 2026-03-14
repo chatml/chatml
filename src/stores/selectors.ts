@@ -194,9 +194,10 @@ export const useActiveSessions = <T extends { id: string }>(sessions: T[]): T[] 
     )
   );
 
+  const activeIdSet = useMemo(() => new Set(activeIds), [activeIds]);
   return useMemo(
-    () => sessions.filter((s) => activeIds.includes(s.id)),
-    [sessions, activeIds]
+    () => sessions.filter((s) => activeIdSet.has(s.id)),
+    [sessions, activeIdSet]
   );
 };
 
