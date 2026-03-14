@@ -31,14 +31,20 @@ export function useMessagePrefetch(enabled: boolean) {
       // On first run, wait until the initial conversation's messages are loaded.
       // On subsequent runs (triggered by conversationsVersion), skip the wait.
       if (!hasRunInitialRef.current && initialConvId && !state.messagePagination[initialConvId]) {
+        if (isAborted()) return;
         await new Promise<void>((resolve) => {
-          if (isAborted()) { resolve(); return; }
           const unsub = useAppStore.subscribe((s) => {
             if (s.messagePagination[initialConvId!] || isAborted()) {
               unsub();
               resolve();
             }
           });
+          // Immediate post-subscribe check closes the race window where state
+          // changed or abort fired between getState() above and subscribe()
+          if (useAppStore.getState().messagePagination[initialConvId] || isAborted()) {
+            unsub();
+            resolve();
+          }
         });
       }
 
