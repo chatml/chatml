@@ -262,18 +262,19 @@ export function DataTable<T>({
     return groupBy ?? null;
   }, [displayOptions.groupBy, displayOptions.showEmptyGroups, groupBy]);
 
-  // Group data if grouping is configured
-  const groupedData = useMemo<GroupData<T>[]>(() => {
+  // Expensive: only recomputes when data or grouping config changes
+  const rawGroups = useMemo<Omit<GroupData<T>, 'collapsed'>[]>(() => {
     if (!effectiveGroupBy) {
-      return [{ key: '__all__', label: '', rows: processedData, collapsed: false }];
+      return [{ key: '__all__', label: '', rows: processedData }];
     }
-    const groups = groupRows(processedData, effectiveGroupBy);
-    // Apply collapsed state
-    return groups.map((g) => ({
-      ...g,
-      collapsed: collapsedGroups.has(g.key),
-    }));
-  }, [processedData, effectiveGroupBy, collapsedGroups]);
+    return groupRows(processedData, effectiveGroupBy);
+  }, [processedData, effectiveGroupBy]);
+
+  // Cheap: just maps collapse state onto existing groups
+  const groupedData = useMemo<GroupData<T>[]>(
+    () => rawGroups.map((g) => ({ ...g, collapsed: collapsedGroups.has(g.key) })),
+    [rawGroups, collapsedGroups],
+  );
 
   // Get grouped row IDs for selection
   const groupedRowIds = useMemo(() => {
