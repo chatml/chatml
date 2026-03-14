@@ -153,6 +153,14 @@ export const SETTINGS_REGISTRY: SettingMeta[] = [
     category: 'appearance',
     categoryLabel: 'Appearance',
   },
+  {
+    id: 'showMessageTokenCost',
+    title: 'Show per-message tokens & cost',
+    description: 'Display a compact token count and cost line below each assistant message',
+    keywords: ['token', 'cost', 'footer', 'message', 'usage', 'per-message', 'inline'],
+    category: 'appearance',
+    categoryLabel: 'Appearance',
+  },
 
   // ── AI & Models: Models ──
   {

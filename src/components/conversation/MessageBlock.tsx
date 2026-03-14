@@ -33,6 +33,7 @@ import { AttachmentPreviewModal } from '@/components/conversation/AttachmentPrev
 import { MentionText } from '@/components/conversation/MentionText';
 import { ApprovedPlanBlock } from '@/components/conversation/ApprovedPlanBlock';
 import { TurnStatusIndicator } from '@/components/conversation/TurnStatusIndicator';
+import { MessageTokenFooter } from '@/components/conversation/MessageTokenFooter';
 
 // Collapsed tool summary with individual ToolUsageBlock instances when expanded
 const ToolUsageSummary = memo(function ToolUsageSummary({ tools, worktreePath, conversationId, messageId, compacted }: { tools: ToolUsage[]; worktreePath?: string; conversationId?: string; messageId?: string; compacted?: boolean }) {
@@ -342,6 +343,11 @@ export const MessageBlock = memo(function MessageBlock({
         {/* File Changes */}
         {message.fileChanges && message.fileChanges.length > 0 && (
           <FileChangesBlock changes={message.fileChanges} worktreePath={worktreePath} />
+        )}
+
+        {/* Per-message token/cost footer */}
+        {message.runSummary && (
+          <MessageTokenFooter summary={message.runSummary} />
         )}
 
         {/* Run Summary */}

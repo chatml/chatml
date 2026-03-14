@@ -79,6 +79,7 @@ export const SETTINGS_DEFAULTS = {
   fontSize: 'medium' as FontSize,
   showTokenUsage: true,
   showChatCost: true,
+  showMessageTokenCost: false,
   zenMode: false,
   // AI & Models
   defaultModel: 'claude-opus-4-6',
@@ -123,6 +124,7 @@ interface SettingsState {
   defaultPlanMode: boolean;
   autoConvertLongText: boolean;
   showChatCost: boolean;
+  showMessageTokenCost: boolean; // Whether to show compact token/cost footer below each assistant message
   // Appearance settings
   theme: ThemeOption; // App theme (system, light, dark)
   fontSize: FontSize;
@@ -198,6 +200,7 @@ interface SettingsState {
   setDefaultPlanMode: (value: boolean) => void;
   setAutoConvertLongText: (value: boolean) => void;
   setShowChatCost: (value: boolean) => void;
+  setShowMessageTokenCost: (value: boolean) => void;
   setTheme: (value: ThemeOption) => void;
   setFontSize: (value: FontSize) => void;
   setBranchSyncBanner: (value: boolean) => void;
@@ -294,6 +297,7 @@ export const useSettingsStore = create<SettingsState>()(
       setDefaultPlanMode: (value) => set({ defaultPlanMode: value }),
       setAutoConvertLongText: (value) => set({ autoConvertLongText: value }),
       setShowChatCost: (value) => set({ showChatCost: value }),
+      setShowMessageTokenCost: (value) => set({ showMessageTokenCost: value }),
       setTheme: (value) => set({ theme: value }),
       setFontSize: (value) => set({ fontSize: value }),
       setBranchSyncBanner: (value) => set({ branchSyncBanner: value }),
