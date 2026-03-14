@@ -51,12 +51,24 @@ type Client struct {
 
 // NewClient creates a new GitHub client
 func NewClient(clientID, clientSecret string) *Client {
+	rt := &retryTransport{
+		base:       http.DefaultTransport,
+		maxRetries: 3,
+		baseDelay:  1 * time.Second,
+	}
+	// Fewer retries for the no-redirect client used in interactive log fetching.
+	noRedirectRT := &retryTransport{
+		base:       http.DefaultTransport,
+		maxRetries: 1,
+		baseDelay:  500 * time.Millisecond,
+	}
 	return &Client{
 		clientID:     clientID,
 		clientSecret: clientSecret,
-		httpClient:   &http.Client{Timeout: 30 * time.Second},
+		httpClient:   &http.Client{Timeout: 30 * time.Second, Transport: rt},
 		noRedirectClient: &http.Client{
 			Timeout: 30 * time.Second,
+			Transport: noRedirectRT,
 			CheckRedirect: func(req *http.Request, via []*http.Request) error {
 				return http.ErrUseLastResponse
 			},
@@ -457,11 +469,6 @@ func (c *Client) GetAvatarByEmail(ctx context.Context, email string) (string, er
 		return "", fmt.Errorf("searching users: %w", err)
 	}
 	defer resp.Body.Close()
-
-	// Handle rate limiting
-	if resp.StatusCode == http.StatusForbidden || resp.StatusCode == http.StatusTooManyRequests {
-		return "", fmt.Errorf("rate limited by GitHub API")
-	}
 
 	if resp.StatusCode != http.StatusOK {
 		body, readErr := io.ReadAll(resp.Body)
