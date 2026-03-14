@@ -22,6 +22,7 @@ export interface FileNode {
   path: string;
   isDir: boolean;
   children?: FileNode[];
+  truncated?: boolean;
 }
 
 interface FileTreeProps {
@@ -132,6 +133,18 @@ function FileTreeNode({ node, depth, onFileSelect, expandedPaths, onToggle }: Fi
 
   const isHidden = node.name.startsWith('.');
 
+  if (node.truncated && !node.isDir) {
+    return (
+      <div
+        className="flex items-center gap-1.5 py-0.5 px-1 text-xs text-muted-foreground italic"
+        style={{ paddingLeft: `${depth * 12 + 4}px` }}
+      >
+        <span className="w-3" />
+        <span className="truncate">... truncated (too many files)</span>
+      </div>
+    );
+  }
+
   return (
     <div>
       <div
@@ -162,6 +175,15 @@ function FileTreeNode({ node, depth, onFileSelect, expandedPaths, onToggle }: Fi
         )}
         <span className="truncate">{node.name}</span>
       </div>
+      {node.isDir && isExpanded && node.truncated && (!node.children || node.children.length === 0) && (
+        <div
+          className="flex items-center gap-1.5 py-0.5 px-1 text-xs text-muted-foreground italic"
+          style={{ paddingLeft: `${(depth + 1) * 12 + 4}px` }}
+        >
+          <span className="w-3" />
+          <span className="truncate">... truncated (too many files)</span>
+        </div>
+      )}
       {node.isDir && isExpanded && node.children && (
         <div>
           {node.children.map((child) => (

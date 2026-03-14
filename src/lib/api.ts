@@ -126,6 +126,7 @@ export interface FileNodeDTO {
   path: string;
   isDir: boolean;
   children?: FileNodeDTO[];
+  truncated?: boolean;
 }
 
 export async function listRepos(): Promise<RepoDTO[]> {
