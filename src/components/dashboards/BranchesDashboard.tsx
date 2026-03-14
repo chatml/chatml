@@ -38,6 +38,7 @@ import { resolveWorkspaceColor } from '@/lib/workspace-colors';
 import { ErrorBoundary } from '@/components/shared/ErrorBoundary';
 import { InlineErrorFallback } from '@/components/shared/ErrorFallbacks';
 import { PRNumberBadge } from '@/components/shared/PRNumberBadge';
+import { BranchPill } from '@/components/shared/BranchPill';
 
 interface BranchesDashboardProps {
   workspaceId: string;
@@ -72,18 +73,10 @@ function BranchNameCell({ branch, currentBranch }: { branch: BranchDTO; currentB
 
   return (
     <div className="flex items-center gap-2 min-w-0">
-      <span
-        className={cn(
-          'inline-flex items-center gap-1 px-1.5 py-0.5 rounded font-mono text-xs truncate',
-          isRemote
-            ? 'bg-blue-500/10 text-blue-700 dark:text-blue-300/70'
-            : 'bg-purple-500/10 text-purple-700 dark:text-purple-300/70'
-        )}
-        title={displayName}
-      >
-        <GitBranch className="h-3.5 w-3.5 shrink-0" />
-        {displayName}
-      </span>
+      <BranchPill
+        name={displayName}
+        className={isRemote ? 'bg-blue-500/10 text-blue-700 dark:text-blue-300/70' : undefined}
+      />
 
       {isCurrentBranch && (
         <span className="flex items-center gap-1 px-1.5 py-0.5 text-2xs rounded bg-green-500/10 text-green-500 border border-green-500/20 shrink-0 whitespace-nowrap">
