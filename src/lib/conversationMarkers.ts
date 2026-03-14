@@ -44,8 +44,8 @@ export function extractMarkers(messages: readonly Message[]): ConversationMarker
 }
 
 function truncate(text: string, max: number): string {
-  // Strip markdown heading prefixes and trim
-  const cleaned = text.replace(/^#+\s+/, '').trim();
+  // Strip markdown heading prefixes, collapse newlines, and trim
+  const cleaned = text.replace(/^#+\s+/, '').replace(/\n+/g, ' ').trim();
   if (cleaned.length <= max) return cleaned;
   return cleaned.slice(0, max).trimEnd() + '…';
 }
