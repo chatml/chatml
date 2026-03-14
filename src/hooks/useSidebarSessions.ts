@@ -155,10 +155,18 @@ export function useSidebarSessions({
       };
     }
 
+    // Pre-group sessions by workspace for O(w+n) instead of O(w×n)
+    const byWorkspace = new Map<string, WorktreeSession[]>();
+    for (const s of filtered) {
+      const list = byWorkspace.get(s.workspaceId);
+      if (list) list.push(s);
+      else byWorkspace.set(s.workspaceId, [s]);
+    }
+
     if (groupBy === 'project') {
       const groups: SidebarGroup[] = [];
       for (const ws of workspaces) {
-        const wsSessions = filtered.filter((s) => s.workspaceId === ws.id);
+        const wsSessions = byWorkspace.get(ws.id) ?? [];
         if (wsSessions.length === 0 && filters.searchTerm) continue;
         const color = workspaceColors[ws.id] || getDefaultColor(ws.id);
         groups.push({
@@ -179,7 +187,7 @@ export function useSidebarSessions({
     if (groupBy === 'project-status') {
       const groups: SidebarGroup[] = [];
       for (const ws of workspaces) {
-        const wsSessions = filtered.filter((s) => s.workspaceId === ws.id);
+        const wsSessions = byWorkspace.get(ws.id) ?? [];
         if (wsSessions.length === 0 && filters.searchTerm) continue;
         const color = workspaceColors[ws.id] || getDefaultColor(ws.id);
         const subGroups = buildStatusGroups(wsSessions, sortBy, `project:${ws.id}`);
