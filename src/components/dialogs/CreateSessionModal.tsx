@@ -184,10 +184,11 @@ function TabButton({ active, onClick, children }: { active: boolean; onClick: ()
 // ============================================================================
 
 export function CreateSessionModal({ isOpen, onClose }: CreateSessionModalProps) {
-  const [tab, setTab] = useState<TabId>('pr');
+  const [tab, setTab] = useState<TabId>('issues');
   const [search, setSearch] = useState('');
   const [creating, setCreating] = useState(false);
   const creatingRef = useRef(false);
+  const searchInputRef = useRef<HTMLInputElement>(null);
   const [error, setError] = useState('');
 
   // Workspace state
@@ -224,7 +225,7 @@ export function CreateSessionModal({ isOpen, onClose }: CreateSessionModalProps)
       setError('');
       setCreating(false);
       creatingRef.current = false;
-      setTab('pr');
+      setTab('issues');
       setPrs([]);
       setBranches([]);
       setGithubIssues([]);
@@ -538,6 +539,12 @@ export function CreateSessionModal({ isOpen, onClose }: CreateSessionModalProps)
   // Loading state
   // ============================================================================
 
+  const focusSearchInput = useCallback(() => {
+    requestAnimationFrame(() => {
+      searchInputRef.current?.focus();
+    });
+  }, []);
+
   const isLoading = tab === 'pr' ? prLoading : tab === 'branch' ? branchLoading : issuesLoading;
 
   // ============================================================================
@@ -556,6 +563,7 @@ export function CreateSessionModal({ isOpen, onClose }: CreateSessionModalProps)
       showCloseButton={false}
     >
       <CommandInput
+        ref={searchInputRef}
         placeholder="Search by title, number, or author..."
         value={search}
         onValueChange={setSearch}
@@ -564,14 +572,14 @@ export function CreateSessionModal({ isOpen, onClose }: CreateSessionModalProps)
       {/* Tab bar + workspace selector */}
       <div className="flex items-center justify-between border-b px-3 py-1.5">
         <div className="flex gap-1">
-          <TabButton active={tab === 'pr'} onClick={() => { setTab('pr'); setSearch(''); setError(''); }}>
+          <TabButton active={tab === 'issues'} onClick={() => { setTab('issues'); setSearch(''); setError(''); focusSearchInput(); }}>
+            Issues
+          </TabButton>
+          <TabButton active={tab === 'pr'} onClick={() => { setTab('pr'); setSearch(''); setError(''); focusSearchInput(); }}>
             Pull requests
           </TabButton>
-          <TabButton active={tab === 'branch'} onClick={() => { setTab('branch'); setSearch(''); setError(''); }}>
+          <TabButton active={tab === 'branch'} onClick={() => { setTab('branch'); setSearch(''); setError(''); focusSearchInput(); }}>
             Branches
-          </TabButton>
-          <TabButton active={tab === 'issues'} onClick={() => { setTab('issues'); setSearch(''); setError(''); }}>
-            Issues
           </TabButton>
         </div>
 

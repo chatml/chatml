@@ -160,7 +160,10 @@ describe('CreateSessionModal', () => {
   });
 
   it('shows PR list on the Pull requests tab', async () => {
+    const user = userEvent.setup();
     render(<CreateSessionModal {...defaultProps} />);
+
+    await user.click(screen.getByText('Pull requests'));
 
     await waitFor(
       () => {
@@ -172,7 +175,10 @@ describe('CreateSessionModal', () => {
   });
 
   it('shows draft PR with draft icon styling', async () => {
+    const user = userEvent.setup();
     render(<CreateSessionModal {...defaultProps} />);
+
+    await user.click(screen.getByText('Pull requests'));
 
     await waitFor(
       () => {
@@ -197,11 +203,7 @@ describe('CreateSessionModal', () => {
   });
 
   it('shows the Issues tab with GitHub and Linear issues', async () => {
-    const user = userEvent.setup();
-
     render(<CreateSessionModal {...defaultProps} />);
-
-    await user.click(screen.getByText('Issues'));
 
     await waitFor(
       () => {
@@ -237,7 +239,8 @@ describe('CreateSessionModal', () => {
     const user = userEvent.setup();
     render(<CreateSessionModal {...defaultProps} />);
 
-    // Wait for PRs to load
+    // Switch to PR tab and wait for PRs to load
+    await user.click(screen.getByText('Pull requests'));
     await waitFor(() => {
       expect(screen.getByText('#885')).toBeInTheDocument();
     }, { timeout: 2000 });
