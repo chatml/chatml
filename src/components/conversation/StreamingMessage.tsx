@@ -27,6 +27,20 @@ type TimelineItem =
   | { type: 'subagent'; agent: import('@/lib/types').SubAgent }
   | { type: 'subagent_group'; agents: import('@/lib/types').SubAgent[] };
 
+// Shared timestamp accessor for timeline ordering.
+// Extracted to module scope so both structuralTimeline and merge stages can use it.
+function getItemTime(item: TimelineItem): number {
+  switch (item.type) {
+    case 'text': return item.timestamp;
+    case 'thinking': return item.timestamp;
+    case 'plan': return item.timestamp;
+    case 'status': return item.timestamp;
+    case 'subagent': return item.agent.startTime;
+    case 'subagent_group': return item.agents[0].startTime;
+    default: return item.startTime;
+  }
+}
+
 interface StreamingMessageProps {
   conversationId: string;
   worktreePath?: string;
@@ -218,24 +232,30 @@ export function StreamingMessage({ conversationId, worktreePath }: StreamingMess
   const conversationModel = useAppStore((s) => s.conversations.find(c => c.id === conversationId)?.model);
   const isExtendedThinkingEnabled = conversationModel ? (getModelInfo(conversationModel)?.supportsThinking ?? false) : false;
 
-  // Build interleaved timeline from segment stubs, tools, and thinking.
-  // Text content is NOT included here — each StreamingTextSegment subscribes independently.
-  const timeline = useMemo((): TimelineItem[] => {
+  // Extract only the meta fields used by the structural timeline memo so it
+  // doesn't re-sort when unrelated fields (isStreaming, error) change.
+  const hasThinking = meta?.hasThinking;
+  const isThinkingActive = meta?.isThinking;
+  const metaStartTime = meta?.startTime;
+  const approvedPlanContent = meta?.approvedPlanContent;
+  const approvedPlanTimestamp = meta?.approvedPlanTimestamp;
+  const pendingPlanApproval = meta?.pendingPlanApproval;
+  const turnStartMeta = meta?.turnStartMeta;
+
+  // Stage 1: Structural timeline — everything except text segments.
+  // Only recomputes when tools/subAgents/structural meta fields change (rare during streaming).
+  // Performs the expensive O(n log n) sort.
+  const structuralTimeline = useMemo((): TimelineItem[] => {
     const items: TimelineItem[] = [];
 
     // Add thinking as a timeline placeholder — actual text fetched by StreamingThinkingSegment
-    if (meta?.hasThinking) {
+    if (hasThinking) {
       items.push({
         type: 'thinking',
         id: 'thinking-current',
-        isActive: !!meta.isThinking,
-        timestamp: meta.startTime || 0,
+        isActive: !!isThinkingActive,
+        timestamp: metaStartTime || 0,
       });
-    }
-
-    // Add text segment placeholders (no text content — rendered by StreamingTextSegment)
-    for (const seg of segmentIds) {
-      items.push({ type: 'text', id: seg.id, timestamp: seg.timestamp });
     }
 
     // Collect Task tool IDs that spawned sub-agents — these are rendered by SubAgentRow instead
@@ -264,35 +284,35 @@ export function StreamingMessage({ conversationId, worktreePath }: StreamingMess
     }
 
     // Add approved plan content at its chronological position
-    if (meta?.approvedPlanContent && meta?.approvedPlanTimestamp) {
+    if (approvedPlanContent && approvedPlanTimestamp) {
       items.push({
         type: 'plan',
         id: 'approved-plan',
-        content: meta.approvedPlanContent,
-        timestamp: meta.approvedPlanTimestamp,
+        content: approvedPlanContent,
+        timestamp: approvedPlanTimestamp,
       });
     }
 
     // Add pending plan content (awaiting approval) — place at end of current content
-    if (meta?.pendingPlanApproval?.planContent) {
+    if (pendingPlanApproval?.planContent) {
       items.push({
         type: 'plan',
         id: 'pending-plan',
-        content: meta.pendingPlanApproval.planContent,
+        content: pendingPlanApproval.planContent,
         timestamp: Number.MAX_SAFE_INTEGER, // Sort to end of current timeline
       });
     }
 
     // Add turn-start configuration status entry
-    if (meta?.turnStartMeta) {
-      const label = buildTurnConfigLabel(meta.turnStartMeta);
+    if (turnStartMeta) {
+      const label = buildTurnConfigLabel(turnStartMeta);
       if (label) {
         items.push({
           type: 'status',
           id: 'turn-config',
           content: label,
           variant: 'config',
-          timestamp: (meta.startTime || 0) - 1, // Sort before thinking
+          timestamp: (metaStartTime || 0) - 1, // Sort before thinking
         });
       }
     }
@@ -302,35 +322,63 @@ export function StreamingMessage({ conversationId, worktreePath }: StreamingMess
       items.push({ type: 'subagent', agent });
     }
 
-    // Sort by timestamp (text segments use timestamp, tools use startTime, sub-agents use startTime)
-    const getItemTime = (item: TimelineItem): number => {
-      switch (item.type) {
-        case 'text': return item.timestamp;
-        case 'thinking': return item.timestamp;
-        case 'plan': return item.timestamp;
-        case 'status': return item.timestamp;
-        case 'subagent': return item.agent.startTime;
-        case 'subagent_group': return item.agents[0].startTime;
-        default: return item.startTime;
-      }
-    };
+    // Sort by timestamp
     items.sort((a, b) => getItemTime(a) - getItemTime(b));
 
-    // Group consecutive sub-agents that share the same description and agent type
+    return items;
+  }, [hasThinking, isThinkingActive, metaStartTime, approvedPlanContent, approvedPlanTimestamp, pendingPlanApproval, turnStartMeta, tools, subAgents]);
+
+  // Stage 2: Merge structural timeline with text segments via two-pointer merge,
+  // then group consecutive sub-agents. Both inputs are pre-sorted by timestamp,
+  // so the merge is O(n+m). Grouping happens *after* merge so that text segments
+  // between sub-agents correctly prevent grouping (preserving original behavior).
+  //
+  // Invariant: segmentIds must be sorted by timestamp (guaranteed by append-only
+  // creation with Date.now() in appendStreamingText).
+  const timeline = useMemo((): TimelineItem[] => {
+    const textItems: TimelineItem[] = segmentIds.map(seg => ({
+      type: 'text' as const,
+      id: seg.id,
+      timestamp: seg.timestamp,
+    }));
+
+    // Merge structural items with text segment placeholders
+    let merged: TimelineItem[];
+    if (textItems.length === 0) {
+      merged = structuralTimeline;
+    } else if (structuralTimeline.length === 0) {
+      merged = textItems;
+    } else {
+      // Two-pointer merge by timestamp
+      merged = [];
+      let si = 0, ti = 0;
+      while (si < structuralTimeline.length && ti < textItems.length) {
+        if (getItemTime(structuralTimeline[si]) <= getItemTime(textItems[ti])) {
+          merged.push(structuralTimeline[si++]);
+        } else {
+          merged.push(textItems[ti++]);
+        }
+      }
+      while (si < structuralTimeline.length) merged.push(structuralTimeline[si++]);
+      while (ti < textItems.length) merged.push(textItems[ti++]);
+    }
+
+    // Group consecutive sub-agents that share the same description and agent type.
+    // This runs after merge so text segments between sub-agents prevent grouping.
     const grouped: TimelineItem[] = [];
-    for (let i = 0; i < items.length; i++) {
-      const item = items[i];
+    for (let i = 0; i < merged.length; i++) {
+      const item = merged[i];
       if (item.type === 'subagent' && item.agent.description) {
         // Collect consecutive sub-agents with same description + agentType
         const batch: import('@/lib/types').SubAgent[] = [item.agent];
         while (
-          i + 1 < items.length &&
-          items[i + 1].type === 'subagent' &&
-          (items[i + 1] as { type: 'subagent'; agent: import('@/lib/types').SubAgent }).agent.description === item.agent.description &&
-          (items[i + 1] as { type: 'subagent'; agent: import('@/lib/types').SubAgent }).agent.agentType === item.agent.agentType
+          i + 1 < merged.length &&
+          merged[i + 1].type === 'subagent' &&
+          (merged[i + 1] as { type: 'subagent'; agent: import('@/lib/types').SubAgent }).agent.description === item.agent.description &&
+          (merged[i + 1] as { type: 'subagent'; agent: import('@/lib/types').SubAgent }).agent.agentType === item.agent.agentType
         ) {
           i++;
-          batch.push((items[i] as { type: 'subagent'; agent: import('@/lib/types').SubAgent }).agent);
+          batch.push((merged[i] as { type: 'subagent'; agent: import('@/lib/types').SubAgent }).agent);
         }
         if (batch.length > 1) {
           grouped.push({ type: 'subagent_group', agents: batch });
@@ -343,7 +391,7 @@ export function StreamingMessage({ conversationId, worktreePath }: StreamingMess
     }
 
     return grouped;
-  }, [meta, segmentIds, tools, subAgents]);
+  }, [structuralTimeline, segmentIds]);
 
   // Don't render if no streaming content, no active tools, no sub-agents, no thinking, and no error
   if (timeline.length === 0 && !meta?.error && !meta?.isThinking && !meta?.isStreaming) {
