@@ -16,6 +16,7 @@ interface ChatSearchBarProps {
   onNextMatch: () => void;
   onPrevMatch: () => void;
   partialResults?: boolean; // True when not all messages are loaded
+  isSearchPending?: boolean; // True while debounced query is catching up
 }
 
 export function ChatSearchBar({
@@ -28,6 +29,7 @@ export function ChatSearchBar({
   onNextMatch,
   onPrevMatch,
   partialResults,
+  isSearchPending,
 }: ChatSearchBarProps) {
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -73,10 +75,12 @@ export function ChatSearchBar({
 
         <div className={cn(
           "text-xs text-muted-foreground min-w-[4rem] text-center",
-          totalMatches === 0 && searchQuery && "text-destructive"
+          totalMatches === 0 && searchQuery && !isSearchPending && "text-destructive"
         )}>
           {searchQuery ? (
-            totalMatches > 0 ? (
+            isSearchPending ? (
+              <span className="opacity-50">...</span>
+            ) : totalMatches > 0 ? (
               <>
                 {`${currentMatchIndex + 1} of ${totalMatches}`}
                 {partialResults && <span title="Not all messages are loaded">*</span>}

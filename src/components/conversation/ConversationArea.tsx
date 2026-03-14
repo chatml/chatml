@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback, useMemo, startTransition } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo, useReducer, startTransition, useDeferredValue } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { useAppStore } from '@/stores/appStore';
 import { captureClosedConversation, useRestoreConversation } from '@/hooks/useRecentlyClosed';
@@ -45,7 +45,7 @@ import {
   AlertTriangle,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import type { FileTab, Conversation } from '@/lib/types';
+import type { FileTab, Conversation, Message } from '@/lib/types';
 import { CodeViewer } from '@/components/files/CodeViewer';
 import { FileTabIcon } from '@/components/files/FileTabIcon';
 import { TabBar, type TabItemData } from '@/components/tabs';
@@ -77,6 +77,31 @@ const EMPTY_QUEUED_MESSAGES: readonly QueuedMessage[] = [];
 // Stored outside the component to avoid ref-in-render lint issues since we read it during
 // render to compute initialTopMostItemIndex for Virtuoso.
 const scrollPositions = new Map<string, { dataIndex: number; wasAtBottom: boolean }>();
+
+// Module-level LRU of recently-viewed sessions. Stored outside the component so
+// useMemo can read it during render without violating react-hooks/refs or
+// react-hooks/set-state-in-effect rules.
+type RecentSession = { sessionId: string; activeTabId: string | null };
+type RecentSessionAction = { selectedSessionId: string | null; selectedFileTabId: string | null };
+
+// Maximum number of recently-viewed sessions whose Pierre Shadow DOMs are
+// kept alive (hidden) to avoid expensive Shiki re-tokenization cold starts.
+const MAX_CACHED_SESSIONS = 3;
+
+function recentSessionReducer(state: RecentSession[], action: RecentSessionAction): RecentSession[] {
+  const { selectedSessionId, selectedFileTabId } = action;
+  if (!selectedSessionId) return state;
+  const next = state.map(e => ({ ...e })); // shallow clone all entries
+  const idx = next.findIndex(e => e.sessionId === selectedSessionId);
+  if (idx !== -1) {
+    const entry = { ...next[idx], activeTabId: selectedFileTabId ?? next[idx].activeTabId };
+    next.splice(idx, 1);
+    next.unshift(entry);
+  } else {
+    next.unshift({ sessionId: selectedSessionId, activeTabId: selectedFileTabId });
+  }
+  return next.length > MAX_CACHED_SESSIONS ? next.slice(0, MAX_CACHED_SESSIONS) : next;
+}
 
 interface ConversationAreaProps {
   children?: React.ReactNode;
@@ -304,6 +329,10 @@ export function ConversationArea({ children }: ConversationAreaProps) {
   const searchQuery = searchState.convId === selectedConversationId ? searchState.query : '';
   const currentMatchIndex = searchState.convId === selectedConversationId ? searchState.matchIndex : 0;
 
+  // Deferred search query — React deprioritizes re-renders from this value,
+  // so the input stays responsive while match computation runs at lower priority.
+  const debouncedSearchQuery = useDeferredValue(searchQuery);
+
   const setSearchQuery = useCallback((query: string) => {
     setSearchState({ convId: selectedConversationId, query, matchIndex: 0 });
   }, [selectedConversationId]);
@@ -316,26 +345,32 @@ export function ConversationArea({ children }: ConversationAreaProps) {
     }));
   }, [selectedConversationId]);
 
-  // Compute search matches across all messages
-  const searchMatches = useMemo(() => {
-    if (!searchQuery) return { total: 0, messageOffsets: [] as number[] };
+  // Single-pass search computation — produces both messageOffsets and hasMatches
+  // arrays in one iteration, avoiding the previous double-count overhead.
+  const { searchMatches, messageHasMatches } = useMemo(() => {
+    if (!debouncedSearchQuery) {
+      return {
+        searchMatches: { total: 0, messageOffsets: [] as number[] },
+        messageHasMatches: [] as boolean[],
+      };
+    }
 
     let total = 0;
     const messageOffsets: number[] = [];
+    const hasMatches: boolean[] = [];
 
     for (const message of conversationMessages) {
       messageOffsets.push(total);
-      total += countSearchMatches(message.content, searchQuery);
+      const count = countSearchMatches(message.content, debouncedSearchQuery);
+      total += count;
+      hasMatches.push(count > 0);
     }
 
-    return { total, messageOffsets };
-  }, [conversationMessages, searchQuery]);
-
-  // Precompute which messages have search matches (avoids re-rendering non-matching messages)
-  const messageHasMatches = useMemo(() => {
-    if (!searchQuery) return [];
-    return conversationMessages.map((m) => countSearchMatches(m.content, searchQuery) > 0);
-  }, [conversationMessages, searchQuery]);
+    return {
+      searchMatches: { total, messageOffsets },
+      messageHasMatches: hasMatches,
+    };
+  }, [conversationMessages, debouncedSearchQuery]);
 
   // Clamp currentMatchIndex to valid range (derived, not effect-based)
   const clampedMatchIndex = searchMatches.total > 0
@@ -386,7 +421,7 @@ export function ConversationArea({ children }: ConversationAreaProps) {
 
   // Scroll to the message containing the current search match
   useEffect(() => {
-    if (!searchQuery || searchMatches.total === 0) return;
+    if (!debouncedSearchQuery || searchMatches.total === 0) return;
     // Find the message index that contains the current match
     const offsets = searchMatches.messageOffsets;
     let targetIndex = 0;
@@ -398,7 +433,7 @@ export function ConversationArea({ children }: ConversationAreaProps) {
       }
     }
     messageListRef.current?.scrollToIndex(targetIndex, { align: 'center', behavior: 'smooth' });
-  }, [clampedMatchIndex, searchQuery, searchMatches]);
+  }, [clampedMatchIndex, debouncedSearchQuery, searchMatches]);
 
   // Scroll handler for conversation markers minimap
   const handleMarkerScrollToIndex = useCallback((index: number) => {
@@ -447,6 +482,35 @@ export function ConversationArea({ children }: ConversationAreaProps) {
 
     return { visibleTabs: session, sessionTabs: session };
   }, [fileTabs, selectedSessionId]);
+
+  // LRU cache of recent sessions — keeps Pierre Shadow DOMs alive across
+  // session switches to avoid expensive Shiki re-tokenization cold starts.
+  // useReducer computes new state purely from previous state + action.
+  // Dispatch during render (React-endorsed "adjust state during rendering" pattern)
+  // to avoid lint issues with refs-in-render, setState-in-effect, and immutability.
+  const [recentSessions, dispatchRecentSession] = useReducer(recentSessionReducer, []);
+  const [prevSessionKey, setPrevSessionKey] = useState('');
+  const sessionKey = `${selectedSessionId ?? ''}:${selectedFileTabId ?? ''}`;
+  if (sessionKey !== prevSessionKey) {
+    setPrevSessionKey(sessionKey);
+    dispatchRecentSession({ selectedSessionId, selectedFileTabId });
+  }
+
+  // Only the last-active tab from each recently-viewed session is kept mounted
+  // (hidden) so its Pierre Shadow DOM survives session switches. This caps
+  // cached viewers at MAX_CACHED_SESSIONS - 1 instead of potentially all tabs.
+  const cachedSessionTabs = useMemo(() => {
+    if (recentSessions.length <= 1) return [];
+    const result: FileTab[] = [];
+    for (let i = 1; i < recentSessions.length; i++) {
+      const { sessionId, activeTabId } = recentSessions[i];
+      if (activeTabId) {
+        const tab = fileTabs.find(t => t.id === activeTabId && t.sessionId === sessionId);
+        if (tab) result.push(tab);
+      }
+    }
+    return result;
+  }, [fileTabs, recentSessions]);
 
   const currentSession = useMemo(
     () => sessions.find((s) => s.id === selectedSessionId),
@@ -1069,9 +1133,28 @@ export function ConversationArea({ children }: ConversationAreaProps) {
            This keeps Pierre's Shadow DOM alive even when viewing a conversation,
            avoiding expensive Shiki re-tokenization when switching back. */}
 
-      {/* File viewer — always rendered when tabs exist, hidden when conversation is active */}
-      {visibleTabs.length > 0 && (
+      {/* File viewer — always rendered when tabs exist, hidden when conversation is active.
+           Cached session tabs from recently-viewed sessions are also rendered (hidden) to
+           keep their Pierre Shadow DOMs alive and avoid Shiki re-tokenization on switch back. */}
+      {(visibleTabs.length > 0 || cachedSessionTabs.length > 0) && (
         <div className={isFileActive ? 'flex-1 min-h-0 relative' : 'hidden'}>
+          {/* Cached tabs from recently-visited sessions — hidden but mounted */}
+          {cachedSessionTabs.map((tab) => (
+            <div key={tab.id} className="hidden">
+              {tab.viewMode === 'diff' && tab.diff ? (
+                <CodeViewer
+                  content={tab.diff.newContent}
+                  oldContent={tab.diff.oldContent}
+                  filename={tab.name}
+                />
+              ) : !tab.loadError && !tab.isBinary && !tab.isTooLarge && !tab.isEmpty && tab.content ? (
+                <CodeViewer
+                  content={tab.content}
+                  filename={tab.name}
+                />
+              ) : null}
+            </div>
+          ))}
           {visibleTabs.map((tab) => {
             const isActive = tab.id === selectedFileTabId;
             const tabComments = tab.path === currentFilePath ? fileComments : [];
@@ -1211,13 +1294,14 @@ export function ConversationArea({ children }: ConversationAreaProps) {
             onNextMatch={goToNextMatch}
             onPrevMatch={goToPrevMatch}
             partialResults={pagination?.hasMore}
+            isSearchPending={searchQuery !== debouncedSearchQuery}
           />
           <VirtualizedMessageList
             key={selectedConversationId ?? 'none'}
             ref={messageListRef}
             messages={conversationMessages}
             worktreePath={currentSession?.worktreePath}
-            searchQuery={searchQuery}
+            searchQuery={debouncedSearchQuery}
             currentMatchIndex={clampedMatchIndex}
             searchMatches={searchMatches}
             messageHasMatches={messageHasMatches}
@@ -1239,9 +1323,10 @@ export function ConversationArea({ children }: ConversationAreaProps) {
             pendingPlanApproval={selectedStreaming.hasPendingPlanApproval}
             forceFollowRef={forceFollowRef}
           />
-          {/* Conversation markers minimap */}
+          {/* Conversation markers minimap — deferred so marker extraction doesn't
+               block streaming updates or message appends */}
           {conversationMessages.length > 3 && (
-            <ConversationMarkers
+            <DeferredConversationMarkers
               messages={conversationMessages}
               onScrollToIndex={handleMarkerScrollToIndex}
             />
@@ -1340,6 +1425,16 @@ const QUICK_ACTIONS = [
   { icon: RefreshCw, label: 'Refactor', prompt: 'Refactor ' },
   { icon: FileText, label: 'Documentation', prompt: 'Write documentation for ' },
 ];
+
+// Wrapper that defers messages to ConversationMarkers so marker extraction
+// doesn't block higher-priority streaming or message rendering.
+function DeferredConversationMarkers({ messages, onScrollToIndex }: {
+  messages: readonly Message[];
+  onScrollToIndex: (index: number) => void;
+}) {
+  const deferredMessages = useDeferredValue(messages);
+  return <ConversationMarkers messages={deferredMessages} onScrollToIndex={onScrollToIndex} />;
+}
 
 function SessionHomeState({ sessionName }: { sessionName?: string }) {
   const handleTemplateClick = useCallback((prompt: string) => {
