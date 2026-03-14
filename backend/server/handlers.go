@@ -66,6 +66,12 @@ func (m *SessionLockManager) Unlock(path string) {
 		logger.Handlers.Warnf("SessionLockManager: attempted to unlock non-existent path: %s", path)
 		return
 	}
+	if entry.refCount <= 0 {
+		delete(m.locks, path)
+		m.mu.Unlock()
+		logger.Handlers.Warnf("SessionLockManager: double unlock for path: %s", path)
+		return
+	}
 	entry.refCount--
 	if entry.refCount == 0 {
 		delete(m.locks, path)
