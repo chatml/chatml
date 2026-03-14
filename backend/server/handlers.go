@@ -772,7 +772,10 @@ func (h *Handlers) computeSessionStats(ctx context.Context, session *models.Sess
 	}
 
 	// Get untracked files
-	untracked, _ := h.repoManager.GetUntrackedFiles(ctx, workingPath)
+	untracked, untrackedErr := h.repoManager.GetUntrackedFiles(ctx, workingPath)
+	if untrackedErr != nil {
+		logger.Handlers.Warnf("computeSessionStats: GetUntrackedFiles failed for %s: %v", workingPath, untrackedErr)
+	}
 
 	// Sum up stats
 	var additions, deletions int
@@ -801,16 +804,30 @@ type uncachedSession struct {
 // results via WebSocket. Runs as a background goroutine so ListSessions
 // returns immediately.
 func (h *Handlers) computeAndBroadcastStats(sessions []uncachedSession) {
-	sem := make(chan struct{}, 10)
+	// Per-batch timeout as safety net (individual git commands have their own timeouts)
+	ctx, cancel := context.WithTimeout(h.serverCtx, 5*time.Minute)
+	defer cancel()
+
+	sem := make(chan struct{}, 5) // Max 5 concurrent git processes
 	var wg sync.WaitGroup
-	ctx := h.serverCtx
 
 	for _, us := range sessions {
+		// Stop spawning new goroutines if context is cancelled (shutdown or timeout)
+		if ctx.Err() != nil {
+			break
+		}
+
 		wg.Add(1)
 		go func(s *models.Session, ws *models.Repo) {
 			defer wg.Done()
-			sem <- struct{}{}
-			defer func() { <-sem }()
+
+			// Context-aware semaphore acquisition
+			select {
+			case sem <- struct{}{}:
+				defer func() { <-sem }()
+			case <-ctx.Done():
+				return
+			}
 
 			effectiveTarget := s.TargetBranch
 			if effectiveTarget == "" {
@@ -828,6 +845,9 @@ func (h *Handlers) computeAndBroadcastStats(sessions []uncachedSession) {
 			}
 
 			stats := h.computeSessionStats(ctx, s, effectiveTarget)
+			if ctx.Err() != nil {
+				return // Don't cache or broadcast partial results
+			}
 			h.statsCache.Set(s.ID, stats)
 
 			h.hub.Broadcast(Event{
