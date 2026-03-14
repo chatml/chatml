@@ -17,11 +17,15 @@ import (
 
 // FileNode represents a file or directory in the tree
 type FileNode struct {
-	Name     string      `json:"name"`
-	Path     string      `json:"path"`
-	IsDir    bool        `json:"isDir"`
-	Children []*FileNode `json:"children,omitempty"`
+	Name      string      `json:"name"`
+	Path      string      `json:"path"`
+	IsDir     bool        `json:"isDir"`
+	Children  []*FileNode `json:"children,omitempty"`
+	Truncated bool        `json:"truncated,omitempty"`
 }
+
+// maxNodeCount is the maximum number of nodes returned in a file tree response.
+const maxNodeCount = 10000
 
 // ListRepoFiles returns the file tree for a repository
 func (h *Handlers) ListRepoFiles(w http.ResponseWriter, r *http.Request) {
@@ -51,7 +55,8 @@ func (h *Handlers) ListRepoFiles(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tree, err := buildFileTree(repo.Path, "", maxDepth, 0)
+	nodeCount := 0
+	tree, err := buildFileTree(repo.Path, "", maxDepth, 0, &nodeCount)
 	if err != nil {
 		writeInternalError(w, "failed to list files", err)
 		return
@@ -62,8 +67,10 @@ func (h *Handlers) ListRepoFiles(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, tree)
 }
 
-// buildFileTree recursively builds the file tree
-func buildFileTree(basePath, relativePath string, maxDepth, currentDepth int) ([]*FileNode, error) {
+// buildFileTree recursively builds the file tree.
+// nodeCount tracks the total nodes added across all recursive calls;
+// when *nodeCount reaches maxNodeCount the current level is marked truncated.
+func buildFileTree(basePath, relativePath string, maxDepth, currentDepth int, nodeCount *int) ([]*FileNode, error) {
 	fullPath := filepath.Join(basePath, relativePath)
 	entries, err := os.ReadDir(fullPath)
 	if err != nil {
@@ -112,8 +119,15 @@ func buildFileTree(basePath, relativePath string, maxDepth, currentDepth int) ([
 	sortEntries(dirs)
 	sortEntries(files)
 
+	truncated := false
+
 	// Add directories first
 	for _, entry := range dirs {
+		if *nodeCount >= maxNodeCount {
+			truncated = true
+			break
+		}
+
 		name := entry.Name()
 		nodePath := filepath.Join(relativePath, name)
 		node := &FileNode{
@@ -121,13 +135,16 @@ func buildFileTree(basePath, relativePath string, maxDepth, currentDepth int) ([
 			Path:  nodePath,
 			IsDir: true,
 		}
+		*nodeCount++
 
-		// Recursively build children if within depth limit
-		if maxDepth == -1 || currentDepth < maxDepth {
-			children, err := buildFileTree(basePath, nodePath, maxDepth, currentDepth+1)
+		// Recursively build children if within depth limit and under node cap
+		if *nodeCount < maxNodeCount && (maxDepth == -1 || currentDepth < maxDepth) {
+			children, err := buildFileTree(basePath, nodePath, maxDepth, currentDepth+1, nodeCount)
 			if err == nil {
 				node.Children = children
 			}
+		} else if *nodeCount >= maxNodeCount {
+			node.Truncated = true
 		}
 
 		nodes = append(nodes, node)
@@ -135,12 +152,28 @@ func buildFileTree(basePath, relativePath string, maxDepth, currentDepth int) ([
 
 	// Add files
 	for _, entry := range files {
+		if *nodeCount >= maxNodeCount {
+			truncated = true
+			break
+		}
+
 		name := entry.Name()
 		nodePath := filepath.Join(relativePath, name)
 		nodes = append(nodes, &FileNode{
 			Name:  name,
 			Path:  nodePath,
 			IsDir: false,
+		})
+		*nodeCount++
+	}
+
+	// If we hit the limit, attach a sentinel node so the client knows
+	if truncated {
+		nodes = append(nodes, &FileNode{
+			Name:      "...",
+			Path:      filepath.Join(relativePath, "..."),
+			IsDir:     false,
+			Truncated: true,
 		})
 	}
 
@@ -457,7 +490,8 @@ func (h *Handlers) ListSessionFiles(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Build file tree from worktree path
-	tree, err := buildFileTree(session.WorktreePath, "", maxDepth, 0)
+	nodeCount := 0
+	tree, err := buildFileTree(session.WorktreePath, "", maxDepth, 0, &nodeCount)
 	if err != nil {
 		writeInternalError(w, "failed to list files", err)
 		return
