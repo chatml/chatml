@@ -593,15 +593,29 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onGitHubRepos,
                   </DropdownMenuContent>
                 </DropdownMenu>
                 {workspaces.length <= 1 ? (
-                  <button
-                    className="text-foreground hover:text-foreground transition-colors p-0.5 rounded hover:bg-surface-1"
-                    onClick={() => {
-                      const targetId = selectedWorkspaceId || workspaces[0]?.id;
-                      if (targetId) handleCreateSession(targetId);
-                    }}
-                  >
-                    <Plus className="h-4 w-4" />
-                  </button>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <button className="text-foreground hover:text-foreground transition-colors p-0.5 rounded hover:bg-surface-1">
+                        <Plus className="h-4 w-4" />
+                      </button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="w-52">
+                      <DropdownMenuItem onClick={() => {
+                        const targetId = selectedWorkspaceId || workspaces[0]?.id;
+                        if (targetId) handleCreateSession(targetId);
+                      }}>
+                        <Bot className="h-4 w-4" />
+                        New Session
+                        <DropdownMenuShortcut>⌘N</DropdownMenuShortcut>
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem onClick={() => window.dispatchEvent(new CustomEvent('create-session'))}>
+                        <Link className="h-4 w-4" />
+                        Create Session from...
+                        <DropdownMenuShortcut>⌘⇧O</DropdownMenuShortcut>
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                 ) : (
                   <DropdownMenu open={newSessionMenuOpen} onOpenChange={setNewSessionMenuOpen}>
                     <DropdownMenuTrigger asChild>
@@ -629,6 +643,12 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onGitHubRepos,
                           <DropdownMenuShortcut>{i + 1}</DropdownMenuShortcut>
                         </DropdownMenuItem>
                       ))}
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem onClick={() => window.dispatchEvent(new CustomEvent('create-session'))}>
+                        <Link className="h-4 w-4" />
+                        Create Session from...
+                        <DropdownMenuShortcut>⌘⇧O</DropdownMenuShortcut>
+                      </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
                 )}
@@ -959,7 +979,7 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onGitHubRepos,
                 </Button>
               </DropdownMenuTrigger>
             </TooltipTrigger>
-            <DropdownMenuContent align="start" side="top" className="w-52">
+            <DropdownMenuContent align="start" side="top" className="w-56">
               {/* Session creation group */}
               {workspaces.length > 0 && (
                 <>
