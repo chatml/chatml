@@ -367,6 +367,7 @@ interface AppState {
   setMessagePage: (convId: string, messages: Message[], hasMore: boolean, oldestPosition: number, totalCount: number) => void;
   prependMessages: (convId: string, messages: Message[], hasMore: boolean, oldestPosition: number) => void;
   setLoadingMoreMessages: (convId: string, loading: boolean) => void;
+  hydrateMessage: (convId: string, msgId: string, fullMsg: Message) => void;
 
   // File changes
   setFileChanges: (changes: FileChange[]) => void;
@@ -1204,6 +1205,16 @@ export const useAppStore = create<AppState>((set, get) => ({
       },
     },
   })),
+
+  hydrateMessage: (convId, msgId, fullMsg) => set((state) => {
+    const messages = state.messagesByConversation[convId];
+    if (!messages) return state;
+    const idx = messages.findIndex(m => m.id === msgId);
+    if (idx === -1) return state;
+    const updated = [...messages];
+    updated[idx] = fullMsg;
+    return { messagesByConversation: { ...state.messagesByConversation, [convId]: updated } };
+  }),
 
   // File changes
   setFileChanges: (fileChanges) => set({ fileChanges }),

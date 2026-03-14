@@ -310,7 +310,7 @@ export function useAppInitialization() {
         // If the persisted ID is stale, the result is discarded when conversationValid is false.
         const conversationIdFromTab = sessionValid ? activeTab.selectedConversationId : null;
         const earlyMsgPromise = conversationIdFromTab
-          ? getConversationMessages(conversationIdFromTab, { limit: 50 }).catch(() => null)
+          ? getConversationMessages(conversationIdFromTab, { limit: 50, compact: true }).catch(() => null)
           : Promise.resolve(null);
 
         // Await conversations
@@ -361,9 +361,9 @@ export function useAppInitialization() {
             // Reuse early-fetched messages if they match, otherwise fetch now
             const page = initialConvId === conversationIdFromTab
               ? await earlyMsgPromise
-              : await getConversationMessages(initialConvId, { limit: 50 });
+              : await getConversationMessages(initialConvId, { limit: 50, compact: true });
             if (page) {
-              const messages = page.messages.map((m) => toStoreMessage(m, initialConvId));
+              const messages = page.messages.map((m) => toStoreMessage(m, initialConvId, { compacted: true }));
               setMessagePage(initialConvId, messages, page.hasMore, page.oldestPosition ?? 0, page.totalCount);
             }
           } catch (err) {

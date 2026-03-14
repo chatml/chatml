@@ -277,6 +277,8 @@ export interface Message {
   planContent?: string;
   // File checkpoint UUID for revert
   checkpointUuid?: string;
+  // True when loaded in compact mode (heavy fields stripped); needs hydration for full details
+  compacted?: boolean;
 }
 
 // Run statistics from agent

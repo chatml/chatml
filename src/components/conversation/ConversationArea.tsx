@@ -208,9 +208,9 @@ export function ConversationArea({ children }: ConversationAreaProps) {
     let cancelled = false;
     async function loadMessages() {
       try {
-        const page = await getConversationMessages(selectedConversationId!, { limit: 50 });
+        const page = await getConversationMessages(selectedConversationId!, { limit: 50, compact: true });
         if (cancelled) return;
-        const messages = page.messages.map((m) => toStoreMessage(m, selectedConversationId!));
+        const messages = page.messages.map((m) => toStoreMessage(m, selectedConversationId!, { compacted: true }));
         setMessagePage(selectedConversationId!, messages, page.hasMore, page.oldestPosition ?? 0, page.totalCount);
       } catch (error) {
         console.error('Failed to load conversation messages:', error);
@@ -357,8 +357,9 @@ export function ConversationArea({ children }: ConversationAreaProps) {
       const page = await getConversationMessages(selectedConversationId, {
         before: pagination.oldestPosition ?? undefined,
         limit: 50,
+        compact: true,
       });
-      const messages = page.messages.map((m) => toStoreMessage(m, selectedConversationId));
+      const messages = page.messages.map((m) => toStoreMessage(m, selectedConversationId, { compacted: true }));
       prependMessages(selectedConversationId, messages, page.hasMore, page.oldestPosition ?? 0);
     } catch (error) {
       console.error('Failed to load older messages:', error);

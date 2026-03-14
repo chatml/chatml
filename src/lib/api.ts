@@ -1032,7 +1032,7 @@ export function toStoreConversation(dto: ConversationDTO): import('@/lib/types')
 }
 
 /** Map a MessageDTO to a store-compatible Message shape. */
-export function toStoreMessage(dto: MessageDTO, conversationId: string): import('@/lib/types').Message {
+export function toStoreMessage(dto: MessageDTO, conversationId: string, opts?: { compacted?: boolean }): import('@/lib/types').Message {
   return {
     id: dto.id,
     conversationId,
@@ -1048,6 +1048,7 @@ export function toStoreMessage(dto: MessageDTO, conversationId: string): import(
     planContent: dto.planContent,
     checkpointUuid: dto.checkpointUuid,
     timestamp: dto.timestamp,
+    compacted: opts?.compacted,
   };
 }
 
@@ -1110,15 +1111,21 @@ export async function getConversation(convId: string): Promise<ConversationDTO> 
 
 export async function getConversationMessages(
   convId: string,
-  opts?: { before?: number; limit?: number }
+  opts?: { before?: number; limit?: number; compact?: boolean }
 ): Promise<MessagePageDTO> {
   const params = new URLSearchParams();
   if (opts?.before !== undefined) params.set('before', String(opts.before));
   if (opts?.limit !== undefined) params.set('limit', String(opts.limit));
+  if (opts?.compact) params.set('mode', 'compact');
   const qs = params.toString();
   const url = `${getApiBase()}/api/conversations/${convId}/messages${qs ? `?${qs}` : ''}`;
   const res = await fetchWithAuth(url);
   return handleResponse<MessagePageDTO>(res);
+}
+
+export async function getMessage(convId: string, msgId: string): Promise<MessageDTO> {
+  const res = await fetchWithAuth(`${getApiBase()}/api/conversations/${convId}/messages/${msgId}`);
+  return handleResponse<MessageDTO>(res);
 }
 
 export async function sendConversationMessage(

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, memo, lazy, Suspense } from 'react';
+import { useState, useRef, useMemo, useCallback, memo, lazy, Suspense } from 'react';
 import {
   Collapsible,
   CollapsibleContent,
@@ -34,6 +34,7 @@ import { TOOL_TARGET_TRUNCATE, TOOL_COMMAND_TRUNCATE } from '@/lib/constants';
 import { useAppStore } from '@/stores/appStore';
 import { ErrorBoundary } from '@/components/shared/ErrorBoundary';
 import { TodoToolDetail } from '@/components/conversation/tool-details/TodoToolDetail';
+import { getMessage, toStoreMessage } from '@/lib/api';
 import type { ToolMetadata } from '@/lib/types';
 
 // Lazy-load heavy Pierre-based components (only loaded when user expands a tool block)
@@ -59,6 +60,12 @@ interface ToolUsageBlockProps {
   elapsedSeconds?: number;
   /** Structured metadata extracted from tool results */
   metadata?: ToolMetadata;
+  /** For on-demand hydration of compact messages */
+  conversationId?: string;
+  /** For on-demand hydration of compact messages */
+  messageId?: string;
+  /** True when the parent message was loaded in compact mode */
+  compacted?: boolean;
 }
 
 // Helper to calculate line stats for Edit tool
@@ -100,8 +107,33 @@ export const ToolUsageBlock = memo(function ToolUsageBlock({
   stderr,
   elapsedSeconds,
   metadata,
+  conversationId,
+  messageId,
+  compacted,
 }: ToolUsageBlockProps) {
   const [isOpen, setIsOpen] = useState(false);
+  const [isHydrating, setIsHydrating] = useState(false);
+  const isHydratingRef = useRef(false);
+
+  // On-demand hydration: fetch full message when expanding a compact tool block.
+  // Only triggers for messages loaded in compact mode; skips active (streaming) tools.
+  const handleOpenChange = useCallback(async (open: boolean) => {
+    setIsOpen(open);
+    if (open && compacted && !isActive && conversationId && messageId && !isHydratingRef.current) {
+      isHydratingRef.current = true;
+      setIsHydrating(true);
+      try {
+        const fullMsg = await getMessage(conversationId, messageId);
+        const storeMsg = toStoreMessage(fullMsg, conversationId);
+        useAppStore.getState().hydrateMessage(conversationId, messageId, storeMsg);
+      } catch (err) {
+        console.warn('Failed to hydrate message:', err);
+      } finally {
+        isHydratingRef.current = false;
+        setIsHydrating(false);
+      }
+    }
+  }, [compacted, isActive, conversationId, messageId]);
   const mcpInfo = useMemo(() => parseMcpToolName(tool), [tool]);
 
   const ToolIcon = useMemo((): LucideIcon => {
@@ -321,7 +353,7 @@ export const ToolUsageBlock = memo(function ToolUsageBlock({
   const showExpandable = hasDetails || hasOutput;
 
   return (
-    <Collapsible open={isOpen} onOpenChange={setIsOpen}>
+    <Collapsible open={isOpen} onOpenChange={handleOpenChange}>
       <CollapsibleTrigger
         className={cn(
           'flex items-center gap-1.5 text-base w-full rounded px-1.5 py-1 transition-colors',
@@ -488,6 +520,11 @@ export const ToolUsageBlock = memo(function ToolUsageBlock({
 
       {showExpandable && (
         <CollapsibleContent>
+          {isHydrating ? (
+            <div className="mt-0.5 ml-4 px-2 py-1 text-2xs text-muted-foreground">
+              Loading tool details...
+            </div>
+          ) : (
           <ErrorBoundary
             section="ToolDetails"
             fallback={
@@ -591,6 +628,7 @@ export const ToolUsageBlock = memo(function ToolUsageBlock({
               )}
             </div>
           </ErrorBoundary>
+          )}
         </CollapsibleContent>
       )}
     </Collapsible>

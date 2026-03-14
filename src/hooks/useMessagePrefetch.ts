@@ -92,9 +92,9 @@ export function useMessagePrefetch(enabled: boolean) {
             if (useAppStore.getState().messagePagination[conv.id]) return;
 
             try {
-              const page = await getConversationMessages(conv.id, { limit: 50 });
+              const page = await getConversationMessages(conv.id, { limit: 50, compact: true });
               if (isAborted()) return;
-              const msgs = page.messages.map(m => toStoreMessage(m, conv.id));
+              const msgs = page.messages.map(m => toStoreMessage(m, conv.id, { compacted: true }));
               useAppStore.getState().setMessagePage(
                 conv.id, msgs, page.hasMore,
                 page.oldestPosition ?? 0, page.totalCount

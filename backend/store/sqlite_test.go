@@ -867,7 +867,7 @@ func TestGetConversation_WithMessages(t *testing.T) {
 	assert.Equal(t, 2, got.MessageCount)
 
 	// Verify messages via paginated endpoint
-	page, err := s.GetConversationMessages(ctx, "conv-1", nil, 50)
+	page, err := s.GetConversationMessages(ctx, "conv-1", nil, 50, false)
 	require.NoError(t, err)
 	require.Len(t, page.Messages, 2)
 	assert.Equal(t, "Hello", page.Messages[0].Content)
@@ -937,7 +937,7 @@ func TestListConversations_WithMessages(t *testing.T) {
 	assert.Empty(t, convs[0].Messages) // Messages are empty (use GetConversationMessages for paginated access)
 
 	// Verify messages via paginated endpoint
-	page, err := s.GetConversationMessages(ctx, "c1", nil, 50)
+	page, err := s.GetConversationMessages(ctx, "c1", nil, 50, false)
 	require.NoError(t, err)
 	require.Len(t, page.Messages, 2)
 	assert.Equal(t, "Hello", page.Messages[0].Content)
@@ -1239,7 +1239,7 @@ func TestAddMessageToConversation_Ordering(t *testing.T) {
 	}
 
 	// Verify ordering via paginated endpoint
-	page, err := s.GetConversationMessages(ctx, "conv-1", nil, 50)
+	page, err := s.GetConversationMessages(ctx, "conv-1", nil, 50, false)
 	require.NoError(t, err)
 	require.Len(t, page.Messages, 3)
 
@@ -1272,7 +1272,7 @@ func TestAddMessageToConversation_WithSetupInfo(t *testing.T) {
 	require.NoError(t, s.AddMessageToConversation(ctx, "conv-1", msg))
 
 	// Verify via paginated endpoint
-	page, err := s.GetConversationMessages(ctx, "conv-1", nil, 50)
+	page, err := s.GetConversationMessages(ctx, "conv-1", nil, 50, false)
 	require.NoError(t, err)
 	require.Len(t, page.Messages, 1)
 	require.NotNil(t, page.Messages[0].SetupInfo)
@@ -1305,7 +1305,7 @@ func TestAddMessageToConversation_WithRunSummary(t *testing.T) {
 	require.NoError(t, s.AddMessageToConversation(ctx, "conv-1", msg))
 
 	// Verify via paginated endpoint
-	page, err := s.GetConversationMessages(ctx, "conv-1", nil, 50)
+	page, err := s.GetConversationMessages(ctx, "conv-1", nil, 50, false)
 	require.NoError(t, err)
 	require.Len(t, page.Messages, 1)
 	require.NotNil(t, page.Messages[0].RunSummary)
@@ -1563,7 +1563,7 @@ func TestGetConversation_AttachmentsExcludeBase64(t *testing.T) {
 	assert.Equal(t, 1, conv.MessageCount)
 
 	// Use GetConversationMessages to verify attachments exclude base64
-	page, err := s.GetConversationMessages(ctx, "conv-1", nil, 50)
+	page, err := s.GetConversationMessages(ctx, "conv-1", nil, 50, false)
 	require.NoError(t, err)
 	require.Len(t, page.Messages, 1)
 	require.Len(t, page.Messages[0].Attachments, 1)
@@ -1607,7 +1607,7 @@ func TestListConversations_AttachmentsExcludeBase64(t *testing.T) {
 	assert.Equal(t, 1, convs[0].MessageCount)
 
 	// Verify attachments via paginated messages endpoint
-	page, err := s.GetConversationMessages(ctx, "conv-1", nil, 50)
+	page, err := s.GetConversationMessages(ctx, "conv-1", nil, 50, false)
 	require.NoError(t, err)
 	require.Len(t, page.Messages, 1)
 	require.Len(t, page.Messages[0].Attachments, 1)
@@ -1668,7 +1668,7 @@ func TestGetAttachmentData_RoundTrip(t *testing.T) {
 	require.NoError(t, s.SaveAttachments(ctx, "m1", []models.Attachment{att}))
 
 	// Paginated query should NOT have base64
-	page, err := s.GetConversationMessages(ctx, "conv-1", nil, 50)
+	page, err := s.GetConversationMessages(ctx, "conv-1", nil, 50, false)
 	require.NoError(t, err)
 	require.Len(t, page.Messages, 1)
 	require.Len(t, page.Messages[0].Attachments, 1)
@@ -1807,7 +1807,7 @@ func TestGetConversationMessages_EmptyConversation(t *testing.T) {
 	createTestSession(t, s, "sess-1", "ws-1")
 	createTestConversation(t, s, "conv-1", "sess-1")
 
-	page, err := s.GetConversationMessages(ctx, "conv-1", nil, 50)
+	page, err := s.GetConversationMessages(ctx, "conv-1", nil, 50, false)
 	require.NoError(t, err)
 	require.NotNil(t, page)
 	assert.Empty(t, page.Messages)
@@ -1826,7 +1826,7 @@ func TestGetConversationMessages_DefaultLimit(t *testing.T) {
 	addNMessages(t, s, "conv-1", 5)
 
 	// Passing 0 limit should default to 50
-	page, err := s.GetConversationMessages(ctx, "conv-1", nil, 0)
+	page, err := s.GetConversationMessages(ctx, "conv-1", nil, 0, false)
 	require.NoError(t, err)
 	assert.Len(t, page.Messages, 5)
 	assert.Equal(t, 5, page.TotalCount)
@@ -1843,7 +1843,7 @@ func TestGetConversationMessages_NegativeLimit(t *testing.T) {
 	addNMessages(t, s, "conv-1", 3)
 
 	// Negative limit should default to 50
-	page, err := s.GetConversationMessages(ctx, "conv-1", nil, -10)
+	page, err := s.GetConversationMessages(ctx, "conv-1", nil, -10, false)
 	require.NoError(t, err)
 	assert.Len(t, page.Messages, 3)
 }
@@ -1858,7 +1858,7 @@ func TestGetConversationMessages_LimitClampsAt200(t *testing.T) {
 	// Add 210 messages — more than the 200 max
 	addNMessages(t, s, "conv-1", 210)
 
-	page, err := s.GetConversationMessages(ctx, "conv-1", nil, 500)
+	page, err := s.GetConversationMessages(ctx, "conv-1", nil, 500, false)
 	require.NoError(t, err)
 	// Should be clamped to 200
 	assert.Len(t, page.Messages, 200)
@@ -1876,7 +1876,7 @@ func TestGetConversationMessages_ReturnsLatestMessages(t *testing.T) {
 	addNMessages(t, s, "conv-1", 10)
 
 	// Request only 3 — should get the 3 most recent
-	page, err := s.GetConversationMessages(ctx, "conv-1", nil, 3)
+	page, err := s.GetConversationMessages(ctx, "conv-1", nil, 3, false)
 	require.NoError(t, err)
 	assert.Len(t, page.Messages, 3)
 	assert.True(t, page.HasMore)
@@ -1897,7 +1897,7 @@ func TestGetConversationMessages_AscendingOrder(t *testing.T) {
 
 	addNMessages(t, s, "conv-1", 5)
 
-	page, err := s.GetConversationMessages(ctx, "conv-1", nil, 50)
+	page, err := s.GetConversationMessages(ctx, "conv-1", nil, 50, false)
 	require.NoError(t, err)
 	require.Len(t, page.Messages, 5)
 
@@ -1917,7 +1917,7 @@ func TestGetConversationMessages_CursorPagination(t *testing.T) {
 	addNMessages(t, s, "conv-1", 10)
 
 	// Page 1: get latest 3
-	page1, err := s.GetConversationMessages(ctx, "conv-1", nil, 3)
+	page1, err := s.GetConversationMessages(ctx, "conv-1", nil, 3, false)
 	require.NoError(t, err)
 	assert.Len(t, page1.Messages, 3)
 	assert.True(t, page1.HasMore)
@@ -1926,7 +1926,7 @@ func TestGetConversationMessages_CursorPagination(t *testing.T) {
 
 	// Page 2: get 3 before the oldest position of page 1
 	cursor := page1.OldestPosition
-	page2, err := s.GetConversationMessages(ctx, "conv-1", &cursor, 3)
+	page2, err := s.GetConversationMessages(ctx, "conv-1", &cursor, 3, false)
 	require.NoError(t, err)
 	assert.Len(t, page2.Messages, 3)
 	assert.True(t, page2.HasMore)
@@ -1935,7 +1935,7 @@ func TestGetConversationMessages_CursorPagination(t *testing.T) {
 
 	// Page 3: get 3 more
 	cursor2 := page2.OldestPosition
-	page3, err := s.GetConversationMessages(ctx, "conv-1", &cursor2, 3)
+	page3, err := s.GetConversationMessages(ctx, "conv-1", &cursor2, 3, false)
 	require.NoError(t, err)
 	assert.Len(t, page3.Messages, 3)
 	assert.True(t, page3.HasMore)
@@ -1944,7 +1944,7 @@ func TestGetConversationMessages_CursorPagination(t *testing.T) {
 
 	// Page 4: get remaining 1
 	cursor3 := page3.OldestPosition
-	page4, err := s.GetConversationMessages(ctx, "conv-1", &cursor3, 3)
+	page4, err := s.GetConversationMessages(ctx, "conv-1", &cursor3, 3, false)
 	require.NoError(t, err)
 	assert.Len(t, page4.Messages, 1)
 	assert.False(t, page4.HasMore)
@@ -1961,19 +1961,19 @@ func TestGetConversationMessages_HasMoreFlag(t *testing.T) {
 	addNMessages(t, s, "conv-1", 5)
 
 	// Exact count: hasMore should be false
-	page, err := s.GetConversationMessages(ctx, "conv-1", nil, 5)
+	page, err := s.GetConversationMessages(ctx, "conv-1", nil, 5, false)
 	require.NoError(t, err)
 	assert.Len(t, page.Messages, 5)
 	assert.False(t, page.HasMore)
 
 	// One less: hasMore should be true
-	page2, err := s.GetConversationMessages(ctx, "conv-1", nil, 4)
+	page2, err := s.GetConversationMessages(ctx, "conv-1", nil, 4, false)
 	require.NoError(t, err)
 	assert.Len(t, page2.Messages, 4)
 	assert.True(t, page2.HasMore)
 
 	// More than available: hasMore should be false
-	page3, err := s.GetConversationMessages(ctx, "conv-1", nil, 10)
+	page3, err := s.GetConversationMessages(ctx, "conv-1", nil, 10, false)
 	require.NoError(t, err)
 	assert.Len(t, page3.Messages, 5)
 	assert.False(t, page3.HasMore)
@@ -1989,12 +1989,12 @@ func TestGetConversationMessages_OldestPosition(t *testing.T) {
 	addNMessages(t, s, "conv-1", 5)
 
 	// Full page: oldest position should be position of first message (position 0)
-	page, err := s.GetConversationMessages(ctx, "conv-1", nil, 50)
+	page, err := s.GetConversationMessages(ctx, "conv-1", nil, 50, false)
 	require.NoError(t, err)
 	assert.Equal(t, 0, page.OldestPosition)
 
 	// Partial page: oldest should be position of the oldest returned message
-	page2, err := s.GetConversationMessages(ctx, "conv-1", nil, 2)
+	page2, err := s.GetConversationMessages(ctx, "conv-1", nil, 2, false)
 	require.NoError(t, err)
 	assert.Len(t, page2.Messages, 2)
 	// Positions are 0-based so the 2 most recent are at positions 3 and 4
@@ -2022,7 +2022,7 @@ func TestGetConversationMessages_WithSetupInfo(t *testing.T) {
 	}
 	require.NoError(t, s.AddMessageToConversation(ctx, "conv-1", msg))
 
-	page, err := s.GetConversationMessages(ctx, "conv-1", nil, 50)
+	page, err := s.GetConversationMessages(ctx, "conv-1", nil, 50, false)
 	require.NoError(t, err)
 	require.Len(t, page.Messages, 1)
 	require.NotNil(t, page.Messages[0].SetupInfo)
@@ -2053,7 +2053,7 @@ func TestGetConversationMessages_WithRunSummary(t *testing.T) {
 	}
 	require.NoError(t, s.AddMessageToConversation(ctx, "conv-1", msg))
 
-	page, err := s.GetConversationMessages(ctx, "conv-1", nil, 50)
+	page, err := s.GetConversationMessages(ctx, "conv-1", nil, 50, false)
 	require.NoError(t, err)
 	require.Len(t, page.Messages, 1)
 	require.NotNil(t, page.Messages[0].RunSummary)
@@ -2092,7 +2092,7 @@ func TestGetConversationMessages_WithAttachments(t *testing.T) {
 	}
 	require.NoError(t, s.SaveAttachments(ctx, "msg-attach", attachments))
 
-	page, err := s.GetConversationMessages(ctx, "conv-1", nil, 50)
+	page, err := s.GetConversationMessages(ctx, "conv-1", nil, 50, false)
 	require.NoError(t, err)
 	require.Len(t, page.Messages, 1)
 	require.Len(t, page.Messages[0].Attachments, 1)
@@ -2107,7 +2107,7 @@ func TestGetConversationMessages_NonexistentConversation(t *testing.T) {
 	ctx := context.Background()
 	s := newTestStore(t)
 
-	page, err := s.GetConversationMessages(ctx, "nonexistent", nil, 50)
+	page, err := s.GetConversationMessages(ctx, "nonexistent", nil, 50, false)
 	require.NoError(t, err)
 	require.NotNil(t, page)
 	assert.Empty(t, page.Messages)
@@ -2125,12 +2125,12 @@ func TestGetConversationMessages_TotalCountStaysConstant(t *testing.T) {
 	addNMessages(t, s, "conv-1", 20)
 
 	// TotalCount should be the same regardless of limit or cursor
-	page1, err := s.GetConversationMessages(ctx, "conv-1", nil, 5)
+	page1, err := s.GetConversationMessages(ctx, "conv-1", nil, 5, false)
 	require.NoError(t, err)
 	assert.Equal(t, 20, page1.TotalCount)
 
 	cursor := page1.OldestPosition
-	page2, err := s.GetConversationMessages(ctx, "conv-1", &cursor, 5)
+	page2, err := s.GetConversationMessages(ctx, "conv-1", &cursor, 5, false)
 	require.NoError(t, err)
 	assert.Equal(t, 20, page2.TotalCount)
 }
@@ -2144,7 +2144,7 @@ func TestGetConversationMessages_RolesPreserved(t *testing.T) {
 
 	addNMessages(t, s, "conv-1", 4)
 
-	page, err := s.GetConversationMessages(ctx, "conv-1", nil, 50)
+	page, err := s.GetConversationMessages(ctx, "conv-1", nil, 50, false)
 	require.NoError(t, err)
 	require.Len(t, page.Messages, 4)
 
@@ -2168,7 +2168,7 @@ func TestGetConversationMessages_CursorPagination_CollectsAllMessages(t *testing
 	var allMessages []models.Message
 	var cursor *int
 	for {
-		page, err := s.GetConversationMessages(ctx, "conv-1", cursor, 4)
+		page, err := s.GetConversationMessages(ctx, "conv-1", cursor, 4, false)
 		require.NoError(t, err)
 		allMessages = append(allMessages, page.Messages...)
 		if !page.HasMore {
@@ -3102,7 +3102,7 @@ func TestAddMessage_LargeContent(t *testing.T) {
 	require.NoError(t, s.AddMessageToConversation(ctx, conv.ID, msg))
 
 	// Retrieve via paginated endpoint
-	page, err := s.GetConversationMessages(ctx, conv.ID, nil, 50)
+	page, err := s.GetConversationMessages(ctx, conv.ID, nil, 50, false)
 	require.NoError(t, err)
 	require.Len(t, page.Messages, 1)
 	assert.Len(t, page.Messages[0].Content, 100*1024)
@@ -3122,7 +3122,7 @@ func TestAddMessage_SpecialCharacters(t *testing.T) {
 	msg := createTestMessage("msg-special", "user", specialContent)
 	require.NoError(t, s.AddMessageToConversation(ctx, conv.ID, msg))
 
-	page, err := s.GetConversationMessages(ctx, conv.ID, nil, 50)
+	page, err := s.GetConversationMessages(ctx, conv.ID, nil, 50, false)
 	require.NoError(t, err)
 	require.Len(t, page.Messages, 1)
 	assert.Equal(t, specialContent, page.Messages[0].Content)

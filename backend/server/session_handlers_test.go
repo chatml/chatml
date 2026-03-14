@@ -871,7 +871,7 @@ func TestCreateSession_CheckoutExisting_SystemMessageStored(t *testing.T) {
 	require.NotEmpty(t, conversations, "session should have at least one conversation")
 
 	// Get messages from the first conversation
-	msgPage, err := s.GetConversationMessages(ctx, conversations[0].ID, nil, 100)
+	msgPage, err := s.GetConversationMessages(ctx, conversations[0].ID, nil, 100, false)
 	require.NoError(t, err)
 
 	// Find the system message
@@ -1115,7 +1115,7 @@ func TestCreateSession_SetupInfo_OriginBranch(t *testing.T) {
 			require.NoError(t, err)
 			require.NotEmpty(t, conversations, "session should have at least one conversation")
 
-			msgPage, err := s.GetConversationMessages(ctx, conversations[0].ID, nil, 100)
+			msgPage, err := s.GetConversationMessages(ctx, conversations[0].ID, nil, 100, false)
 			require.NoError(t, err)
 
 			var setupInfo *models.SetupInfo

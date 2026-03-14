@@ -1413,11 +1413,28 @@ func (s *SQLiteStore) loadAttachmentsForMessages(ctx context.Context, messages [
 	return rows.Err()
 }
 
+// compactToolParams truncates long string values in tool params to reduce response size.
+// Keeps keys like file_path, command, pattern readable for collapsed tool headers.
+func compactToolParams(params map[string]interface{}) map[string]interface{} {
+	if params == nil {
+		return nil
+	}
+	compact := make(map[string]interface{}, len(params))
+	for k, v := range params {
+		if s, ok := v.(string); ok && len(s) > 200 {
+			compact[k] = s[:200] + "…"
+		} else {
+			compact[k] = v
+		}
+	}
+	return compact
+}
+
 // GetConversationMessages returns a paginated page of messages for a conversation.
 // Uses cursor-based pagination on the position column.
 // If beforePosition is nil, returns the most recent messages.
 // Messages are returned in ascending position order.
-func (s *SQLiteStore) GetConversationMessages(ctx context.Context, convID string, beforePosition *int, limit int) (*models.MessagePage, error) {
+func (s *SQLiteStore) GetConversationMessages(ctx context.Context, convID string, beforePosition *int, limit int, compact bool) (*models.MessagePage, error) {
 	if limit <= 0 {
 		limit = 50
 	}
@@ -1538,6 +1555,18 @@ func (s *SQLiteStore) GetConversationMessages(ctx context.Context, convID string
 		}
 	}
 
+	// In compact mode, strip heavy fields to reduce JSON response size
+	if compact {
+		for i := range messages {
+			messages[i].ThinkingContent = ""
+			for j := range messages[i].ToolUsage {
+				messages[i].ToolUsage[j].Stdout = ""
+				messages[i].ToolUsage[j].Stderr = ""
+				messages[i].ToolUsage[j].Params = compactToolParams(messages[i].ToolUsage[j].Params)
+			}
+		}
+	}
+
 	// Load attachments
 	if len(messages) > 0 {
 		if err := s.loadAttachmentsForMessages(ctx, messages, msgIndexByID); err != nil {
@@ -1551,6 +1580,78 @@ func (s *SQLiteStore) GetConversationMessages(ctx context.Context, convID string
 		TotalCount:     totalCount,
 		OldestPosition: oldestPosition,
 	}, nil
+}
+
+// GetMessage returns a single message by ID with all fields (no compact stripping).
+// Used for on-demand hydration when the frontend needs full tool details.
+func (s *SQLiteStore) GetMessage(ctx context.Context, convID string, msgID string) (*models.Message, error) {
+	var msg models.Message
+	var setupInfoJSON, runSummaryJSON sql.NullString
+	var toolUsageJSON, thinkingContentNull, timelineJSON sql.NullString
+	var planContentNull, checkpointUuidNull sql.NullString
+	var durationMsNull sql.NullInt64
+
+	err := s.db.QueryRowContext(ctx, `
+		SELECT id, role, content, setup_info, run_summary,
+			tool_usage, thinking_content, duration_ms, timeline,
+			plan_content, checkpoint_uuid, timestamp
+		FROM messages
+		WHERE conversation_id = ? AND id = ?`, convID, msgID).Scan(
+		&msg.ID, &msg.Role, &msg.Content, &setupInfoJSON, &runSummaryJSON,
+		&toolUsageJSON, &thinkingContentNull, &durationMsNull, &timelineJSON,
+		&planContentNull, &checkpointUuidNull, &msg.Timestamp)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, ErrNotFound
+		}
+		return nil, fmt.Errorf("GetMessage query: %w", err)
+	}
+
+	if setupInfoJSON.Valid {
+		var setupInfo models.SetupInfo
+		if json.Unmarshal([]byte(setupInfoJSON.String), &setupInfo) == nil {
+			msg.SetupInfo = &setupInfo
+		}
+	}
+	if runSummaryJSON.Valid {
+		var runSummary models.RunSummary
+		if json.Unmarshal([]byte(runSummaryJSON.String), &runSummary) == nil {
+			msg.RunSummary = &runSummary
+		}
+	}
+	if toolUsageJSON.Valid {
+		var toolUsage []models.ToolUsageRecord
+		if json.Unmarshal([]byte(toolUsageJSON.String), &toolUsage) == nil {
+			msg.ToolUsage = toolUsage
+		}
+	}
+	if thinkingContentNull.Valid {
+		msg.ThinkingContent = thinkingContentNull.String
+	}
+	if durationMsNull.Valid {
+		msg.DurationMs = int(durationMsNull.Int64)
+	}
+	if timelineJSON.Valid {
+		var timeline []models.TimelineEntry
+		if json.Unmarshal([]byte(timelineJSON.String), &timeline) == nil {
+			msg.Timeline = timeline
+		}
+	}
+	if planContentNull.Valid {
+		msg.PlanContent = planContentNull.String
+	}
+	if checkpointUuidNull.Valid {
+		msg.CheckpointUuid = checkpointUuidNull.String
+	}
+
+	// Load attachments for this single message
+	messages := []models.Message{msg}
+	msgIndexByID := map[string]int{msg.ID: 0}
+	if err := s.loadAttachmentsForMessages(ctx, messages, msgIndexByID); err != nil {
+		return nil, err
+	}
+
+	return &messages[0], nil
 }
 
 // SessionHasMessages returns true if any conversation in the session has at least one message.

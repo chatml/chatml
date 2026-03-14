@@ -746,7 +746,7 @@ func (h *Handlers) generateArchiveSummary(sessionID string, aiClient ai.Provider
 		if conv.MessageCount < 1 {
 			continue
 		}
-		allMessages, err := h.store.GetConversationMessages(bgCtx, conv.ID, nil, conv.MessageCount)
+		allMessages, err := h.store.GetConversationMessages(bgCtx, conv.ID, nil, conv.MessageCount, false)
 		if err != nil {
 			logger.Error.Errorf("Archive summary: failed to get messages for conversation %s: %v", conv.ID, err)
 			continue

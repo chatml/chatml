@@ -261,12 +261,31 @@ func (h *Handlers) GetConversationMessages(w http.ResponseWriter, r *http.Reques
 		limit = v
 	}
 
-	page, err := h.store.GetConversationMessages(ctx, convID, beforePosition, limit)
+	compact := r.URL.Query().Get("mode") == "compact"
+	page, err := h.store.GetConversationMessages(ctx, convID, beforePosition, limit, compact)
 	if err != nil {
 		writeDBError(w, err)
 		return
 	}
 	writeJSON(w, page)
+}
+
+// GetMessage returns a single message with all fields (no compact stripping).
+// Used for on-demand hydration when the frontend expands a tool block.
+func (h *Handlers) GetMessage(w http.ResponseWriter, r *http.Request) {
+	convID := chi.URLParam(r, "convId")
+	msgID := chi.URLParam(r, "msgId")
+
+	msg, err := h.store.GetMessage(r.Context(), convID, msgID)
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			writeError(w, http.StatusNotFound, "not_found", "message not found", err)
+			return
+		}
+		writeDBError(w, err)
+		return
+	}
+	writeJSON(w, msg)
 }
 
 type SendConversationMessageRequest struct {
@@ -715,7 +734,7 @@ func (h *Handlers) GenerateConversationSummary(w http.ResponseWriter, r *http.Re
 	}
 
 	// Fetch all messages via paginated API
-	allMessages, err := h.store.GetConversationMessages(ctx, convID, nil, conv.MessageCount)
+	allMessages, err := h.store.GetConversationMessages(ctx, convID, nil, conv.MessageCount, false)
 	if err != nil {
 		writeDBError(w, err)
 		return

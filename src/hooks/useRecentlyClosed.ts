@@ -42,8 +42,8 @@ export function useRestoreConversation(showError: (msg: string) => void) {
   return useCallback(async (convId: string) => {
     try {
       const convDTO = await getConversation(convId);
-      const messagesPage = await getConversationMessages(convId, { limit: 50 });
-      const messages = messagesPage.messages.map((m) => toStoreMessage(m, convDTO.id));
+      const messagesPage = await getConversationMessages(convId, { limit: 50, compact: true });
+      const messages = messagesPage.messages.map((m) => toStoreMessage(m, convDTO.id, { compacted: true }));
 
       const store = useAppStore.getState();
       store.addConversation({
