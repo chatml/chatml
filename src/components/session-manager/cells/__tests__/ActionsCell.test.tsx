@@ -29,51 +29,25 @@ function renderWithTooltip(ui: React.ReactElement) {
 }
 
 describe('ActionsCell', () => {
-  it('shows archive button for active session', () => {
-    renderWithTooltip(
-      <ActionsCell
-        session={activeSession}
-        onArchive={vi.fn()}
-        onUnarchive={vi.fn()}
-        onPreview={vi.fn()}
-      />
+  it('renders nothing for active session', () => {
+    const { container } = renderWithTooltip(
+      <ActionsCell session={activeSession} onPreview={vi.fn()} />
     );
-
-    // Archive button should be present (Archive icon)
-    const buttons = screen.getAllByRole('button');
-    expect(buttons).toHaveLength(1);
+    expect(container.innerHTML).toBe('');
   });
 
-  it('shows preview and unarchive buttons for archived session', () => {
-    renderWithTooltip(
-      <ActionsCell
-        session={archivedSession}
-        onArchive={vi.fn()}
-        onUnarchive={vi.fn()}
-        onPreview={vi.fn()}
-      />
+  it('renders nothing for archived session without onPreview', () => {
+    const { container } = renderWithTooltip(
+      <ActionsCell session={archivedSession} />
     );
-
-    // Should have 2 buttons (preview + unarchive)
-    const buttons = screen.getAllByRole('button');
-    expect(buttons).toHaveLength(2);
+    expect(container.innerHTML).toBe('');
   });
 
-  it('calls onArchive when archive button is clicked', async () => {
-    const user = userEvent.setup();
-    const onArchive = vi.fn();
-
+  it('shows preview button for archived session with onPreview', () => {
     renderWithTooltip(
-      <ActionsCell
-        session={activeSession}
-        onArchive={onArchive}
-        onUnarchive={vi.fn()}
-      />
+      <ActionsCell session={archivedSession} onPreview={vi.fn()} />
     );
-
-    const button = screen.getByRole('button');
-    await user.click(button);
-    expect(onArchive).toHaveBeenCalledOnce();
+    expect(screen.getByRole('button')).toBeDefined();
   });
 
   it('calls onPreview when preview button is clicked', async () => {
@@ -81,50 +55,10 @@ describe('ActionsCell', () => {
     const onPreview = vi.fn();
 
     renderWithTooltip(
-      <ActionsCell
-        session={archivedSession}
-        onArchive={vi.fn()}
-        onUnarchive={vi.fn()}
-        onPreview={onPreview}
-      />
+      <ActionsCell session={archivedSession} onPreview={onPreview} />
     );
 
-    // Preview is the first button for archived sessions
-    const buttons = screen.getAllByRole('button');
-    await user.click(buttons[0]);
+    await user.click(screen.getByRole('button'));
     expect(onPreview).toHaveBeenCalledOnce();
-  });
-
-  it('calls onUnarchive when unarchive button is clicked', async () => {
-    const user = userEvent.setup();
-    const onUnarchive = vi.fn();
-
-    renderWithTooltip(
-      <ActionsCell
-        session={archivedSession}
-        onArchive={vi.fn()}
-        onUnarchive={onUnarchive}
-        onPreview={vi.fn()}
-      />
-    );
-
-    // Unarchive is the second button for archived sessions
-    const buttons = screen.getAllByRole('button');
-    await user.click(buttons[1]);
-    expect(onUnarchive).toHaveBeenCalledOnce();
-  });
-
-  it('does not render preview button when onPreview is undefined', () => {
-    renderWithTooltip(
-      <ActionsCell
-        session={archivedSession}
-        onArchive={vi.fn()}
-        onUnarchive={vi.fn()}
-      />
-    );
-
-    // Only unarchive button should be present
-    const buttons = screen.getAllByRole('button');
-    expect(buttons).toHaveLength(1);
   });
 });
