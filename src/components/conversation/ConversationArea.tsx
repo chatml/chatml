@@ -467,44 +467,45 @@ export function ConversationArea({ children }: ConversationAreaProps) {
     return { visibleTabs: session, sessionTabs: session };
   }, [fileTabs, selectedSessionId]);
 
-  // LRU cache of recent session IDs — keeps Pierre Shadow DOMs alive across
+  // LRU cache of recent sessions — keeps Pierre Shadow DOMs alive across
   // session switches to avoid expensive Shiki re-tokenization cold starts.
-  // Updated synchronously (not in useEffect) so cachedSessionTabs sees the
-  // correct order on the same render pass.
-  const recentSessionIdsRef = useRef<string[]>([]);
-  // Track the last-active file tab ID per session so we only cache one
-  // CodeViewer per cached session (not all tabs).
-  const lastActiveTabPerSessionRef = useRef<Map<string, string>>(new Map());
-  const recentSessionIds = useMemo(() => {
-    if (!selectedSessionId) return recentSessionIdsRef.current;
-    // Record the active tab for the current session before switching
-    if (selectedFileTabId) {
-      lastActiveTabPerSessionRef.current.set(selectedSessionId, selectedFileTabId);
+  // Each entry pairs a session ID with its last-active file tab ID so the
+  // downstream memo can resolve cached tabs without reading refs during render.
+  type RecentSession = { sessionId: string; activeTabId: string | null };
+  const recentSessionsRef = useRef<RecentSession[]>([]);
+  const recentSessions = useMemo((): RecentSession[] => {
+    if (!selectedSessionId) return recentSessionsRef.current;
+    const entries = recentSessionsRef.current;
+    // Update active tab for the current session
+    const existing = entries.find(e => e.sessionId === selectedSessionId);
+    if (existing) {
+      if (selectedFileTabId) existing.activeTabId = selectedFileTabId;
+      // Move to front (LRU)
+      const idx = entries.indexOf(existing);
+      if (idx > 0) { entries.splice(idx, 1); entries.unshift(existing); }
+    } else {
+      entries.unshift({ sessionId: selectedSessionId, activeTabId: selectedFileTabId });
     }
-    const ids = recentSessionIdsRef.current;
-    const idx = ids.indexOf(selectedSessionId);
-    if (idx !== -1) ids.splice(idx, 1);
-    ids.unshift(selectedSessionId);
-    if (ids.length > MAX_CACHED_SESSIONS) ids.length = MAX_CACHED_SESSIONS;
-    return [...ids]; // new array so downstream memos see a changed reference
+    if (entries.length > MAX_CACHED_SESSIONS) entries.length = MAX_CACHED_SESSIONS;
+    recentSessionsRef.current = entries;
+    return [...entries]; // new array so downstream memos see a changed reference
   }, [selectedSessionId, selectedFileTabId]);
 
   // Only the last-active tab from each recently-viewed session is kept mounted
   // (hidden) so its Pierre Shadow DOM survives session switches. This caps
   // cached viewers at MAX_CACHED_SESSIONS - 1 instead of potentially all tabs.
   const cachedSessionTabs = useMemo(() => {
-    if (recentSessionIds.length <= 1) return [];
-    const cachedIds = recentSessionIds.slice(1); // exclude current session
+    if (recentSessions.length <= 1) return [];
     const result: FileTab[] = [];
-    for (const sessionId of cachedIds) {
-      const activeTabId = lastActiveTabPerSessionRef.current.get(sessionId);
+    for (let i = 1; i < recentSessions.length; i++) {
+      const { sessionId, activeTabId } = recentSessions[i];
       if (activeTabId) {
         const tab = fileTabs.find(t => t.id === activeTabId && t.sessionId === sessionId);
         if (tab) result.push(tab);
       }
     }
     return result;
-  }, [fileTabs, recentSessionIds]);
+  }, [fileTabs, recentSessions]);
 
   const currentSession = useMemo(
     () => sessions.find((s) => s.id === selectedSessionId),
