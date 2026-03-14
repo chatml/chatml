@@ -374,8 +374,7 @@ export const MessageBlock = memo(function MessageBlock({
     prev.planContent !== next.planContent ||
     prev.checkpointUuid !== next.checkpointUuid ||
     prevProps.isFirst !== nextProps.isFirst ||
-    prevProps.worktreePath !== nextProps.worktreePath ||
-    prevProps.searchQuery !== nextProps.searchQuery) {
+    prevProps.worktreePath !== nextProps.worktreePath) {
     return false;
   }
 
@@ -390,8 +389,15 @@ export const MessageBlock = memo(function MessageBlock({
     return false;
   }
 
-  // Search navigation — only compare when relevant
-  if (nextProps.hasMatches || prevProps.hasMatches) {
+  // Search — only re-render messages that had or now have matches.
+  // Messages without matches in both old and new query can skip re-render.
+  if (prevProps.searchQuery !== nextProps.searchQuery) {
+    if (prevProps.hasMatches || nextProps.hasMatches) {
+      return false;
+    }
+    // Neither had nor will have matches — skip re-render
+  } else if (nextProps.hasMatches || prevProps.hasMatches) {
+    // Same query but match navigation changed
     if (prevProps.currentMatchIndex !== nextProps.currentMatchIndex ||
       prevProps.matchOffset !== nextProps.matchOffset) {
       return false;

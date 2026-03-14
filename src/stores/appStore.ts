@@ -52,6 +52,60 @@ function pruneRefreshMap() {
 // Maximum number of file tabs before LRU eviction kicks in
 const MAX_FILE_TABS = 10;
 
+// Message eviction thresholds — conversations with more than this many messages
+// get trimmed to EVICTION_KEEP when navigating away, reducing memory pressure.
+// Pagination metadata is preserved so messages can be re-fetched on scroll-up.
+const MESSAGE_EVICTION_THRESHOLD = 100;
+const MESSAGE_EVICTION_KEEP = 50;
+
+type PaginationState = {
+  hasMore: boolean;
+  oldestPosition: number | null;
+  isLoadingMore: boolean;
+  totalCount: number;
+};
+
+/**
+ * Evicts old messages from the given conversation IDs when they exceed
+ * MESSAGE_EVICTION_THRESHOLD. Keeps the most recent MESSAGE_EVICTION_KEEP
+ * messages and marks pagination as hasMore so older messages can be re-fetched.
+ * Returns the original references unchanged if no eviction is needed.
+ */
+function evictConversationMessages(
+  messages: Record<string, Message[]>,
+  pagination: Record<string, PaginationState>,
+  convIds: string[],
+): { messages: Record<string, Message[]>; pagination: Record<string, PaginationState> } {
+  let newMessages = messages;
+  let newPagination = pagination;
+  let changed = false;
+
+  for (const convId of convIds) {
+    const msgs = newMessages[convId];
+    if (!msgs || msgs.length <= MESSAGE_EVICTION_THRESHOLD) continue;
+
+    if (!changed) {
+      newMessages = { ...newMessages };
+      newPagination = { ...newPagination };
+      changed = true;
+    }
+
+    newMessages[convId] = msgs.slice(-MESSAGE_EVICTION_KEEP);
+    const prev = newPagination[convId];
+    newPagination[convId] = {
+      hasMore: true,
+      // Preserve existing cursor; if absent (shouldn't happen for large
+      // conversations) leave null — the fetch path treats null as "from latest"
+      // which is safe since we kept the most recent messages.
+      oldestPosition: prev?.oldestPosition ?? null,
+      isLoadingMore: false,
+      totalCount: prev?.totalCount ?? msgs.length,
+    };
+  }
+
+  return { messages: newMessages, pagination: newPagination };
+}
+
 // Script output is stored outside Zustand to avoid O(n²) array copies on every line.
 // A version counter in the store triggers re-renders when output changes.
 const scriptOutputBuffers = new Map<string, string[]>(); // key: `${sessionId}:${runId}`
@@ -893,10 +947,26 @@ export const useAppStore = create<AppState>((set, get) => ({
       useSettingsStore.getState().markSessionRead(id);
     }
 
+    // Evict messages from the previous session's conversations to free memory.
+    // Only conversations exceeding the threshold are trimmed.
+    const prevSessionId = state.selectedSessionId;
+    let evictedMessages = state.messagesByConversation;
+    let evictedPagination = state.messagePagination;
+    if (prevSessionId && prevSessionId !== id) {
+      const prevConvIds = state.conversations
+        .filter(c => c.sessionId === prevSessionId)
+        .map(c => c.id);
+      const evicted = evictConversationMessages(evictedMessages, evictedPagination, prevConvIds);
+      evictedMessages = evicted.messages;
+      evictedPagination = evicted.pagination;
+    }
+
     set({
       selectedSessionId: id,
       selectedConversationId: targetConversation?.id || null,
       selectedFileTabId: newSelectedTabId,
+      messagesByConversation: evictedMessages,
+      messagePagination: evictedPagination,
     });
 
     // Background PR refresh: catches missed WebSocket events and externally-created PRs.
@@ -1096,9 +1166,20 @@ export const useAppStore = create<AppState>((set, get) => ({
     const state = get();
     const conversation = id ? state.conversations.find(c => c.id === id) : undefined;
     const sessionId = conversation?.sessionId || state.selectedSessionId;
+
+    // Evict messages from the previously-selected conversation if it's large.
+    // Keeps the most recent messages so scroll-to-bottom still works; older
+    // messages are re-fetched on demand via pagination when the user scrolls up.
+    const prevId = state.selectedConversationId;
+    const evicted = prevId && prevId !== id
+      ? evictConversationMessages(state.messagesByConversation, state.messagePagination, [prevId])
+      : { messages: state.messagesByConversation, pagination: state.messagePagination };
+
     set({
       selectedConversationId: id,
       checkpoints: [],
+      messagesByConversation: evicted.messages,
+      messagePagination: evicted.pagination,
       ...(sessionId && id ? {
         lastActiveConversationPerSession: {
           ...state.lastActiveConversationPerSession,

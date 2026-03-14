@@ -69,9 +69,11 @@ export const VirtualizedMessageList = forwardRef<VirtualizedMessageListHandle, V
 
     const messageOffsetsRef = useRef(searchMatches.messageOffsets);
     const messageHasMatchesRef = useRef(messageHasMatches);
+    const worktreePathRef = useRef(worktreePath);
     useEffect(() => {
       messageOffsetsRef.current = searchMatches.messageOffsets;
       messageHasMatchesRef.current = messageHasMatches;
+      worktreePathRef.current = worktreePath;
     });
 
     const scrollerRefCallback = useCallback((el: HTMLElement | Window | null) => {
@@ -98,6 +100,10 @@ export const VirtualizedMessageList = forwardRef<VirtualizedMessageListHandle, V
       },
     }));
 
+    // worktreePath uses a ref since it rarely changes and doesn't need to trigger
+    // re-renders of all visible messages. Search state stays in deps since it's
+    // debounced upstream (~200ms) and MessageBlock's memo comparator skips
+    // re-renders for messages without matches.
     const itemContent = useCallback(
       (index: number, message: Message) => (
         <div className="pl-5 pr-12">
@@ -108,7 +114,7 @@ export const VirtualizedMessageList = forwardRef<VirtualizedMessageListHandle, V
             <MessageBlock
               message={message}
               isFirst={index === 0}
-              worktreePath={worktreePath}
+              worktreePath={worktreePathRef.current}
               searchQuery={searchQuery}
               currentMatchIndex={currentMatchIndex}
               matchOffset={messageOffsetsRef.current[index] ?? 0}
@@ -117,7 +123,8 @@ export const VirtualizedMessageList = forwardRef<VirtualizedMessageListHandle, V
           </ErrorBoundary>
         </div>
       ),
-      [worktreePath, searchQuery, currentMatchIndex, searchMatches.total]
+      // eslint-disable-next-line react-hooks/exhaustive-deps -- worktreePath read from ref; searchMatches.total triggers offset/hasMatches refresh
+      [searchQuery, currentMatchIndex, searchMatches.total]
     );
 
     // Determine follow output behavior: auto-scroll when at bottom.
