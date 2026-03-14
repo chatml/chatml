@@ -101,11 +101,11 @@ export function SessionsDataTable({
     () => [
       {
         id: 'workspace',
-        header: '',
-        width: '40px',
+        header: 'Workspace',
+        width: '140px',
         sortable: true,
         accessorKey: 'workspaceName',
-        cell: (row) => <WorkspaceCell workspaceId={row.workspace.id} workspaceName={row.workspaceName} archived={row.session.archived} compact />,
+        cell: (row) => <WorkspaceCell workspaceId={row.workspace.id} workspaceName={row.workspaceName} archived={row.session.archived} />,
       },
       {
         id: 'name',
@@ -145,7 +145,7 @@ export function SessionsDataTable({
       {
         id: 'actions',
         header: '',
-        width: '40px',
+        width: '56px',
         align: 'right',
         cell: (row) => (
           <ActionsCell
