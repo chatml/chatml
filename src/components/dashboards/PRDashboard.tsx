@@ -24,6 +24,7 @@ import {
 import { isTauri, copyToClipboard } from '@/lib/tauri';
 import { useToast } from '@/components/ui/toast';
 import { getLabelStyles } from '@/lib/label-colors';
+import { BranchPill } from '@/components/shared/BranchPill';
 import { useTheme } from 'next-themes';
 import {
   RefreshCw,
@@ -98,10 +99,7 @@ function TitleCell({ pr }: { pr: PRWithStatus }) {
 function BranchCell({ pr }: { pr: PRWithStatus }) {
   return (
     <div className="flex items-center gap-1.5 text-xs">
-      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-purple-500/10 text-purple-700 dark:text-purple-300/70 font-mono truncate" title={pr.branch}>
-        <GitBranch className="h-3.5 w-3.5 shrink-0" />
-        {pr.branch}
-      </span>
+      <BranchPill name={pr.branch} />
     </div>
   );
 }
