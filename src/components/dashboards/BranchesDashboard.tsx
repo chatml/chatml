@@ -557,13 +557,11 @@ export function BranchesDashboard({
               Try Again
             </Button>
           </div>
-        ) : !branchData || allBranches.length === 0 ? (
+        ) : !branchData ? (
           <div className="text-center py-12 text-muted-foreground">
             <GitBranch className="h-12 w-12 mx-auto mb-4 opacity-50" />
             <p className="text-lg font-medium">No branches found</p>
-            <p className="text-sm mt-1">
-              {searchTerm ? 'Try adjusting your search.' : 'This repository has no branches.'}
-            </p>
+            <p className="text-sm mt-1">This repository has no branches.</p>
           </div>
         ) : (
           <>
