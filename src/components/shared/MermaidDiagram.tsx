@@ -4,9 +4,10 @@ import { useState, useEffect, useId } from 'react';
 import mermaid from 'mermaid';
 import { TransformWrapper, TransformComponent, useControls } from 'react-zoom-pan-pinch';
 import { Button } from '@/components/ui/button';
-import { ZoomIn, ZoomOut, Undo2, AlertCircle } from 'lucide-react';
+import { ZoomIn, ZoomOut, Undo2, AlertCircle, Maximize2, Minimize2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { ErrorBoundary } from '@/components/shared/ErrorBoundary';
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 
 interface MermaidDiagramProps {
   code: string;
@@ -55,6 +56,7 @@ export function MermaidDiagram({ code }: MermaidDiagramProps) {
   const [svg, setSvg] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isFullscreen, setIsFullscreen] = useState(false);
   const uniqueId = useId().replace(/:/g, '-');
 
   useEffect(() => {
@@ -165,6 +167,16 @@ export function MermaidDiagram({ code }: MermaidDiagramProps) {
           <div className="flex items-center px-2 py-1.5 border-b border-border/50 bg-muted/50">
             <ZoomControls />
             <div className="flex-1" />
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-6 w-6 mr-1"
+              onClick={() => setIsFullscreen(true)}
+              title="Expand diagram"
+              aria-label="Expand diagram fullscreen"
+            >
+              <Maximize2 className="h-3.5 w-3.5" />
+            </Button>
             <span className="text-2xs text-muted-foreground font-medium uppercase tracking-wider">
               Mermaid
             </span>
@@ -185,6 +197,50 @@ export function MermaidDiagram({ code }: MermaidDiagramProps) {
           </TransformComponent>
         </TransformWrapper>
       </div>
+
+      {/* Fullscreen dialog */}
+      <Dialog open={isFullscreen} onOpenChange={setIsFullscreen}>
+        <DialogContent
+          className="sm:max-w-[95vw] h-[90vh] p-0 flex flex-col"
+          showCloseButton={false}
+        >
+          <DialogTitle className="sr-only">Mermaid Diagram</DialogTitle>
+          <DialogDescription className="sr-only">Fullscreen view of the mermaid diagram with zoom controls</DialogDescription>
+          <TransformWrapper
+            initialScale={1}
+            minScale={0.1}
+            maxScale={5}
+            centerOnInit
+          >
+            <div className="flex items-center px-3 py-2 border-b border-border/50 bg-muted/50">
+              <ZoomControls />
+              <div className="flex-1" />
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-6 w-6"
+                onClick={() => setIsFullscreen(false)}
+                title="Close fullscreen"
+                aria-label="Close fullscreen view"
+              >
+                <Minimize2 className="h-3.5 w-3.5" />
+              </Button>
+            </div>
+            <TransformComponent
+              wrapperClass="!w-full !flex-1"
+              contentClass="!w-full !h-full flex items-center justify-center"
+            >
+              <div
+                className={cn(
+                  'p-4 flex items-center justify-center',
+                  '[&_svg]:max-w-full [&_svg]:h-auto'
+                )}
+                dangerouslySetInnerHTML={{ __html: svg || '' }}
+              />
+            </TransformComponent>
+          </TransformWrapper>
+        </DialogContent>
+      </Dialog>
     </ErrorBoundary>
   );
 }
