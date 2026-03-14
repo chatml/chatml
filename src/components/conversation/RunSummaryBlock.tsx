@@ -86,6 +86,7 @@ export const RunSummaryBlock = memo(function RunSummaryBlock({ summary, checkpoi
   const [confirmOpen, setConfirmOpen] = useState(false);
   const showTokenUsage = useSettingsStore((s) => s.showTokenUsage);
   const showChatCost = useSettingsStore((s) => s.showChatCost);
+  const showMessageTokenCost = useSettingsStore((s) => s.showMessageTokenCost);
 
   const handleRewind = async (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -221,16 +222,16 @@ export const RunSummaryBlock = memo(function RunSummaryBlock({ summary, checkpoi
           </span>
         )}
 
-        {/* Cost */}
-        {showChatCost && cost && (
+        {/* Cost (hidden when per-message footer already shows it) */}
+        {showChatCost && !showMessageTokenCost && cost && (
           <>
             <DotSeparator />
             <span className="font-medium">{cost}</span>
           </>
         )}
 
-        {/* Token counts — grouped pair */}
-        {showTokenUsage && (totalInputTokens > 0 || totalOutputTokens > 0) && (
+        {/* Token counts — grouped pair (hidden when per-message footer already shows them) */}
+        {showTokenUsage && !showMessageTokenCost && (totalInputTokens > 0 || totalOutputTokens > 0) && (
           <>
             <DotSeparator />
             <span className="flex items-center gap-2">

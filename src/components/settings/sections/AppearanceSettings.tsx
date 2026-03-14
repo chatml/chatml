@@ -109,6 +109,8 @@ export function AppearanceSettings() {
   const setShowTokenUsage = useSettingsStore((s) => s.setShowTokenUsage);
   const showChatCost = useSettingsStore((s) => s.showChatCost);
   const setShowChatCost = useSettingsStore((s) => s.setShowChatCost);
+  const showMessageTokenCost = useSettingsStore((s) => s.showMessageTokenCost);
+  const setShowMessageTokenCost = useSettingsStore((s) => s.setShowMessageTokenCost);
   const { theme, setTheme } = useTheme();
 
   return (
@@ -189,6 +191,16 @@ export function AppearanceSettings() {
           onReset={() => setShowChatCost(SETTINGS_DEFAULTS.showChatCost)}
         >
           <Switch checked={showChatCost} onCheckedChange={setShowChatCost} aria-label="Show cost" />
+        </SettingsRow>
+
+        <SettingsRow
+          settingId="showMessageTokenCost"
+          title="Show per-message tokens & cost"
+          description="Display a compact token count and cost line below each assistant message"
+          isModified={showMessageTokenCost !== SETTINGS_DEFAULTS.showMessageTokenCost}
+          onReset={() => setShowMessageTokenCost(SETTINGS_DEFAULTS.showMessageTokenCost)}
+        >
+          <Switch checked={showMessageTokenCost} onCheckedChange={setShowMessageTokenCost} aria-label="Show per-message tokens and cost" />
         </SettingsRow>
       </SettingsGroup>
     </div>
