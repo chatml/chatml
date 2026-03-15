@@ -50,7 +50,7 @@ import { useClaudeAuthStatus, refreshClaudeAuthStatus } from '@/hooks/useClaudeA
 import { SessionHandoffDialog } from '@/components/conversation/SessionHandoffDialog';
 import { useToast } from '@/components/ui/toast';
 import { refreshAWSCredentials } from '@/lib/api';
-import { KeyRound, Settings2, ShieldAlert, Loader2 } from 'lucide-react';
+import { KeyRound, Settings2, ShieldAlert } from 'lucide-react';
 
 // Module-level LRU of recently-viewed sessions. Stored outside the component so
 // useMemo can read it during render without violating react-hooks/refs or
