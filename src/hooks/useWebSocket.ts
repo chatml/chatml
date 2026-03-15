@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useCallback } from 'react';
 import { useAppStore } from '@/stores/appStore';
-import type { WSEvent, AgentEvent, AgentTodoItem, UserQuestion, ReviewComment, TokenUsage, ModelUsageInfo, McpServerStatus } from '@/lib/types';
+import type { WSEvent, ReviewComment } from '@/lib/types';
 import { createStreamingBatcher, type StreamingBatcher } from '@/hooks/useStreamingBatcher';
 
 import {
@@ -11,74 +11,27 @@ import {
   WEBSOCKET_RECONNECT_MAX_ATTEMPTS,
 } from '@/lib/constants';
 import { getAuthToken } from '@/lib/auth-token';
-import { getBackendPort, getBackendPortSync } from '@/lib/backend-port';
+import { getBackendPort } from '@/lib/backend-port';
 import { useConnectionStore } from '@/stores/connectionStore';
 import { getConversationDropStats, getActiveStreamingConversations, getInterruptedConversations, getConversationMessages, getStreamingSnapshot, toStoreMessage, updateSession as updateSessionApi, refreshPRStatus, addSystemMessage } from '@/lib/api';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useBranchCacheStore } from '@/stores/branchCacheStore';
 import { useSlashCommandStore } from '@/stores/slashCommandStore';
 import { notifyDesktop, getConversationLabel } from '@/hooks/useDesktopNotifications';
-import { playSound } from '@/lib/sounds';
 
-// Ref-counted map of conversations currently being reconciled from a streaming snapshot.
-// Content events for these conversations are dropped to prevent the snapshot + live event
-// race condition that causes duplicate tools and text.
-// Uses a counter (not a Set) so concurrent reconnects don't prematurely clear the flag
-// when the first reconciliation finishes while the second is still in-flight.
-const reconcilingConversations = new Map<string, number>();
+// Import extracted modules
+import { markPlanModeExited, isInPlanModeExitCooldown, clearPlanModeState } from '@/hooks/useWebSocketPlanMode';
+import { startReconciling, stopReconciling, isReconciling, clearReconciliationState } from '@/hooks/useWebSocketReconciliation';
+import {
+  normalizeUsage, isAuthErrorMessage, isAgentEvent, isAgentTodoItemArray,
+  isValidConversationStatus, isModelUsageRecord, isUserQuestionArray,
+  isMcpServerStatusArray, getWsUrl, mapStatus, notifyBackgroundSession,
+  BATCHABLE_EVENTS, RECONCILIATION_SUPPRESSED_EVENTS,
+  DROP_STATS_DEBOUNCE_MS, getLastDropStatsFetchTime, updateLastDropStatsFetchTime,
+} from '@/hooks/useWebSocketHelpers';
 
-function startReconciling(convId: string) {
-  reconcilingConversations.set(convId, (reconcilingConversations.get(convId) ?? 0) + 1);
-}
-
-function stopReconciling(convId: string) {
-  const count = (reconcilingConversations.get(convId) ?? 1) - 1;
-  if (count <= 0) {
-    reconcilingConversations.delete(convId);
-  } else {
-    reconcilingConversations.set(convId, count);
-  }
-}
-
-function isReconciling(convId: string): boolean {
-  return (reconcilingConversations.get(convId) ?? 0) > 0;
-}
-
-// Content event types that should be suppressed during reconciliation.
-// Lifecycle events (result, turn_complete, complete, conversation_status) are NOT suppressed.
-const RECONCILIATION_SUPPRESSED_EVENTS = new Set([
-  'assistant_text', 'tool_start', 'tool_end', 'thinking_start', 'thinking_delta',
-  'thinking', 'subagent_started', 'subagent_stopped', 'subagent_output',
-  'ghost_text', 'todo_update', 'tool_progress',
-]);
-
-// Conversations that recently exited plan mode. Maps conversationId → exit timestamp.
-// Used to suppress stale SDK status messages that try to re-activate plan mode after
-// ExitPlanMode approval (SDK bug #15755). A timestamp-based cooldown ensures multiple
-// stale events are all suppressed (not just the first one, as with a Set).
-const recentlyExitedPlanMode = new Map<string, number>();
-const PLAN_MODE_EXIT_COOLDOWN_MS = 5000;
-
-// Check if a conversation is within the plan mode exit cooldown window
-function isInPlanModeExitCooldown(conversationId: string): boolean {
-  const exitTime = recentlyExitedPlanMode.get(conversationId);
-  if (exitTime == null) return false;
-  return Date.now() - exitTime < PLAN_MODE_EXIT_COOLDOWN_MS;
-}
-
-// Allow UI components (e.g. plan approval, toggle) to mark a conversation as recently
-// exited so that stale `init` or `permission_mode_changed` events don't re-activate it.
-export function markPlanModeExited(conversationId: string) {
-  recentlyExitedPlanMode.set(conversationId, Date.now());
-  // Auto-cleanup after cooldown expires
-  setTimeout(() => {
-    // Only delete if timestamp hasn't been refreshed
-    const exitTime = recentlyExitedPlanMode.get(conversationId);
-    if (exitTime != null && Date.now() - exitTime >= PLAN_MODE_EXIT_COOLDOWN_MS) {
-      recentlyExitedPlanMode.delete(conversationId);
-    }
-  }, PLAN_MODE_EXIT_COOLDOWN_MS + 100);
-}
+// Re-export for backward compatibility (ChatInput.tsx imports markPlanModeExited from here)
+export { markPlanModeExited };
 
 /**
  * Clean up module-level state for a conversation that is being removed.
@@ -86,157 +39,9 @@ export function markPlanModeExited(conversationId: string) {
  * in reconcilingConversations and recentlyExitedPlanMode maps.
  */
 export function cleanupConversationState(conversationId: string) {
-  reconcilingConversations.delete(conversationId);
-  recentlyExitedPlanMode.delete(conversationId);
+  clearReconciliationState(conversationId);
+  clearPlanModeState(conversationId);
 }
-
-/**
- * Mark a session as unread and play an in-app sound when a background session
- * has a notable event (turn complete, question, plan approval).
- * Only fires if the conversation belongs to a session that is NOT currently selected.
- * Sound plays even when the app is focused (notifyDesktop only plays when unfocused).
- */
-function notifyBackgroundSession(conversationId: string): void {
-  const state = useAppStore.getState();
-  const conv = state.conversations.find((c) => c.id === conversationId);
-  if (!conv || conv.sessionId === state.selectedSessionId) return;
-
-  useSettingsStore.getState().markSessionUnread(conv.sessionId);
-
-  // Play in-app sound when focused (notifyDesktop handles the unfocused case)
-  if (typeof document !== 'undefined' && document.hasFocus()) {
-    const { soundEffects, soundEffectType } = useSettingsStore.getState();
-    if (soundEffects) {
-      playSound(soundEffectType);
-    }
-  }
-}
-
-// Safely coerce an unknown value to a number, returning undefined for non-numeric values.
-const num = (v: unknown): number | undefined => (typeof v === 'number' ? v : undefined);
-
-// Normalize SDK usage object (snake_case) to our TokenUsage type (camelCase)
-function normalizeUsage(raw: Record<string, unknown> | undefined): TokenUsage | undefined {
-  if (!raw) return undefined;
-  const inputTokens = num(raw.input_tokens) ?? num(raw.inputTokens);
-  const outputTokens = num(raw.output_tokens) ?? num(raw.outputTokens);
-  if (inputTokens == null && outputTokens == null) return undefined;
-  return {
-    inputTokens: inputTokens ?? 0,
-    outputTokens: outputTokens ?? 0,
-    cacheReadInputTokens: num(raw.cache_read_input_tokens) ?? num(raw.cacheReadInputTokens),
-    cacheCreationInputTokens: num(raw.cache_creation_input_tokens) ?? num(raw.cacheCreationInputTokens),
-  };
-}
-
-// Debounce interval for drop stats REST fetches (ms).
-// The backend ticker fires every 2s, so 3s avoids redundant requests during bursty drops.
-const DROP_STATS_DEBOUNCE_MS = 3000;
-let lastDropStatsFetchTime = 0;
-
-// Check if an error message is auth-related (used for deduplication)
-function isAuthErrorMessage(msg: string): boolean {
-  const lower = msg.toLowerCase();
-  return lower.includes('authentication') || lower.includes('api key') || lower.includes('oauth') || lower.includes('aws credentials');
-}
-
-// Type guards for WebSocket payload validation
-function isAgentEvent(payload: unknown): payload is AgentEvent {
-  if (typeof payload !== 'object' || payload === null) {
-    return false;
-  }
-  const obj = payload as Record<string, unknown>;
-  // AgentEvent must have at least a type field (string) or be a valid event object
-  // Allow objects that have any of the known AgentEvent fields
-  return (
-    typeof obj.type === 'string' ||
-    typeof obj.content === 'string' ||
-    typeof obj.id === 'string' ||
-    typeof obj.tool === 'string' ||
-    typeof obj.name === 'string' ||
-    typeof obj.message === 'string' ||
-    Array.isArray(obj.todos)
-  );
-}
-
-function isAgentTodoItem(item: unknown): item is AgentTodoItem {
-  if (typeof item !== 'object' || item === null) {
-    return false;
-  }
-  const obj = item as Record<string, unknown>;
-  return (
-    typeof obj.content === 'string' &&
-    typeof obj.status === 'string' &&
-    (obj.status === 'pending' || obj.status === 'in_progress' || obj.status === 'completed') &&
-    typeof obj.activeForm === 'string'
-  );
-}
-
-function isAgentTodoItemArray(payload: unknown): payload is AgentTodoItem[] {
-  return Array.isArray(payload) && payload.every(isAgentTodoItem);
-}
-
-const VALID_CONVERSATION_STATUSES = ['active', 'idle', 'completed'] as const;
-type ConversationStatus = typeof VALID_CONVERSATION_STATUSES[number];
-
-function isValidConversationStatus(value: unknown): value is ConversationStatus {
-  return typeof value === 'string' && VALID_CONVERSATION_STATUSES.includes(value as ConversationStatus);
-}
-
-function isModelUsageRecord(value: unknown): value is Record<string, ModelUsageInfo> {
-  if (typeof value !== 'object' || value === null) return false;
-  return Object.values(value as Record<string, unknown>).every(v => {
-    if (typeof v !== 'object' || v === null) return false;
-    const entry = v as Record<string, unknown>;
-    return typeof entry.inputTokens === 'number' && typeof entry.outputTokens === 'number';
-  });
-}
-
-function isUserQuestionArray(value: unknown): value is UserQuestion[] {
-  if (!Array.isArray(value)) return false;
-  return value.every(q => {
-    if (typeof q !== 'object' || q === null) return false;
-    const obj = q as Record<string, unknown>;
-    return typeof obj.question === 'string' && typeof obj.header === 'string' && Array.isArray(obj.options);
-  });
-}
-
-function isMcpServerStatusArray(value: unknown): value is McpServerStatus[] {
-  if (!Array.isArray(value)) return false;
-  return value.every(s => {
-    if (typeof s !== 'object' || s === null) return false;
-    const obj = s as Record<string, unknown>;
-    return typeof obj.name === 'string' && typeof obj.status === 'string';
-  });
-}
-
-// Get WebSocket URL dynamically based on the backend port
-function getWsUrl(): string {
-  if (typeof window !== 'undefined' && (window as Window & { __TAURI__?: unknown }).__TAURI__) {
-    const port = getBackendPortSync();
-    return `ws://localhost:${port}/ws`;
-  }
-  return process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:9876/ws';
-}
-
-// Events that are buffered by the streaming batcher and should NOT trigger a force-flush.
-// All other conversation events force-flush pending text/thinking before processing.
-const BATCHABLE_EVENTS = new Set([
-  'assistant_text', 'thinking_delta', 'thinking_start', 'thinking',
-  // Low-frequency informational events that don't depend on streaming text state
-  'name_suggestion', 'input_suggestion', 'context_usage', 'context_window_size',
-  'todo_update', 'tool_progress', 'agent_notification', 'warning',
-  'hook_pre_tool', 'hook_post_tool', 'hook_response', 'hook_tool_failure',
-  'session_started', 'session_ended', 'session_id_update',
-  'auth_status', 'status_update', 'agent_stderr', 'json_parse_error',
-  'agent_stop', 'pre_compact', 'model_changed', 'supported_models',
-  'supported_commands', 'mcp_status', 'account_info',
-  'subagent_started', 'subagent_stopped', 'subagent_output', 'subagent_usage',
-  'user_question_request', 'user_question_timeout', 'user_question_cancelled',
-  'permission_mode_changed', 'plan_approval_request', 'plan_mode_auto_exited',
-  'streaming_warning', 'summary_updated', 'checkpoint_created', 'files_rewound',
-  'ghost_text',
-]);
 
 export function useWebSocket(enabled: boolean = true) {
   const wsRef = useRef<WebSocket | null>(null);
@@ -274,17 +79,6 @@ export function useWebSocket(enabled: boolean = true) {
       },
     );
   }
-
-  // Map backend status to frontend session status
-  const mapStatus = (status: string): 'active' | 'idle' | 'done' | 'error' => {
-    switch (status) {
-      case 'running': return 'active';
-      case 'pending': return 'idle';
-      case 'done': return 'done';
-      case 'error': return 'error';
-      default: return 'idle';
-    }
-  };
 
   const handleConversationEvent = useCallback((data: WSEvent) => {
     const conversationId = data.conversationId;
@@ -335,8 +129,6 @@ export function useWebSocket(enabled: boolean = true) {
     if (data.type === 'summary_updated') {
       const payload = data.payload as unknown as Record<string, unknown> | null;
       if (payload && typeof payload === 'object' && payload.id) {
-        // Use updateSummary for partial payloads (e.g., failed status only has id/status/errorMessage)
-        // Use setSummary only when we have a full Summary object (completed status with all fields)
         const existing = store.summaries[conversationId];
         if (existing) {
           store.updateSummary(conversationId, payload as unknown as Partial<import('@/lib/types').Summary>);
@@ -422,39 +214,31 @@ export function useWebSocket(enabled: boolean = true) {
         break;
 
       case 'assistant_text':
-        // Buffer text for batched store update (flushed once per animation frame).
-        // Side-effects (setThinking(false), clearInputSuggestion) are deferred to
-        // flush time — the 16ms delay is imperceptible and avoids N*3 store updates.
         if (event?.content) {
           batcher.batchText(conversationId, event.content);
         }
         break;
 
       case 'thinking_start':
-        // Start a new thinking block
         store.setThinking(conversationId, true);
         break;
 
       case 'thinking_delta':
-        // Buffer thinking text for batched store update
         if (event?.content) {
           batcher.batchThinking(conversationId, event.content);
         }
         break;
 
       case 'thinking':
-        // Full thinking content (non-streaming)
         if (event?.content) {
           store.appendThinkingText(conversationId, event.content);
         }
         break;
 
       case 'tool_start':
-        // Add active tool — route to sub-agent if agentId is present
         if (event?.id && event?.tool) {
           const agentId = event.agentId as string | undefined;
           if (agentId) {
-            // Sub-agent tool — add to sub-agent's tool list
             store.addSubAgentTool(conversationId, agentId, {
               id: event.id,
               tool: event.tool,
@@ -463,9 +247,6 @@ export function useWebSocket(enabled: boolean = true) {
               agentId,
             });
           } else {
-            // Parent agent tool
-            // User-interactive tools wait for user input and have their own backend
-            // timeouts (24h). Skip the 5-min orphaned-tool timeout.
             const isUserInteractiveTool = event.tool === 'ExitPlanMode' || event.tool === 'AskUserQuestion';
             store.addActiveTool(conversationId, {
               id: event.id,
@@ -478,8 +259,6 @@ export function useWebSocket(enabled: boolean = true) {
         break;
 
       case 'tool_end':
-        // Complete active tool with success/summary info
-        // For Bash tools, also capture stdout/stderr; for all tools, capture metadata
         if (event?.id) {
           const toolAgentId = event.agentId as string | undefined;
           const stdout = event.stdout as string | undefined;
@@ -487,18 +266,13 @@ export function useWebSocket(enabled: boolean = true) {
           const metadata = event.metadata;
 
           if (toolAgentId) {
-            // Sub-agent tool completion
             store.completeSubAgentTool(conversationId, toolAgentId, event.id, event.success, event.summary, stdout, stderr);
           } else {
-            // Parent agent tool
             const activeTool = store.activeTools[conversationId]?.find(t => t.id === event.id);
 
             if (activeTool) {
-              // Normal path: tool exists in state
               store.completeActiveTool(conversationId, event.id, event.success, event.summary, stdout, stderr, metadata);
             } else if (event.tool) {
-              // Race condition recovery: tool_end arrived but tool wasn't in state.
-              // Create a synthetic completed entry so the timeline shows it as finished.
               console.warn(`[WebSocket] tool_end for untracked tool: ${event.id} (${event.tool})`);
               store.addActiveTool(conversationId, {
                 id: event.id,
@@ -508,27 +282,23 @@ export function useWebSocket(enabled: boolean = true) {
               }, { skipTimeout: true });
               store.completeActiveTool(conversationId, event.id, event.success, event.summary, stdout, stderr, metadata);
             }
-            // If no tool name and not in state, silently skip - tool was never shown to user
           }
         }
         break;
 
       case 'todo_update':
-        // Update agent todos for real-time tracking
         if (event?.todos && isAgentTodoItemArray(event.todos)) {
           store.setAgentTodos(conversationId, event.todos);
         }
         break;
 
       case 'name_suggestion':
-        // Update conversation name (unless strict privacy is enabled)
         if (event?.name && !useSettingsStore.getState().strictPrivacy) {
           store.updateConversation(conversationId, { name: event.name });
         }
         break;
 
       case 'input_suggestion': {
-        // AI-generated input suggestion (ghost text + optional pills)
         const currentStreaming = getStore().streamingState[conversationId];
         if (!currentStreaming?.isStreaming && useSettingsStore.getState().suggestionsEnabled) {
           store.setInputSuggestion(conversationId, {
@@ -540,14 +310,10 @@ export function useWebSocket(enabled: boolean = true) {
       }
 
       case 'result': {
-        // Result event signals the end of a turn - finalize streaming atomically
-        // This prevents data loss by creating message and clearing state in one update
-        // Re-read store to capture any mutations from earlier cases in this handler
         const freshStore = getStore();
         const startTime = freshStore.streamingState[conversationId]?.startTime;
         const durationMs = startTime ? Date.now() - startTime : undefined;
 
-        // Capture tool usage before clearing
         const tools = freshStore.activeTools[conversationId] || [];
         const toolUsage = tools.map((t) => ({
           id: t.id,
@@ -561,9 +327,6 @@ export function useWebSocket(enabled: boolean = true) {
           metadata: t.metadata,
         }));
 
-        // Atomic finalization - creates message and clears streaming/activeTools in one update
-        // Note: finalizeStreamingMessage also clears thinking state, so no separate clearThinking needed
-        // Extract permission denials if present
         const permissionDenials = Array.isArray(event.permissionDenials) && event.permissionDenials.length > 0
           ? (event.permissionDenials as Array<{ toolName: string; toolUseId: string }>)
           : undefined;
@@ -586,7 +349,6 @@ export function useWebSocket(enabled: boolean = true) {
             permissionDenials,
           },
         });
-        // Extract context window size from the result's modelUsage.
         const resultModelUsage = event.modelUsage as Record<string, { contextWindow?: number }> | undefined;
         if (resultModelUsage) {
           for (const key of Object.keys(resultModelUsage)) {
@@ -598,24 +360,14 @@ export function useWebSocket(enabled: boolean = true) {
             }
           }
         }
-        // NOTE: event.usage is cumulative across all API calls in the agentic loop,
-        // so we do NOT update context usage from it — it would overwrite the correct
-        // per-call data from context_usage events emitted per assistant message.
-        // Update conversation status to completed
         freshStore.updateConversation(conversationId, { status: 'completed' });
-        // Clear agent todos — tasks are no longer relevant after turn ends
         freshStore.clearAgentTodos(conversationId);
-        // Clear any stale pending question — the turn is over
         freshStore.clearPendingUserQuestion(conversationId);
-        // Trigger changes panel refresh for this session
         const resultConv = freshStore.conversations.find((c) => c.id === conversationId);
         if (resultConv) {
           freshStore.setLastTurnCompletedAt(resultConv.sessionId, Date.now());
         }
-        // Notify background session (unread dot + in-app sound when focused)
         notifyBackgroundSession(conversationId);
-        // Desktop notification for task completion.
-        // success defaults to true when the field is absent (only explicitly false means failure).
         notifyDesktop(
           conversationId,
           event.success !== false ? 'Task completed' : 'Task finished with errors',
@@ -625,8 +377,6 @@ export function useWebSocket(enabled: boolean = true) {
       }
 
       case 'turn_complete': {
-        // Turn completed but process is still alive — finalize streaming state
-        // but keep conversation as active (ready for next message without restart)
         const turnStore = getStore();
         const turnStartTime = turnStore.streamingState[conversationId]?.startTime;
         const turnDurationMs = turnStartTime ? Date.now() - turnStartTime : undefined;
@@ -643,40 +393,26 @@ export function useWebSocket(enabled: boolean = true) {
           stderr: t.stderr,
         }));
 
-        // Atomic finalization - creates message and clears streaming/activeTools.
-        // commitQueued commits the queued user message AFTER the assistant message.
         turnStore.finalizeStreamingMessage(conversationId, {
           durationMs: turnDurationMs,
           toolUsage: turnToolUsage.length > 0 ? turnToolUsage : undefined,
           commitQueued: true,
         });
-        // Explicitly set status to active — finalizeStreamingMessage only clears
-        // streaming/activeTools state but does NOT update conversation status.
-        // The process is still alive and ready for the next message.
         turnStore.updateConversation(conversationId, { status: 'active' });
-        // Clear agent todos — tasks are no longer relevant after turn ends
         turnStore.clearAgentTodos(conversationId);
-        // Trigger changes panel refresh for this session
         const turnConv = turnStore.conversations.find((c) => c.id === conversationId);
         if (turnConv) {
           turnStore.setLastTurnCompletedAt(turnConv.sessionId, Date.now());
         }
-        // Notify background session (unread dot + in-app sound when focused)
         notifyBackgroundSession(conversationId);
         break;
       }
 
       case 'complete': {
-        // Complete event signals the entire conversation ended (stdin closed)
-        // Finalize streaming content and atomically commit any queued user
-        // message after the assistant message so the conversation order is correct.
-        // terminal clears remaining queue and forces isStreaming=false.
         store.finalizeStreamingMessage(conversationId, { commitQueued: true, terminal: true });
         store.clearAgentTodos(conversationId);
         store.clearPendingUserQuestion(conversationId);
-        // Update conversation status to idle (ready for new input)
         store.updateConversation(conversationId, { status: 'idle' });
-        // Trigger changes panel refresh for this session
         const completeConv = store.conversations.find((c) => c.id === conversationId);
         if (completeConv) {
           store.setLastTurnCompletedAt(completeConv.sessionId, Date.now());
@@ -696,7 +432,7 @@ export function useWebSocket(enabled: boolean = true) {
             if (event.source === 'user' || event.source === 'enter_plan_tool') {
               // Genuine activation (user toggle or agent EnterPlanMode tool) — always honor
               // and clear cooldown so subsequent sdk_status events for this cycle aren't suppressed.
-              recentlyExitedPlanMode.delete(conversationId);
+              clearPlanModeState(conversationId);
               store.setPlanModeActive(conversationId, true);
               // Only notify when user explicitly toggles plan mode. Agent-initiated entry
               // (enter_plan_tool) means the agent just started planning — no plan to review yet.
@@ -731,7 +467,7 @@ export function useWebSocket(enabled: boolean = true) {
       case 'plan_approval_request':
         // ExitPlanMode tool intercepted by PreToolUse hook - show approval UI
         // Clear cooldown — this is a fresh plan approval cycle
-        recentlyExitedPlanMode.delete(conversationId);
+        clearPlanModeState(conversationId);
         if (event?.requestId) {
           store.setPendingPlanApproval(
             conversationId,
@@ -744,14 +480,11 @@ export function useWebSocket(enabled: boolean = true) {
         break;
 
       case 'plan_mode_auto_exited':
-        // ExitPlanMode was auto-approved because there was no plan content to review.
-        // Clear plan mode state so the UI toggle turns off and stale events are suppressed.
         store.setPlanModeActive(conversationId, false);
         markPlanModeExited(conversationId);
         break;
 
       case 'auth_error': {
-        // Handle auth error with a clear, actionable message
         const authMessage = event?.message || 'Authentication failed. Check your API key in Settings > Claude Code.';
         console.error('Auth error:', authMessage);
         store.setStreamingError(conversationId, authMessage);
@@ -761,35 +494,25 @@ export function useWebSocket(enabled: boolean = true) {
       }
 
       case 'error': {
-        // Handle error - capture the error message and stop streaming
         const errorMessage = event?.message || 'An unknown error occurred';
         console.error('Conversation error:', errorMessage);
 
-        // Don't overwrite an auth error with a generic crash error
         const currentError = useAppStore.getState().streamingState[conversationId]?.error;
         if (currentError && isAuthErrorMessage(currentError)) {
           break;
         }
 
-        // Finalize any partial assistant content and atomically commit any
-        // queued user message before the assistant message.
-        // terminal clears remaining queue and forces isStreaming=false.
         store.finalizeStreamingMessage(conversationId, { commitQueued: true, terminal: true });
         store.setStreamingError(conversationId, errorMessage);
-        // Update conversation status to idle
         store.updateConversation(conversationId, { status: 'idle' });
-        // Desktop notification for error
         notifyDesktop(conversationId, 'Task error', (errorMessage || 'Unknown error').slice(0, 100));
         break;
       }
 
       case 'streaming_warning': {
-        // Emit custom event for StreamingWarningHandler to display toast.
-        // Debounce the REST call to avoid redundant requests during bursty drops.
-        // The backend ticker fires every 2s, so at most one fetch per 3s is sufficient.
         const now = Date.now();
-        if (now - lastDropStatsFetchTime >= DROP_STATS_DEBOUNCE_MS) {
-          lastDropStatsFetchTime = now;
+        if (now - getLastDropStatsFetchTime() >= DROP_STATS_DEBOUNCE_MS) {
+          updateLastDropStatsFetchTime(now);
           getConversationDropStats(conversationId).then((stats) => {
             window.dispatchEvent(new CustomEvent('streaming-warning', {
               detail: {
@@ -802,7 +525,6 @@ export function useWebSocket(enabled: boolean = true) {
               }
             }));
           }).catch(() => {
-            // Fallback: emit warning with whatever info we have from WebSocket
             window.dispatchEvent(new CustomEvent('streaming-warning', {
               detail: {
                 source: event?.source,
@@ -812,7 +534,6 @@ export function useWebSocket(enabled: boolean = true) {
             }));
           });
         } else {
-          // Debounced: emit warning with WebSocket data only (no REST call)
           window.dispatchEvent(new CustomEvent('streaming-warning', {
             detail: {
               source: event?.source,
@@ -825,7 +546,6 @@ export function useWebSocket(enabled: boolean = true) {
       }
 
       case 'user_question_request':
-        // AskUserQuestion tool - set pending question for the conversation
         if (event?.requestId && isUserQuestionArray(event?.questions)) {
           store.setPendingUserQuestion(conversationId, {
             requestId: event.requestId as string,
@@ -839,7 +559,6 @@ export function useWebSocket(enabled: boolean = true) {
         break;
 
       case 'context_usage':
-        // Update context usage from per-assistant-message token counts
         if (event?.inputTokens !== undefined) {
           store.setContextUsage(conversationId, {
             inputTokens: event.inputTokens ?? 0,
@@ -851,7 +570,6 @@ export function useWebSocket(enabled: boolean = true) {
         break;
 
       case 'context_window_size':
-        // Update the max context window from modelUsage in result
         if (event?.contextWindow) {
           store.setContextUsage(conversationId, {
             contextWindow: event.contextWindow,
@@ -860,14 +578,12 @@ export function useWebSocket(enabled: boolean = true) {
         break;
 
       case 'compact_boundary':
-        // After compaction, reset all token fields until next assistant message provides fresh data
         store.setContextUsage(conversationId, {
           inputTokens: 0,
           outputTokens: 0,
           cacheReadInputTokens: 0,
           cacheCreationInputTokens: 0,
         });
-        // Notify user that context was compacted
         window.dispatchEvent(new CustomEvent('agent-notification', {
           detail: {
             title: 'Context compacted',
@@ -878,7 +594,6 @@ export function useWebSocket(enabled: boolean = true) {
             conversationId,
           }
         }));
-        // Persist a system message so it survives reloads
         {
           const compactContent = event?.trigger
             ? `Context was compacted (${event.trigger}).`
@@ -898,15 +613,8 @@ export function useWebSocket(enabled: boolean = true) {
         break;
 
       case 'pre_compact':
-        // Hook fires BEFORE context compaction occurs — no UI action needed
         break;
 
-      // ====================================================================
-      // Group B: Tool Progress — elapsed time on long-running tools
-      // The agent SDK emits tool_progress with `parentToolUseId` as the
-      // canonical tool identifier. Some backend paths also set `id`.
-      // We prefer `id` when present for consistency with tool_start/tool_end.
-      // ====================================================================
       case 'tool_progress':
         if (event?.parentToolUseId || event?.id) {
           const toolId = (event.id ?? event.parentToolUseId) as string;
@@ -917,9 +625,6 @@ export function useWebSocket(enabled: boolean = true) {
         }
         break;
 
-      // ====================================================================
-      // Group C: Agent Notifications — toast + desktop for important ones
-      // ====================================================================
       case 'agent_notification':
         if (event?.title || event?.message) {
           window.dispatchEvent(new CustomEvent('agent-notification', {
@@ -936,9 +641,6 @@ export function useWebSocket(enabled: boolean = true) {
         }
         break;
 
-      // ====================================================================
-      // Group D: Checkpoints & File Rewind
-      // ====================================================================
       case 'checkpoint_created':
         if (event?.checkpointUuid) {
           store.addCheckpoint({
@@ -968,22 +670,13 @@ export function useWebSocket(enabled: boolean = true) {
         break;
       }
 
-      // ====================================================================
-      // Group E: Model Changed
-      // ====================================================================
       case 'model_changed':
         if (event?.model) {
           store.updateConversation(conversationId, { model: event.model as string });
         }
         break;
 
-      // ====================================================================
-      // Group F: Interrupted + User Question Timeout
-      // ====================================================================
       case 'interrupted':
-        // Finalize streaming content and atomically commit any queued user
-        // message after the assistant message so the conversation order is correct.
-        // terminal clears remaining queue and forces isStreaming=false.
         store.finalizeStreamingMessage(conversationId, { commitQueued: true, terminal: true });
         addSystemMessage(conversationId, 'Agent was stopped by user.')
           .then(({ id }) => {
@@ -1005,9 +698,6 @@ export function useWebSocket(enabled: boolean = true) {
         store.clearPendingUserQuestion(conversationId);
         break;
 
-      // ====================================================================
-      // Group G: Hook Events — surface failures, log the rest
-      // ====================================================================
       case 'hook_tool_failure':
         console.warn(`[Hook] Tool failure: ${event?.tool} — ${event?.error}`);
         break;
@@ -1015,26 +705,14 @@ export function useWebSocket(enabled: boolean = true) {
       case 'hook_pre_tool':
       case 'hook_post_tool':
       case 'hook_response':
-        // Diagnostic — no UI action needed
         break;
 
-      // ====================================================================
-      // Group H: Session Lifecycle — managed by backend
-      // ====================================================================
       case 'session_started':
       case 'session_ended':
       case 'session_id_update':
-        // Session lifecycle managed by backend. No frontend action needed.
         break;
 
-      // ====================================================================
-      // Group I: Diagnostic Events
-      // ====================================================================
       case 'agent_stop':
-        // Informational only — do NOT clear streaming state here.
-        // The SDK's stopHook fires BEFORE the result message, so clearing
-        // here would destroy accumulated content. Cleanup is handled by
-        // result (finalizeStreamingMessage) → complete (final cleanup).
         break;
 
       case 'command_error':
@@ -1044,7 +722,6 @@ export function useWebSocket(enabled: boolean = true) {
         break;
 
       case 'auth_status': {
-        // Show notification when SDK is authenticating (e.g., AWS SSO browser flow)
         const isAuthenticating = event?.isAuthenticating;
         if (isAuthenticating) {
           window.dispatchEvent(new CustomEvent('agent-notification', {
@@ -1069,13 +746,9 @@ export function useWebSocket(enabled: boolean = true) {
       }
 
       case 'status_update':
-        // Diagnostic — no UI action needed
         break;
 
       case 'session_recovering':
-        // CLI process crashed — agent-runner is auto-recovering.
-        // Show recovery banner. The 'init' event from the recovered
-        // session clears the state. If all retries fail, 'error' handles it.
         store.setAgentRecovering(
           conversationId,
           typeof event.attempt === 'number' ? event.attempt : 1,
@@ -1084,7 +757,6 @@ export function useWebSocket(enabled: boolean = true) {
         break;
 
       case 'warning':
-        // Surface agent warnings (e.g., API overloaded errors) as toast notifications
         if (event?.message) {
           window.dispatchEvent(new CustomEvent('agent-notification', {
             detail: {
@@ -1102,9 +774,6 @@ export function useWebSocket(enabled: boolean = true) {
         console.warn(`[Agent] ${data.type}:`, event?.message || event?.data);
         break;
 
-      // ====================================================================
-      // Group J: Query Responses
-      // ====================================================================
       case 'supported_models':
         if (event?.models) {
           store.setSupportedModels(event.models as Array<{
@@ -1123,8 +792,6 @@ export function useWebSocket(enabled: boolean = true) {
         if (event?.commands) {
           const cmds = event.commands as Array<{ name: string; description: string; argumentHint: string }>;
           store.setSupportedCommands(cmds);
-          // Also feed into the slash command store so SDK-discovered
-          // commands appear in the slash menu with rich descriptions.
           useSlashCommandStore.getState().setSdkCommandsRich(cmds);
         }
         break;
@@ -1157,9 +824,6 @@ export function useWebSocket(enabled: boolean = true) {
         }
         break;
 
-      // ====================================================================
-      // Sub-agent lifecycle events (Group A)
-      // ====================================================================
       case 'subagent_started':
         if (event?.agentId && event?.agentType) {
           store.addSubAgent(conversationId, {
@@ -1199,8 +863,6 @@ export function useWebSocket(enabled: boolean = true) {
   }, []);
 
   // After a WebSocket reconnection, reconcile frontend streaming state with backend reality.
-  // If the agent finished while disconnected: clear orphaned streaming state and reload messages.
-  // If the agent is still active: fetch the streaming snapshot to restore the view.
   const reconcileStreamingState = useCallback(async () => {
     const store = getStore();
 
@@ -1216,15 +878,10 @@ export function useWebSocket(enabled: boolean = true) {
 
       for (const convId of locallyStreaming) {
         if (!serverActiveSet.has(convId)) {
-          // Agent finished while we were disconnected — clear orphaned state.
-          // commitQueued commits the user message after any partial
-          // assistant content (consistent with all other finalization paths).
-          // terminal clears remaining queue and forces isStreaming=false.
           store.finalizeStreamingMessage(convId, { commitQueued: true, terminal: true });
           store.clearThinking(convId);
           store.updateConversation(convId, { status: 'completed' });
 
-          // Reload messages to pick up any assistant responses we missed
           try {
             const page = await getConversationMessages(convId, { compact: true });
             const messages = page.messages.map(m => toStoreMessage(m, convId, { compacted: true }));
@@ -1233,16 +890,12 @@ export function useWebSocket(enabled: boolean = true) {
             console.warn(`Failed to reload messages for ${convId} after reconnect:`, err);
           }
         } else {
-          // Agent still active — restore streaming view from snapshot.
-          // Suppress live content events during snapshot fetch to prevent duplicates.
           startReconciling(convId);
           try {
             const snapshot = await getStreamingSnapshot(convId);
             if (snapshot && snapshot.text) {
               store.restoreStreamingFromSnapshot(convId, snapshot);
             } else {
-              // No snapshot (race: result just persisted but process hasn't exited yet)
-              // Reload messages as safety net, keep streaming active
               try {
                 const page = await getConversationMessages(convId, { compact: true });
                 const messages = page.messages.map(m => toStoreMessage(m, convId, { compacted: true }));
@@ -1263,27 +916,22 @@ export function useWebSocket(enabled: boolean = true) {
     }
 
     // Refresh PR status for ALL sessions with open PRs to catch events missed during disconnect.
-    // Best-effort: results arrive via WebSocket session_pr_update events.
-    // Stagger requests to avoid flooding the backend on reconnect.
     try {
       const { sessions } = getStore();
       const openPRSessions = sessions.filter(s => s.prStatus === 'open');
       for (const session of openPRSessions) {
         refreshPRStatus(session.workspaceId, session.id).catch(() => {});
-        // Small delay between requests to avoid a burst of concurrent POSTs
         await new Promise(r => setTimeout(r, 150));
       }
     } catch {
-      // Silently ignore — PR status will catch up on next poll cycle
+      // Silently ignore
     }
   // getStore is a stable reference (useAppStore.getState), no deps needed
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // After the first WebSocket connection, discover conversations that are actively
-  // streaming on the backend. Unlike reconnection reconciliation (which starts from
-  // locally-known streaming state), this queries the backend for the source of truth
-  // since the frontend resets all conversation statuses to 'idle' on a fresh load.
+  // streaming on the backend.
   const reconcileInitialStreamingState = useCallback(async () => {
     const store = getStore();
 
@@ -1292,22 +940,17 @@ export function useWebSocket(enabled: boolean = true) {
       const { conversationIds: serverActive } = await getActiveStreamingConversations();
 
       for (const convId of serverActive) {
-        // Skip if conversation isn't loaded yet (dashboard data may still be loading)
         const conv = store.conversations.find(c => c.id === convId);
         if (!conv) continue;
 
-        // Restore conversation status (was reset to 'idle' during load)
         store.updateConversation(convId, { status: 'active' });
 
-        // Try to restore streaming content from snapshot.
-        // Suppress live content events during fetch to prevent duplicates.
         startReconciling(convId);
         try {
           const snapshot = await getStreamingSnapshot(convId);
           if (snapshot && snapshot.text) {
             store.restoreStreamingFromSnapshot(convId, snapshot);
           } else {
-            // No snapshot yet — just mark streaming so the spinner shows
             store.setStreaming(convId, true);
           }
         } catch (err) {
@@ -1321,14 +964,13 @@ export function useWebSocket(enabled: boolean = true) {
       console.warn('Failed to reconcile initial streaming state:', err);
     }
 
-    // Phase 2: Discover conversations interrupted by app shutdown (agent dead, snapshot in DB)
+    // Phase 2: Discover conversations interrupted by app shutdown
     try {
       const interrupted = await getInterruptedConversations();
       for (const item of interrupted) {
         const conv = store.conversations.find(c => c.id === item.id);
         if (!conv) continue;
 
-        // Mark as idle (agent is dead) but record the interrupted state
         store.updateConversation(item.id, { status: 'idle' });
         store.setInterruptedState(item.id, {
           agentSessionId: item.agentSessionId,
@@ -1354,12 +996,8 @@ export function useWebSocket(enabled: boolean = true) {
     if (!enabledRef.current) return;
     if (wsRef.current?.readyState === WebSocket.OPEN) return;
 
-    // Ensure we have the backend port before connecting
-    // This is especially important for Tauri builds with dynamic port allocation
     await getBackendPort();
 
-    // Fetch auth token (awaits if not yet cached, uses cache otherwise)
-    // This ensures we always have the current token, even after sidecar restarts
     const token = await getAuthToken();
     const baseWsUrl = getWsUrl();
     const wsUrl = token ? `${baseWsUrl}?token=${encodeURIComponent(token)}` : baseWsUrl;
@@ -1372,12 +1010,8 @@ export function useWebSocket(enabled: boolean = true) {
       useConnectionStore.getState().setConnected();
 
       if (isReconnect) {
-        // Intentionally not awaited — we don't want to block the WebSocket onopen handler.
-        // The UI may briefly show stale streaming state until reconciliation completes.
         reconcileStreamingState();
       } else {
-        // First connection: discover any agents already running on the backend.
-        // Intentionally not awaited — same reasoning as reconnect reconciliation.
         reconcileInitialStreamingState();
       }
     };
@@ -1417,7 +1051,7 @@ export function useWebSocket(enabled: boolean = true) {
           return;
         }
 
-        // Handle session task status auto-update (backlog→in_progress, in_review, done)
+        // Handle session task status auto-update
         if (data.type === 'session_task_status_update' && data.sessionId) {
           const payload = data.payload as Record<string, unknown> | undefined;
           if (payload?.taskStatus && typeof payload.taskStatus === 'string') {
@@ -1431,7 +1065,6 @@ export function useWebSocket(enabled: boolean = true) {
         // Handle session stats update (real-time stats from file watcher)
         if (data.type === 'session_stats_update' && data.sessionId) {
           const payload = data.payload as Record<string, unknown> | undefined;
-          // stats can be null (no changes) or { additions: number, deletions: number }
           const stats = payload?.stats as { additions: number; deletions: number } | null | undefined;
           getStore().updateSession(data.sessionId, { stats: stats ?? undefined });
           return;
@@ -1476,8 +1109,6 @@ export function useWebSocket(enabled: boolean = true) {
             useBranchCacheStore.getState().invalidateAll();
           }
           window.dispatchEvent(new CustomEvent(data.type, { detail: data.payload }));
-          // Don't return -- pr_dashboard_update is also followed by session_pr_update
-          // which we still want to process
         }
 
         // Handle session PR status update (background GitHub polling)
@@ -1510,16 +1141,13 @@ export function useWebSocket(enabled: boolean = true) {
             if (typeof payload.prTitle === 'string') {
               updates.prTitle = payload.prTitle;
             }
-            // Map checkStatus to hasCheckFailures AND preserve full checkStatus
             if (typeof payload.checkStatus === 'string') {
               updates.hasCheckFailures = payload.checkStatus === 'failure';
               updates.checkStatus = payload.checkStatus as 'none' | 'pending' | 'success' | 'failure';
             }
-            // Map mergeable to hasMergeConflict
             if (typeof payload.mergeable === 'boolean') {
               updates.hasMergeConflict = !payload.mergeable;
             }
-            // Pass through taskStatus if backend auto-updated it
             if (typeof payload.taskStatus === 'string') {
               updates.taskStatus = payload.taskStatus as import('@/lib/types').SessionTaskStatus;
             }
@@ -1527,7 +1155,6 @@ export function useWebSocket(enabled: boolean = true) {
             getStore().updateSession(data.sessionId, updates);
 
             // Clear stale input suggestions for conversations in this session
-            // so they regenerate with fresh PR context
             const sessionConvs = getStore().conversations.filter(
               (c: { sessionId: string }) => c.sessionId === data.sessionId
             );
@@ -1547,7 +1174,6 @@ export function useWebSocket(enabled: boolean = true) {
                     ...(deleteBranchOnArchive ? { deleteBranch: true } : {}),
                   }).then((result) => {
                     if (result === null) {
-                      // Blank session was deleted by backend
                       getStore().removeSession(sid);
                     } else {
                       getStore().archiveSession(sid);
@@ -1562,7 +1188,7 @@ export function useWebSocket(enabled: boolean = true) {
           return;
         }
 
-        // Handle archive summary updates (generated asynchronously after archiving)
+        // Handle archive summary updates
         if (data.type === 'archive_summary_updated' && data.sessionId) {
           const payload = data.payload as Record<string, unknown> | undefined;
           if (payload) {
@@ -1585,7 +1211,6 @@ export function useWebSocket(enabled: boolean = true) {
           const payload = data.payload as ReviewComment | undefined;
           if (payload?.id) {
             getStore().addReviewComment(data.sessionId, payload);
-            // Auto-switch sidebar to Code Review tab when a new comment arrives for the active session
             if (data.sessionId === getStore().selectedSessionId) {
               window.dispatchEvent(new CustomEvent('select-sidebar-tab', { detail: { tab: 'review' } }));
             }
@@ -1609,7 +1234,7 @@ export function useWebSocket(enabled: boolean = true) {
           return;
         }
 
-        // Legacy agent events - validate string payloads
+        // Legacy agent events
         if (data.type === 'output' && data.agentId && typeof data.payload === 'string') {
           getStore().appendOutput(data.agentId, data.payload);
         } else if (data.type === 'status' && data.agentId && typeof data.payload === 'string') {
@@ -1630,28 +1255,23 @@ export function useWebSocket(enabled: boolean = true) {
         clearTimeout(reconnectTimeoutRef.current);
       }
 
-      // If the sidecar is restarting, skip auto-reconnect — the useSidecarLifecycle
-      // hook will trigger reconnect() after the backend is healthy again.
       const { sidecarState } = useConnectionStore.getState();
       if (sidecarState === 'restarting' || sidecarState === 'failed') {
         return;
       }
 
-      // Only reconnect if still enabled and under max attempts
       if (enabledRef.current && connectRef.current) {
         attemptRef.current += 1;
         const attempt = attemptRef.current;
 
         if (attempt <= WEBSOCKET_RECONNECT_MAX_ATTEMPTS) {
           useConnectionStore.getState().setConnecting(attempt);
-          // Exponential backoff: base * 2^(attempt-1), capped at max delay
           const delay = Math.min(
             WEBSOCKET_RECONNECT_BASE_DELAY_MS * Math.pow(2, attempt - 1),
             WEBSOCKET_RECONNECT_MAX_DELAY_MS,
           );
           reconnectTimeoutRef.current = setTimeout(connectRef.current, delay);
         }
-        // Max attempts exceeded — stay disconnected so the UI can prompt manual reconnect
       }
     };
 
@@ -1671,7 +1291,6 @@ export function useWebSocket(enabled: boolean = true) {
     if (enabled) {
       connect();
     } else {
-      // Close connection if disabled
       if (reconnectTimeoutRef.current) {
         clearTimeout(reconnectTimeoutRef.current);
       }
@@ -1684,7 +1303,6 @@ export function useWebSocket(enabled: boolean = true) {
         clearTimeout(reconnectTimeoutRef.current);
       }
       wsRef.current?.close();
-      // Tear down the streaming batcher to cancel any pending animation frame
       batcherRef.current?.destroy();
     };
   }, [enabled, connect]);
@@ -1692,15 +1310,12 @@ export function useWebSocket(enabled: boolean = true) {
   const reconnect = useCallback(() => {
     attemptRef.current = 0;
     useConnectionStore.getState().setConnecting(0);
-    // connect() already cancels pending reconnect timers and checks readyState,
-    // so we just need to tear down the old socket without triggering onclose reconnect.
     if (reconnectTimeoutRef.current) {
       clearTimeout(reconnectTimeoutRef.current);
       reconnectTimeoutRef.current = null;
     }
     const oldWs = wsRef.current;
     if (oldWs) {
-      // Remove onclose to prevent the auto-reconnect logic from racing with us
       oldWs.onclose = null;
       oldWs.close();
       wsRef.current = null;
