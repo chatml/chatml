@@ -1,3 +1,4 @@
+import React from 'react';
 import { useAppStore } from '@/stores/appStore';
 
 /** Static fallback model definitions used when no agent is connected. */
@@ -8,6 +9,16 @@ export const MODELS = [
 ] as const;
 
 export type ModelId = (typeof MODELS)[number]['id'];
+
+/** Model entry used for UI model selectors and keyboard shortcut cycling. */
+export interface ModelEntry {
+  id: string;
+  name: string;
+  icon: React.ComponentType<{ className?: string }>;
+  supportsThinking: boolean;
+  supportsEffort: boolean;
+  supportedEffortLevels?: ('low' | 'medium' | 'high' | 'max')[];
+}
 
 export interface DynamicModelInfo {
   id: string;

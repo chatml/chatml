@@ -1,49 +1,20 @@
 'use client';
 
-import { useState, useRef, useEffect, useCallback, useMemo, Fragment } from 'react';
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { useAppStore } from '@/stores/appStore';
 import { createConversation, sendConversationMessage, stopConversation, setConversationPlanMode, approvePlan } from '@/lib/api';
 import { markPlanModeExited } from '@/hooks/useWebSocket';
 import { useAppEventListener } from '@/lib/custom-events';
 import { useShortcut } from '@/hooks/useShortcut';
-import { Button } from '@/components/ui/button';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuTrigger,
-  DropdownMenuSeparator,
-} from '@/components/ui/dropdown-menu';
-import {
-  Bot,
-  ChevronDown,
-  Paperclip,
-  ArrowUp,
-  Square,
-  Brain,
-  BookOpen,
-  Plus,
-  Link,
-  FolderSymlink,
-
-  Upload,
-  ScrollText,
-  Check,
-  Copy,
-  MessageSquarePlus,
-  Star,
-} from 'lucide-react';
+import { Bot, Upload, Link, FolderSymlink, ScrollText } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useClaudeAuthStatus } from '@/hooks/useClaudeAuthStatus';
-import { ContextMeter } from './ContextMeter';
 import { useToast } from '@/components/ui/toast';
-import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
-import { listenForFileDrop, listenForDragEnter, listenForDragLeave, openFileDialog, copyToClipboard } from '@/lib/tauri';
+import { copyToClipboard } from '@/lib/tauri';
 import type { Attachment, SuggestionPill } from '@/lib/types';
 import { AttachmentGrid } from './AttachmentGrid';
 import { AttachmentPreviewModal } from './AttachmentPreviewModal';
-import { processDroppedFiles, validateAttachments, SUPPORTED_EXTENSIONS, loadAllAttachmentContents, generateAttachmentId, ATTACHMENT_LIMITS } from '@/lib/attachments';
+import { loadAllAttachmentContents } from '@/lib/attachments';
 import { UserQuestionPrompt } from './UserQuestionPrompt';
 import { usePendingUserQuestion, useStreamingChatInput, useSelectedIds, useConversationState, useChatInputActions, useConversationHasMessages } from '@/stores/selectors';
 import { useSettingsStore } from '@/stores/settingsStore';
@@ -54,9 +25,17 @@ import { LinearIssuePicker } from './LinearIssuePicker';
 import { WorkspacePicker } from './WorkspacePicker';
 import type { LinearIssueDTO } from '@/lib/api';
 import { PlateInput, type PlateInputHandle } from './PlateInput';
-import { MODELS as SHARED_MODELS } from '@/lib/models';
+import { MODELS as SHARED_MODELS, type ModelEntry } from '@/lib/models';
 import type { MentionItem } from '@/components/ui/mention-node';
 import { listSessionFiles, type FileNodeDTO } from '@/lib/api';
+
+// Extracted modules
+import { useChatInputDrafts } from './useChatInputDrafts';
+import { useChatInputAttachments } from './useChatInputAttachments';
+import { useChatInputKeyboardShortcuts } from './useChatInputKeyboardShortcuts';
+import { ChatInputPillSuggestions } from './ChatInputPillSuggestions';
+import { ChatInputPlanApproval } from './ChatInputPlanApproval';
+import { ChatInputToolbar } from './ChatInputToolbar';
 
 // Flat file type for mention items
 interface FlatFile {
@@ -92,15 +71,6 @@ const STATIC_MODELS: ModelEntry[] = SHARED_MODELS.map((m) => ({
   supportsThinking: m.supportsThinking,
   supportsEffort: m.supportsEffort,
 }));
-
-interface ModelEntry {
-  id: string;
-  name: string;
-  icon: typeof Bot;
-  supportsThinking: boolean;
-  supportsEffort: boolean;
-  supportedEffortLevels?: ('low' | 'medium' | 'high' | 'max')[];
-}
 
 /** Build the model list from SDK-reported dynamic models, with static fallback. */
 function buildModelList(dynamic: ReturnType<typeof useAppStore.getState>['supportedModels']): ModelEntry[] {
@@ -159,29 +129,21 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
   const defaultPlanMode = useSettingsStore((s) => s.defaultPlanMode);
   const [planModeEnabled, setPlanModeEnabled] = useState(defaultPlanMode);
   const sendWithEnter = useSettingsStore((s) => s.sendWithEnter);
-  const autoConvertLongText = useSettingsStore((s) => s.autoConvertLongText);
   const suggestionsEnabled = useSettingsStore((s) => s.suggestionsEnabled);
   const autoSubmitPill = useSettingsStore((s) => s.autoSubmitPillSuggestion);
-  const [isDragOver, setIsDragOver] = useState(false);
-  const [isFocused, setIsFocused] = useState(false);
-  const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [summaryPickerOpen, setSummaryPickerOpen] = useState(false);
-  const [previewIndex, setPreviewIndex] = useState<number | null>(null);
   const [selectedSummaryIds, setSelectedSummaryIds] = useState<string[]>([]);
   const [linearPickerOpen, setLinearPickerOpen] = useState(false);
   const [linkedLinearIssue, setLinkedLinearIssue] = useState<LinearIssueDTO | null>(null);
+  const [isFocused, setIsFocused] = useState(false);
   const [workspacePickerOpen, setWorkspacePickerOpen] = useState(false);
   const [linkedWorkspaceIds, setLinkedWorkspaceIds] = useState<string[]>([]);
   const plateInputRef = useRef<PlateInputHandle>(null);
-  const attachmentsRef = useRef<Attachment[]>(attachments);
-  attachmentsRef.current = attachments;
   const messageRef = useRef(message);
   messageRef.current = message;
   const currentSessionIdRef = useRef<string | null>(null);
 
   // Scoped selectors — avoids subscribing to the entire store.
-  // ChatInput only re-renders when selected IDs, conversations, or the
-  // inline selectors below actually change.
   const { selectedWorkspaceId, selectedSessionId, selectedConversationId } = useSelectedIds();
   const { conversations, selectConversation, addConversation, removeConversation, updateConversation } = useConversationState();
   const {
@@ -192,7 +154,6 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
     clearPendingPlanApproval,
     setApprovedPlanContent,
     clearApprovedPlanContent,
-    clearActiveTools,
     finalizeStreamingMessage,
     setPlanModeActive,
     clearInputSuggestion,
@@ -201,6 +162,35 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
     clearDraftInput,
   } = useChatInputActions();
   currentSessionIdRef.current = selectedSessionId;
+
+  // Attachments hook
+  const autoConvertLongText = useSettingsStore((s) => s.autoConvertLongText);
+  const { error: showError, info: showInfo } = useToast();
+  const {
+    attachments,
+    setAttachments,
+    attachmentsRef,
+    isDragOver,
+    previewIndex,
+    setPreviewIndex,
+    handlePaste,
+    handleRemoveAttachment,
+    handleOpenFilePicker,
+  } = useChatInputAttachments({ autoConvertLongText, showError, showInfo });
+
+  // Drafts hook
+  useChatInputDrafts({
+    selectedSessionId,
+    plateInputRef,
+    messageRef,
+    attachmentsRef,
+    currentSessionIdRef,
+    setMessage,
+    setAttachments,
+    setDraftInput,
+    clearDraftInput,
+  });
+
   // Session-scoped streaming state — prevents cross-session plan/state leakage
   const streamingInput = useStreamingChatInput(selectedConversationId);
   const queuedCount = useAppStore(
@@ -209,7 +199,6 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
   const inputSuggestion = useAppStore(
     (s) => selectedConversationId ? s.inputSuggestions[selectedConversationId] : undefined
   );
-  const { error: showError, info: showInfo } = useToast();
 
   // File mentions for Plate editor
   const [mentionItems, setMentionItems] = useState<MentionItem[]>([]);
@@ -244,61 +233,6 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
     };
     loadFiles();
   }, [selectedWorkspaceId, selectedSessionId]);
-
-  // Save draft on unmount — catches navigation away (contentView changes),
-  // component teardown, and any other unmount scenario not covered by the
-  // session-switch effect below.
-  useEffect(() => {
-    return () => {
-      const sessionId = currentSessionIdRef.current;
-      if (!sessionId) return;
-      const currentText = plateInputRef.current?.getText() ?? messageRef.current ?? '';
-      const currentAttachments = attachmentsRef.current;
-      if (currentText || currentAttachments.length > 0) {
-        useAppStore.getState().setDraftInput(sessionId, {
-          text: currentText,
-          attachments: currentAttachments,
-        });
-      } else {
-        useAppStore.getState().clearDraftInput(sessionId);
-      }
-    };
-  }, []);
-
-  // Save/restore compose draft per session so switching sessions doesn't lose or leak input.
-  // Initialized to null (not selectedSessionId) so the first run restores any persisted draft.
-  const prevSessionIdRef = useRef<string | null>(null);
-  useEffect(() => {
-    const prevId = prevSessionIdRef.current;
-    if (prevId === selectedSessionId) return;
-
-    // Save draft for the previous session
-    if (prevId) {
-      const currentText = plateInputRef.current?.getText() ?? '';
-      const currentAttachments = attachmentsRef.current;
-      if (currentText || currentAttachments.length > 0) {
-        setDraftInput(prevId, { text: currentText, attachments: currentAttachments });
-      } else {
-        clearDraftInput(prevId);
-      }
-    }
-
-    // Restore draft for the new session (or clear)
-    const draft = selectedSessionId ? useAppStore.getState().draftInputs[selectedSessionId] : undefined;
-    if (draft) {
-      plateInputRef.current?.setText(draft.text);
-      setMessage(draft.text);
-      setAttachments(draft.attachments);
-      clearDraftInput(selectedSessionId!);
-    } else {
-      plateInputRef.current?.clear();
-      setMessage('');
-      setAttachments([]);
-    }
-
-    prevSessionIdRef.current = selectedSessionId;
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- only run on session switch
-  }, [selectedSessionId]);
 
   // Get current conversation
   const currentConversation = conversations.find((c) => c.id === selectedConversationId);
@@ -383,7 +317,6 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
   // Fetch user commands when session changes
   const fetchUserCommands = useSlashCommandStore((s) => s.fetchUserCommands);
   const setInstalledSkills = useSlashCommandStore((s) => s.setInstalledSkills);
-  // Note: installedSkills, userCommands, and sdkCommands are subscribed above for slashCommands derivation
   useEffect(() => {
     if (selectedWorkspaceId && selectedSessionId) {
       fetchUserCommands(selectedWorkspaceId, selectedSessionId);
@@ -443,23 +376,18 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
     && !isSuggestionStale;
 
   // Sync the local planModeEnabled toggle with the store's planModeActive, and vice versa.
-  // Agent-driven changes (store → toggle) take priority during streaming.
-  // User-driven changes (toggle → store) apply when not streaming.
   useEffect(() => {
-    // Agent-driven: store says plan mode ON but toggle is OFF → sync toggle ON
     if (planModeActive && !planModeEnabled) {
       setPlanModeEnabled(true);
-      return; // Store is already correct, don't push back
+      return;
     }
-    // Agent-driven: store says plan mode OFF while streaming → sync toggle OFF
     if (!planModeActive && planModeEnabled && isStreaming && !pendingPlanApproval) {
       setPlanModeEnabled(false);
-      return; // Store is already correct, don't push back
+      return;
     }
-    // User-driven: toggle changed while not streaming → push to store
     if (selectedConversationId) {
       const current = useAppStore.getState().streamingState[selectedConversationId];
-      if (current?.isStreaming) return; // Don't fight with WebSocket handler
+      if (current?.isStreaming) return;
       if ((current?.planModeActive ?? false) !== planModeEnabled) {
         setPlanModeActive(selectedConversationId, planModeEnabled);
       }
@@ -483,8 +411,6 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
   }, [selectedSessionId, defaultThinkingLevel, defaultPlanMode]);
 
   // Persist toggle state changes to the store for the current session.
-  // Skip when the session just changed (prevSessionRef hasn't caught up yet)
-  // to avoid overwriting the old session's state with the new session's values.
   useEffect(() => {
     if (!selectedSessionId || selectedSessionId !== prevSessionRef.current) return;
     setSessionToggleState(selectedSessionId, { thinkingLevel, planModeEnabled });
@@ -494,242 +420,8 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
   // Check if there's a pending user question
   const pendingQuestion = usePendingUserQuestion(selectedConversationId);
 
-  // Handle file drop processing
-  const handleFileDrop = useCallback(async (paths: string[]) => {
-    setIsDragOver(false);
-
-    const result = await processDroppedFiles(paths);
-
-    // Show errors
-    if (result.errors.length > 0) {
-      result.errors.forEach(err => showError(err));
-    }
-
-    if (result.attachments.length === 0) return;
-
-    // Use functional updater to avoid stale closure over attachments
-    let validationError: string | null = null;
-    setAttachments(prev => {
-      const newAttachments = [...prev, ...result.attachments];
-      const validation = validateAttachments(newAttachments);
-      if (!validation.valid) {
-        validationError = validation.error || 'Invalid attachments';
-        return prev;
-      }
-      return newAttachments;
-    });
-    if (validationError) showError(validationError);
-  }, [showError]);
-
-  // Shared helper: validate and add an image attachment with user feedback.
-  // Uses a ref to avoid the race condition of reading a captured variable
-  // set inside a setState updater (fragile under React 18 concurrent mode).
-  const validationErrorRef = useRef<string | null>(null);
-  const addImageAttachment = useCallback((attachment: Attachment) => {
-    validationErrorRef.current = null;
-    setAttachments(prev => {
-      const newAttachments = [...prev, attachment];
-      const validation = validateAttachments(newAttachments);
-      if (!validation.valid) {
-        validationErrorRef.current = validation.error || 'Invalid attachments';
-        return prev;
-      }
-      return newAttachments;
-    });
-    if (validationErrorRef.current) {
-      showError(validationErrorRef.current);
-    } else {
-      showInfo('Image pasted as attachment');
-    }
-  }, [showError, showInfo]);
-
-  // Handle pasted images and auto-convert long pasted text to attachment
-  const handlePaste = useCallback((e: React.ClipboardEvent) => {
-    // Check for pasted images
-    const items = Array.from(e.clipboardData.items);
-    const imageItem = items.find(item => item.type.startsWith('image/'));
-    if (imageItem) {
-      e.preventDefault();
-      e.stopPropagation();
-
-      const file = imageItem.getAsFile();
-      if (!file) return;
-
-      if (file.size > ATTACHMENT_LIMITS.MAX_FILE_SIZE) {
-        showError(`Pasted image exceeds ${Math.round(ATTACHMENT_LIMITS.MAX_FILE_SIZE / 1024 / 1024)}MB limit`);
-        return;
-      }
-
-      const reader = new FileReader();
-      reader.onload = () => {
-        const dataUrl = reader.result as string;
-        const base64 = dataUrl.split(',')[1];
-        const mimeType = file.type || 'image/png';
-        const ext = mimeType === 'image/jpeg' ? 'jpg' : mimeType.split('/')[1] || 'png';
-
-        const img = new Image();
-        img.onload = () => {
-          addImageAttachment({
-            id: generateAttachmentId(),
-            type: 'image',
-            name: `pasted-image.${ext}`,
-            mimeType,
-            size: file.size,
-            width: img.naturalWidth,
-            height: img.naturalHeight,
-            base64Data: base64,
-          });
-        };
-        img.onerror = () => {
-          addImageAttachment({
-            id: generateAttachmentId(),
-            type: 'image',
-            name: `pasted-image.${ext}`,
-            mimeType,
-            size: file.size,
-            base64Data: base64,
-          });
-        };
-        img.src = dataUrl;
-      };
-      reader.onerror = () => {
-        showError('Failed to read pasted image');
-      };
-      reader.readAsDataURL(file);
-      return;
-    }
-
-    // Auto-convert long pasted text to attachment
-    if (!autoConvertLongText) return;
-    const text = e.clipboardData.getData('text/plain');
-    if (text.length <= 5000) return;
-
-    e.preventDefault();
-    e.stopPropagation();
-
-    const blob = new Blob([text], { type: 'text/plain' });
-    const attachment: Attachment = {
-      id: generateAttachmentId(),
-      type: 'file',
-      name: 'pasted-text.txt',
-      mimeType: 'text/plain',
-      size: blob.size,
-      lineCount: text.split('\n').length,
-      base64Data: btoa(unescape(encodeURIComponent(text))),
-      preview: text.slice(0, 200),
-    };
-
-    setAttachments(prev => [...prev, attachment]);
-    showInfo(`Long text (${Math.round(text.length / 1000)}k chars) converted to attachment`);
-  }, [autoConvertLongText, showInfo, showError, addImageAttachment]);
-
-  // Listen for clipboard-paste-image events from the custom paste handler
-  useEffect(() => {
-    const handleClipboardImage = (e: Event) => {
-      const { base64, width, height, mimeType, size } = (e as CustomEvent).detail;
-      const resolvedMime = mimeType || 'image/png';
-      const ext = resolvedMime === 'image/jpeg' ? 'jpg' : resolvedMime.split('/')[1] || 'png';
-      addImageAttachment({
-        id: generateAttachmentId(),
-        type: 'image',
-        name: `pasted-image.${ext}`,
-        mimeType: resolvedMime,
-        size: size || Math.round(base64.length * 0.75),
-        width,
-        height,
-        base64Data: base64,
-      });
-    };
-
-    window.addEventListener('clipboard-paste-image', handleClipboardImage);
-    return () => window.removeEventListener('clipboard-paste-image', handleClipboardImage);
-  }, [addImageAttachment]);
-
-  // Handle attachment removal
-  const handleRemoveAttachment = useCallback((id: string) => {
-    setAttachments(prev => prev.filter(a => a.id !== id));
-  }, []);
-
-  // Handle file picker
-  const handleOpenFilePicker = useCallback(async () => {
-    // Build file extensions filter
-    const allExtensions = Object.values(SUPPORTED_EXTENSIONS).flat().map(ext => ext.slice(1)); // Remove leading dot
-
-    const paths = await openFileDialog({
-      multiple: true,
-      filters: [
-        { name: 'Supported Files', extensions: allExtensions },
-      ],
-      title: 'Select files to attach',
-    });
-
-    if (paths && paths.length > 0) {
-      await handleFileDrop(paths);
-    }
-  }, [handleFileDrop]);
-
-  // Use a ref for the handler so the Tauri listener is registered once
-  const handleFileDropRef = useRef(handleFileDrop);
-  useEffect(() => { handleFileDropRef.current = handleFileDrop; }, [handleFileDrop]);
-
-  // Listen for drag-drop events from Tauri
-  useEffect(() => {
-    let isCancelled = false;
-    let unlistenDrop: (() => void) | undefined;
-    let unlistenEnter: (() => void) | undefined;
-    let unlistenLeave: (() => void) | undefined;
-
-    const safeUnlisten = (fn?: () => void): undefined => {
-      try { fn?.(); } catch { /* listener already removed */ }
-      return undefined;
-    };
-
-    const setupListeners = async () => {
-      try {
-        const [drop, enter, leave] = await Promise.all([
-          listenForFileDrop((paths) => {
-            handleFileDropRef.current(paths);
-          }),
-          listenForDragEnter(() => {
-            setIsDragOver(true);
-          }),
-          listenForDragLeave(() => {
-            setIsDragOver(false);
-          }),
-        ]);
-
-        if (isCancelled) {
-          safeUnlisten(drop);
-          safeUnlisten(enter);
-          safeUnlisten(leave);
-          return;
-        }
-
-        unlistenDrop = drop;
-        unlistenEnter = enter;
-        unlistenLeave = leave;
-      } catch (error) {
-        console.error('Failed to setup drag-drop listeners:', error);
-        unlistenDrop = safeUnlisten(unlistenDrop);
-        unlistenEnter = safeUnlisten(unlistenEnter);
-        unlistenLeave = safeUnlisten(unlistenLeave);
-      }
-    };
-
-    setupListeners();
-
-    return () => {
-      isCancelled = true;
-      unlistenDrop = safeUnlisten(unlistenDrop);
-      unlistenEnter = safeUnlisten(unlistenEnter);
-      unlistenLeave = safeUnlisten(unlistenLeave);
-    };
-  }, []);
-
   // Listen for compose-action events (e.g., Fix All review, Add to Chat)
-  // Inserts text and/or instruction attachments into the composer without auto-submitting.
   useAppEventListener('compose-action', ({ text, attachments: incoming }) => {
-    // Only set text if the composer is empty to avoid overwriting a user's draft
     if (text) {
       const existing = plateInputRef.current?.getText() ?? '';
       if (!existing.trim()) {
@@ -747,50 +439,40 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
     const newValue = !planModeEnabled;
     setPlanModeEnabled(newValue);
 
-    // Update store state optimistically so the banner and toggle react together
     if (selectedConversationId) {
       setPlanModeActive(selectedConversationId, newValue);
       if (newValue) {
-        // New plan cycle — clear stale approved plan content from the previous cycle
-        // so it doesn't render in StreamingMessage or carry into the next message.
         clearApprovedPlanContent(selectedConversationId);
         clearPendingPlanApproval(selectedConversationId);
       } else {
-        // Suppress stale backend events that would re-activate plan mode
         markPlanModeExited(selectedConversationId);
       }
     }
 
-    // If there's an active conversation with a running process, notify the backend
     if (selectedConversationId) {
       try {
         await setConversationPlanMode(selectedConversationId, newValue);
       } catch {
-        // Process may not be running (idle between turns) - that's fine,
-        // plan mode will be applied when the next message starts
+        // Process may not be running — plan mode will be applied when the next message starts
       }
     }
   }, [planModeEnabled, selectedConversationId, setPlanModeActive, clearApprovedPlanContent, clearPendingPlanApproval]);
 
 
-  // Handle plan approval — clear UI optimistically so the bar disappears instantly
+  // Handle plan approval
   const handleApprovePlan = useCallback(async () => {
     if (!selectedConversationId || !pendingPlanApproval) return;
 
     const { requestId, planContent } = pendingPlanApproval;
 
-    // Save approved plan content for message persistence before clearing
     if (planContent) {
       setApprovedPlanContent(selectedConversationId, planContent);
     }
 
-    // Clear UI immediately — don't wait for the HTTP round-trip
     clearPendingPlanApproval(selectedConversationId);
     setApprovalError(null);
-    // Approving a plan exits plan mode — turn off the toggle and clear active state
     setPlanModeEnabled(false);
     setPlanModeActive(selectedConversationId, false);
-    // Suppress stale backend events (init, permission_mode_changed) from re-activating
     markPlanModeExited(selectedConversationId);
 
     try {
@@ -817,7 +499,6 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
     if (!selectedWorkspaceId || !selectedSessionId || !pendingPlanApproval?.planContent) return;
 
     try {
-      // Create a new conversation pre-loaded with the plan content
       const conv = await createConversation(selectedWorkspaceId, selectedSessionId, {
         type: 'task',
         message: pendingPlanApproval.planContent,
@@ -848,7 +529,6 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
       selectConversation(conv.id);
       setStreaming(conv.id, true);
 
-      // Reject the current plan to clean up approval state
       if (selectedConversationId) {
         try {
           await approvePlan(selectedConversationId, pendingPlanApproval.requestId, false);
@@ -886,15 +566,9 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
     if (!selectedConversationId || !isStreaming) return;
 
     try {
-      // Compute elapsed time for the stopped run (must read before finalize clears state)
       const startTime = useAppStore.getState().streamingState[selectedConversationId]?.startTime;
       const durationMs = startTime ? Date.now() - startTime : undefined;
-      // Finalize streaming content and atomically commit any queued user
-      // message after the assistant message so the conversation order is correct.
-      // terminal clears remaining queue and forces isStreaming=false.
-      // toolUsage is auto-derived from activeTools inside finalizeStreamingMessage.
       finalizeStreamingMessage(selectedConversationId, { durationMs, commitQueued: true, terminal: true });
-      // Add system message indicating the agent was stopped
       addMessage({
         id: `msg-stopped-${Date.now()}`,
         conversationId: selectedConversationId,
@@ -913,82 +587,18 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
   useShortcut('stopAgent', handleStop, { enabled: isStreaming });
 
   // Global keyboard shortcuts
-
-  useEffect(() => {
-    const handleGlobalKeyDown = (e: globalThis.KeyboardEvent) => {
-      // Cmd+L to focus input
-      if (e.code === 'KeyL' && (e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey) {
-        e.preventDefault();
-        plateInputRef.current?.focus();
-      }
-      // Alt+M to cycle models
-      if (e.code === 'KeyM' && e.altKey && !e.metaKey && !e.ctrlKey && !e.shiftKey) {
-        e.preventDefault();
-        setSelectedModel(prev => {
-          const idx = MODELS.findIndex(m => m.id === prev.id);
-          return MODELS[(idx + 1) % MODELS.length];
-        });
-      }
-      // Alt+T to cycle thinking levels
-      if (e.code === 'KeyT' && e.altKey && !e.metaKey && !e.ctrlKey && !e.shiftKey) {
-        e.preventDefault();
-        setThinkingLevel(prev => {
-          const available = getAvailableThinkingLevels(selectedModel);
-          const idx = available.indexOf(prev);
-          return available[(idx + 1) % available.length];
-        });
-      }
-      // Shift+Tab to toggle plan mode
-      if (e.code === 'Tab' && e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey) {
-        e.preventDefault();
-        handlePlanModeToggle();
-      }
-      // Cmd+U to open file picker
-      if (e.code === 'KeyU' && (e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey) {
-        e.preventDefault();
-        handleOpenFilePicker();
-      }
-      // Cmd+I to open Linear issue picker
-      if (e.code === 'KeyI' && (e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey) {
-        e.preventDefault();
-        setLinearPickerOpen(true);
-      }
-      // Note: Cmd+Shift+Enter for plan approval is handled in handleKeyDown on the textarea
-    };
-
-    // Handle menu events from native Tauri menu
-    const handleFocusInput = () => plateInputRef.current?.focus();
-    const handleToggleThinking = () => {
-      setThinkingLevel(prev => {
-        const available = getAvailableThinkingLevels(selectedModel);
-        const idx = available.indexOf(prev);
-        return available[(idx + 1) % available.length];
-      });
-    };
-    const handleTogglePlanMode = () => handlePlanModeToggle();
-
-    // Handle template selection from SessionHomeState quick actions
-    const handleTemplateSelected = (e: Event) => {
-      const text = (e as CustomEvent<{ text: string }>).detail.text;
-      plateInputRef.current?.setText(text);
-      setMessage(text);
-      // Use requestAnimationFrame to ensure the editor has updated before focusing
-      requestAnimationFrame(() => plateInputRef.current?.focus());
-    };
-
-    document.addEventListener('keydown', handleGlobalKeyDown);
-    window.addEventListener('focus-input', handleFocusInput);
-    window.addEventListener('toggle-thinking', handleToggleThinking);
-    window.addEventListener('toggle-plan-mode', handleTogglePlanMode);
-    window.addEventListener('session-home-template-selected', handleTemplateSelected);
-    return () => {
-      document.removeEventListener('keydown', handleGlobalKeyDown);
-      window.removeEventListener('focus-input', handleFocusInput);
-      window.removeEventListener('toggle-thinking', handleToggleThinking);
-      window.removeEventListener('toggle-plan-mode', handleTogglePlanMode);
-      window.removeEventListener('session-home-template-selected', handleTemplateSelected);
-    };
-  }, [handlePlanModeToggle, handleOpenFilePicker, selectedModel, MODELS, setMessage]);
+  useChatInputKeyboardShortcuts({
+    plateInputRef,
+    selectedModel,
+    MODELS,
+    setSelectedModel,
+    setThinkingLevel,
+    setMessage,
+    handlePlanModeToggle,
+    handleOpenFilePicker,
+    setLinearPickerOpen,
+    getAvailableThinkingLevels,
+  });
 
   const handleSubmit = async () => {
     const { text: content, mentionedFiles } = plateInputRef.current?.getContent() ?? { text: '', mentionedFiles: [] };
@@ -1041,7 +651,6 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
 
         // Create new conversation with initial message via API
         const convType = currentConversation?.type || 'task';
-        // Resolve thinking level into backend params based on model
         const thinkingParams = resolveThinkingParams(
           thinkingLevel,
           selectedModel,
@@ -1110,10 +719,6 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
         const messageAttachments = currentAttachments.length > 0 ? currentAttachments : undefined;
 
         if (pendingPlanApproval && selectedConversationId) {
-          // User typed feedback while plan approval is pending — deny the plan first,
-          // then send the message. The deny MUST complete before the message send to
-          // guarantee stdin ordering in the agent-runner. Include the user's text as
-          // the denial reason so the agent gets the feedback in the tool result context.
           try {
             await approvePlan(selectedConversationId, pendingPlanApproval.requestId, false, trimmedContent);
           } catch (err) {
@@ -1122,8 +727,6 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
           clearPendingPlanApproval(selectedConversationId);
           setApprovalError(null);
 
-          // Add message directly (not queued) — after the denial resolves the hook,
-          // the agent finishes its turn and picks up this message as the next turn.
           addMessage({
             id: messageId,
             conversationId: selectedConversationId,
@@ -1133,7 +736,6 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
             timestamp: messageTimestamp,
           });
         } else if (isStreaming) {
-          // Queue the message — don't add to messages[] yet (it renders in the footer)
           addQueuedMessage(selectedConversationId, {
             id: messageId,
             content: trimmedContent,
@@ -1141,7 +743,6 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
             timestamp: messageTimestamp,
           });
         } else {
-          // Normal path: add user message to store immediately
           addMessage({
             id: messageId,
             conversationId: selectedConversationId,
@@ -1150,9 +751,6 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
             attachments: messageAttachments,
             timestamp: messageTimestamp,
           });
-          // Mark as streaming and ensure conversation is active (status may be
-          // 'idle' after interrupts, errors, or app reload — without this the
-          // sidebar spinner selector skips the conversation).
           updateConversation(selectedConversationId, { status: 'active' });
           setStreaming(selectedConversationId, true);
         }
@@ -1178,7 +776,6 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
       console.error('Failed to send message:', error);
       const convId = selectedConversationId;
       if (convId) {
-        // Clear any queued messages so the UI doesn't get stuck
         clearQueuedMessages(convId);
         addMessage({
           id: crypto.randomUUID(),
@@ -1199,12 +796,10 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     // Check if a combobox is active (mention or slash command selection in progress)
-    // Check both: focused combobox input OR visible combobox popover (listbox)
     const activeElement = document.activeElement as HTMLElement | null;
     const isInCombobox = activeElement?.closest('[role="combobox"]');
     const hasOpenPopover = document.querySelector('[role="combobox"][aria-expanded="true"]');
     if ((isInCombobox || hasOpenPopover) && (e.key === 'Enter' || e.key === 'Tab')) {
-      // Let the combobox handle item selection
       return;
     }
 
@@ -1244,81 +839,19 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
     <div className="pt-1 px-3 pb-3">
       {/* Pill Suggestions */}
       {suggestionsEnabled && inputSuggestion?.pills && inputSuggestion.pills.length > 0 && !isStreaming && !pendingPlanApproval && !isSuggestionStale && (
-        <div className="flex items-center gap-2 mb-2">
-          <span className="text-xs text-muted-foreground shrink-0">Suggested:</span>
-          <div className="flex items-center gap-1.5 flex-wrap">
-            {inputSuggestion.pills.map((pill, i) => {
-              const needsTooltip = pill.label !== pill.value;
-              const button = (
-                <Button
-                  key={i}
-                  variant="secondary"
-                  size="sm"
-                  className="h-7 text-xs rounded-full px-3"
-                  onClick={() => handlePillClick(pill)}
-                >
-                  {pill.label}
-                </Button>
-              );
-              return needsTooltip ? (
-                <Tooltip key={i}>
-                  <TooltipTrigger asChild>{button}</TooltipTrigger>
-                  <TooltipContent className="max-w-xs">{pill.value}</TooltipContent>
-                </Tooltip>
-              ) : button;
-            })}
-          </div>
-        </div>
+        <ChatInputPillSuggestions pills={inputSuggestion.pills} onPillClick={handlePillClick} />
       )}
 
       {/* Plan Approval Bar */}
       {pendingPlanApproval && (
-        <div className="space-y-1.5 mb-2">
-          <div className="flex items-center justify-between text-sm">
-            <span className="text-muted-foreground">
-              Approve plan or type what to change <kbd className="px-1 py-0.5 rounded bg-muted text-xs font-mono">↵</kbd>
-            </span>
-            <div className="flex items-center gap-2">
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-7 gap-1.5 text-xs text-muted-foreground"
-                onClick={handleCopyPlan}
-                disabled={!pendingPlanApproval?.planContent}
-              >
-                {copied ? (
-                  <Check className="h-3.5 w-3.5 text-green-500" />
-                ) : (
-                  <Copy className="h-3.5 w-3.5" />
-                )}
-                {copied ? 'Copied' : 'Copy'}
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-7 gap-1.5 text-xs text-muted-foreground"
-                onClick={handleHandOff}
-                disabled={!pendingPlanApproval?.planContent}
-              >
-                <MessageSquarePlus className="h-3.5 w-3.5" />
-                Hand off
-              </Button>
-
-              <Button
-                variant="secondary"
-                size="sm"
-                className="h-7 gap-1.5 text-xs font-semibold bg-foreground text-background hover:bg-foreground/80 transition-colors dark:bg-foreground dark:text-background dark:hover:bg-foreground/80"
-                onClick={handleApprovePlan}
-              >
-                Approve Plan
-                <kbd className="px-1 py-0.5 rounded bg-background/20 text-background text-2xs font-mono">⌘⇧↵</kbd>
-              </Button>
-            </div>
-          </div>
-          {approvalError && (
-            <div className="text-xs text-destructive">{approvalError}</div>
-          )}
-        </div>
+        <ChatInputPlanApproval
+          copied={copied}
+          hasPlanContent={!!pendingPlanApproval.planContent}
+          approvalError={approvalError}
+          onCopyPlan={handleCopyPlan}
+          onHandOff={handleHandOff}
+          onApprovePlan={handleApprovePlan}
+        />
       )}
 
       <div className={cn(
@@ -1448,7 +981,6 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
             onSlashCommandExecute={handleSlashCommandExecute}
             onInput={(text) => {
               setMessage(text);
-              // Clear suggestion when user starts typing (skip no-op store writes)
               if (text.trim() && selectedConversationId && useAppStore.getState().inputSuggestions[selectedConversationId]) {
                 clearInputSuggestion(selectedConversationId);
               }
@@ -1458,7 +990,7 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
             onFocus={() => setIsFocused(true)}
             onBlur={() => setIsFocused(false)}
           />
-          {/* Ghost text suggestion — padding must match wrapper (px-3 py-2) + Editor (py-1) */}
+          {/* Ghost text suggestion */}
           {showGhostText && (
             <div className="absolute inset-0 px-3 py-3 pointer-events-none z-0 flex items-start">
               <span className="text-muted-foreground/40 text-base">
@@ -1475,263 +1007,45 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
           )}
         </div>
 
-        {/* Toolbar inside input */}
-        <div className="flex items-center gap-1 px-2 pb-2">
-          {/* Model Selector */}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="sm" className="h-7 gap-1.5 text-xs" title={`Model: ${selectedModel.name}${selectedModel.id === defaultModel ? ' (default)' : ''} (⌥M to cycle)`}>
-                <selectedModel.icon className="h-3.5 w-3.5" />
-                {selectedModel.name}
-                <ChevronDown className="h-3 w-3" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" className="w-64">
-              {MODELS.map((model) => {
-                const isDefault = model.id === defaultModel;
-                const isSelected = model.id === selectedModel.id;
-                return (
-                  <DropdownMenuItem
-                    key={model.id}
-                    className="group flex items-center gap-2 pr-1.5"
-                    onClick={() => setSelectedModel(model)}
-                  >
-                    <span className="flex flex-1 items-center gap-1.5 min-w-0">
-                      <span className="truncate">{model.name}</span>
-                    </span>
-                    <span className="ml-auto flex shrink-0 items-center gap-1">
-                      {isSelected && <Check className="h-3.5 w-3.5" />}
-                      {isDefault ? (
-                        <Star className="h-3 w-3 fill-current text-amber-500" />
-                      ) : (
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <span
-                              role="button"
-                              aria-label={`Set ${model.name} as default`}
-                              className="flex items-center justify-center rounded p-0.5 text-muted-foreground/50 opacity-0 transition-opacity group-hover:opacity-100 hover:text-foreground"
-                              onPointerDown={(e) => {
-                                e.preventDefault();
-                                e.stopPropagation();
-                              }}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setDefaultModel(model.id);
-                                showInfo(`${model.name} set as default for new conversations`);
-                              }}
-                            >
-                              <Star className="h-3 w-3" />
-                            </span>
-                          </TooltipTrigger>
-                          <TooltipContent side="right" sideOffset={8}>Set as default</TooltipContent>
-                        </Tooltip>
-                      )}
-                    </span>
-                  </DropdownMenuItem>
-                );
-              })}
-            </DropdownMenuContent>
-          </DropdownMenu>
-
-          {/* Unified Thinking Level Dropdown */}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="ghost"
-                size="sm"
-                className={cn(
-                  'h-7 gap-1.5 px-2 text-xs',
-                  thinkingLevel !== defaultThinkingLevel && 'text-amber-500 hover:text-amber-600 bg-amber-500/10 hover:bg-amber-500/20'
-                )}
-                title={`Thinking: ${thinkingLevel} (⌥T to cycle)`}
-                aria-label={`Thinking: ${thinkingLevel}`}
-              >
-                <Brain className="h-4 w-4" />
-                <span className="font-medium capitalize">{thinkingLevel}</span>
-                <ChevronDown className="h-3 w-3" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" className="w-64">
-              <DropdownMenuLabel className="flex items-center justify-between text-2xs font-normal text-muted-foreground uppercase tracking-wider">
-                Extended Thinking
-                <span className="normal-case tracking-normal text-muted-foreground/60">⌥T</span>
-              </DropdownMenuLabel>
-              {THINKING_LEVELS
-                .filter((level) => {
-                  if (level.id === 'off') return canDisableThinking(selectedModel);
-                  // Filter by SDK-reported supported effort levels when available
-                  if (selectedModel.supportsEffort && selectedModel.supportedEffortLevels) {
-                    return selectedModel.supportedEffortLevels.includes(level.id as 'low' | 'medium' | 'high' | 'max');
-                  }
-                  return true;
-                })
-                .map((level, index, arr) => {
-                  const isSelected = level.id === thinkingLevel;
-                  const isDefault = level.id === defaultThinkingLevel;
-                  return (
-                    <Fragment key={level.id}>
-                      {/* Separate "Off" from the thinking levels; only renders when "Off" is the first item */}
-                      {index === 1 && arr[0].id === 'off' && <DropdownMenuSeparator />}
-                      <DropdownMenuItem
-                        onClick={() => setThinkingLevel(level.id)}
-                        className="group flex-col items-start gap-0 py-2"
-                      >
-                        <div className="flex w-full items-center gap-1.5">
-                          <span className="font-medium">{level.label}</span>
-                          <span className="ml-auto flex shrink-0 items-center gap-1">
-                            {isSelected && <Check className="h-3.5 w-3.5" />}
-                            {isDefault ? (
-                              <Star className="h-3 w-3 fill-current text-amber-500" />
-                            ) : level.id !== 'off' ? (
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <button
-                                    type="button"
-                                    aria-label={`Set ${level.label} as default thinking level`}
-                                    className="flex items-center justify-center rounded p-0.5 text-muted-foreground/50 opacity-0 transition-opacity group-hover:opacity-100 hover:text-foreground focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                                    onPointerDown={(e) => {
-                                      e.preventDefault();
-                                      e.stopPropagation();
-                                    }}
-                                    onClick={(e) => {
-                                      e.preventDefault();
-                                      e.stopPropagation();
-                                      setDefaultThinkingLevel(level.id);
-                                      showInfo(`${level.label} set as default thinking level`);
-                                    }}
-                                  >
-                                    <Star className="h-3 w-3" />
-                                  </button>
-                                </TooltipTrigger>
-                                <TooltipContent side="right" sideOffset={8}>Set as default</TooltipContent>
-                              </Tooltip>
-                            ) : null}
-                          </span>
-                        </div>
-                        <span className="text-xs text-muted-foreground leading-tight">
-                          {level.description}
-                        </span>
-                      </DropdownMenuItem>
-                    </Fragment>
-                  );
-                })}
-            </DropdownMenuContent>
-          </DropdownMenu>
-
-          {/* Plan Mode Toggle */}
-          <Button
-            variant="ghost"
-            size={planModeEnabled ? 'sm' : 'icon'}
-            className={cn(
-              planModeEnabled ? 'h-7 gap-1.5 px-2' : 'h-7 w-7',
-              planModeEnabled && 'text-amber-500 hover:text-amber-600 bg-amber-500/10 hover:bg-amber-500/20'
-            )}
-            onClick={handlePlanModeToggle}
-            title={`Plan mode ${planModeEnabled ? 'on' : 'off'} (⇧Tab)`}
-            aria-label={`Plan mode ${planModeEnabled ? 'on' : 'off'}`}
-            aria-pressed={planModeEnabled}
-          >
-            <BookOpen className="h-4 w-4" />
-            {planModeEnabled && <span className="text-xs font-medium">Plan</span>}
-          </Button>
-
-          {/* Spacer */}
-          <div className="flex-1" />
-
-          {/* Context Meter */}
-          <ContextMeter conversationId={selectedConversationId} />
-
-          {/* Plus Menu */}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" className="h-7 w-7" aria-label="Add attachment or link">
-                <Plus className="h-4 w-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={handleOpenFilePicker}>
-                <Paperclip className="size-4" />
-                Add attachment
-                <span className="ml-auto text-xs text-muted-foreground">⌘U</span>
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setLinearPickerOpen(true)}>
-                <Link className="size-4" />
-                Link Linear issue
-                {linkedLinearIssue ? (
-                  <span className="ml-auto text-xs bg-brand/20 text-brand px-1.5 py-0.5 rounded-full">
-                    1
-                  </span>
-                ) : (
-                  <span className="ml-auto text-xs text-muted-foreground">⌘I</span>
-                )}
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={() => setWorkspacePickerOpen(true)}>
-                <FolderSymlink className="size-4" />
-                Link workspaces
-                {linkedWorkspaceIds.length > 0 && (
-                  <span className="ml-auto text-xs bg-brand/20 text-brand px-1.5 py-0.5 rounded-full">
-                    {linkedWorkspaceIds.length}
-                  </span>
-                )}
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={() => setSummaryPickerOpen(true)}>
-                <ScrollText className="size-4" />
-                Attach conversation context
-                {selectedSummaryIds.length > 0 && (
-                  <span className="ml-auto text-xs bg-brand/20 text-brand px-1.5 py-0.5 rounded-full">
-                    {selectedSummaryIds.length}
-                  </span>
-                )}
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-
-          {/* Single Contextual Action Button — changes between Stop/Queue/Send based on state */}
-          {buttonMode === 'stop' ? (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  size="icon"
-                  variant="destructive"
-                  className="h-8 w-8 rounded-lg"
-                  onClick={handleStop}
-                  aria-label="Stop agent (⌘⇧⌫)"
-                >
-                  <Square className="h-4 w-4" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="top">Stop agent (⌘⇧⌫)</TooltipContent>
-            </Tooltip>
-          ) : buttonMode === 'queue' ? (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  size="icon"
-                  className="h-8 w-8 rounded-lg"
-                  onClick={handleSubmit}
-                  disabled={!selectedSessionId || isSending || authDisabled}
-                  aria-label="Queue message"
-                >
-                  <ArrowUp className="h-4 w-4" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="top">{queuedCount > 0 ? `Queue message (${queuedCount} queued)` : 'Queue message — sent after current response'}</TooltipContent>
-            </Tooltip>
-          ) : (
-            <Button
-              size="icon"
-              className={cn('h-8 w-8 rounded-lg', buttonMode !== 'send' && 'opacity-50')}
-              onClick={handleSubmit}
-              disabled={buttonMode !== 'send' || !selectedSessionId || isSending || authDisabled}
-              aria-label={sendWithEnter ? 'Send message (Enter)' : 'Send message (Cmd+Enter)'}
-              title={sendWithEnter ? 'Send (Enter)' : 'Send (Cmd+Enter)'}
-            >
-              <ArrowUp className="h-4 w-4" />
-            </Button>
-          )}
-        </div>
+        {/* Toolbar */}
+        <ChatInputToolbar
+          model={{
+            selected: selectedModel,
+            models: MODELS,
+            defaultId: defaultModel,
+            setSelected: setSelectedModel,
+            setDefault: setDefaultModel,
+          }}
+          thinking={{
+            level: thinkingLevel,
+            defaultLevel: defaultThinkingLevel,
+            setLevel: setThinkingLevel,
+            setDefault: setDefaultThinkingLevel,
+          }}
+          planModeEnabled={planModeEnabled}
+          onPlanModeToggle={handlePlanModeToggle}
+          selectedConversationId={selectedConversationId}
+          selectedSessionId={selectedSessionId}
+          attachments={{
+            onOpenFilePicker: handleOpenFilePicker,
+            onLinearPickerOpen: () => setLinearPickerOpen(true),
+            linkedLinearIssue,
+            onWorkspacePickerOpen: () => setWorkspacePickerOpen(true),
+            linkedWorkspaceIds,
+            onSummaryPickerOpen: () => setSummaryPickerOpen(true),
+            selectedSummaryIds,
+          }}
+          action={{
+            buttonMode,
+            queuedCount,
+            isSending,
+            authDisabled,
+            sendWithEnter,
+            onSubmit: handleSubmit,
+            onStop: handleStop,
+          }}
+          showInfo={showInfo}
+        />
       </div>
       </div>
 
