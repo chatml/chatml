@@ -1,22 +1,16 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback, useMemo, useReducer, startTransition, useDeferredValue } from 'react';
+import { useState, useEffect, useCallback, useMemo, useReducer, startTransition } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { useAppStore } from '@/stores/appStore';
 import { captureClosedConversation, useRestoreConversation } from '@/hooks/useRecentlyClosed';
 import {
   useConversationState,
   useFileTabState,
-  useMessages,
-  useMessagePagination,
-  useHasUserMessages,
   useConversationFreshness,
   useReviewComments,
   useReviewCommentActions,
-  useStreamingConversationArea,
 } from '@/stores/selectors';
-import { ConversationMarkers } from '@/components/conversation/ConversationMarkers';
-import { Button } from '@/components/ui/button';
 import {
   Dialog,
   DialogContent,
@@ -24,40 +18,29 @@ import {
   DialogTitle,
   DialogFooter,
 } from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
   Sparkles,
-  GitBranch,
   FileQuestion,
   AlertCircle,
   File,
-  ChevronDown,
   Loader2,
   Circle,
   CheckCircle2,
   Terminal,
   FileCode,
-  Bug,
-  TestTube2,
-  Eye,
-  RefreshCw,
-  FileText,
   AlertTriangle,
 } from 'lucide-react';
-import { cn } from '@/lib/utils';
-import type { FileTab, Conversation, Message } from '@/lib/types';
+import type { FileTab, Conversation } from '@/lib/types';
 import { CodeViewer } from '@/components/files/CodeViewer';
 import { FileTabIcon } from '@/components/files/FileTabIcon';
 import { TabBar, type TabItemData } from '@/components/tabs';
-import { StreamingMessage } from '@/components/conversation/StreamingMessage';
-import { QueuedMessageBubble } from '@/components/conversation/QueuedMessageBubble';
-import { VirtualizedMessageList, type VirtualizedMessageListHandle } from '@/components/conversation/VirtualizedMessageList';
-import { ChatSearchBar, countSearchMatches } from '@/components/conversation/ChatSearchBar';
-import { useShortcut } from '@/hooks/useShortcut';
-import { getSessionFileContent, getSessionFileDiff, updateReviewComment, deleteReviewComment as deleteReviewCommentApi, listReviewComments, createConversation, createReviewComment, getConversationMessages, toStoreMessage, generateSummary, getConversationSummary } from '@/lib/api';
+import { CachedConversationPane } from '@/components/conversation/CachedConversationPane';
+import { getSessionFileContent, getSessionFileDiff, updateReviewComment, deleteReviewComment as deleteReviewCommentApi, listReviewComments, createConversation, createReviewComment, generateSummary, getConversationSummary } from '@/lib/api';
 import { getDiffFromCache, setDiffInCache } from '@/lib/diffCache';
 import { ErrorBoundary } from '@/components/shared/ErrorBoundary';
-import { BlockErrorFallback, InlineErrorFallback } from '@/components/shared/ErrorFallbacks';
+import { BlockErrorFallback } from '@/components/shared/ErrorFallbacks';
 import { BranchSyncBanner } from '@/components/BranchSyncBanner';
 import { InterruptedBanner } from '@/components/conversation/InterruptedBanner';
 import { useBranchSync } from '@/hooks/useBranchSync';
@@ -68,37 +51,31 @@ import { SessionHandoffDialog } from '@/components/conversation/SessionHandoffDi
 import { useToast } from '@/components/ui/toast';
 import { KeyRound, Settings2 } from 'lucide-react';
 
-import type { QueuedMessage } from '@/stores/appStore';
-
-// Stable empty array to avoid re-renders from selector
-const EMPTY_QUEUED_MESSAGES: readonly QueuedMessage[] = [];
-
-// Module-level scroll position cache (singleton — ConversationArea is only rendered once).
-// Stored outside the component to avoid ref-in-render lint issues since we read it during
-// render to compute initialTopMostItemIndex for Virtuoso.
-const scrollPositions = new Map<string, { dataIndex: number; wasAtBottom: boolean }>();
-
 // Module-level LRU of recently-viewed sessions. Stored outside the component so
 // useMemo can read it during render without violating react-hooks/refs or
 // react-hooks/set-state-in-effect rules.
-type RecentSession = { sessionId: string; activeTabId: string | null };
-type RecentSessionAction = { selectedSessionId: string | null; selectedFileTabId: string | null };
+type RecentSession = { sessionId: string; activeTabId: string | null; activeConversationId: string | null };
+type RecentSessionAction = { selectedSessionId: string | null; selectedFileTabId: string | null; selectedConversationId: string | null };
 
 // Maximum number of recently-viewed sessions whose Pierre Shadow DOMs are
 // kept alive (hidden) to avoid expensive Shiki re-tokenization cold starts.
 const MAX_CACHED_SESSIONS = 3;
 
 function recentSessionReducer(state: RecentSession[], action: RecentSessionAction): RecentSession[] {
-  const { selectedSessionId, selectedFileTabId } = action;
+  const { selectedSessionId, selectedFileTabId, selectedConversationId } = action;
   if (!selectedSessionId) return state;
   const next = state.map(e => ({ ...e })); // shallow clone all entries
   const idx = next.findIndex(e => e.sessionId === selectedSessionId);
   if (idx !== -1) {
-    const entry = { ...next[idx], activeTabId: selectedFileTabId ?? next[idx].activeTabId };
+    const entry = {
+      ...next[idx],
+      activeTabId: selectedFileTabId ?? next[idx].activeTabId,
+      activeConversationId: selectedConversationId ?? next[idx].activeConversationId,
+    };
     next.splice(idx, 1);
     next.unshift(entry);
   } else {
-    next.unshift({ sessionId: selectedSessionId, activeTabId: selectedFileTabId });
+    next.unshift({ sessionId: selectedSessionId, activeTabId: selectedFileTabId, activeConversationId: selectedConversationId });
   }
   return next.length > MAX_CACHED_SESSIONS ? next.slice(0, MAX_CACHED_SESSIONS) : next;
 }
@@ -160,30 +137,13 @@ export function ConversationArea({ children }: ConversationAreaProps) {
       cancelAnimationFrame(innerRafId);
     };
   }, [selectedSessionId]);
-  // Session-scoped streaming state for the selected conversation only
-  const selectedStreaming = useStreamingConversationArea(selectedConversationId);
-  const queuedMessages = useAppStore(
-    (s) => selectedConversationId ? s.queuedMessages[selectedConversationId] ?? EMPTY_QUEUED_MESSAGES : EMPTY_QUEUED_MESSAGES
+  // Narrow subscription: only the recovery field is needed at this level.
+  // Full streaming state (isStreaming, hasPendingPlanApproval) lives in CachedConversationPane.
+  const streamingRecovery = useAppStore(
+    (s) => selectedConversationId ? s.streamingState[selectedConversationId]?.recovery ?? null : null
   );
-  const removeQueuedMessage = useAppStore((s) => s.removeQueuedMessage);
   const claudeAuthStatus = useClaudeAuthStatus();
   const claudeAuthConfigured = claudeAuthStatus?.configured ?? null;
-
-  // Use messages selector scoped to the selected conversation
-  const allConversationMessages = useMessages(selectedConversationId);
-  const pagination = useMessagePagination(selectedConversationId);
-  const setMessagePage = useAppStore((s) => s.setMessagePage);
-  const prependMessages = useAppStore((s) => s.prependMessages);
-  const setLoadingMoreMessages = useAppStore((s) => s.setLoadingMoreMessages);
-  // Check if the selected conversation has any user messages (O(1) lookup + O(m) scan)
-  const hasUserMessages = useHasUserMessages(selectedConversationId);
-
-  // Hide the setupInfo system card once the user has sent their first message
-  const conversationMessages = useMemo(() => {
-    if (!selectedConversationId) return allConversationMessages;
-    if (!hasUserMessages) return allConversationMessages;
-    return allConversationMessages.filter(m => !(m.role === 'system' && m.setupInfo));
-  }, [allConversationMessages, selectedConversationId, hasUserMessages]);
 
   // Review comments for current session
   const reviewComments = useReviewComments(selectedSessionId);
@@ -213,37 +173,6 @@ export function ConversationArea({ children }: ConversationAreaProps) {
       return () => clearTimeout(id);
     }
   }, [selectedWorkspaceId, selectedSessionId, setReviewComments]);
-
-  // Load messages on-demand when conversation is selected (paginated)
-  useEffect(() => {
-    if (!selectedConversationId) return;
-
-    // One-shot read via getState() — intentionally not subscribing to pagination changes
-    // so this effect only fires when the conversation selection changes, not on every
-    // pagination state update. If messages were already loaded (e.g., eagerly at boot),
-    // skip the fetch.
-    const state = useAppStore.getState();
-    const existingPagination = state.messagePagination[selectedConversationId];
-    if (existingPagination) return;
-
-    // Also skip if messages were already added inline (e.g., via addConversation with messages)
-    const hasInlineMessages = (state.messagesByConversation[selectedConversationId]?.length ?? 0) > 0;
-    if (hasInlineMessages) return;
-
-    let cancelled = false;
-    async function loadMessages() {
-      try {
-        const page = await getConversationMessages(selectedConversationId!, { limit: 50, compact: true });
-        if (cancelled) return;
-        const messages = page.messages.map((m) => toStoreMessage(m, selectedConversationId!, { compacted: true }));
-        setMessagePage(selectedConversationId!, messages, page.hasMore, page.oldestPosition ?? 0, page.totalCount);
-      } catch (error) {
-        console.error('Failed to load conversation messages:', error);
-      }
-    }
-    loadMessages();
-    return () => { cancelled = true; };
-  }, [selectedConversationId, setMessagePage]);
 
   // Branch sync for updating from origin/main
   const branchSyncBanner = useSettingsStore((s) => s.branchSyncBanner);
@@ -317,156 +246,6 @@ export function ConversationArea({ children }: ConversationAreaProps) {
     return summaries[conversationId]?.status ?? null;
   }, [summaries]);
 
-  // Chat search state - keyed by conversation to auto-reset
-  const [searchOpen, setSearchOpen] = useState(false);
-  const [searchState, setSearchState] = useState<{ convId: string | null; query: string; matchIndex: number }>({
-    convId: null,
-    query: '',
-    matchIndex: 0,
-  });
-
-  // Derive search values, resetting if conversation changed
-  const searchQuery = searchState.convId === selectedConversationId ? searchState.query : '';
-  const currentMatchIndex = searchState.convId === selectedConversationId ? searchState.matchIndex : 0;
-
-  // Deferred search query — React deprioritizes re-renders from this value,
-  // so the input stays responsive while match computation runs at lower priority.
-  const debouncedSearchQuery = useDeferredValue(searchQuery);
-
-  const setSearchQuery = useCallback((query: string) => {
-    setSearchState({ convId: selectedConversationId, query, matchIndex: 0 });
-  }, [selectedConversationId]);
-
-  const setCurrentMatchIndex = useCallback((indexOrFn: number | ((prev: number) => number)) => {
-    setSearchState((prev) => ({
-      ...prev,
-      convId: selectedConversationId,
-      matchIndex: typeof indexOrFn === 'function' ? indexOrFn(prev.matchIndex) : indexOrFn,
-    }));
-  }, [selectedConversationId]);
-
-  // Single-pass search computation — produces both messageOffsets and hasMatches
-  // arrays in one iteration, avoiding the previous double-count overhead.
-  const { searchMatches, messageHasMatches } = useMemo(() => {
-    if (!debouncedSearchQuery) {
-      return {
-        searchMatches: { total: 0, messageOffsets: [] as number[] },
-        messageHasMatches: [] as boolean[],
-      };
-    }
-
-    let total = 0;
-    const messageOffsets: number[] = [];
-    const hasMatches: boolean[] = [];
-
-    for (const message of conversationMessages) {
-      messageOffsets.push(total);
-      const count = countSearchMatches(message.content, debouncedSearchQuery);
-      total += count;
-      hasMatches.push(count > 0);
-    }
-
-    return {
-      searchMatches: { total, messageOffsets },
-      messageHasMatches: hasMatches,
-    };
-  }, [conversationMessages, debouncedSearchQuery]);
-
-  // Clamp currentMatchIndex to valid range (derived, not effect-based)
-  const clampedMatchIndex = searchMatches.total > 0
-    ? Math.min(currentMatchIndex, searchMatches.total - 1)
-    : 0;
-
-  // Pagination: compute firstItemIndex for Virtuoso scroll stability when prepending
-  const VIRTUAL_BASE_INDEX = 100_000;
-  const firstItemIndex = pagination
-    ? VIRTUAL_BASE_INDEX - (pagination.totalCount - conversationMessages.length)
-    : VIRTUAL_BASE_INDEX;
-
-  // Load older messages when user scrolls to top
-  const handleStartReached = useCallback(async () => {
-    if (!selectedConversationId || !pagination?.hasMore || pagination?.isLoadingMore) return;
-
-    setLoadingMoreMessages(selectedConversationId, true);
-    try {
-      const page = await getConversationMessages(selectedConversationId, {
-        before: pagination.oldestPosition ?? undefined,
-        limit: 50,
-        compact: true,
-      });
-      const messages = page.messages.map((m) => toStoreMessage(m, selectedConversationId, { compacted: true }));
-      prependMessages(selectedConversationId, messages, page.hasMore, page.oldestPosition ?? 0);
-    } catch (error) {
-      console.error('Failed to load older messages:', error);
-      setLoadingMoreMessages(selectedConversationId, false);
-    }
-  }, [selectedConversationId, pagination, setLoadingMoreMessages, prependMessages]);
-
-  // Search navigation handlers
-  const goToNextMatch = useCallback(() => {
-    if (searchMatches.total > 0) {
-      setCurrentMatchIndex((prev) => (prev + 1) % searchMatches.total);
-    }
-  }, [searchMatches.total, setCurrentMatchIndex]);
-
-  const goToPrevMatch = useCallback(() => {
-    if (searchMatches.total > 0) {
-      setCurrentMatchIndex((prev) => (prev - 1 + searchMatches.total) % searchMatches.total);
-    }
-  }, [searchMatches.total, setCurrentMatchIndex]);
-
-  const closeSearch = useCallback(() => {
-    setSearchOpen(false);
-  }, []);
-
-  // Scroll to the message containing the current search match
-  useEffect(() => {
-    if (!debouncedSearchQuery || searchMatches.total === 0) return;
-    // Find the message index that contains the current match
-    const offsets = searchMatches.messageOffsets;
-    let targetIndex = 0;
-    for (let i = 0; i < offsets.length; i++) {
-      const nextOffset = offsets[i + 1] ?? searchMatches.total;
-      if (clampedMatchIndex >= offsets[i] && clampedMatchIndex < nextOffset) {
-        targetIndex = i;
-        break;
-      }
-    }
-    messageListRef.current?.scrollToIndex(targetIndex, { align: 'center', behavior: 'smooth' });
-  }, [clampedMatchIndex, debouncedSearchQuery, searchMatches]);
-
-  // Scroll handler for conversation markers minimap
-  const handleMarkerScrollToIndex = useCallback((index: number) => {
-    messageListRef.current?.scrollToIndex(index, { align: 'start', behavior: 'smooth' });
-  }, []);
-
-  // Register keyboard shortcuts for search
-  useShortcut('searchChat', useCallback(() => {
-    setSearchOpen(true);
-  }, []));
-
-  useShortcut('searchNextMatch', useCallback(() => {
-    if (searchOpen) {
-      goToNextMatch();
-    }
-  }, [searchOpen, goToNextMatch]));
-
-  useShortcut('searchPrevMatch', useCallback(() => {
-    if (searchOpen) {
-      goToPrevMatch();
-    }
-  }, [searchOpen, goToPrevMatch]));
-
-  // Scroll to current match when it changes
-  useEffect(() => {
-    if (!searchQuery || searchMatches.total === 0) return;
-
-    // Find the mark element with the current match index
-    const matchElement = document.querySelector(`mark[data-match-index="${clampedMatchIndex}"]`);
-    if (matchElement) {
-      matchElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    }
-  }, [clampedMatchIndex, searchQuery, searchMatches.total]);
 
 // Filter tabs for current session only (strict session isolation)
   // All tabs are now session-scoped - no more workspace-level tabs
@@ -490,10 +269,10 @@ export function ConversationArea({ children }: ConversationAreaProps) {
   // to avoid lint issues with refs-in-render, setState-in-effect, and immutability.
   const [recentSessions, dispatchRecentSession] = useReducer(recentSessionReducer, []);
   const [prevSessionKey, setPrevSessionKey] = useState('');
-  const sessionKey = `${selectedSessionId ?? ''}:${selectedFileTabId ?? ''}`;
+  const sessionKey = `${selectedSessionId ?? ''}:${selectedFileTabId ?? ''}:${selectedConversationId ?? ''}`;
   if (sessionKey !== prevSessionKey) {
     setPrevSessionKey(sessionKey);
-    dispatchRecentSession({ selectedSessionId, selectedFileTabId });
+    dispatchRecentSession({ selectedSessionId, selectedFileTabId, selectedConversationId });
   }
 
   // Only the last-active tab from each recently-viewed session is kept mounted
@@ -512,10 +291,6 @@ export function ConversationArea({ children }: ConversationAreaProps) {
     return result;
   }, [fileTabs, recentSessions]);
 
-  const currentSession = useMemo(
-    () => sessions.find((s) => s.id === selectedSessionId),
-    [sessions, selectedSessionId]
-  );
   const sessionConversations = useMemo(
     () => conversations.filter((c) => c.sessionId === selectedSessionId),
     [conversations, selectedSessionId]
@@ -644,95 +419,6 @@ export function ConversationArea({ children }: ConversationAreaProps) {
     return null;
   }, [selectedFileTabId, selectedConversationId]);
 
-  // Auto-scroll management via Virtuoso
-  const messageListRef = useRef<VirtualizedMessageListHandle>(null);
-  const [showScrollButton, setShowScrollButton] = useState(false);
-
-  // Scroll position memory across tab switches.
-  // We track the first visible data index per conversation via Virtuoso's rangeChanged.
-  // On remount (key change), Virtuoso uses initialTopMostItemIndex — no animation, no flash.
-  const isAtBottomRef = useRef(true);
-  const forceFollowRef = useRef(false);
-
-  // Continuously track the visible range — called by Virtuoso on every scroll
-  const handleRangeChanged = useCallback((range: { startIndex: number; endIndex: number }) => {
-    if (!selectedConversationId) return;
-    scrollPositions.set(selectedConversationId, {
-      dataIndex: range.startIndex,
-      wasAtBottom: isAtBottomRef.current,
-    });
-  }, [selectedConversationId]);
-
-  // Compute initialTopMostItemIndex for the current conversation.
-  // Read from the module-level map — this is computed fresh each render when
-  // selectedConversationId changes (which triggers Virtuoso remount via key).
-  // Clear forceFollow on conversation switch to avoid stale state
-  useEffect(() => {
-    forceFollowRef.current = false;
-  }, [selectedConversationId]);
-
-  const initialTopMostItemIndex = useMemo(() => {
-    if (!selectedConversationId) return { index: 'LAST' as const, align: 'end' as const };
-    const saved = scrollPositions.get(selectedConversationId);
-    if (saved && !saved.wasAtBottom) {
-      return { index: saved.dataIndex, align: 'start' as const };
-    }
-    // First visit or was at bottom — start at bottom
-    return { index: 'LAST' as const, align: 'end' as const };
-  }, [selectedConversationId]);
-
-  // Track at-bottom state from Virtuoso
-  const handleAtBottomStateChange = useCallback((atBottom: boolean) => {
-    setShowScrollButton(!atBottom);
-    isAtBottomRef.current = atBottom;
-    if (atBottom) {
-      forceFollowRef.current = false;
-    }
-  }, []);
-
-  // Force scroll to bottom (for manual button click or message submit)
-  const forceScrollToBottom = useCallback(() => {
-    setShowScrollButton(false);
-    messageListRef.current?.scrollToBottom('auto');
-  }, []);
-
-  // Stable footer for VirtualizedMessageList (avoids remounting on every render)
-  const messageListFooter = useMemo(() => {
-    if (!selectedConversationId) return undefined;
-    return (
-      <div className="pl-5 pr-12 pb-16">
-        <ErrorBoundary
-          section="StreamingMessage"
-          fallback={<InlineErrorFallback message="Error displaying streaming message" />}
-        >
-          <StreamingMessage conversationId={selectedConversationId} worktreePath={currentSession?.worktreePath} />
-        </ErrorBoundary>
-        {queuedMessages.length > 0 && (
-          <QueuedMessageBubble
-            messages={queuedMessages}
-            onDelete={(messageId) => {
-              if (selectedConversationId) {
-                removeQueuedMessage(selectedConversationId, messageId);
-              }
-            }}
-          />
-        )}
-      </div>
-    );
-  }, [selectedConversationId, queuedMessages, removeQueuedMessage, currentSession?.worktreePath]);
-
-  // Listen for message submit events to force scroll to bottom
-  useEffect(() => {
-    const handleMessageSubmit = () => {
-      forceFollowRef.current = true;
-      forceScrollToBottom();
-    };
-
-    window.addEventListener('chat-message-submitted', handleMessageSubmit);
-    return () => {
-      window.removeEventListener('chat-message-submitted', handleMessageSubmit);
-    };
-  }, [forceScrollToBottom]);
 
   // Get current file tab from visible tabs
   const currentFileTab = visibleTabs.find((t) => t.id === selectedFileTabId);
@@ -747,6 +433,14 @@ export function ConversationArea({ children }: ConversationAreaProps) {
   // Determine what's currently active (conversation or file)
   // File is active only if selected tab is visible
   const isFileActive = selectedFileTabId !== null && currentFileTab !== undefined;
+
+  // Pre-computed lookup maps for the cached-pane render loop
+  const sessionMap = useMemo(() => new Map(sessions.map(s => [s.id, s])), [sessions]);
+  const conversationsBySession = useMemo(() => {
+    const map = new Set<string>();
+    for (const c of conversations) map.add(c.sessionId);
+    return map;
+  }, [conversations]);
 
   // Load content for selected file tab on mount/restore (e.g., after refresh)
   useEffect(() => {
@@ -1090,12 +784,12 @@ export function ConversationArea({ children }: ConversationAreaProps) {
       )}
 
       {/* Agent crash recovery banner */}
-      {selectedStreaming.recovery && (
+      {streamingRecovery && (
         <div className="bg-amber-500/10 border-b border-amber-500/20 px-3 py-2 animate-fade-in">
           <div className="flex items-center gap-2">
             <div className="h-2 w-2 rounded-full bg-amber-500 animate-pulse shrink-0" />
             <span className="text-xs text-amber-200/90">
-              Agent reconnecting... (attempt {selectedStreaming.recovery.attempt}/{selectedStreaming.recovery.maxAttempts})
+              Agent reconnecting... (attempt {streamingRecovery.attempt}/{streamingRecovery.maxAttempts})
             </span>
           </div>
         </div>
@@ -1279,82 +973,31 @@ export function ConversationArea({ children }: ConversationAreaProps) {
         </div>
       )}
 
-      {/* Conversation messages — hidden when file tab is active */}
-      <div className={isFileActive ? 'hidden' : 'flex flex-col flex-1 min-h-0'}>
-        {/* Messages */}
-        <div className="relative flex-1 min-h-0">
-          {/* Chat Search Bar */}
-          <ChatSearchBar
-            isOpen={searchOpen}
-            onClose={closeSearch}
-            searchQuery={searchQuery}
-            onSearchChange={setSearchQuery}
-            currentMatchIndex={clampedMatchIndex}
-            totalMatches={searchMatches.total}
-            onNextMatch={goToNextMatch}
-            onPrevMatch={goToPrevMatch}
-            partialResults={pagination?.hasMore}
-            isSearchPending={searchQuery !== debouncedSearchQuery}
-          />
-          <VirtualizedMessageList
-            key={selectedConversationId ?? 'none'}
-            ref={messageListRef}
-            messages={conversationMessages}
-            worktreePath={currentSession?.worktreePath}
-            searchQuery={debouncedSearchQuery}
-            currentMatchIndex={clampedMatchIndex}
-            searchMatches={searchMatches}
-            messageHasMatches={messageHasMatches}
-            initialTopMostItemIndex={initialTopMostItemIndex}
-            onRangeChanged={handleRangeChanged}
-            onAtBottomStateChange={handleAtBottomStateChange}
-            onStartReached={pagination?.hasMore ? handleStartReached : undefined}
-            firstItemIndex={firstItemIndex}
-            isLoadingOlder={pagination?.isLoadingMore}
-            emptyState={
-              (!selectedConversationId || conversationMessages.length === 0) ? (
-                sessionConversations.length === 0
-                  ? <SessionHomeState sessionName={currentSession?.branch || currentSession?.name} />
-                  : <ConversationEmptyState sessionName={currentSession?.name} />
-              ) : undefined
+      {/* Conversation panes — LRU cached across session switches.
+           Each recent session keeps its VirtualizedMessageList mounted (hidden)
+           so switching back is instant (no Virtuoso remount/measure cycle). */}
+      {recentSessions.map((cached) => {
+        const isCachedActive = cached.sessionId === selectedSessionId && !isFileActive;
+        const cachedSession = sessionMap.get(cached.sessionId);
+        const hasConvs = conversationsBySession.has(cached.sessionId);
+        return (
+          <CachedConversationPane
+            key={cached.sessionId}
+            conversationId={
+              cached.sessionId === selectedSessionId
+                ? selectedConversationId
+                : cached.activeConversationId
             }
-            footer={messageListFooter}
-            isStreaming={selectedStreaming.isStreaming}
-            pendingPlanApproval={selectedStreaming.hasPendingPlanApproval}
-            forceFollowRef={forceFollowRef}
-          />
-          {/* Conversation markers minimap — deferred so marker extraction doesn't
-               block streaming updates or message appends */}
-          {conversationMessages.length > 3 && (
-            <DeferredConversationMarkers
-              messages={conversationMessages}
-              onScrollToIndex={handleMarkerScrollToIndex}
-            />
-          )}
-          {/* Fade overlay at bottom of messages */}
-          <div className="absolute bottom-0 left-0 right-0 h-12 bg-gradient-to-t from-chat-background to-transparent pointer-events-none z-10" />
-        </div>
-
-        {/* Chat Input with floating scroll button */}
-        <div className="shrink-0 relative">
-          {/* Scroll to bottom button - floating */}
-          <div className={cn(
-            "absolute -top-7 right-4 z-10 transition-opacity duration-200",
-            showScrollButton ? "opacity-100" : "opacity-0 pointer-events-none"
-          )}>
-            <Button
-              variant="secondary"
-              size="sm"
-              className="h-6 gap-1 pl-1 pr-2 text-xs rounded-full border border-border/50 bg-background/30 backdrop-blur-sm text-muted-foreground/70 hover:text-muted-foreground hover:bg-background/50 transition-colors"
-              onClick={forceScrollToBottom}
-            >
-              <ChevronDown className="h-3 w-3" />
-              Scroll to bottom
-            </Button>
-          </div>
-          {children}
-        </div>
-      </div>
+            isActive={isCachedActive}
+            worktreePath={cachedSession?.worktreePath}
+            sessionName={cachedSession?.name}
+            sessionBranch={cachedSession?.branch}
+            hasConversations={hasConvs}
+          >
+            {isCachedActive ? children : null}
+          </CachedConversationPane>
+        );
+      })}
 
       {/* Rename Conversation Dialog */}
       <Dialog open={renameDialogOpen} onOpenChange={setRenameDialogOpen}>
@@ -1417,90 +1060,6 @@ export function ConversationArea({ children }: ConversationAreaProps) {
   );
 }
 
-const QUICK_ACTIONS = [
-  { icon: Bug, label: 'Fix a bug', prompt: 'Fix a bug: ' },
-  { icon: TestTube2, label: 'Write tests', prompt: 'Write tests for ' },
-  { icon: Sparkles, label: 'Add a feature', prompt: 'Add a feature: ' },
-  { icon: Eye, label: 'Review code', prompt: 'Review the code in ' },
-  { icon: RefreshCw, label: 'Refactor', prompt: 'Refactor ' },
-  { icon: FileText, label: 'Documentation', prompt: 'Write documentation for ' },
-];
 
-// Wrapper that defers messages to ConversationMarkers so marker extraction
-// doesn't block higher-priority streaming or message rendering.
-function DeferredConversationMarkers({ messages, onScrollToIndex }: {
-  messages: readonly Message[];
-  onScrollToIndex: (index: number) => void;
-}) {
-  const deferredMessages = useDeferredValue(messages);
-  return <ConversationMarkers messages={deferredMessages} onScrollToIndex={onScrollToIndex} />;
-}
-
-function SessionHomeState({ sessionName }: { sessionName?: string }) {
-  const handleTemplateClick = useCallback((prompt: string) => {
-    window.dispatchEvent(
-      new CustomEvent('session-home-template-selected', { detail: { text: prompt } }),
-    );
-  }, []);
-
-  return (
-    <div className="pt-3 pl-5 pr-12 pb-10 animate-fade-in">
-      <div className="max-w-md mx-auto text-center">
-        {sessionName && (
-          <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-brand/10 text-brand text-sm font-medium mb-6 animate-scale-in">
-            <GitBranch className="w-4 h-4" />
-            {sessionName}
-          </div>
-        )}
-        <h2 className="font-display text-[1.375rem] leading-[1.25] tracking-display mb-2">
-          What would you like to work on?
-        </h2>
-        <p className="text-sm text-muted-foreground mb-6">
-          Type below to start, or pick a quick action
-        </p>
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-          {QUICK_ACTIONS.map(({ icon: Icon, label, prompt }) => (
-            <button
-              key={label}
-              type="button"
-              onClick={() => handleTemplateClick(prompt)}
-              className="flex items-center gap-2 px-3 py-2.5 rounded-lg border border-border bg-card text-sm text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors cursor-pointer text-left"
-            >
-              <Icon className="w-4 h-4 shrink-0" />
-              {label}
-            </button>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function ConversationEmptyState({ sessionName }: { sessionName?: string }) {
-  return (
-    <div className="pt-3 pl-5 pr-12 pb-10 animate-fade-in">
-      <div className="max-w-lg mx-auto text-center">
-        {sessionName && (
-          <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-brand/10 text-brand text-sm font-medium mb-6 animate-scale-in">
-            <GitBranch className="w-4 h-4" />
-            {sessionName}
-          </div>
-        )}
-        <h2 className="font-display text-[1.375rem] leading-[1.25] tracking-display mb-2">New Session</h2>
-        <p className="text-sm text-muted-foreground mb-6">
-          Describe your task below. An AI agent will work on it in an isolated git branch.
-        </p>
-        <div className="text-left bg-background rounded-lg p-4 space-y-3 border border-border">
-          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Example tasks</p>
-          <div className="space-y-2 text-sm stagger-children">
-            <p className="text-muted-foreground">&quot;Add user authentication with JWT tokens&quot;</p>
-            <p className="text-muted-foreground">&quot;Write unit tests for the payment service&quot;</p>
-            <p className="text-muted-foreground">&quot;Refactor the API to use async/await&quot;</p>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 
