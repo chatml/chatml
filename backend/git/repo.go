@@ -408,6 +408,7 @@ func (rm *RepoManager) GetFileCommitHistory(ctx context.Context, repoPath, fileP
 	// Format: SHA|ShortSHA|AuthorName|AuthorEmail|Timestamp|Subject
 	args := []string{
 		"log",
+		"--follow",
 		"-n", "51",
 		"--pretty=format:%H|%h|%an|%ae|%aI|%s",
 		"--numstat",
