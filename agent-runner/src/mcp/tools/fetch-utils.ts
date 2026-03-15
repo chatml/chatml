@@ -6,6 +6,21 @@
 
 const RETRY_DELAYS_MS = [500, 1000, 2000];
 
+/** Extract a useful error message from a fetch TypeError, including the root cause. */
+export function formatFetchError(error: unknown): string {
+  if (error instanceof TypeError) {
+    const cause = (error as any).cause;
+    if (cause) {
+      const code = (cause as any).code;
+      if (code) return `${error.message} (${code})`;
+      const detail = cause.message || (typeof cause === 'object' ? JSON.stringify(cause) : String(cause));
+      return `${error.message} (${detail})`;
+    }
+    return error.message;
+  }
+  return String(error);
+}
+
 export async function fetchWithRetry(
   url: string,
   options?: RequestInit
