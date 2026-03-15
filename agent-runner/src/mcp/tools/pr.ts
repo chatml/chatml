@@ -2,7 +2,7 @@
 import { tool } from "@anthropic-ai/claude-agent-sdk";
 import { z } from "zod";
 import type { WorkspaceContext } from "../context.js";
-import { fetchWithRetry } from "./fetch-utils.js";
+import { fetchWithRetry, formatFetchError } from "./fetch-utils.js";
 
 const BACKEND_URL = process.env.CHATML_BACKEND_URL || "http://127.0.0.1:9876";
 const AUTH_TOKEN = process.env.CHATML_AUTH_TOKEN || "";
@@ -66,7 +66,7 @@ export function createPRTools(context: WorkspaceContext) {
           return {
             content: [{
               type: "text" as const,
-              text: `Error reporting PR: ${error}`,
+              text: `Error reporting PR: ${formatFetchError(error)}. The PR may not appear in the ChatML sidebar immediately, but the PR watcher will pick it up.`,
             }],
           };
         }
@@ -110,10 +110,13 @@ export function createPRTools(context: WorkspaceContext) {
             }],
           };
         } catch (error) {
+          // Best-effort notification — the PR watcher will detect merges via polling.
           return {
             content: [{
               type: "text" as const,
-              text: `Error reporting PR merge: ${error}`,
+              text: prNumber
+                ? `Failed to report PR #${prNumber} merge to backend (${formatFetchError(error)}), but the PR watcher will detect the merge automatically.`
+                : `Failed to report PR merge to backend (${formatFetchError(error)}), but the PR watcher will detect the merge automatically.`,
             }],
           };
         }
