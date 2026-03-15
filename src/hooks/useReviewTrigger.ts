@@ -19,6 +19,7 @@ const ACTIONABLE_ONLY_INSTRUCTION =
 const REVIEW_TOOL_INSTRUCTIONS =
   'Use get_workspace_diff to examine all changes in this session. ' +
   'If the diff is large or truncated, use get_workspace_diff with the file parameter to examine specific files in detail. ' +
+  'Always read the full file context around changes, not just the diff lines, to understand whether changes are correct in context. ' +
   'For each issue found, use add_review_comment with a short descriptive title and appropriate severity (error for bugs/critical issues, warning for potential problems, suggestion for improvements, info for notes). ';
 
 const REVIEW_SUMMARY =
@@ -27,20 +28,22 @@ const REVIEW_SUMMARY =
 const REVIEW_PROMPTS: Record<string, string> = {
   quick:
     'Do a quick scan of the changes. ' + REVIEW_TOOL_INSTRUCTIONS +
-    'Focus only on bugs, correctness errors, and obvious issues. Aim for at most 5-7 comments. Skip style, naming, and minor improvements. ' +
+    'Focus only on bugs, correctness errors, and obvious issues. Also check for accidentally committed files (.env, debug artifacts, large binaries). Aim for at most 5-7 comments. Skip style, naming, and minor improvements. ' +
     REVIEW_SUMMARY + MARKDOWN_INSTRUCTION,
   deep:
     'Do a thorough code review of all changes in this session. ' + REVIEW_TOOL_INSTRUCTIONS +
-    'Check for bugs, performance problems, security issues, error handling gaps, and code quality. Be detailed and specific. ' +
+    'Check for bugs, performance problems, security issues, error handling gaps, and code quality. Read surrounding code context (not just the diff) to verify changes don\'t break existing contracts or assumptions. Be detailed and specific. ' +
     REVIEW_SUMMARY + MARKDOWN_INSTRUCTION,
   security:
     'Perform a security-focused review of the changes in this session. ' + REVIEW_TOOL_INSTRUCTIONS +
     'Read full source files when needed to understand security context (e.g., whether inputs are validated upstream, whether auth is enforced at the route level). ' +
     'Look for injection vulnerabilities (SQL, command, XSS), authentication/authorization gaps, data exposure (secrets, PII in logs), insecure defaults, path traversal, and other OWASP top 10 risks. ' +
+    'Check the diff for hardcoded secrets, API keys, tokens, or credentials. Note any new dependencies that may need security review. ' +
     REVIEW_SUMMARY + MARKDOWN_INSTRUCTION,
   performance:
     'Review the changes in this session for performance issues. ' + REVIEW_TOOL_INSTRUCTIONS +
     'Look for unnecessary re-renders, memory leaks, expensive computations in hot paths, missing memoization, N+1 queries, and blocking operations. ' +
+    'Check for large new imports or dependencies that could significantly increase bundle size. ' +
     REVIEW_SUMMARY + MARKDOWN_INSTRUCTION,
   architecture:
     'Review the changes in this session for architectural quality. ' + REVIEW_TOOL_INSTRUCTIONS +
@@ -51,6 +54,7 @@ const REVIEW_PROMPTS: Record<string, string> = {
     'Perform a final pre-merge check on the changes in this session. ' + REVIEW_TOOL_INSTRUCTIONS +
     'Check for leftover TODOs, console.logs, debug code, commented-out code, missing error handling, incomplete implementations, ' +
     'accidentally committed secrets or .env files, and anything that should not be merged. ' +
+    'Verify that new functionality has corresponding test coverage. Check that the PR description adequately explains the changes. ' +
     REVIEW_SUMMARY + MARKDOWN_INSTRUCTION,
 };
 
