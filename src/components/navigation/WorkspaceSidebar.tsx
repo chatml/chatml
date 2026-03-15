@@ -21,7 +21,7 @@ import { useAppStore } from '@/stores/appStore';
 import { navigate, navigateOrOpenTab } from '@/lib/navigation';
 import { useSettingsStore, getBranchPrefix, getWorkspaceBranchPrefix, type ContentView, type SidebarSortBy } from '@/stores/settingsStore';
 import { useSidebarSessions, isSidebarGroupExpanded, type SidebarGroup } from '@/hooks/useSidebarSessions';
-import { createSession as createSessionApi, listConversations as listConversationsApi, updateSession as updateSessionApi, deleteRepo as deleteRepoApi, addRepo as addRepoApi, mapSessionDTO } from '@/lib/api';
+import { createSession as createSessionApi, listConversations as listConversationsApi, updateSession as updateSessionApi, deleteRepo as deleteRepoApi, addRepo as addRepoApi, mapSessionDTO, refreshPRStatus } from '@/lib/api';
 import { registerSession, getSessionDirName } from '@/lib/tauri';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -383,6 +383,19 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onGitHubRepos,
   };
 
   const handleSelectSession = (workspaceId: string, sessionId: string, event?: React.MouseEvent) => {
+    const { selectedSessionId } = useAppStore.getState();
+
+    // Re-click on already-selected session: force-refresh PR status (bypass throttle)
+    if (sessionId === selectedSessionId) {
+      // Cmd+Click / middle-click should still open a new tab
+      if (event && (event.metaKey || event.button === 1)) {
+        navigateOrOpenTab({ workspaceId, sessionId, contentView: { type: 'conversation' } }, event);
+      } else {
+        refreshPRStatus(workspaceId, sessionId).catch(() => {});
+      }
+      return;
+    }
+
     navigateOrOpenTab({
       workspaceId,
       sessionId,

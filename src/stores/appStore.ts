@@ -38,7 +38,7 @@ import { cleanupConversationState } from '@/hooks/useWebSocket';
 // Throttle on-select PR refresh to avoid excessive API calls.
 // Entries are pruned when the map exceeds MAX_PR_REFRESH_ENTRIES to prevent unbounded growth.
 const lastPRRefreshMap = new Map<string, number>();
-const PR_REFRESH_THROTTLE_MS = 30_000; // 30 seconds
+const PR_REFRESH_THROTTLE_MS = 15_000; // 15 seconds
 const MAX_PR_REFRESH_ENTRIES = 100;
 
 function pruneRefreshMap() {

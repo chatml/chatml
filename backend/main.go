@@ -345,7 +345,7 @@ func main() {
 	go hub.Run()
 
 	// Shared PR cache used by both PRWatcher and HTTP handlers
-	prCache := github.NewPRCache(2*time.Minute, 10*time.Minute, 100)
+	prCache := github.NewPRCache(45*time.Second, 10*time.Minute, 100)
 	defer prCache.Close()
 
 	// PR watcher for background GitHub PR status monitoring
