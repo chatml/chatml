@@ -109,6 +109,8 @@ const ElapsedTimer = memo(function ElapsedTimer({ startTime, isStreaming }: { st
 // Enhanced error display component
 function ErrorDisplay({ error, onDismiss }: { error: string; onDismiss: () => void }) {
   const [isExpanded, setIsExpanded] = useState(false);
+  const [awsRefreshState, setAwsRefreshState] = useState<'idle' | 'refreshing' | 'success' | 'failed'>('idle');
+  const [awsRefreshError, setAwsRefreshError] = useState<string | null>(null);
 
   // Check if error is long enough to need expansion
   const ERROR_TRUNCATE_LENGTH = 150;
@@ -120,9 +122,30 @@ function ErrorDisplay({ error, onDismiss }: { error: string; onDismiss: () => vo
   // Try to detect if error looks like a stack trace or structured error
   const hasStackTrace = error.includes('\n') && (error.includes('at ') || error.includes('Error:'));
 
-  // Detect auth errors
+  // Detect auth errors — standard (OAuth/API key) vs AWS-specific
   const lowerError = error.toLowerCase();
-  const isAuthError = lowerError.includes('authentication') || lowerError.includes('api key') || lowerError.includes('oauth');
+  const isAwsAuthError = lowerError.includes('expiredtokenexception') ||
+    lowerError.includes('unrecognizedclientexception') ||
+    lowerError.includes('the security token included in the request is expired') ||
+    lowerError.includes('aws credentials') || lowerError.includes('sso login') ||
+    (lowerError.includes('expired') && lowerError.includes('sso'));
+  const isAuthError = isAwsAuthError || lowerError.includes('authentication') || lowerError.includes('api key') || lowerError.includes('oauth');
+
+  const handleAwsRefresh = async () => {
+    setAwsRefreshState('refreshing');
+    setAwsRefreshError(null);
+    try {
+      const { refreshAWSCredentials } = await import('@/lib/api');
+      await refreshAWSCredentials();
+      setAwsRefreshState('success');
+      // Update global auth status so the top-level expiry banner dismisses.
+      const { refreshClaudeAuthStatus } = await import('@/hooks/useClaudeAuthStatus');
+      refreshClaudeAuthStatus();
+    } catch (err) {
+      setAwsRefreshState('failed');
+      setAwsRefreshError(err instanceof Error ? err.message : String(err));
+    }
+  };
 
   return (
     <div
@@ -141,14 +164,33 @@ function ErrorDisplay({ error, onDismiss }: { error: string; onDismiss: () => vo
           >
             {displayError}
           </p>
-          {isAuthError && (
+          {isAwsAuthError ? (
+            <div className="mt-1.5 flex flex-col gap-1">
+              {awsRefreshState === 'success' ? (
+                <p className="text-xs text-green-600">AWS credentials refreshed. Send a new message to retry.</p>
+              ) : (
+                <>
+                  <button
+                    onClick={handleAwsRefresh}
+                    disabled={awsRefreshState === 'refreshing'}
+                    className="w-fit px-2 py-1 text-xs font-medium bg-destructive/10 hover:bg-destructive/20 text-destructive border border-destructive/30 rounded transition-colors disabled:opacity-50"
+                  >
+                    {awsRefreshState === 'refreshing' ? 'Refreshing... (complete SSO in browser)' : 'Refresh AWS Credentials'}
+                  </button>
+                  {awsRefreshState === 'failed' && awsRefreshError && (
+                    <p className="text-xs text-destructive/70">{awsRefreshError}</p>
+                  )}
+                </>
+              )}
+            </div>
+          ) : isAuthError ? (
             <button
               onClick={() => window.dispatchEvent(new CustomEvent('open-settings'))}
               className="mt-1.5 px-2 py-1 text-xs font-medium bg-destructive/10 hover:bg-destructive/20 text-destructive border border-destructive/30 rounded transition-colors"
             >
               Open Settings
             </button>
-          )}
+          ) : null}
           {needsTruncation && (
             <button
               onClick={() => setIsExpanded(!isExpanded)}

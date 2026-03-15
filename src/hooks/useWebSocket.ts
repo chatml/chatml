@@ -137,7 +137,7 @@ let lastDropStatsFetchTime = 0;
 // Check if an error message is auth-related (used for deduplication)
 function isAuthErrorMessage(msg: string): boolean {
   const lower = msg.toLowerCase();
-  return lower.includes('authentication') || lower.includes('api key') || lower.includes('oauth');
+  return lower.includes('authentication') || lower.includes('api key') || lower.includes('oauth') || lower.includes('aws credentials');
 }
 
 // Type guards for WebSocket payload validation

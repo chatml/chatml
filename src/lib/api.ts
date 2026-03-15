@@ -2347,6 +2347,27 @@ export async function setNeverLoadDotMcp(enabled: boolean): Promise<void> {
 }
 
 // =========================================================================
+// AWS SSO / Bedrock Credentials
+// =========================================================================
+
+export async function refreshAWSCredentials(): Promise<{ status: string }> {
+  const res = await fetchWithAuth(`${getApiBase()}/api/settings/aws-auth-refresh`, {
+    method: 'POST',
+  });
+  return handleResponse(res);
+}
+
+export async function getAWSSSOTokenStatus(): Promise<{
+  applicable: boolean;
+  valid: boolean | null;
+  expiresAt?: string;
+  expiresInMinutes?: number;
+}> {
+  const res = await fetchWithAuth(`${getApiBase()}/api/settings/aws-sso-token-status`);
+  return handleResponse(res);
+}
+
+// =========================================================================
 // AI Agents Configuration
 // =========================================================================
 
