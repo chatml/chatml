@@ -1,9 +1,10 @@
 'use client';
 
 import { useEffect } from 'react';
-import { Download, Loader2, RefreshCw, RotateCcw } from 'lucide-react';
+import { Clock, Download, Loader2, RefreshCw, RotateCcw } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useUpdateStore } from '@/stores/updateStore';
+import { useAppStore } from '@/stores/appStore';
 import { UPDATE_CHECK_DELAY_MS } from '@/lib/constants';
 import {
   Tooltip,
@@ -20,6 +21,8 @@ export function UpdatePill() {
   const checkForUpdates = useUpdateStore((s) => s.checkForUpdates);
   const downloadAndInstall = useUpdateStore((s) => s.downloadAndInstall);
   const relaunch = useUpdateStore((s) => s.relaunch);
+  const waitForAgents = useUpdateStore((s) => s.waitForAgents);
+  const streamingState = useAppStore((s) => s.streamingState);
 
   // Auto-check for updates on mount and periodically
   useEffect(() => {
@@ -36,6 +39,20 @@ export function UpdatePill() {
     };
   }, [checkForUpdates]);
 
+  // Auto-relaunch when all agents finish while in 'waiting' state
+  useEffect(() => {
+    if (status !== 'waiting') return;
+    const entries = Object.values(streamingState);
+    if (entries.length === 0) return; // State not populated yet
+    const hasActive = entries.some((s) => s.isStreaming);
+    if (!hasActive) {
+      relaunch().catch(() => {
+        // IPC failure — fall back to ready so user can retry
+        useUpdateStore.getState().cancelWait();
+      });
+    }
+  }, [status, streamingState, relaunch]);
+
   // Don't render when there's nothing to show
   if (status === 'idle' || status === 'checking') {
     return null;
@@ -46,7 +63,17 @@ export function UpdatePill() {
       case 'available':
         downloadAndInstall();
         break;
-      case 'ready':
+      case 'ready': {
+        const hasActive = Object.values(streamingState).some((s) => s.isStreaming);
+        if (hasActive) {
+          waitForAgents();
+        } else {
+          relaunch();
+        }
+        break;
+      }
+      case 'waiting':
+        // Force restart — user clicked again while waiting
         relaunch();
         break;
       case 'error':
@@ -63,6 +90,8 @@ export function UpdatePill() {
         return `Updating ${Math.round(progress)}%`;
       case 'ready':
         return 'Restart';
+      case 'waiting':
+        return 'Waiting...';
       case 'error':
         return 'Retry';
       default:
@@ -78,6 +107,8 @@ export function UpdatePill() {
         return <Loader2 className="h-3 w-3 animate-spin" />;
       case 'ready':
         return <RefreshCw className="h-3 w-3" />;
+      case 'waiting':
+        return <Clock className="h-3 w-3" />;
       case 'error':
         return <RotateCcw className="h-3 w-3" />;
       default:
@@ -93,6 +124,8 @@ export function UpdatePill() {
         return 'Downloading update...';
       case 'ready':
         return 'Update installed. Click to restart the app.';
+      case 'waiting':
+        return 'Waiting for agents to finish. Click to restart now.';
       case 'error':
         return 'Update failed. Click to retry.';
       default:
@@ -107,6 +140,8 @@ export function UpdatePill() {
         return 'bg-blue-500/15 text-blue-400 border-blue-500/25 hover:bg-blue-500/25';
       case 'ready':
         return 'bg-emerald-500/15 text-emerald-400 border-emerald-500/25 hover:bg-emerald-500/25';
+      case 'waiting':
+        return 'bg-amber-500/15 text-amber-400 border-amber-500/25 hover:bg-amber-500/25';
       case 'error':
         return 'bg-red-500/15 text-red-400 border-red-500/25 hover:bg-red-500/25';
       default:

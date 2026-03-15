@@ -29,6 +29,7 @@ import {
   GitPullRequest,
   Link,
   Archive,
+  AlertTriangle,
   // Actions
   Plus,
   Bot,
@@ -93,6 +94,17 @@ interface SubmenuItem {
 }
 
 // ============================================================================
+// Helpers
+// ============================================================================
+
+function getSessionsNeedingAttention() {
+  const { sessions } = useAppStore.getState();
+  return sessions.filter(
+    (s) => !s.archived && (s.hasCheckFailures || s.hasMergeConflict || s.status === 'error')
+  );
+}
+
+// ============================================================================
 // Command Definitions
 // ============================================================================
 
@@ -129,6 +141,17 @@ const COMMANDS: Command[] = [
     hasSubmenu: true,
     submenuId: 'conversations',
     available: () => useAppStore.getState().conversations.length > 0,
+    action: () => {},
+  },
+  {
+    id: 'sessions-attention',
+    category: 'Navigation',
+    label: 'Sessions Needing Attention',
+    icon: AlertTriangle,
+    keywords: ['problems', 'failures', 'conflicts', 'errors', 'issues', 'broken'],
+    hasSubmenu: true,
+    submenuId: 'attention',
+    available: () => getSessionsNeedingAttention().length > 0,
     action: () => {},
   },
   {
@@ -469,6 +492,32 @@ const SUBMENU_PAGES: Record<string, SubmenuPage> = {
         icon: MessageSquare,
         action: () => navigate({ conversationId: c.id }),
       }));
+    },
+  },
+  attention: {
+    title: 'Sessions Needing Attention',
+    icon: AlertTriangle,
+    getItems: () => {
+      return getSessionsNeedingAttention()
+        .map((s) => {
+          const issues: string[] = [];
+          if (s.hasCheckFailures) issues.push('CI failures');
+          if (s.hasMergeConflict) issues.push('Merge conflict');
+          if (s.status === 'error') issues.push('Agent error');
+
+          return {
+            id: s.id,
+            label: s.name || s.branch,
+            description: issues.join(' · '),
+            icon: AlertTriangle,
+            action: () =>
+              navigate({
+                workspaceId: s.workspaceId,
+                sessionId: s.id,
+                contentView: { type: 'conversation' },
+              }),
+          };
+        });
     },
   },
 };
