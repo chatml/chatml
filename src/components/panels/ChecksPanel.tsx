@@ -52,7 +52,7 @@ export interface ChecksPanelHandle {
 }
 
 interface BlockingItem {
-  type: 'ci-failure' | 'conflict' | 'behind-base' | 'not-mergeable' | 'in-progress-op';
+  type: 'ci-failure' | 'conflict' | 'behind-base' | 'not-mergeable' | 'in-progress-op' | 'review-required' | 'changes-requested';
   label: string;
   severity: 'error' | 'warning';
 }
@@ -126,13 +126,35 @@ function computeMergeReadiness(
   }
 
   // GitHub says not mergeable
-  if (pr.mergeableState === 'dirty' || pr.mergeableState === 'blocked') {
-    // Avoid duplicating if we already have specific blockers
-    const hasSpecificBlocker = blockers.some((b) => b.type === 'ci-failure' || b.type === 'conflict');
-    if (!hasSpecificBlocker) {
+  if (pr.mergeableState === 'dirty') {
+    if (!blockers.some((b) => b.type === 'conflict')) {
+      blockers.push({ type: 'conflict', label: 'PR has conflicts', severity: 'error' });
+    }
+  } else if (pr.mergeableState === 'blocked') {
+    // Show specific reasons for the block
+    if (pr.reviewDecision === 'changes_requested') {
+      blockers.push({
+        type: 'changes-requested',
+        label: 'Changes requested by reviewer',
+        severity: 'error',
+      });
+    } else if (pr.reviewDecision === 'review_required' || (pr.reviewDecision === 'none' && pr.requestedReviewers > 0)) {
+      blockers.push({
+        type: 'review-required',
+        label: pr.requestedReviewers > 0
+          ? `Review required (${pr.requestedReviewers} pending)`
+          : 'Review required',
+        severity: 'error',
+      });
+    }
+    // Fallback: if blocked but no specific reason identified
+    if (!blockers.some((b) =>
+      b.type === 'ci-failure' || b.type === 'conflict' ||
+      b.type === 'review-required' || b.type === 'changes-requested'
+    )) {
       blockers.push({
         type: 'not-mergeable',
-        label: pr.mergeableState === 'dirty' ? 'PR has conflicts' : 'PR is blocked',
+        label: 'Blocked by branch protection',
         severity: 'error',
       });
     }
@@ -405,18 +427,30 @@ function MergeReadinessBanner({
   }
 
   return (
-    <div className={cn('flex items-center gap-2 px-3 py-2 border-b min-w-0', bgClass, borderClass)}>
-      {icon}
-      <span className="text-xs font-medium flex-1 truncate" title={message}>{message}</span>
-      <Button
-        variant="ghost"
-        size="icon"
-        className="h-5 w-5 shrink-0"
-        onClick={onRefresh}
-        disabled={isLoading}
-      >
-        <RefreshCw className={cn('h-3 w-3', isLoading && 'animate-spin')} />
-      </Button>
+    <div className={cn('px-3 py-2 border-b', bgClass, borderClass)}>
+      <div className="flex items-center gap-2 min-w-0">
+        {icon}
+        <span className="text-xs font-medium flex-1 truncate" title={message}>{message}</span>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-5 w-5 shrink-0"
+          onClick={onRefresh}
+          disabled={isLoading}
+        >
+          <RefreshCw className={cn('h-3 w-3', isLoading && 'animate-spin')} />
+        </Button>
+      </div>
+      {blockers.length > 0 && (
+        <div className="mt-1 space-y-0.5 pl-5">
+          {blockers.map((b) => (
+            <div key={b.type} className="flex items-center gap-1.5">
+              <span className={cn('text-2xs', b.severity === 'error' ? 'text-red-400' : 'text-yellow-400')}>•</span>
+              <span className="text-2xs text-muted-foreground">{b.label}</span>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

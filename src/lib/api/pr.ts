@@ -9,6 +9,8 @@ export interface CheckDetail {
   durationSeconds?: number;
 }
 
+export type ReviewDecision = 'approved' | 'changes_requested' | 'review_required' | 'none';
+
 export interface PRDetails {
   number: number;
   state: string;
@@ -20,6 +22,8 @@ export interface PRDetails {
   mergeableState: string;
   checkStatus: CheckStatus;
   checkDetails: CheckDetail[];
+  reviewDecision: ReviewDecision;
+  requestedReviewers: number;
 }
 
 export async function getPRStatus(workspaceId: string, sessionId: string): Promise<PRDetails | null> {
