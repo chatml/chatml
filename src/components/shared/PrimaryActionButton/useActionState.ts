@@ -242,18 +242,24 @@ export function useActionState(
           message: 'Merge the pull request with a merge commit',
           description: 'All commits from this branch will be added to the base branch via a merge commit.',
           icon: GitMerge,
+          color: 'blue',
+          shortcut: '1',
         },
         {
           label: 'Squash and merge',
           message: 'Squash and merge the pull request',
           description: 'The commits from this branch will be combined into one commit in the base branch.',
           icon: Combine,
+          color: 'purple',
+          shortcut: '2',
         },
         {
           label: 'Rebase and merge',
           message: 'Rebase and merge the pull request',
           description: 'The commits from this branch will be rebased and added to the base branch.',
           icon: GitBranch,
+          color: 'teal',
+          shortcut: '3',
         },
       );
 

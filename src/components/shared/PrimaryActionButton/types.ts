@@ -17,11 +17,15 @@ export type ButtonVariant = 'default' | 'destructive' | 'success' | 'warning';
 
 export type ActionTier = 'alert' | 'action' | 'complete';
 
+export type DropdownColor = 'blue' | 'purple' | 'teal' | 'green' | 'amber' | 'red';
+
 export interface DropdownAction {
   label: string;
   message: string;
   description?: string;
   icon?: LucideIcon;
+  color?: DropdownColor;
+  shortcut?: string;
 }
 
 export interface PrimaryAction {
