@@ -260,6 +260,7 @@ interface AppState {
   workspaces: Workspace[];
   sessions: WorktreeSession[];
   conversations: Conversation[];
+  conversationIds: Set<string>; // O(1) duplicate/existence checks
   conversationsBySession: Record<string, Conversation[]>; // sessionId → conversations (index)
   conversationsVersion: number;
   messagesByConversation: Record<string, Message[]>;
@@ -608,6 +609,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   workspaces: [],
   sessions: [],
   conversations: [],
+  conversationIds: new Set(),
   conversationsBySession: {},
   conversationsVersion: 0,
   messagesByConversation: {},
@@ -780,6 +782,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       workspaces: state.workspaces.filter((w) => w.id !== id),
       sessions: state.sessions.filter((s) => s.workspaceId !== id),
       conversations: state.conversations.filter((c) => !workspaceSessionIds.has(c.sessionId)),
+      conversationIds: new Set([...state.conversationIds].filter((cid) => !workspaceConvIds.has(cid))),
       conversationsBySession: Object.fromEntries(
         Object.entries(state.conversationsBySession).filter(([sid]) => !workspaceSessionIds.has(sid))
       ),
@@ -898,6 +901,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       return {
         sessions: state.sessions.filter((s) => s.id !== id),
         conversations: state.conversations.filter((c) => c.sessionId !== id),
+        conversationIds: new Set([...state.conversationIds].filter((cid) => !convIds.includes(cid))),
         conversationsBySession: remainingConversationsBySession,
         messagesByConversation: Object.fromEntries(
           Object.entries(state.messagesByConversation).filter(([convId]) => !convIds.includes(convId))
@@ -1055,29 +1059,39 @@ export const useAppStore = create<AppState>((set, get) => ({
   // Conversation actions
   setConversations: (conversations) => set((state) => ({
     conversations,
+    conversationIds: new Set(conversations.map((c) => c.id)),
     conversationsBySession: buildConversationsBySession(conversations),
     conversationsVersion: state.conversationsVersion + 1,
     // Messages are loaded on-demand via getConversationMessages, not inline.
     // The useEffect in ConversationArea will fetch messages for the active conversation.
   })),
-  addConversation: (conversation) => set((state) => ({
-    conversations: [...state.conversations, conversation],
-    conversationsBySession: {
-      ...state.conversationsBySession,
-      [conversation.sessionId]: [...(state.conversationsBySession[conversation.sessionId] ?? []), conversation],
-    },
-    conversationsVersion: state.conversationsVersion + 1,
-    // Also add any initial messages (e.g., system setup message from createConversation)
-    messagesByConversation: conversation.messages.length > 0
-      ? {
-          ...state.messagesByConversation,
-          [conversation.id]: [
-            ...(state.messagesByConversation[conversation.id] ?? []),
-            ...conversation.messages,
-          ],
-        }
-      : state.messagesByConversation,
-  })),
+  addConversation: (conversation) => set((state) => {
+    // Prevent duplicates (e.g., restoring a conversation that's already in the store)
+    if (state.conversationIds.has(conversation.id)) {
+      return state;
+    }
+    const newIds = new Set(state.conversationIds);
+    newIds.add(conversation.id);
+    return {
+      conversations: [...state.conversations, conversation],
+      conversationIds: newIds,
+      conversationsBySession: {
+        ...state.conversationsBySession,
+        [conversation.sessionId]: [...(state.conversationsBySession[conversation.sessionId] ?? []), conversation],
+      },
+      conversationsVersion: state.conversationsVersion + 1,
+      // Also add any initial messages (e.g., system setup message from createConversation)
+      messagesByConversation: conversation.messages.length > 0
+        ? {
+            ...state.messagesByConversation,
+            [conversation.id]: [
+              ...(state.messagesByConversation[conversation.id] ?? []),
+              ...conversation.messages,
+            ],
+          }
+        : state.messagesByConversation,
+    };
+  }),
   updateConversation: (id, updates) => set((state) => {
     const newConversations = state.conversations.map((c) =>
       c.id === id ? { ...c, ...updates } : c
@@ -1126,6 +1140,8 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     const removedConv = state.conversations.find((c) => c.id === id);
     const newConversations = state.conversations.filter((c) => c.id !== id);
+    const newIds = new Set(state.conversationIds);
+    newIds.delete(id);
 
     // Select another conversation if we're removing the selected one
     let newSelectedConversationId = state.selectedConversationId;
@@ -1152,6 +1168,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     return {
       conversations: newConversations,
+      conversationIds: newIds,
       conversationsBySession: buildConversationsBySession(newConversations),
       messagesByConversation: (() => {
         // eslint-disable-next-line @typescript-eslint/no-unused-vars
