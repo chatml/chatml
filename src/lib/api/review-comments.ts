@@ -1,4 +1,4 @@
-import { getApiBase, fetchWithAuth, handleResponse, handleVoidResponse, ApiError } from './base';
+import { getApiBase, fetchWithAuth, handleResponse, ApiError } from './base';
 
 export interface ReviewCommentDTO {
   id: string;

@@ -14,7 +14,7 @@ export function useChatInputAttachments({ autoConvertLongText, showError, showIn
   const [isDragOver, setIsDragOver] = useState(false);
   const [previewIndex, setPreviewIndex] = useState<number | null>(null);
   const attachmentsRef = useRef<Attachment[]>(attachments);
-  attachmentsRef.current = attachments;
+  useEffect(() => { attachmentsRef.current = attachments; });
 
   // Handle file drop processing
   const handleFileDrop = useCallback(async (paths: string[]) => {

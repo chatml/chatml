@@ -31,6 +31,7 @@ export function useChatInputDrafts({
   // Save draft on unmount — catches navigation away (contentView changes),
   // component teardown, and any other unmount scenario not covered by the
   // session-switch effect below.
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally reads refs at cleanup time; these refs are stable across the component lifetime
   useEffect(() => {
     return () => {
       const sessionId = currentSessionIdRef.current;

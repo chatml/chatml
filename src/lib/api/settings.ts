@@ -1,4 +1,4 @@
-import { getApiBase, fetchWithAuth, handleResponse, handleVoidResponse } from './base';
+import { getApiBase, fetchWithAuth, handleResponse } from './base';
 
 export async function getWorkspacesBasePath(): Promise<string> {
   const res = await fetchWithAuth(`${getApiBase()}/api/settings/workspaces-base-dir`);

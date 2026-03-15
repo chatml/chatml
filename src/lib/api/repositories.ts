@@ -1,4 +1,4 @@
-import { getApiBase, fetchWithAuth, handleResponse, handleVoidResponse, ApiError } from './base';
+import { getApiBase, fetchWithAuth, handleResponse, handleVoidResponse } from './base';
 
 export interface RepoDTO {
   id: string;

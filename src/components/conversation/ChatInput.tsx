@@ -154,7 +154,6 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
     clearPendingPlanApproval,
     setApprovedPlanContent,
     clearApprovedPlanContent,
-    clearActiveTools,
     finalizeStreamingMessage,
     setPlanModeActive,
     clearInputSuggestion,
