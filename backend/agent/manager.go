@@ -135,11 +135,19 @@ func NewManager(ctx context.Context, s *store.SQLiteStore, wm *git.WorktreeManag
 }
 
 // Init performs startup cleanup tasks such as resetting stale conversation
-// statuses from a previous unclean shutdown. Call after NewManager and before
-// the HTTP server starts accepting requests.
+// statuses and recovering interrupted messages from a previous unclean shutdown.
+// Call after NewManager and before the HTTP server starts accepting requests.
 func (m *Manager) Init(ctx context.Context) error {
 	if err := m.store.CleanupStaleConversations(ctx); err != nil {
 		return fmt.Errorf("failed to cleanup stale conversations: %w", err)
+	}
+	// Convert orphaned streaming snapshots into persisted assistant messages.
+	// This recovers partial agent responses that were lost when the app was
+	// killed mid-turn (safety net for when the output handler's flush fails).
+	if converted, err := m.store.ConvertSnapshotsToMessages(ctx); err != nil {
+		logger.Manager.Errorf("Failed to convert snapshots to messages: %v", err)
+	} else if converted > 0 {
+		logger.Manager.Infof("Recovered %d interrupted assistant messages from snapshots", converted)
 	}
 	return nil
 }
@@ -517,8 +525,10 @@ func (m *Manager) handleConversationOutput(convID string, proc *Process) {
 	snapshotTimer.Stop() // Don't start until first state change
 	defer snapshotTimer.Stop()
 
-	// flushSnapshot writes the current streaming state to the DB
-	flushSnapshot := func() {
+	// flushSnapshot writes the current streaming state to the DB.
+	// Accepts an explicit context so callers can provide a detached context
+	// during shutdown (when the app-level ctx is already cancelled).
+	flushSnapshot := func(flushCtx context.Context) {
 		if !snapshotDirty {
 			return
 		}
@@ -569,7 +579,7 @@ func (m *Manager) handleConversationOutput(convID string, proc *Process) {
 			logger.Manager.Errorf("Failed to marshal streaming snapshot for conv %s: %v", convID, err)
 			return
 		}
-		if err := m.store.SetStreamingSnapshot(ctx, convID, data); err != nil {
+		if err := m.store.SetStreamingSnapshot(flushCtx, convID, data); err != nil {
 			logger.Manager.Errorf("Failed to store streaming snapshot for conv %s: %v", convID, err)
 			return
 		}
@@ -972,7 +982,7 @@ outer:
 					Timestamp: time.Now().UnixMilli(),
 				}
 				markSnapshotDirty()
-				flushSnapshot() // Force immediate flush — don't wait for debounce
+				flushSnapshot(ctx) // Force immediate flush — don't wait for debounce
 
 			case EventTypePlanApprovalRequest:
 				pendingPlanContent = event.PlanContent
@@ -984,7 +994,7 @@ outer:
 					Timestamp:   time.Now().UnixMilli(),
 				}
 				markSnapshotDirty()
-				flushSnapshot() // Force immediate flush — don't wait for debounce
+				flushSnapshot(ctx) // Force immediate flush — don't wait for debounce
 
 			case EventTypeCheckpointCreated:
 				if event.CheckpointUuid != "" {
@@ -1275,7 +1285,7 @@ outer:
 
 		case <-snapshotTimer.C:
 			// Debounce timer fired — flush snapshot to DB
-			flushSnapshot()
+			flushSnapshot(ctx)
 
 		case <-dropCheckTicker.C:
 			// Check for new drops and emit warning out-of-band
@@ -1293,14 +1303,31 @@ outer:
 					})
 				}
 			}
+
+		case <-ctx.Done():
+			// App shutting down — force-flush the latest snapshot state with a
+			// detached context so ConvertSnapshotsToMessages can recover it on
+			// next startup (safety net for SIGKILL after this point).
+			logger.Manager.Warnf("Conversation %s: context cancelled, force-flushing snapshot before exit", convID)
+			shutdownFlushCtx, shutdownFlushCancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+			snapshotDirty = true
+			flushSnapshot(shutdownFlushCtx)
+			shutdownFlushCancel()
+			break outer
 		}
 	}
+
+	// Use a detached context for final persistence — the app-level context may
+	// already be cancelled due to SIGTERM, but we need to fit within the 2-second
+	// sidecar grace period (shared with handleConversationCompletion's goroutine).
+	flushCtx, flushCancel := context.WithTimeout(context.Background(), 1*time.Second)
+	defer flushCancel()
 
 	// Atomically clear active turn flag and flush any remaining deferred user
 	// message. Store BEFORE the assistant message so the DB position ordering
 	// is: [queued_user_N, assistant_N+1].
 	pendingFinal := proc.EndTurnAndTakePending()
-	m.storePendingUserMessage(ctx, convID, pendingFinal)
+	m.storePendingUserMessage(flushCtx, convID, pendingFinal)
 
 	// Store any remaining assistant message (with full enrichment)
 	if currentAssistantMessage != "" {
@@ -1362,7 +1389,7 @@ outer:
 
 		durationMs := int(time.Since(turnStartTime).Milliseconds())
 
-		if err := m.store.AddMessageToConversation(ctx, convID, models.Message{
+		if err := m.store.AddMessageToConversation(flushCtx, convID, models.Message{
 			ID:              uuid.New().String()[:8],
 			Role:            "assistant",
 			Content:         currentAssistantMessage,
@@ -1386,7 +1413,7 @@ outer:
 	isStaleHandler := exists && currentProc != proc
 	m.mu.RUnlock()
 	if !isStaleHandler {
-		if err := m.store.ClearStreamingSnapshot(ctx, convID); err != nil {
+		if err := m.store.ClearStreamingSnapshot(flushCtx, convID); err != nil {
 			logger.Manager.Errorf("Failed to clear streaming snapshot on exit for conv %s: %v", convID, err)
 		}
 	}
@@ -1408,15 +1435,28 @@ outer:
 }
 
 // handleConversationCompletion handles process completion.
-// Note: Uses the app-level context so background work is cancelled on shutdown.
+// Uses a detached context for persistence so data is flushed even during shutdown.
 func (m *Manager) handleConversationCompletion(convID string, proc *Process) {
 	ctx := m.ctx
+	appShutdown := false
 	select {
 	case <-proc.Done():
 	case <-ctx.Done():
-		logger.Manager.Warnf("App shutting down, abandoning completion wait for conversation %s", convID)
-		return
+		// App shutting down — don't return immediately. Give the process a brief
+		// window to exit so we can still synthesize error messages if needed.
+		logger.Manager.Warnf("App shutting down, waiting briefly for process exit on conversation %s", convID)
+		appShutdown = true
+		select {
+		case <-proc.Done():
+		case <-time.After(300 * time.Millisecond):
+			logger.Manager.Warnf("Process for conversation %s did not exit in time during shutdown", convID)
+		}
 	}
+
+	// Use a detached context for persistence — fits within the 2-second sidecar
+	// grace period (shared with handleConversationOutput's goroutine).
+	flushCtx, flushCancel := context.WithTimeout(context.Background(), 1*time.Second)
+	defer flushCancel()
 
 	exitErr := proc.ExitError()
 	var synthesizedError string
@@ -1433,6 +1473,8 @@ func (m *Manager) handleConversationCompletion(convID string, proc *Process) {
 				synthesizedError += ": " + strings.Join(stderrLines, "\n")
 			}
 		}
+	} else if appShutdown {
+		logger.Manager.Infof("Conversation %s process exited during app shutdown, skipping error synthesis", convID)
 	} else {
 		logger.Manager.Infof("Conversation %s process exited cleanly", convID)
 	}
@@ -1441,7 +1483,8 @@ func (m *Manager) handleConversationCompletion(convID string, proc *Process) {
 	// assistant output AND without an error event, synthesize a user-visible error.
 	// This prevents the conversation from going silently idle with zero feedback.
 	// Only fires if the crash fallback above didn't already synthesize an error.
-	if synthesizedError == "" && !proc.ProducedOutput() && !proc.SawErrorEvent() {
+	// Skip during app shutdown — the partial output is handled by handleConversationOutput.
+	if synthesizedError == "" && !appShutdown && !proc.ProducedOutput() && !proc.SawErrorEvent() {
 		stderrLines := proc.LastStderrLines()
 		synthesizedError = "The agent process exited without producing any response"
 		if len(stderrLines) > 0 {
@@ -1453,7 +1496,7 @@ func (m *Manager) handleConversationCompletion(convID string, proc *Process) {
 	// Persist the synthesized error as an assistant message so it survives app
 	// restarts, and broadcast it via WebSocket for immediate display.
 	if synthesizedError != "" {
-		if err := m.store.AddMessageToConversation(ctx, convID, models.Message{
+		if err := m.store.AddMessageToConversation(flushCtx, convID, models.Message{
 			ID:        uuid.New().String()[:8],
 			Role:      "assistant",
 			Content:   synthesizedError,

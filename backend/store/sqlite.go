@@ -12,6 +12,7 @@ import (
 	"github.com/chatml/chatml-backend/appdir"
 	"github.com/chatml/chatml-backend/logger"
 	"github.com/chatml/chatml-backend/models"
+	"github.com/google/uuid"
 	_ "modernc.org/sqlite"
 )
 
@@ -2024,6 +2025,113 @@ func (s *SQLiteStore) CleanupStaleConversations(ctx context.Context) error {
 			 WHERE status = 'active' AND updated_at < datetime('now', '-30 seconds')`)
 		return err
 	})
+}
+
+// ConvertSnapshotsToMessages converts orphaned streaming snapshots into persisted
+// assistant messages. This recovers partial agent responses that were lost when
+// the app was killed mid-turn (e.g., SIGKILL before the output handler could flush).
+// Returns the number of conversations whose snapshots were converted.
+func (s *SQLiteStore) ConvertSnapshotsToMessages(ctx context.Context) (int, error) {
+	interrupted, err := s.GetInterruptedConversations(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("ConvertSnapshotsToMessages: %w", err)
+	}
+
+	// Minimal struct for deserializing snapshot JSON within the store package
+	// (cannot import agent package due to circular dependency).
+	// Intentionally ignores: activeTools, isThinking, planModeActive, subAgents,
+	// pendingPlanApproval, pendingUserQuestion — these are transient UI state
+	// that is not meaningful to recover as a persisted message.
+	type snapshotTextSegment struct {
+		Text      string `json:"text"`
+		Timestamp int64  `json:"timestamp"`
+	}
+	type snapshot struct {
+		Text         string                `json:"text"`
+		TextSegments []snapshotTextSegment `json:"textSegments"`
+		Thinking     string                `json:"thinking"`
+	}
+
+	converted := 0
+	for _, ic := range interrupted {
+		var snap snapshot
+		if err := json.Unmarshal(ic.SnapshotJSON, &snap); err != nil {
+			logger.Store.Errorf("ConvertSnapshotsToMessages: failed to unmarshal snapshot for conv %s, clearing corrupt snapshot: %v", ic.ID, err)
+			// Clear corrupt snapshots to prevent retry on every startup
+			if clearErr := s.ClearStreamingSnapshot(ctx, ic.ID); clearErr != nil {
+				logger.Store.Errorf("ConvertSnapshotsToMessages: failed to clear corrupt snapshot for conv %s: %v", ic.ID, clearErr)
+			}
+			continue
+		}
+
+		// Skip empty snapshots (agent started but hadn't produced any text or thinking)
+		if snap.Text == "" && snap.Thinking == "" {
+			// Clear the empty snapshot
+			if err := s.ClearStreamingSnapshot(ctx, ic.ID); err != nil {
+				logger.Store.Errorf("ConvertSnapshotsToMessages: failed to clear empty snapshot for conv %s: %v", ic.ID, err)
+			}
+			continue
+		}
+
+		// Dedup: check if the last message is already an assistant message with matching content.
+		// This handles the case where the output handler successfully flushed (Change 1) but
+		// ClearStreamingSnapshot failed (e.g., timeout).
+		var lastRole, lastContent sql.NullString
+		row := s.db.QueryRowContext(ctx,
+			`SELECT role, content FROM messages WHERE conversation_id = ? ORDER BY position DESC LIMIT 1`,
+			ic.ID)
+		if err := row.Scan(&lastRole, &lastContent); err != nil && err != sql.ErrNoRows {
+			logger.Store.Errorf("ConvertSnapshotsToMessages: failed to check last message for conv %s: %v", ic.ID, err)
+			continue
+		}
+		if lastRole.Valid && lastRole.String == "assistant" && lastContent.Valid && lastContent.String == snap.Text {
+			// Already persisted — just clear the snapshot
+			if err := s.ClearStreamingSnapshot(ctx, ic.ID); err != nil {
+				logger.Store.Errorf("ConvertSnapshotsToMessages: failed to clear duplicate snapshot for conv %s: %v", ic.ID, err)
+			}
+			continue
+		}
+
+		// Build timeline from text segments and thinking blocks.
+		// Thinking is prepended since it typically precedes text output.
+		var timeline []models.TimelineEntry
+		if snap.Thinking != "" {
+			timeline = append(timeline, models.TimelineEntry{Type: "thinking", Content: snap.Thinking})
+		}
+		if len(snap.TextSegments) > 0 {
+			for _, seg := range snap.TextSegments {
+				if seg.Text != "" {
+					timeline = append(timeline, models.TimelineEntry{Type: "text", Content: seg.Text})
+				}
+			}
+		} else if snap.Text != "" {
+			// Fallback: single text entry if no segments
+			timeline = append(timeline, models.TimelineEntry{Type: "text", Content: snap.Text})
+		}
+
+		msg := models.Message{
+			ID:              uuid.New().String()[:8],
+			Role:            "assistant",
+			Content:         snap.Text,
+			ThinkingContent: snap.Thinking,
+			Timeline:        timeline,
+			Timestamp:       time.Now(),
+		}
+
+		if err := s.AddMessageToConversation(ctx, ic.ID, msg); err != nil {
+			logger.Store.Errorf("ConvertSnapshotsToMessages: failed to persist recovered message for conv %s: %v", ic.ID, err)
+			continue
+		}
+
+		if err := s.ClearStreamingSnapshot(ctx, ic.ID); err != nil {
+			logger.Store.Errorf("ConvertSnapshotsToMessages: failed to clear snapshot after conversion for conv %s: %v", ic.ID, err)
+		}
+
+		converted++
+		logger.Store.Infof("ConvertSnapshotsToMessages: recovered interrupted assistant message for conv %s (%d chars)", ic.ID, len(snap.Text))
+	}
+
+	return converted, nil
 }
 
 // ============================================================================
