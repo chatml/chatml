@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import type { Update } from '@tauri-apps/plugin-updater';
 
-export type UpdateStatus = 'idle' | 'checking' | 'available' | 'downloading' | 'ready' | 'error';
+export type UpdateStatus = 'idle' | 'checking' | 'available' | 'downloading' | 'ready' | 'waiting' | 'error';
 
 interface UpdateState {
   status: UpdateStatus;
@@ -12,6 +12,8 @@ interface UpdateState {
   checkForUpdates: () => Promise<'up-to-date' | 'available' | null>;
   downloadAndInstall: () => Promise<void>;
   relaunch: () => Promise<void>;
+  waitForAgents: () => void;
+  cancelWait: () => void;
 }
 
 // Hold the Update object outside of Zustand state (not serializable)
@@ -31,7 +33,7 @@ export const useUpdateStore = create<UpdateState>()((set, get) => ({
     if (!isTauri()) return null;
 
     const { status } = get();
-    if (status === 'checking' || status === 'downloading') return null;
+    if (status === 'checking' || status === 'downloading' || status === 'waiting') return null;
 
     try {
       set({ status: 'checking', error: null });
@@ -96,5 +98,19 @@ export const useUpdateStore = create<UpdateState>()((set, get) => ({
   relaunch: async () => {
     const { relaunch } = await import('@tauri-apps/plugin-process');
     await relaunch();
+  },
+
+  waitForAgents: () => {
+    const { status } = get();
+    if (status === 'ready') {
+      set({ status: 'waiting' });
+    }
+  },
+
+  cancelWait: () => {
+    const { status } = get();
+    if (status === 'waiting') {
+      set({ status: 'ready' });
+    }
   },
 }));
