@@ -125,7 +125,7 @@ export const BATCHABLE_EVENTS = new Set([
   'hook_pre_tool', 'hook_post_tool', 'hook_response', 'hook_tool_failure',
   'session_started', 'session_ended', 'session_id_update',
   'auth_status', 'status_update', 'agent_stderr', 'json_parse_error',
-  'agent_stop', 'pre_compact', 'model_changed', 'supported_models',
+  'agent_stop', 'pre_compact', 'post_compact', 'model_changed', 'supported_models',
   'supported_commands', 'mcp_status', 'account_info',
   'subagent_started', 'subagent_stopped', 'subagent_output', 'subagent_usage',
   'user_question_request', 'user_question_timeout', 'user_question_cancelled',
