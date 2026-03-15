@@ -13,11 +13,13 @@ import {
 import { useAppStore } from '@/stores/appStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useUpdateStore } from '@/stores/updateStore';
+import { useNavigationStore } from '@/stores/navigationStore';
 import { useShortcut } from '@/hooks/useShortcut';
 import { navigate } from '@/lib/navigation';
 import { copyToClipboard } from '@/lib/tauri';
 import { useToast } from '@/components/ui/toast';
 import { getShortcutById, formatShortcutKeys } from '@/lib/shortcuts';
+import { MODELS } from '@/lib/models';
 import type { LucideIcon } from 'lucide-react';
 import {
   // Navigation
@@ -30,6 +32,9 @@ import {
   Link,
   Archive,
   AlertTriangle,
+  ArrowLeft,
+  ArrowRight,
+  Store,
   // Actions
   Plus,
   Bot,
@@ -41,23 +46,26 @@ import {
   PanelBottom,
   PanelLeft,
   PanelRight,
+  ExternalLink,
+  Terminal,
+  Search,
+  Cpu,
   // Git
   GitCommit,
   Copy,
-  ExternalLink,
-  Terminal,
   RefreshCw,
   Download,
   // Review
-  Search,
   Shield,
   FileCode,
   // Settings
   Moon,
   Volume2,
+  Keyboard,
   ChevronLeft,
   Clock,
   ChevronRight,
+  ListTodo,
 } from 'lucide-react';
 
 // ============================================================================
@@ -115,7 +123,7 @@ const COMMANDS: Command[] = [
     category: 'Navigation',
     label: 'Go to Workspace...',
     icon: FolderGit2,
-    keywords: ['repository', 'repo', 'project'],
+    keywords: ['repository', 'repo', 'project', 'switch'],
     hasSubmenu: true,
     submenuId: 'workspaces',
     available: () => useAppStore.getState().workspaces.length > 0,
@@ -126,7 +134,7 @@ const COMMANDS: Command[] = [
     category: 'Navigation',
     label: 'Go to Session...',
     icon: GitBranch,
-    keywords: ['branch', 'worktree'],
+    keywords: ['branch', 'worktree', 'switch'],
     hasSubmenu: true,
     submenuId: 'sessions',
     available: () => useAppStore.getState().sessions.filter((s) => !s.archived).length > 0,
@@ -137,7 +145,7 @@ const COMMANDS: Command[] = [
     category: 'Navigation',
     label: 'Go to Conversation...',
     icon: MessageSquare,
-    keywords: ['chat', 'message'],
+    keywords: ['chat', 'message', 'switch'],
     hasSubmenu: true,
     submenuId: 'conversations',
     available: () => useAppStore.getState().conversations.length > 0,
@@ -159,7 +167,7 @@ const COMMANDS: Command[] = [
     category: 'Navigation',
     label: 'Open Settings',
     icon: Settings,
-    keywords: ['preferences', 'config', 'configuration'],
+    keywords: ['preferences', 'config', 'configuration', 'options'],
     action: () => window.dispatchEvent(new CustomEvent('open-settings')),
   },
   {
@@ -167,7 +175,7 @@ const COMMANDS: Command[] = [
     category: 'Navigation',
     label: 'Open Session Manager',
     icon: Layers,
-    keywords: ['sessions', 'worktrees', 'branches'],
+    keywords: ['sessions', 'worktrees', 'branches', 'overview'],
     action: () => useSettingsStore.getState().setContentView({ type: 'session-manager' }),
   },
   {
@@ -175,7 +183,7 @@ const COMMANDS: Command[] = [
     category: 'Navigation',
     label: 'Open PR Dashboard',
     icon: GitPullRequest,
-    keywords: ['pull requests', 'prs', 'reviews'],
+    keywords: ['pull requests', 'prs', 'reviews', 'merge'],
     action: () => useSettingsStore.getState().setContentView({ type: 'pr-dashboard' }),
   },
   {
@@ -186,6 +194,54 @@ const COMMANDS: Command[] = [
     keywords: ['repos', 'workspaces', 'projects'],
     action: () => useSettingsStore.getState().setContentView({ type: 'repositories' }),
   },
+  {
+    id: 'open-skills-store',
+    category: 'Navigation',
+    label: 'Open Skills Store',
+    icon: Store,
+    keywords: ['skills', 'marketplace', 'plugins', 'extensions', 'install'],
+    action: () => useSettingsStore.getState().setContentView({ type: 'skills-store' }),
+  },
+  {
+    id: 'open-branches',
+    category: 'Navigation',
+    label: 'Open Branches Dashboard',
+    icon: GitBranch,
+    keywords: ['branches', 'git', 'worktrees'],
+    available: () => useAppStore.getState().selectedWorkspaceId !== null,
+    action: () => {
+      const workspaceId = useAppStore.getState().selectedWorkspaceId;
+      if (workspaceId) useSettingsStore.getState().setContentView({ type: 'branches', workspaceId });
+    },
+  },
+  {
+    id: 'navigate-back',
+    category: 'Navigation',
+    label: 'Navigate Back',
+    icon: ArrowLeft,
+    shortcutId: 'navigateBack',
+    keywords: ['back', 'previous', 'history'],
+    action: () => useNavigationStore.getState().goBack(),
+  },
+  {
+    id: 'navigate-forward',
+    category: 'Navigation',
+    label: 'Navigate Forward',
+    icon: ArrowRight,
+    shortcutId: 'navigateForward',
+    keywords: ['forward', 'next', 'history'],
+    action: () => useNavigationStore.getState().goForward(),
+  },
+  {
+    id: 'search-workspaces',
+    category: 'Navigation',
+    label: 'Search Workspaces',
+    icon: Search,
+    shortcutId: 'workspaceSearch',
+    keywords: ['find', 'search', 'global'],
+    action: () => window.dispatchEvent(new CustomEvent('search-workspaces')),
+  },
+
   // Actions
   {
     id: 'new-session',
@@ -193,7 +249,7 @@ const COMMANDS: Command[] = [
     label: 'New Session',
     icon: Bot,
     shortcutId: 'newSession',
-    keywords: ['spawn', 'agent', 'worktree', 'create'],
+    keywords: ['spawn', 'agent', 'worktree', 'create', 'branch', 'new'],
     available: () => useAppStore.getState().selectedWorkspaceId !== null,
     action: () => window.dispatchEvent(new CustomEvent('spawn-agent')),
   },
@@ -202,7 +258,8 @@ const COMMANDS: Command[] = [
     category: 'Actions',
     label: 'New Conversation',
     icon: MessageCirclePlus,
-    keywords: ['chat', 'message', 'create'],
+    shortcutId: 'newConversation',
+    keywords: ['chat', 'message', 'create', 'task'],
     available: () => useAppStore.getState().selectedSessionId !== null,
     action: () => window.dispatchEvent(new CustomEvent('new-conversation')),
   },
@@ -220,16 +277,16 @@ const COMMANDS: Command[] = [
     category: 'Actions',
     label: 'Add Repository',
     icon: Plus,
-    keywords: ['workspace', 'project', 'clone', 'create'],
+    keywords: ['workspace', 'project', 'clone', 'create', 'new'],
     action: () => window.dispatchEvent(new CustomEvent('add-workspace')),
   },
   {
     id: 'toggle-plan-mode',
     category: 'Actions',
     label: 'Toggle Plan Mode',
-    icon: FileCode,
+    icon: ListTodo,
     shortcutId: 'togglePlanMode',
-    keywords: ['planning', 'architect'],
+    keywords: ['planning', 'architect', 'design', 'strategy'],
     available: () => useAppStore.getState().selectedSessionId !== null,
     action: () => window.dispatchEvent(new CustomEvent('toggle-plan-mode')),
   },
@@ -248,11 +305,29 @@ const COMMANDS: Command[] = [
     },
   },
   {
+    id: 'cycle-model',
+    category: 'Actions',
+    label: 'Cycle Model',
+    icon: Cpu,
+    shortcutId: 'cycleModel',
+    keywords: ['model', 'switch', 'opus', 'sonnet', 'haiku', 'claude'],
+    action: () => {
+      const store = useSettingsStore.getState();
+      const dynamic = useAppStore.getState().supportedModels;
+      // Use SDK-reported models if available, fall back to static list
+      const models = dynamic.length > 0 ? dynamic.map((m) => m.value) : MODELS.map((m) => m.id);
+      const idx = models.indexOf(store.defaultModel);
+      const next = models[(idx + 1) % models.length];
+      store.setDefaultModel(next);
+    },
+  },
+  {
     id: 'toggle-zen-mode',
     category: 'Actions',
     label: 'Toggle Zen Mode',
     icon: Sparkles,
-    keywords: ['distraction', 'free', 'focus', 'minimal'],
+    shortcutId: 'zenMode',
+    keywords: ['distraction', 'free', 'focus', 'minimal', 'clean'],
     action: () => {
       const store = useSettingsStore.getState();
       store.setZenMode(!store.zenMode);
@@ -264,8 +339,18 @@ const COMMANDS: Command[] = [
     label: 'Focus Chat Input',
     icon: Focus,
     shortcutId: 'focusChat',
-    keywords: ['input', 'message', 'type'],
+    keywords: ['input', 'message', 'type', 'compose'],
     action: () => window.dispatchEvent(new CustomEvent('focus-input')),
+  },
+  {
+    id: 'search-conversation',
+    category: 'Actions',
+    label: 'Search Conversation',
+    icon: Search,
+    shortcutId: 'searchChat',
+    keywords: ['find', 'search', 'chat', 'text'],
+    available: () => useAppStore.getState().selectedSessionId !== null,
+    action: () => window.dispatchEvent(new CustomEvent('search-chat')),
   },
   {
     id: 'open-file-picker',
@@ -273,16 +358,34 @@ const COMMANDS: Command[] = [
     label: 'Open File Picker',
     icon: FileSearch,
     shortcutId: 'filePicker',
-    keywords: ['search', 'find', 'files'],
+    keywords: ['search', 'find', 'files', 'open'],
     available: () => useAppStore.getState().selectedSessionId !== null,
     action: () => window.dispatchEvent(new CustomEvent('open-file-picker')),
+  },
+  {
+    id: 'open-in-vscode',
+    category: 'Actions',
+    label: 'Open in VS Code',
+    icon: ExternalLink,
+    keywords: ['editor', 'ide', 'code', 'vscode'],
+    available: () => useAppStore.getState().selectedSessionId !== null,
+    action: () => window.dispatchEvent(new CustomEvent('open-in-vscode')),
+  },
+  {
+    id: 'open-terminal',
+    category: 'Actions',
+    label: 'Open Terminal',
+    icon: Terminal,
+    keywords: ['shell', 'console', 'cli', 'bash', 'zsh'],
+    available: () => useAppStore.getState().selectedSessionId !== null,
+    action: () => window.dispatchEvent(new CustomEvent('show-bottom-panel')),
   },
   {
     id: 'toggle-bottom-panel',
     category: 'Actions',
     label: 'Toggle Bottom Panel',
     icon: PanelBottom,
-    keywords: ['terminal', 'tasks', 'panel'],
+    keywords: ['terminal', 'tasks', 'panel', 'bottom'],
     action: () => window.dispatchEvent(new CustomEvent('toggle-bottom-panel')),
   },
   {
@@ -290,7 +393,7 @@ const COMMANDS: Command[] = [
     category: 'Actions',
     label: 'Toggle Left Panel',
     icon: PanelLeft,
-    keywords: ['sidebar', 'workspaces', 'sessions'],
+    keywords: ['sidebar', 'workspaces', 'sessions', 'left'],
     action: () => window.dispatchEvent(new CustomEvent('toggle-left-panel')),
   },
   {
@@ -298,7 +401,7 @@ const COMMANDS: Command[] = [
     category: 'Actions',
     label: 'Toggle Right Panel',
     icon: PanelRight,
-    keywords: ['sidebar', 'changes', 'files'],
+    keywords: ['sidebar', 'changes', 'files', 'right'],
     available: () => useAppStore.getState().selectedSessionId !== null,
     action: () => window.dispatchEvent(new CustomEvent('toggle-right-panel')),
   },
@@ -309,7 +412,7 @@ const COMMANDS: Command[] = [
     category: 'Git',
     label: 'Commit Changes',
     icon: GitCommit,
-    keywords: ['save', 'stage'],
+    keywords: ['save', 'stage', 'git', 'changes'],
     available: () => useAppStore.getState().selectedSessionId !== null,
     action: () => window.dispatchEvent(new CustomEvent('git-commit')),
   },
@@ -318,7 +421,7 @@ const COMMANDS: Command[] = [
     category: 'Git',
     label: 'Create Pull Request',
     icon: GitPullRequest,
-    keywords: ['pr', 'merge', 'review'],
+    keywords: ['pr', 'merge', 'review', 'git', 'push'],
     available: () => useAppStore.getState().selectedSessionId !== null,
     action: () => window.dispatchEvent(new CustomEvent('git-create-pr')),
   },
@@ -327,7 +430,7 @@ const COMMANDS: Command[] = [
     category: 'Git',
     label: 'Sync with Main',
     icon: RefreshCw,
-    keywords: ['pull', 'rebase', 'update'],
+    keywords: ['pull', 'rebase', 'update', 'git', 'merge', 'fetch'],
     available: () => useAppStore.getState().selectedSessionId !== null,
     action: () => window.dispatchEvent(new CustomEvent('git-sync')),
   },
@@ -336,11 +439,8 @@ const COMMANDS: Command[] = [
     category: 'Git',
     label: 'Copy Branch Name',
     icon: Copy,
-    keywords: ['clipboard'],
-    available: () => {
-      const sessionId = useAppStore.getState().selectedSessionId;
-      return sessionId !== null;
-    },
+    keywords: ['clipboard', 'git', 'branch name'],
+    available: () => useAppStore.getState().selectedSessionId !== null,
     action: async () => {
       const { selectedSessionId, sessions } = useAppStore.getState();
       const session = sessions.find((s) => s.id === selectedSessionId);
@@ -350,24 +450,6 @@ const COMMANDS: Command[] = [
       }
     },
   },
-  {
-    id: 'open-in-vscode',
-    category: 'Git',
-    label: 'Open in VS Code',
-    icon: ExternalLink,
-    keywords: ['editor', 'ide', 'code'],
-    available: () => useAppStore.getState().selectedSessionId !== null,
-    action: () => window.dispatchEvent(new CustomEvent('open-in-vscode')),
-  },
-  {
-    id: 'open-terminal',
-    category: 'Git',
-    label: 'Open Terminal',
-    icon: Terminal,
-    keywords: ['shell', 'console', 'cli'],
-    available: () => useAppStore.getState().selectedSessionId !== null,
-    action: () => window.dispatchEvent(new CustomEvent('show-bottom-panel')),
-  },
 
   // Review
   {
@@ -375,7 +457,7 @@ const COMMANDS: Command[] = [
     category: 'Review',
     label: 'Start Quick Review',
     icon: Search,
-    keywords: ['fast', 'basic', 'code review'],
+    keywords: ['fast', 'basic', 'code review', 'scan'],
     available: () => useAppStore.getState().selectedSessionId !== null,
     action: () => window.dispatchEvent(new CustomEvent('start-review', { detail: { type: 'quick' } })),
   },
@@ -384,7 +466,7 @@ const COMMANDS: Command[] = [
     category: 'Review',
     label: 'Start Deep Review',
     icon: FileCode,
-    keywords: ['thorough', 'comprehensive', 'code review'],
+    keywords: ['thorough', 'comprehensive', 'code review', 'detailed'],
     available: () => useAppStore.getState().selectedSessionId !== null,
     action: () => window.dispatchEvent(new CustomEvent('start-review', { detail: { type: 'deep' } })),
   },
@@ -393,26 +475,18 @@ const COMMANDS: Command[] = [
     category: 'Review',
     label: 'Start Security Audit',
     icon: Shield,
-    keywords: ['vulnerability', 'security', 'audit'],
+    keywords: ['vulnerability', 'security', 'audit', 'owasp'],
     available: () => useAppStore.getState().selectedSessionId !== null,
     action: () => window.dispatchEvent(new CustomEvent('start-review', { detail: { type: 'security' } })),
   },
 
   // Settings
   {
-    id: 'settings-open',
-    category: 'Settings',
-    label: 'Preferences',
-    icon: Settings,
-    keywords: ['settings', 'config'],
-    action: () => window.dispatchEvent(new CustomEvent('open-settings')),
-  },
-  {
     id: 'toggle-theme',
     category: 'Settings',
     label: 'Toggle Theme',
     icon: Moon,
-    keywords: ['dark', 'light', 'mode', 'appearance'],
+    keywords: ['dark', 'light', 'mode', 'appearance', 'dark mode', 'light mode'],
     action: () => window.dispatchEvent(new CustomEvent('toggle-theme')),
   },
   {
@@ -420,11 +494,20 @@ const COMMANDS: Command[] = [
     category: 'Settings',
     label: 'Toggle Sound Effects',
     icon: Volume2,
-    keywords: ['audio', 'mute', 'notifications'],
+    keywords: ['audio', 'mute', 'notifications', 'sounds'],
     action: () => {
       const store = useSettingsStore.getState();
       store.setSoundEffects(!store.soundEffects);
     },
+  },
+  {
+    id: 'show-shortcuts',
+    category: 'Settings',
+    label: 'Show Keyboard Shortcuts',
+    icon: Keyboard,
+    shortcutId: 'shortcutsDialog',
+    keywords: ['hotkeys', 'keybindings', 'keys', 'help'],
+    action: () => window.dispatchEvent(new CustomEvent('show-shortcuts')),
   },
   {
     id: 'check-for-updates',
@@ -485,13 +568,16 @@ const SUBMENU_PAGES: Record<string, SubmenuPage> = {
     icon: MessageSquare,
     getItems: () => {
       const { conversations, sessions } = useAppStore.getState();
-      return conversations.slice(0, 20).map((c) => ({
-        id: c.id,
-        label: c.name,
-        description: sessions.find((s) => s.id === c.sessionId)?.name,
-        icon: MessageSquare,
-        action: () => navigate({ conversationId: c.id }),
-      }));
+      return [...conversations]
+        .sort((a, b) => new Date(b.updatedAt ?? b.createdAt ?? 0).getTime() - new Date(a.updatedAt ?? a.createdAt ?? 0).getTime())
+        .slice(0, 20)
+        .map((c) => ({
+          id: c.id,
+          label: c.name,
+          description: sessions.find((s) => s.id === c.sessionId)?.name,
+          icon: MessageSquare,
+          action: () => navigate({ conversationId: c.id }),
+        }));
     },
   },
   attention: {
@@ -745,7 +831,7 @@ export function CommandPalette() {
               {recentItems.map((cmd) => {
                 const Icon = cmd.icon;
                 return (
-                  <CommandItem key={`recent-${cmd.id}`} value={`recent-${cmd.id}`} onSelect={() => executeCommand(cmd)}>
+                  <CommandItem key={`recent-${cmd.id}`} value={`recent-${cmd.id}`} keywords={cmd.keywords} onSelect={() => executeCommand(cmd)}>
                     <Clock className="size-4 text-muted-foreground" />
                     <Icon className="size-4" />
                     <span className="flex-1">{cmd.label}</span>
@@ -769,7 +855,7 @@ export function CommandPalette() {
               {commands.map((cmd) => {
                 const Icon = cmd.icon;
                 return (
-                  <CommandItem key={cmd.id} value={cmd.id} onSelect={() => executeCommand(cmd)}>
+                  <CommandItem key={cmd.id} value={cmd.id} keywords={cmd.keywords} onSelect={() => executeCommand(cmd)}>
                     <Icon className="size-4" />
                     <span className="flex-1">{cmd.label}</span>
                     {cmd.hasSubmenu && <ChevronRight className="size-4 text-muted-foreground" />}

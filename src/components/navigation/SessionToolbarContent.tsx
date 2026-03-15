@@ -215,6 +215,20 @@ export function SessionToolbarContent() {
     return () => window.removeEventListener('git-create-pr', handleCreatePR);
   }, [handleActionWithBubble]);
 
+  // Listen for git-commit events from menu handler and command palette
+  useEffect(() => {
+    const handleCommit = () => handleActionWithBubble('Commit the current changes');
+    window.addEventListener('git-commit', handleCommit);
+    return () => window.removeEventListener('git-commit', handleCommit);
+  }, [handleActionWithBubble]);
+
+  // Listen for git-sync events from menu handler and command palette
+  useEffect(() => {
+    const handleSync = () => handleActionWithBubble('Sync this branch with main');
+    window.addEventListener('git-sync', handleSync);
+    return () => window.removeEventListener('git-sync', handleSync);
+  }, [handleActionWithBubble]);
+
   // Shared handler for branch-sync events (rebase & merge)
   const handleBranchSyncEvent = useCallback((baseBranch: string, message: string) => {
     if (isAgentWorking || !selectedConversationId || !selectedWorkspaceId) {
