@@ -8,18 +8,10 @@ import { ActionButton } from './ActionButton';
 import { useAppStore } from '@/stores/appStore';
 import type { GitStatusDTO, PRDetails } from '@/lib/api';
 import { getGlobalActionTemplates, getWorkspaceActionTemplates } from '@/lib/api';
+import type { WorktreeSession } from '@/lib/types';
 import { ACTION_TEMPLATES, getTemplateKey, fetchMergedActionTemplates } from '@/lib/action-templates';
 import type { ActionTemplateKey } from '@/lib/action-templates';
 import type { PrimaryActionType } from './types';
-
-interface WorktreeSession {
-  id: string;
-  status?: string;
-  prStatus?: string;
-  prNumber?: number;
-  prUrl?: string;
-  checkStatus?: string;
-}
 
 interface PrimaryActionButtonProps {
   workspaceId: string | null;
