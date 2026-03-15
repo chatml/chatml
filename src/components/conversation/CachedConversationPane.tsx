@@ -108,11 +108,17 @@ export function CachedConversationPane({
     if (!conversationId) return;
 
     const state = useAppStore.getState();
+    const messageCount = state.messagesByConversation[conversationId]?.length ?? 0;
     const existingPagination = state.messagePagination[conversationId];
-    if (existingPagination) return;
 
-    const hasInlineMessages = (state.messagesByConversation[conversationId]?.length ?? 0) > 0;
-    if (hasInlineMessages) return;
+    // Only skip if we have pagination AND messages in the store.
+    // removeWorkspace / removeSession clear messagesByConversation but may leave
+    // stale messagePagination entries, producing pagination-with-no-messages.
+    // Without this guard the effect would bail out and render a blank screen.
+    if (existingPagination && messageCount > 0) return;
+
+    // Messages arrived inline (e.g. via WebSocket) — skip paginated load.
+    if (messageCount > 0) return;
 
     let cancelled = false;
     async function loadMessages() {
