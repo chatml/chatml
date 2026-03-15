@@ -2,7 +2,7 @@
 import { tool } from "@anthropic-ai/claude-agent-sdk";
 import { z } from "zod";
 import type { WorkspaceContext } from "../context.js";
-import { fetchWithRetry } from "./fetch-utils.js";
+import { fetchWithRetry, formatFetchError } from "./fetch-utils.js";
 
 // Backend URL from environment. This matches the default port used by the Go backend.
 // TODO: Consider adding backendUrl to WorkspaceContext for consistency with other tools
@@ -69,7 +69,7 @@ export function createCommentTools(context: WorkspaceContext) {
           return {
             content: [{
               type: "text",
-              text: `Error adding review comment: ${error}`,
+              text: `Error adding review comment: ${formatFetchError(error)}`,
             }],
           };
         }
@@ -141,7 +141,7 @@ export function createCommentTools(context: WorkspaceContext) {
           return {
             content: [{
               type: "text",
-              text: `Error listing review comments: ${error}`,
+              text: `Error listing review comments: ${formatFetchError(error)}`,
             }],
           };
         }
@@ -193,7 +193,7 @@ export function createCommentTools(context: WorkspaceContext) {
           return {
             content: [{
               type: "text" as const,
-              text: `Error resolving review comment: ${error}`,
+              text: `Error resolving review comment: ${formatFetchError(error)}`,
             }],
           };
         }
@@ -255,7 +255,7 @@ export function createCommentTools(context: WorkspaceContext) {
           return {
             content: [{
               type: "text",
-              text: `Error getting comment stats: ${error}`,
+              text: `Error getting comment stats: ${formatFetchError(error)}`,
             }],
           };
         }
