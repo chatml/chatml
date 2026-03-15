@@ -5,10 +5,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"math"
 	"net/http"
 	"os"
+	"os/exec"
+	"path/filepath"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/chatml/chatml-backend/agent"
 	"github.com/chatml/chatml-backend/ai"
@@ -633,6 +637,149 @@ func (h *Handlers) GetClaudeEnv(w http.ResponseWriter, r *http.Request) {
 
 	writeJSON(w, map[string]interface{}{
 		"env": env,
+	})
+}
+
+// RefreshAWSCredentials runs the configured AWS auth refresh command (e.g. "aws sso login --profile core-dev").
+// This allows users to refresh expired AWS SSO tokens from within the app.
+func (h *Handlers) RefreshAWSCredentials(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	// Determine the refresh command: ChatML env vars take priority, then ~/.claude/settings.json.
+	var authRefreshCmd string
+
+	if raw, found, err := h.store.GetSetting(ctx, "env-vars"); err == nil && found && raw != "" {
+		envVars := store.ParseEnvVars(raw)
+		authRefreshCmd = envVars["AWS_AUTH_REFRESH"]
+	}
+
+	if authRefreshCmd == "" {
+		if settings, err := ai.ReadClaudeCodeSettings(); err == nil && settings != nil {
+			authRefreshCmd = settings.AwsAuthRefresh
+		}
+	}
+
+	if strings.TrimSpace(authRefreshCmd) == "" {
+		http.Error(w, `{"error":"No AWS auth refresh command configured. Add \"awsAuthRefresh\" to ~/.claude/settings.json"}`, http.StatusBadRequest)
+		return
+	}
+
+	// 120-second timeout: aws sso login opens a browser and waits for the user to complete the SSO flow.
+	cmdCtx, cancel := context.WithTimeout(ctx, 120*time.Second)
+	defer cancel()
+
+	// Use sh -c so the command string is parsed by the shell, supporting quoting,
+	// pipes, env vars, and the user's PATH (important for macOS app bundles where
+	// the Go process may have a minimal PATH).
+	cmd := exec.CommandContext(cmdCtx, "sh", "-c", authRefreshCmd)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		log.Printf("AWS auth refresh failed: %v (output: %s)", err, string(output))
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		_ = json.NewEncoder(w).Encode(map[string]string{
+			"error":  fmt.Sprintf("Auth refresh command failed: %v", err),
+			"output": string(output),
+		})
+		return
+	}
+
+	writeJSON(w, map[string]string{"status": "ok"})
+}
+
+// GetAWSSSOTokenStatus checks the validity of cached AWS SSO tokens.
+// Returns whether the token is valid and when it expires.
+func (h *Handlers) GetAWSSSOTokenStatus(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	// Determine if Bedrock is configured.
+	claudeSettings, _ := ai.ReadClaudeCodeSettings()
+	hasBedrock := claudeSettings != nil && ai.IsBedRockConfigured(claudeSettings)
+
+	if !hasBedrock {
+		if raw, found, err := h.store.GetSetting(ctx, "env-vars"); err == nil && found && raw != "" {
+			envVars := store.ParseEnvVars(raw)
+			if envVars["CLAUDE_CODE_USE_BEDROCK"] == "true" {
+				hasBedrock = true
+			}
+		}
+	}
+
+	if !hasBedrock {
+		writeJSON(w, map[string]interface{}{"applicable": false})
+		return
+	}
+
+	// Scan ~/.aws/sso/cache/*.json for valid tokens.
+	home, err := os.UserHomeDir()
+	if err != nil {
+		writeJSON(w, map[string]interface{}{"applicable": true, "valid": nil})
+		return
+	}
+
+	cacheDir := filepath.Join(home, ".aws", "sso", "cache")
+	entries, err := filepath.Glob(filepath.Join(cacheDir, "*.json"))
+	if err != nil || len(entries) == 0 {
+		writeJSON(w, map[string]interface{}{"applicable": true, "valid": nil})
+		return
+	}
+
+	// Find the most recent valid (non-registration) SSO token.
+	type ssoToken struct {
+		AccessToken string `json:"accessToken"`
+		ExpiresAt   string `json:"expiresAt"`
+		// Registration entries have clientId/clientSecret but no accessToken.
+		ClientID     string `json:"clientId"`
+		ClientSecret string `json:"clientSecret"`
+	}
+
+	var bestExpiry time.Time
+	found := false
+
+	for _, entry := range entries {
+		data, readErr := os.ReadFile(entry)
+		if readErr != nil {
+			continue
+		}
+		var tok ssoToken
+		if jsonErr := json.Unmarshal(data, &tok); jsonErr != nil {
+			continue
+		}
+		// Skip registration client entries (no access token).
+		if tok.AccessToken == "" {
+			continue
+		}
+		if tok.ExpiresAt == "" {
+			continue
+		}
+		// AWS SSO cache uses UTC format: "2024-01-15T10:30:00UTC" or RFC3339.
+		expiry, parseErr := time.Parse("2006-01-02T15:04:05UTC", tok.ExpiresAt)
+		if parseErr != nil {
+			expiry, parseErr = time.Parse(time.RFC3339, tok.ExpiresAt)
+		}
+		if parseErr != nil {
+			continue
+		}
+		if !found || expiry.After(bestExpiry) {
+			bestExpiry = expiry
+			found = true
+		}
+	}
+
+	if !found {
+		writeJSON(w, map[string]interface{}{"applicable": true, "valid": nil})
+		return
+	}
+
+	now := time.Now().UTC()
+	valid := bestExpiry.After(now)
+	minutesLeft := math.Floor(bestExpiry.Sub(now).Minutes())
+
+	writeJSON(w, map[string]interface{}{
+		"applicable":       true,
+		"valid":            valid,
+		"expiresAt":        bestExpiry.Format(time.RFC3339),
+		"expiresInMinutes": minutesLeft,
 	})
 }
 

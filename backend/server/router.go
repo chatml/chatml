@@ -249,6 +249,8 @@ func NewRouter(ctx context.Context, s *store.SQLiteStore, hub *Hub, agentMgr *ag
 	r.Get("/api/settings/claude-env", h.GetClaudeEnv)
 	r.Get("/api/settings/never-load-dot-mcp", h.GetNeverLoadDotMcp)
 	r.Put("/api/settings/never-load-dot-mcp", h.SetNeverLoadDotMcp)
+	r.Post("/api/settings/aws-auth-refresh", h.RefreshAWSCredentials)
+	r.Get("/api/settings/aws-sso-token-status", h.GetAWSSSOTokenStatus)
 
 	// Attachment endpoints
 	r.Get("/api/attachments/{attachmentId}/data", h.GetAttachmentData)

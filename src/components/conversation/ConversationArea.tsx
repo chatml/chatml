@@ -46,10 +46,11 @@ import { InterruptedBanner } from '@/components/conversation/InterruptedBanner';
 import { useBranchSync } from '@/hooks/useBranchSync';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { dispatchAppEvent, useAppEventListener } from '@/lib/custom-events';
-import { useClaudeAuthStatus } from '@/hooks/useClaudeAuthStatus';
+import { useClaudeAuthStatus, refreshClaudeAuthStatus } from '@/hooks/useClaudeAuthStatus';
 import { SessionHandoffDialog } from '@/components/conversation/SessionHandoffDialog';
 import { useToast } from '@/components/ui/toast';
-import { KeyRound, Settings2 } from 'lucide-react';
+import { refreshAWSCredentials } from '@/lib/api';
+import { KeyRound, Settings2, ShieldAlert, Loader2 } from 'lucide-react';
 
 // Module-level LRU of recently-viewed sessions. Stored outside the component so
 // useMemo can read it during render without violating react-hooks/refs or
@@ -221,6 +222,7 @@ export function ConversationArea({ children }: ConversationAreaProps) {
   const setSummary = useAppStore((s) => s.setSummary);
   const [summaryViewerOpen, setSummaryViewerOpen] = useState(false);
   const [summaryViewerConvId, setSummaryViewerConvId] = useState<string | null>(null);
+  const [awsRefreshing, setAwsRefreshing] = useState(false);
 
   const handleGenerateSummary = useCallback(async (conversationId: string) => {
     try {
@@ -778,6 +780,36 @@ export function ConversationArea({ children }: ConversationAreaProps) {
             >
               <Settings2 className="h-3 w-3" />
               Open Settings
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* AWS SSO token expiry warning */}
+      {claudeAuthStatus?.hasBedrock && claudeAuthStatus.ssoTokenValid === false && (
+        <div className="bg-amber-500/10 border-b border-amber-500/20 px-3 py-2">
+          <div className="flex items-center gap-2">
+            <ShieldAlert className="h-4 w-4 text-amber-500 shrink-0" />
+            <span className="text-xs text-amber-200/90">
+              AWS SSO token has expired. Refresh credentials to use Bedrock.
+            </span>
+            <button
+              className="ml-auto flex items-center gap-1 text-xs text-amber-300 hover:text-amber-100 transition-colors shrink-0 disabled:opacity-50"
+              disabled={awsRefreshing}
+              onClick={async () => {
+                setAwsRefreshing(true);
+                try {
+                  await refreshAWSCredentials();
+                  refreshClaudeAuthStatus();
+                } catch {
+                  // Error shown via ErrorDisplay when the agent request itself fails.
+                } finally {
+                  setAwsRefreshing(false);
+                }
+              }}
+            >
+              {awsRefreshing ? <Loader2 className="h-3 w-3 animate-spin" /> : <KeyRound className="h-3 w-3" />}
+              {awsRefreshing ? 'Refreshing...' : 'Refresh AWS Credentials'}
             </button>
           </div>
         </div>
