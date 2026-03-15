@@ -32,7 +32,7 @@ export function ChatSearchBar({
   isSearchPending,
 }: ChatSearchBarProps) {
   const inputRef = useRef<HTMLInputElement>(null);
-  const debounceTimerRef = useRef<ReturnType<typeof setTimeout>>();
+  const debounceTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   const [localQuery, setLocalQuery] = useState(searchQuery);
 
   // Clean up debounce timer on unmount
