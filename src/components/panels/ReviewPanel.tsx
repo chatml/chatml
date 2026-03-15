@@ -447,7 +447,7 @@ function commentToAttachment(comment: ReviewComment): Attachment {
 function handleAddToChat(comment: ReviewComment) {
   const attachment = commentToAttachment(comment);
   dispatchAppEvent('compose-action', {
-    text: `Fix this review comment in ${comment.filePath}:${comment.lineNumber}`,
+    text: `Fix the attached review comments`,
     attachments: [attachment],
   });
 }
