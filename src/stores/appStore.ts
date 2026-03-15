@@ -589,6 +589,7 @@ interface AppState {
   setInterruptedState: (conversationId: string, info: InterruptedInfo | null) => void;
   setInterruptedResuming: (conversationId: string, resuming: boolean) => void;
   clearInterruptedState: (conversationId: string) => void;
+  injectInterruptedAssistantMessage: (conversationId: string, snapshot: { text: string; textSegments?: { text: string; timestamp: number }[]; thinking?: string }) => void;
 
   // File watcher actions
   setLastFileChange: (event: { workspaceId: string; path: string; fullPath: string }) => void;
@@ -2535,7 +2536,45 @@ updateFileTabContent: (id, content) => set((state) => ({
       [conversationId]: null,
     },
   })),
-
+  injectInterruptedAssistantMessage: (conversationId, snapshot) => set((state) => {
+    if (!snapshot.text) return state;
+    const existing = state.messagesByConversation[conversationId] ?? [];
+    // Dedup: skip if the last message is already an assistant message with matching content
+    // (backend's ConvertSnapshotsToMessages may have already persisted it)
+    const lastMsg = existing[existing.length - 1];
+    if (lastMsg && lastMsg.role === 'assistant' && lastMsg.content === snapshot.text) {
+      return state;
+    }
+    // Build timeline from text segments
+    const timeline: import('@/lib/types').TimelineEntry[] = snapshot.textSegments?.length
+      ? snapshot.textSegments.filter(s => s.text).map(s => ({ type: 'text' as const, content: s.text }))
+      : [{ type: 'text' as const, content: snapshot.text }];
+    const message: import('@/lib/types').Message = {
+      id: `interrupted-${conversationId}-${Date.now()}`,
+      conversationId,
+      role: 'assistant',
+      content: snapshot.text,
+      thinkingContent: snapshot.thinking,
+      timeline,
+      timestamp: new Date().toISOString(),
+    };
+    const convPagination = state.messagePagination[conversationId];
+    return {
+      messagesByConversation: {
+        ...state.messagesByConversation,
+        [conversationId]: [...existing, message],
+      },
+      ...(convPagination ? {
+        messagePagination: {
+          ...state.messagePagination,
+          [conversationId]: {
+            ...convPagination,
+            totalCount: convPagination.totalCount + 1,
+          },
+        },
+      } : {}),
+    };
+  }),
   // File watcher actions
   setLastFileChange: (event) => set({
     lastFileChange: { ...event, timestamp: Date.now() },

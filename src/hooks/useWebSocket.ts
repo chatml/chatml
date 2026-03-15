@@ -979,6 +979,13 @@ export function useWebSocket(enabled: boolean = true) {
           hadPendingQuestion: !!item.snapshot?.pendingUserQuestion,
           snapshot: item.snapshot,
         });
+        // Inject the snapshot's text as a visible assistant message so the user
+        // can see what the agent produced before the interruption. The dedup
+        // inside injectInterruptedAssistantMessage prevents duplicates if the
+        // backend's ConvertSnapshotsToMessages already persisted it.
+        if (item.snapshot?.text) {
+          store.injectInterruptedAssistantMessage(item.id, item.snapshot);
+        }
       }
     } catch (err) {
       console.warn('Failed to reconcile interrupted conversations:', err);
