@@ -1262,15 +1262,16 @@ export function useWebSocket(enabled: boolean = true) {
       console.warn('Failed to reconcile streaming state after reconnect:', err);
     }
 
-    // Refresh PR status for the selected session to catch events missed during disconnect.
-    // Best-effort: the result arrives via WebSocket session_pr_update event.
+    // Refresh PR status for ALL sessions with open PRs to catch events missed during disconnect.
+    // Best-effort: results arrive via WebSocket session_pr_update events.
+    // Stagger requests to avoid flooding the backend on reconnect.
     try {
-      const { selectedSessionId, sessions } = getStore();
-      if (selectedSessionId) {
-        const session = sessions.find(s => s.id === selectedSessionId);
-        if (session) {
-          refreshPRStatus(session.workspaceId, selectedSessionId).catch(() => {});
-        }
+      const { sessions } = getStore();
+      const openPRSessions = sessions.filter(s => s.prStatus === 'open');
+      for (const session of openPRSessions) {
+        refreshPRStatus(session.workspaceId, session.id).catch(() => {});
+        // Small delay between requests to avoid a burst of concurrent POSTs
+        await new Promise(r => setTimeout(r, 150));
       }
     } catch {
       // Silently ignore — PR status will catch up on next poll cycle

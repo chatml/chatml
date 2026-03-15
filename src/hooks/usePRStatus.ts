@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { getPRStatus, refreshPRStatus, ApiError, type PRDetails } from '@/lib/api';
 
-const PR_STATUS_FALLBACK_POLL_MS = 300000; // 5 minutes (fallback, WebSocket is primary)
+const PR_STATUS_FALLBACK_POLL_MS = 90_000; // 90 seconds (fallback, WebSocket is primary)
 
 interface UsePRStatusResult {
   prDetails: PRDetails | null;

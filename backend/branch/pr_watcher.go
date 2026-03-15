@@ -397,9 +397,9 @@ func (w *PRWatcher) Close() error {
 func (w *PRWatcher) run() {
 	// Two-tier polling:
 	// - Sessions without PR: check every 30 seconds (eager detection)
-	// - Sessions with open PR: check every 2 minutes (lifecycle monitoring)
+	// - Sessions with open PR: check every 45 seconds (lifecycle monitoring)
 	fastTicker := time.NewTicker(30 * time.Second)
-	slowTicker := time.NewTicker(2 * time.Minute)
+	slowTicker := time.NewTicker(45 * time.Second)
 	defer fastTicker.Stop()
 	defer slowTicker.Stop()
 
