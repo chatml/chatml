@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useEffect, useCallback } from 'react';
+import { useRef, useEffect, useCallback, useState } from 'react';
 import { X, ChevronUp, ChevronDown } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -32,6 +32,23 @@ export function ChatSearchBar({
   isSearchPending,
 }: ChatSearchBarProps) {
   const inputRef = useRef<HTMLInputElement>(null);
+  const debounceTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const [localQuery, setLocalQuery] = useState(searchQuery);
+
+  // Clean up debounce timer on unmount
+  useEffect(() => {
+    return () => clearTimeout(debounceTimerRef.current);
+  }, []);
+
+  const debouncedOnChange = useCallback((q: string) => {
+    clearTimeout(debounceTimerRef.current);
+    debounceTimerRef.current = setTimeout(() => onSearchChange(q), 200);
+  }, [onSearchChange]);
+
+  // Sync local state when parent resets searchQuery (e.g., on close)
+  useEffect(() => {
+    setLocalQuery(searchQuery);
+  }, [searchQuery]);
 
   // Focus input when opened
   useEffect(() => {
@@ -67,8 +84,11 @@ export function ChatSearchBar({
           ref={inputRef}
           type="text"
           placeholder="Search..."
-          value={searchQuery}
-          onChange={(e) => onSearchChange(e.target.value)}
+          value={localQuery}
+          onChange={(e) => {
+            setLocalQuery(e.target.value);
+            debouncedOnChange(e.target.value);
+          }}
           onKeyDown={handleKeyDown}
           className="h-7 w-48 text-sm border-0 focus-visible:ring-0 focus-visible:ring-offset-0"
         />
