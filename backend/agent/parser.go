@@ -79,10 +79,11 @@ type AgentEvent struct {
 	AgentOutput        string `json:"agentOutput,omitempty"`
 	TranscriptPath     string `json:"transcriptPath,omitempty"`
 
-	// Compact boundary fields
+	// Compaction fields — shared across compact_boundary, pre_compact, and post_compact events
 	Trigger            string `json:"trigger,omitempty"`
 	PreTokens          int    `json:"preTokens,omitempty"`
 	CustomInstructions string `json:"customInstructions,omitempty"`
+	CompactSummary     string `json:"compactSummary,omitempty"` // SDK 0.2.76: summary text from PostCompact hook
 
 	// Context usage fields
 	InputTokens              int `json:"inputTokens,omitempty"`
@@ -197,6 +198,13 @@ type AgentEvent struct {
 	HookId     string `json:"hookId,omitempty"`
 	HookOutput string `json:"hookOutput,omitempty"`
 
+	// Session fork fields (SDK 0.2.76)
+	SourceSessionId string `json:"sourceSessionId,omitempty"`
+	NewSessionId    string `json:"newSessionId,omitempty"`
+
+	// Message cancellation fields (SDK 0.2.76)
+	MessageUuid string `json:"messageUuid,omitempty"`
+
 	// Query response fields (SDK 0.2.72)
 	Result interface{} `json:"result,omitempty"`
 
@@ -302,6 +310,7 @@ const (
 	EventTypeSubagentOutput           = "subagent_output"
 	EventTypeCompactBoundary          = "compact_boundary"
 	EventTypePreCompact               = "pre_compact"
+	EventTypePostCompact              = "post_compact"
 	EventTypeStatusUpdate             = "status_update"
 	EventTypeHookResponse             = "hook_response"
 	EventTypeToolProgress             = "tool_progress"
@@ -375,6 +384,10 @@ const (
 	EventTypeSupportedAgents     = "supported_agents"
 	EventTypeMcpServersUpdated   = "mcp_servers_updated"
 	EventTypeInitializationResult = "initialization_result"
+
+	// New event types from SDK 0.2.76 (pass-through only — no backend-specific handling yet)
+	EventTypeSessionForked    = "session_forked"
+	EventTypeMessageCancelled = "message_cancelled"
 )
 
 // TodoItem represents a single todo item from the agent's TodoWrite tool

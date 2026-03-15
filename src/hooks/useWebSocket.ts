@@ -43,6 +43,10 @@ export function cleanupConversationState(conversationId: string) {
   clearPlanModeState(conversationId);
 }
 
+// Tracks the most recent compact_boundary system message ID so post_compact can
+// enrich it with the compaction summary instead of creating a duplicate message.
+let lastCompactMessageId: string | null = null;
+
 export function useWebSocket(enabled: boolean = true) {
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -608,12 +612,26 @@ export function useWebSocket(enabled: boolean = true) {
                 content: compactContent,
                 timestamp: new Date().toISOString(),
               });
+              // Stash the message ID so post_compact can enrich it with the summary
+              lastCompactMessageId = id;
             })
             .catch((err) => console.warn('Failed to persist compact message:', err));
         }
         break;
 
       case 'pre_compact':
+        break;
+
+      case 'post_compact':
+        // SDK 0.2.76: PostCompact hook fires after compaction with the conversation summary.
+        // Enrich the existing compact_boundary message instead of adding a duplicate.
+        if (event?.compactSummary && lastCompactMessageId) {
+          const enrichedContent = event.trigger
+            ? `Context was compacted (${event.trigger}). Summary: ${event.compactSummary}`
+            : `Context was compacted. Summary: ${event.compactSummary}`;
+          store.updateMessage(conversationId, lastCompactMessageId, { content: enrichedContent });
+          lastCompactMessageId = null;
+        }
         break;
 
       case 'tool_progress':

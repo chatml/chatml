@@ -376,10 +376,11 @@ export interface AgentEvent {
   agentOutput?: string;
   transcriptPath?: string;
 
-  // Compact boundary fields
+  // Compact boundary / post_compact fields
   trigger?: 'manual' | 'auto';
   preTokens?: number;
   customInstructions?: string | null;
+  compactSummary?: string;
 
   // Status fields
   status?: string | null;

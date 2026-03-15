@@ -1,5 +1,6 @@
 import {
   query,
+  forkSession as sdkForkSession,
   // Message types
   type SDKMessage,
   type SDKUserMessage,
@@ -39,6 +40,7 @@ import {
   type PostToolUseFailureHookInput,
   type StopHookInput,
   type PreCompactHookInput,
+  type PostCompactHookInput,
   // New hook input types (SDK 0.2.72)
   type InstructionsLoadedHookInput,
   type WorktreeCreateHookInput,
@@ -94,7 +96,9 @@ function getNumericArg(flag: string): number | undefined {
 const cwd = getArg("--cwd") || process.cwd();
 const conversationId = getArg("--conversation-id") || "default";
 const resumeSessionId = getArg("--resume");
-const forkSession = hasFlag("--fork");
+// Whether this process was launched as a fork of an existing session (startup flag).
+// Distinct from sdkForkSession() which is used for runtime fork requests.
+const startAsFork = hasFlag("--fork");
 // Custom session ID — when provided, the SDK uses this instead of auto-generating one.
 // Typically set to the conversation ID so session tracking aligns with our data model.
 const customSessionId = getArg("--session-id");
@@ -244,7 +248,7 @@ interface Attachment {
 
 // Input message types from Go backend
 interface InputMessage {
-  type: "message" | "stop" | "interrupt" | "set_model" | "set_permission_mode" | "set_max_thinking_tokens" | "get_supported_models" | "get_supported_commands" | "get_mcp_status" | "get_account_info" | "rewind_files" | "user_question_response" | "plan_approval_response" | "reconnect_mcp_server" | "toggle_mcp_server" | "stop_task" | "get_supported_agents" | "set_mcp_servers" | "get_initialization_result";
+  type: "message" | "stop" | "interrupt" | "set_model" | "set_permission_mode" | "set_max_thinking_tokens" | "get_supported_models" | "get_supported_commands" | "get_mcp_status" | "get_account_info" | "rewind_files" | "user_question_response" | "plan_approval_response" | "reconnect_mcp_server" | "toggle_mcp_server" | "stop_task" | "get_supported_agents" | "set_mcp_servers" | "get_initialization_result" | "fork_session" | "cancel_message";
   content?: string;
   model?: string;
   permissionMode?: string;
@@ -266,6 +270,12 @@ interface InputMessage {
   taskId?: string;
   // Dynamic MCP server management (SDK 0.2.72)
   servers?: Record<string, McpServerConfig>;
+  // Session forking (SDK 0.2.76)
+  sourceSessionId?: string;
+  upToMessageId?: string;
+  forkTitle?: string;
+  // Message UUID — used by "message" (for queue tracking) and "cancel_message" (to identify target)
+  messageUuid?: string;
 }
 
 // Escape a string for use in XML attribute values
@@ -449,6 +459,7 @@ function stopMainLoop(): void {
 interface QueuedMessage {
   content: string;
   attachments?: Attachment[];
+  uuid?: string; // Optional UUID for message cancellation (SDK 0.2.76)
 }
 
 // Input queue for "message" type inputs (queued for the next turn)
@@ -671,6 +682,37 @@ function setupInputQueue(): void {
         return;
       }
 
+      // Session forking (SDK 0.2.76) — fork from a specific message point
+      if (input.type === "fork_session" && input.sourceSessionId) {
+        debug(`Forking session: ${input.sourceSessionId} (upTo: ${input.upToMessageId || "end"})`);
+        void sdkForkSession(input.sourceSessionId, {
+          upToMessageId: input.upToMessageId,
+          title: input.forkTitle,
+        }).then((result) => {
+          emit({ type: "session_forked", sourceSessionId: input.sourceSessionId!, newSessionId: result.sessionId });
+        }).catch((err: unknown) => {
+          emit({ type: "command_error", command: "fork_session", error: String(err) });
+        });
+        return;
+      }
+
+      // Cancel a queued message before it's sent to the SDK (SDK 0.2.76 concept)
+      // Removes from our local message queue — no-op if already yielded to the SDK.
+      if (input.type === "cancel_message" && input.messageUuid) {
+        const idx = messageQueue.findIndex((m) => m.uuid === input.messageUuid);
+        if (idx !== -1) {
+          messageQueue.splice(idx, 1);
+          debug(`Cancelled queued message: ${input.messageUuid}`);
+          emit({ type: "message_cancelled", messageUuid: input.messageUuid });
+        } else {
+          // Message was either already yielded to the SDK or never queued.
+          // Distinguish so the backend can decide whether to interrupt instead.
+          debug(`Message not found in queue (may already be processing): ${input.messageUuid}`);
+          emit({ type: "command_error", command: "cancel_message", error: "Message already sent to SDK or not found — use interrupt to abort processing" });
+        }
+        return;
+      }
+
       // Handle user question responses from the Go backend
       if (input.type === "user_question_response" && input.questionRequestId && input.answers) {
         const pending = pendingQuestionRequests.get(input.questionRequestId);
@@ -710,6 +752,7 @@ function setupInputQueue(): void {
         const queued: QueuedMessage = {
           content: input.content,
           attachments: input.attachments,
+          uuid: input.messageUuid,
         };
 
         // If someone is waiting for a message, resolve immediately
@@ -1263,6 +1306,18 @@ const preCompactHook: HookCallback = async (input) => {
   return {};
 };
 
+const postCompactHook: HookCallback = async (input) => {
+  const hookInput = input as PostCompactHookInput;
+  emit({
+    type: "post_compact",
+    trigger: hookInput.trigger,
+    compactSummary: hookInput.compact_summary,
+    sessionId: hookInput.session_id,
+    ...extractAgentFields(input),
+  });
+  return {};
+};
+
 const subagentStartHook: HookCallback = async (input) => {
   const hookInput = input as SubagentStartHookInput;
   // Register session → agentId mapping for correlating sub-agent tool events
@@ -1633,6 +1688,7 @@ const hooks = {
   SessionEnd: [{ hooks: [sessionEndHook] }],
   Stop: [{ hooks: [stopHook] }],
   PreCompact: [{ hooks: [preCompactHook] }],
+  PostCompact: [{ hooks: [postCompactHook] }],
   SubagentStart: [{ hooks: [subagentStartHook] }],
   SubagentStop: [{ hooks: [subagentStopHook] }],
   // New hooks (SDK 0.2.72)
@@ -1671,7 +1727,7 @@ async function main(): Promise<void> {
     conversationId,
     cwd,
     resuming: !!resumeSessionId,
-    forking: forkSession,
+    forking: startAsFork,
     model: model || "(default)",
   });
   lifecycle("ready emitted");
@@ -1859,7 +1915,7 @@ async function main(): Promise<void> {
       fallbackModel,
       // Custom session ID — aligns SDK session with our conversation ID (SDK v0.2.33+)
       ...(customSessionId ? { sessionId: customSessionId } : {}),
-      forkSession,
+      forkSession: startAsFork,
       // Programmatic agent definitions (SDK 0.2.62+)
       ...(programmaticAgents ? { agents: programmaticAgents } : {}),
       // New options (SDK 0.2.72)
