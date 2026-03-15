@@ -746,14 +746,16 @@ export const useAppStore = create<AppState>((set, get) => ({
         .map((c) => c.id)
     );
 
-    // Clean up streaming state, active tools, and agent todos
+    // Clean up streaming state, active tools, agent todos, and pagination
     const cleanedStreamingState = { ...state.streamingState };
     const cleanedActiveTools = { ...state.activeTools };
     const cleanedAgentTodos = { ...state.agentTodos };
+    const cleanedPagination = { ...state.messagePagination };
     for (const convId of workspaceConvIds) {
       delete cleanedStreamingState[convId];
       delete cleanedActiveTools[convId];
       delete cleanedAgentTodos[convId];
+      delete cleanedPagination[convId];
     }
 
     // Clean up custom todos, session outputs, terminal instances, terminal sessions, and last active conversation for all sessions
@@ -794,6 +796,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       streamingState: cleanedStreamingState,
       activeTools: cleanedActiveTools,
       agentTodos: cleanedAgentTodos,
+      messagePagination: cleanedPagination,
       customTodos: cleanedCustomTodos,
       sessionOutputs: cleanedSessionOutputs,
       terminalInstances: cleanedTerminalInstances,
@@ -857,12 +860,14 @@ export const useAppStore = create<AppState>((set, get) => ({
       const cleanedAgentTodos = { ...state.agentTodos };
       const cleanedContextUsage = { ...state.contextUsage };
       const cleanedQueuedMessages = { ...state.queuedMessages };
+      const cleanedPagination = { ...state.messagePagination };
       for (const convId of convIds) {
         delete cleanedStreamingState[convId];
         delete cleanedActiveTools[convId];
         delete cleanedAgentTodos[convId];
         delete cleanedContextUsage[convId];
         delete cleanedQueuedMessages[convId];
+        delete cleanedPagination[convId];
       }
 
       // Clean up custom todos, session outputs, review comments, and last active conversation
@@ -906,6 +911,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         agentTodos: cleanedAgentTodos,
         contextUsage: cleanedContextUsage,
         queuedMessages: cleanedQueuedMessages,
+        messagePagination: cleanedPagination,
         customTodos: remainingCustomTodos,
         sessionOutputs: remainingSessionOutputs,
         reviewComments: remainingReviewComments,
@@ -1115,6 +1121,8 @@ export const useAppStore = create<AppState>((set, get) => ({
     const { [id]: _context, ...remainingContextUsage } = state.contextUsage;
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { [id]: _queued, ...remainingQueuedMessages } = state.queuedMessages;
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { [id]: _pagination, ...remainingPagination } = state.messagePagination;
 
     const removedConv = state.conversations.find((c) => c.id === id);
     const newConversations = state.conversations.filter((c) => c.id !== id);
@@ -1159,6 +1167,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       interruptedState: remainingInterruptedState,
       contextUsage: remainingContextUsage,
       queuedMessages: remainingQueuedMessages,
+      messagePagination: remainingPagination,
     };
   });
   },
