@@ -675,16 +675,19 @@ export interface FileCommitDTO {
 export interface FileHistoryResponse {
   commits: FileCommitDTO[];
   total: number;
+  truncated: boolean;
 }
 
 export async function getFileCommitHistory(
   workspaceId: string,
   sessionId: string,
-  filePath: string
+  filePath: string,
+  signal?: AbortSignal
 ): Promise<FileHistoryResponse> {
   const params = new URLSearchParams({ path: filePath });
   const res = await fetchWithAuth(
-    `${getApiBase()}/api/repos/${workspaceId}/sessions/${sessionId}/file-history?${params.toString()}`
+    `${getApiBase()}/api/repos/${workspaceId}/sessions/${sessionId}/file-history?${params.toString()}`,
+    { signal }
   );
   return handleResponse<FileHistoryResponse>(res);
 }
