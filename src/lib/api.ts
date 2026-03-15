@@ -247,10 +247,12 @@ export async function getSessionFileDiff(
 export async function getSessionFileContent(
   workspaceId: string,
   sessionId: string,
-  filePath: string
+  filePath: string,
+  signal?: AbortSignal,
 ): Promise<FileContentDTO> {
   const res = await fetchWithAuth(
-    `${getApiBase()}/api/repos/${workspaceId}/sessions/${sessionId}/file?path=${encodeURIComponent(filePath)}`
+    `${getApiBase()}/api/repos/${workspaceId}/sessions/${sessionId}/file?path=${encodeURIComponent(filePath)}`,
+    signal ? { signal } : undefined,
   );
   return handleResponse<FileContentDTO>(res);
 }

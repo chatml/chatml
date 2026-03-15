@@ -39,6 +39,7 @@ import { TabBar, type TabItemData } from '@/components/tabs';
 import { CachedConversationPane } from '@/components/conversation/CachedConversationPane';
 import { getSessionFileContent, getSessionFileDiff, updateReviewComment, deleteReviewComment as deleteReviewCommentApi, listReviewComments, createConversation, createReviewComment, generateSummary, getConversationSummary } from '@/lib/api';
 import { getDiffFromCache, setDiffInCache } from '@/lib/diffCache';
+import { getFileContentFromCache, setFileContentInCache } from '@/lib/fileContentCache';
 import { ErrorBoundary } from '@/components/shared/ErrorBoundary';
 import { BlockErrorFallback } from '@/components/shared/ErrorFallbacks';
 import { BranchSyncBanner } from '@/components/BranchSyncBanner';
@@ -449,10 +450,24 @@ export function ConversationArea({ children }: ConversationAreaProps) {
     // For regular file view without content, load it from session's worktree
     // Use content === undefined to differentiate "not loaded" from "loaded but empty"
     if (currentFileTab.viewMode !== 'diff' && currentFileTab.content === undefined && !currentFileTab.isBinary && !currentFileTab.isTooLarge && !currentFileTab.isEmpty && !currentFileTab.loadError && currentFileTab.sessionId) {
+      // Check file content cache first — avoids HTTP round-trip on re-open
+      const cached = getFileContentFromCache(currentFileTab.workspaceId, currentFileTab.sessionId, currentFileTab.path);
+      if (cached) {
+        const isEmpty = cached.content === '' || cached.content === undefined;
+        updateFileTab(currentFileTab.id, {
+          content: cached.content ?? '',
+          originalContent: cached.content ?? '',
+          isEmpty,
+          isLoading: false,
+        });
+        return;
+      }
+
       const loadContent = async () => {
         updateFileTab(currentFileTab.id, { isLoading: true });
         try {
           const fileData = await getSessionFileContent(currentFileTab.workspaceId, currentFileTab.sessionId, currentFileTab.path);
+          setFileContentInCache(currentFileTab.workspaceId, currentFileTab.sessionId, currentFileTab.path, fileData);
           const isEmpty = fileData.content === '' || fileData.content === undefined;
           updateFileTab(currentFileTab.id, {
             content: fileData.content ?? '',

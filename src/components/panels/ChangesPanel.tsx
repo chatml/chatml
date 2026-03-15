@@ -5,6 +5,7 @@ import { useAppStore } from '@/stores/appStore';
 import { useSelectedIds, useFileTabState, useTodoState, useFileCommentStats, useReviewComments } from '@/stores/selectors';
 import { listSessionFiles, getSessionFileContent, getSessionChanges, getSessionBranchCommits, getSessionFileDiff, sendConversationMessage, updateReviewComment as apiUpdateReviewComment, ApiError, ErrorCode, type FileChangeDTO, type BranchStatsDTO } from '@/lib/api';
 import { getDiffFromCache, setDiffInCache, invalidateDiffCache } from '@/lib/diffCache';
+import { getFileContentFromCache, setFileContentInCache, invalidateFileContentCache } from '@/lib/fileContentCache';
 import { getSessionData, setSessionData, invalidateSessionData } from '@/lib/sessionDataCache';
 import { formatReviewFeedback } from '@/lib/formatReviewFeedback';
 import { dispatchAppEvent } from '@/lib/custom-events';
@@ -81,6 +82,7 @@ import {
 } from '@/components/ui/tooltip';
 import { isBinaryFile } from '@/lib/fileUtils';
 import { useDiffPrefetch } from '@/hooks/useDiffPrefetch';
+import { useFileContentPrefetch } from '@/hooks/useFileContentPrefetch';
 
 // Maximum file size for diff viewing (2MB)
 const MAX_DIFF_SIZE = 2 * 1024 * 1024;
@@ -120,12 +122,10 @@ export function ChangesPanel() {
   const debounceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const bottomPanelRef = useRef<PanelImperativeHandle>(null);
 
-  // Prefetch diffs for top changed files during idle time
-  useDiffPrefetch(
-    selectedWorkspaceId,
-    selectedSessionId,
-    changesView === 'all' ? allChanges : changes,
-  );
+  // Prefetch diffs and file content for top changed files during idle time
+  const prefetchChanges = changesView === 'all' ? allChanges : changes;
+  useDiffPrefetch(selectedWorkspaceId, selectedSessionId, prefetchChanges);
+  useFileContentPrefetch(selectedWorkspaceId, selectedSessionId, prefetchChanges);
 
   // Immediately clear stale data when session changes.
   // Without this, the previous session's files/changes render for 150ms+
@@ -196,10 +196,11 @@ export function ChangesPanel() {
     try {
       const data = await getSessionChanges(selectedWorkspaceId, selectedSessionId);
       setChanges(data || []);
-      // Always invalidate diff cache when changes are refetched — the additions/
+      // Always invalidate caches when changes are refetched — the additions/
       // deletions counts alone can't detect content changes within the same line
-      // count. The prefetch hook re-populates the cache quickly via idle callbacks.
+      // count. The prefetch hooks re-populate the caches quickly via idle callbacks.
       invalidateDiffCache(selectedWorkspaceId, selectedSessionId);
+      invalidateFileContentCache(selectedWorkspaceId, selectedSessionId);
     } catch (error) {
       console.error('Failed to fetch changes:', error);
     } finally {
@@ -283,6 +284,28 @@ export function ChangesPanel() {
     // Include sessionId in tab ID to allow same file open in different sessions
     const tabId = `${selectedWorkspaceId}-${selectedSessionId}-${path}`;
 
+    // Check file content cache — avoids HTTP round-trip on re-open
+    // Skip cache for binary files (shouldn't be cached, but guard defensively)
+    const cached = !isBinaryFile(filename)
+      ? getFileContentFromCache(selectedWorkspaceId, selectedSessionId, path)
+      : null;
+    if (cached) {
+      const isEmpty = cached.content === '' || cached.content === undefined;
+      openFileTab({
+        id: tabId,
+        workspaceId: selectedWorkspaceId,
+        sessionId: selectedSessionId,
+        path,
+        name: filename,
+        isLoading: false,
+        viewMode: 'file',
+        content: cached.content ?? '',
+        originalContent: cached.content ?? '',
+        isEmpty,
+      });
+      return;
+    }
+
     // Create tab with loading state (session-scoped for complete isolation)
     const newTab: FileTab = {
       id: tabId,
@@ -302,6 +325,7 @@ export function ChangesPanel() {
     // Fetch file content from session's worktree (not main repo)
     try {
       const fileData = await getSessionFileContent(selectedWorkspaceId, selectedSessionId, path);
+      setFileContentInCache(selectedWorkspaceId, selectedSessionId, path, fileData);
       const isEmpty = fileData.content === '' || fileData.content === undefined;
       updateFileTab(tabId, {
         content: fileData.content ?? '',
@@ -668,9 +692,10 @@ export function ChangesPanel() {
     onCollapseAllFiles: () => fileTreeRef.current?.collapseAll(),
     onExpandAllFiles: () => fileTreeRef.current?.expandAll(),
     onRefreshChanges: () => {
-      // Invalidate cache on explicit refresh so stale data isn't re-shown
+      // Invalidate caches on explicit refresh so stale data isn't re-shown
       if (selectedWorkspaceId && selectedSessionId) {
         invalidateSessionData(selectedWorkspaceId, selectedSessionId);
+        invalidateFileContentCache(selectedWorkspaceId, selectedSessionId);
       }
       fetchChanges();
       fetchBranchData();
