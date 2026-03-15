@@ -33,6 +33,7 @@ import { parseMcpToolName, formatToolDuration, stripCdPrefix } from '@/lib/forma
 import { TOOL_TARGET_TRUNCATE, TOOL_COMMAND_TRUNCATE } from '@/lib/constants';
 import { useAppStore } from '@/stores/appStore';
 import { ErrorBoundary } from '@/components/shared/ErrorBoundary';
+import { CopyButton } from '@/components/shared/CopyButton';
 import { TodoToolDetail } from '@/components/conversation/tool-details/TodoToolDetail';
 import { getMessage, toStoreMessage } from '@/lib/api';
 import type { ToolMetadata } from '@/lib/types';
@@ -42,6 +43,8 @@ const EditToolDetail = lazy(() => import('@/components/conversation/tool-details
 const WriteToolDetail = lazy(() => import('@/components/conversation/tool-details/WriteToolDetail').then(m => ({ default: m.WriteToolDetail })));
 const ReadToolDetail = lazy(() => import('@/components/conversation/tool-details/ReadToolDetail').then(m => ({ default: m.ReadToolDetail })));
 const WorkspaceDiffDetail = lazy(() => import('@/components/conversation/tool-details/WorkspaceDiffDetail').then(m => ({ default: m.WorkspaceDiffDetail })));
+const GrepToolDetail = lazy(() => import('@/components/conversation/tool-details/GrepToolDetail').then(m => ({ default: m.GrepToolDetail })));
+const GlobToolDetail = lazy(() => import('@/components/conversation/tool-details/GlobToolDetail').then(m => ({ default: m.GlobToolDetail })));
 
 interface ToolUsageBlockProps {
   id: string;
@@ -219,6 +222,8 @@ export const ToolUsageBlock = memo(function ToolUsageBlock({
   const isEditTool = ['Edit', 'edit_file'].includes(tool);
   const isWriteTool = ['Write', 'write_file'].includes(tool);
   const isReadTool = ['Read', 'read_file'].includes(tool);
+  const isGrepTool = tool === 'Grep' || tool === 'search';
+  const isGlobTool = tool === 'Glob';
   const isTodoTool = tool === 'TodoWrite';
   const isSkillTool = tool === 'Skill';
   const isWorkspaceDiffTool = tool === 'mcp__chatml__get_workspace_diff';
@@ -567,13 +572,31 @@ export const ToolUsageBlock = memo(function ToolUsageBlock({
                 <Suspense fallback={<div className="rounded border bg-muted p-2 text-2xs text-muted-foreground">Loading diff viewer...</div>}>
                   <WorkspaceDiffDetail stdout={stdout} worktreePath={worktreePath} />
                 </Suspense>
+              ) : isGrepTool && stdout ? (
+                /* Grep: structured search results with file grouping and match highlighting */
+                <Suspense fallback={<div className="rounded border bg-muted p-2 text-2xs text-muted-foreground">Loading search results...</div>}>
+                  <GrepToolDetail
+                    stdout={stdout}
+                    pattern={params?.pattern as string | undefined}
+                    outputMode={params?.output_mode as string | undefined}
+                    worktreePath={worktreePath}
+                  />
+                </Suspense>
+              ) : isGlobTool && stdout ? (
+                /* Glob: file list with icons and clickable paths */
+                <Suspense fallback={<div className="rounded border bg-muted p-2 text-2xs text-muted-foreground">Loading file list...</div>}>
+                  <GlobToolDetail stdout={stdout} worktreePath={worktreePath} />
+                </Suspense>
               ) : (
                 /* Generic fallback for all other tools */
                 <>
                   {/* Full command for Bash tools */}
                   {isBashTool && fullTarget && (
                     <div className="rounded border bg-muted p-2">
-                      <div className="text-2xs text-muted-foreground/60 mb-1">Command</div>
+                      <div className="flex items-center justify-between mb-1">
+                        <div className="text-2xs text-muted-foreground/60">Command</div>
+                        <CopyButton getText={() => fullTarget!} />
+                      </div>
                       <pre className="font-mono text-2xs text-text-success whitespace-pre-wrap break-all">
                         $ {fullTarget}
                       </pre>
@@ -593,7 +616,10 @@ export const ToolUsageBlock = memo(function ToolUsageBlock({
                   {/* stdout output */}
                   {stdout && (
                     <div className="rounded border bg-muted p-2">
-                      <div className="text-2xs text-muted-foreground/60 mb-1">Output</div>
+                      <div className="flex items-center justify-between mb-1">
+                        <div className="text-2xs text-muted-foreground/60">Output</div>
+                        <CopyButton getText={() => stdout} />
+                      </div>
                       <pre className="font-mono text-2xs text-foreground/80 whitespace-pre-wrap break-all max-h-[500px] overflow-y-auto">
                         {stdout}
                       </pre>
