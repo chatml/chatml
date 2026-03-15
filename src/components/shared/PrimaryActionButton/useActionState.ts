@@ -14,14 +14,10 @@ import {
   Download,
 } from 'lucide-react';
 import type { GitStatusDTO, PRDetails } from '@/lib/api';
+import type { WorktreeSession } from '@/lib/types';
 import type { PrimaryAction } from './types';
 
-interface Session {
-  id?: string;
-  status?: string;
-  prStatus?: string;
-  prUrl?: string;
-}
+type Session = Pick<Partial<WorktreeSession>, 'id' | 'status' | 'prStatus' | 'prUrl' | 'checkStatus'>;
 
 /**
  * Hook that determines the primary action based on git status, session state, and PR details.
@@ -49,6 +45,17 @@ export function useActionState(
   prDetails: PRDetails | null,
 ): PrimaryAction | null {
   return useMemo(() => {
+    // Merge WebSocket-updated store value (session.checkStatus) with polled API value
+    // (prDetails.checkStatus). WebSocket is real-time but updates can be missed, while
+    // prDetails polls every 90s but is reliable. If the session is still 'pending' but
+    // polling already shows a terminal state, prefer the terminal state.
+    const sessionCheck = session?.checkStatus ?? null;
+    const prCheck = prDetails?.checkStatus ?? null;
+    const isTerminal = (s: string | null) => s === 'success' || s === 'failure';
+    const effectiveCheckStatus =
+      sessionCheck === 'pending' && isTerminal(prCheck) ? prCheck
+      : sessionCheck ?? prCheck;
+
     const archiveAction: PrimaryAction = {
       type: 'archive-session',
       tier: 'complete',
@@ -120,7 +127,7 @@ export function useActionState(
     }
 
     // Priority 2: CI check failures (only if we have PR details)
-    if (prDetails?.checkStatus === 'failure') {
+    if (effectiveCheckStatus === 'failure') {
       return {
         type: 'fix-issues',
         tier: 'alert',
@@ -223,7 +230,7 @@ export function useActionState(
     // Note: checks failed is caught by Priority 2 above
     if (hasOpenPR) {
       // Don't show merge button while CI is still running
-      if (prDetails?.checkStatus === 'pending') {
+      if (effectiveCheckStatus === 'pending') {
         return null;
       }
 
