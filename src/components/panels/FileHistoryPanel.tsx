@@ -42,11 +42,16 @@ function formatRelativeTime(isoTimestamp: string): string {
   }
 }
 
-export function FileHistoryPanel() {
+interface FileHistoryPanelProps {
+  isVisible?: boolean;
+}
+
+export function FileHistoryPanel({ isVisible = true }: FileHistoryPanelProps) {
   const { selectedWorkspaceId, selectedSessionId } = useSelectedIds();
   const { fileTabs, selectedFileTabId, openFileTab, updateFileTab } = useFileTabState();
 
   const [commits, setCommits] = useState<FileCommitDTO[]>([]);
+  const [truncated, setTruncated] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -57,6 +62,8 @@ export function FileHistoryPanel() {
 
   // Track if component is mounted
   const isMountedRef = useRef(false);
+  // Track which file we last successfully fetched to avoid redundant requests
+  const lastFetchedKeyRef = useRef<string | null>(null);
 
   // Get current file from selected tab
   const currentFileTab = useMemo(() => {
@@ -66,12 +73,17 @@ export function FileHistoryPanel() {
 
   const currentFilePath = currentFileTab?.path;
 
+  const fetchKey = `${selectedWorkspaceId}:${selectedSessionId}:${currentFilePath}`;
+
   // Fetch function that handles all state updates
-  const fetchHistory = useCallback(async () => {
+  const fetchHistory = useCallback(async (signal?: AbortSignal) => {
     if (!selectedWorkspaceId || !selectedSessionId || !currentFilePath) {
-      setCommits([]);
-      setLoading(false);
-      setError(null);
+      if (!signal?.aborted) {
+        setCommits([]);
+        setLoading(false);
+        setError(null);
+        lastFetchedKeyRef.current = null;
+      }
       return;
     }
 
@@ -79,31 +91,43 @@ export function FileHistoryPanel() {
     setError(null);
 
     try {
-      const data = await getFileCommitHistory(selectedWorkspaceId, selectedSessionId, currentFilePath);
-      if (isMountedRef.current) {
+      const data = await getFileCommitHistory(selectedWorkspaceId, selectedSessionId, currentFilePath, signal);
+      if (isMountedRef.current && !signal?.aborted) {
         setCommits(data.commits ?? []);
+        setTruncated(data.truncated ?? false);
+        lastFetchedKeyRef.current = fetchKey;
       }
     } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') return;
       if (isMountedRef.current) {
         setError(err instanceof Error ? err.message : 'Failed to load history');
         setCommits([]);
+        lastFetchedKeyRef.current = null;
       }
     } finally {
-      if (isMountedRef.current) {
+      if (isMountedRef.current && !signal?.aborted) {
         setLoading(false);
       }
     }
-  }, [selectedWorkspaceId, selectedSessionId, currentFilePath]);
+  }, [selectedWorkspaceId, selectedSessionId, currentFilePath, fetchKey]);
 
-  // Fetch file history when file changes
+  // Fetch file history when file changes — only when the panel is visible.
+  // Skip if we already have data for this exact file (e.g. toggling the panel tab).
   useEffect(() => {
+    if (!isVisible) return;
     isMountedRef.current = true;
-    fetchHistory();
+
+    // Already have data for this file — no need to re-fetch
+    if (lastFetchedKeyRef.current === fetchKey) return;
+
+    const controller = new AbortController();
+    fetchHistory(controller.signal);
 
     return () => {
       isMountedRef.current = false;
+      controller.abort();
     };
-  }, [fetchHistory]);
+  }, [fetchHistory, fetchKey, isVisible]);
 
   // Handle container resize
   useEffect(() => {
@@ -269,7 +293,7 @@ export function FileHistoryPanel() {
             }}
             className="flex items-center justify-center text-xs text-muted-foreground/60"
           >
-            — Beginning of file history —
+            {truncated ? `Showing last ${commits.length} commits` : '— Beginning of file history —'}
           </div>
         )}
       </div>

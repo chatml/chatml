@@ -880,9 +880,10 @@ export function ChangesPanel() {
                   <McpServersPanel />
                 </ErrorBoundary>
               </div>
+              {/* CSS 'hidden' keeps the component mounted; isVisible gates network fetches */}
               <div className={cn("h-full", bottomTab !== 'file-history' && 'hidden')}>
                 <ErrorBoundary section="FileHistory" fallback={<InlineErrorFallback message="Unable to display file history" />}>
-                  <FileHistoryPanel />
+                  <FileHistoryPanel isVisible={bottomTab === 'file-history'} />
                 </ErrorBoundary>
               </div>
             </div>

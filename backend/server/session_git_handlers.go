@@ -299,8 +299,9 @@ func (h *Handlers) GetSessionDiffSummary(w http.ResponseWriter, r *http.Request)
 
 // FileHistoryResponse represents the commit history for a file
 type FileHistoryResponse struct {
-	Commits []git.FileCommit `json:"commits"`
-	Total   int              `json:"total"`
+	Commits   []git.FileCommit `json:"commits"`
+	Total     int              `json:"total"`
+	Truncated bool             `json:"truncated"`
 }
 
 // GetSessionFileHistory returns the commit history for a specific file in a session's worktree
@@ -337,9 +338,17 @@ func (h *Handlers) GetSessionFileHistory(w http.ResponseWriter, r *http.Request)
 		commits = []git.FileCommit{}
 	}
 
+	// Backend fetches 51 commits; if we got more than 50, the history is truncated
+	const maxCommits = 50
+	truncated := len(commits) > maxCommits
+	if truncated {
+		commits = commits[:maxCommits]
+	}
+
 	writeJSON(w, FileHistoryResponse{
-		Commits: commits,
-		Total:   len(commits),
+		Commits:   commits,
+		Total:     len(commits),
+		Truncated: truncated,
 	})
 }
 
