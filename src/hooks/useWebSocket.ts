@@ -571,6 +571,7 @@ export function useWebSocket(enabled: boolean = true) {
         freshStore.finalizeStreamingMessage(conversationId, {
           durationMs,
           toolUsage: toolUsage.length > 0 ? toolUsage : undefined,
+          commitQueued: true,
           runSummary: {
             success: event.success !== false,
             cost: event.cost,

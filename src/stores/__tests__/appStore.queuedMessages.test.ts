@@ -80,6 +80,79 @@ describe('appStore - queued message ordering', () => {
     expect(messages[2].content).toBe('Second user message');
   });
 
+  it('commits queued user message on result event with runSummary', () => {
+    // Simulates the result event handler which now passes commitQueued: true alongside runSummary
+    useAppStore.setState({
+      messagesByConversation: {
+        [conversationId]: [
+          {
+            id: 'msg-user1',
+            conversationId,
+            role: 'user',
+            content: 'First user message',
+            timestamp: '2025-07-01T12:00:00Z',
+          },
+        ],
+      },
+      streamingState: {
+        [conversationId]: {
+          text: 'Assistant response to first message.',
+          segments: [],
+          currentSegmentId: null,
+          isStreaming: true,
+          error: null,
+          thinking: null,
+          isThinking: false,
+          planModeActive: false,
+          pendingPlanApproval: null,
+        },
+      },
+      queuedMessages: {
+        [conversationId]: [
+          {
+            id: 'msg-user2',
+            content: 'Second user message',
+            attachments: [],
+            timestamp: '2025-07-01T12:00:05Z',
+          },
+        ],
+      },
+    });
+
+    // Simulate result event: commitQueued=true with runSummary, non-terminal
+    useAppStore.getState().finalizeStreamingMessage(conversationId, {
+      durationMs: 5000,
+      commitQueued: true,
+      runSummary: {
+        success: true,
+        cost: 0.01,
+        turns: 1,
+        durationMs: 5000,
+      },
+    });
+
+    const messages = useAppStore.getState().messagesByConversation[conversationId] ?? [];
+    expect(messages).toHaveLength(3);
+    // Order: user1, assistant1 (with runSummary), user2
+    expect(messages[0].role).toBe('user');
+    expect(messages[0].content).toBe('First user message');
+    expect(messages[1].role).toBe('assistant');
+    expect(messages[1].content).toBe('Assistant response to first message.');
+    expect(messages[1].runSummary).toBeDefined();
+    expect(messages[1].runSummary?.success).toBe(true);
+    expect(messages[2].role).toBe('user');
+    expect(messages[2].content).toBe('Second user message');
+
+    // Queue should be empty (one message committed, none remaining)
+    const queued = useAppStore.getState().queuedMessages[conversationId] ?? [];
+    expect(queued).toHaveLength(0);
+
+    // keepStreaming is computed before the queue is drained, so isStreaming
+    // remains true (queue had 1 message → hasQueuedMessages was true, non-terminal).
+    const streaming = useAppStore.getState().streamingState[conversationId];
+    expect(streaming?.isStreaming).toBe(true);
+  });
+
   it('places queued user message AFTER assistant message on terminal event', () => {
     useAppStore.setState({
       messagesByConversation: {
