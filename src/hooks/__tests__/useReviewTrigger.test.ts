@@ -41,6 +41,7 @@ function resetStore() {
     selectedSessionId: null,
     selectedConversationId: null,
     conversations: [],
+    conversationIds: new Set(),
     messagesByConversation: {},
     reviewComments: {},
     streamingState: {},
