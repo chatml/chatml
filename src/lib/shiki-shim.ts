@@ -37,6 +37,13 @@ export {
 // Used by Pierre's shared_highlighter.js — JS regex engine, no WASM required
 export { createJavaScriptRegexEngine } from 'shiki/engine/javascript';
 
+// --- From shiki/engine/oniguruma ---
+// Pierre 1.1.0 imports createOnigurumaEngine but only uses it as a fallback
+// when no engine option is provided. Our pierrePreload.ts always supplies the
+// JS regex engine, so this is never called at runtime. Export it so the import
+// resolves, but it will throw if actually invoked (we can't load WASM in Tauri).
+export { createOnigurumaEngine } from 'shiki/engine/oniguruma';
+
 // --- Empty stubs ---
 // pierrePreload.ts pre-populates common languages/themes into Pierre's
 // ResolvedLanguages / ResolvedThemes maps, so these bundled fallbacks are
