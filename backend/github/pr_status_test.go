@@ -467,6 +467,166 @@ func TestClient_FindPRForBranch_NotAuthenticated(t *testing.T) {
 // GetPRFullDetails Tests
 // ============================================================================
 
+// ============================================================================
+// computeReviewDecision Tests
+// ============================================================================
+
+func TestComputeReviewDecision_Approved(t *testing.T) {
+	reviews := []githubReview{
+		{User: struct{ Login string `json:"login"` }{Login: "alice"}, State: "APPROVED"},
+	}
+	require.Equal(t, ReviewApproved, computeReviewDecision(reviews, 0))
+}
+
+func TestComputeReviewDecision_ChangesRequested(t *testing.T) {
+	reviews := []githubReview{
+		{User: struct{ Login string `json:"login"` }{Login: "alice"}, State: "CHANGES_REQUESTED"},
+	}
+	require.Equal(t, ReviewChangesRequested, computeReviewDecision(reviews, 0))
+}
+
+func TestComputeReviewDecision_LatestPerUserWins(t *testing.T) {
+	// Alice first requests changes, then approves
+	reviews := []githubReview{
+		{User: struct{ Login string `json:"login"` }{Login: "alice"}, State: "CHANGES_REQUESTED"},
+		{User: struct{ Login string `json:"login"` }{Login: "alice"}, State: "APPROVED"},
+	}
+	require.Equal(t, ReviewApproved, computeReviewDecision(reviews, 0))
+}
+
+func TestComputeReviewDecision_MixedReviewers(t *testing.T) {
+	// Alice approves, Bob requests changes → changes_requested wins
+	reviews := []githubReview{
+		{User: struct{ Login string `json:"login"` }{Login: "alice"}, State: "APPROVED"},
+		{User: struct{ Login string `json:"login"` }{Login: "bob"}, State: "CHANGES_REQUESTED"},
+	}
+	require.Equal(t, ReviewChangesRequested, computeReviewDecision(reviews, 0))
+}
+
+func TestComputeReviewDecision_DismissedCancelsReview(t *testing.T) {
+	// Alice requests changes, then her review is dismissed
+	reviews := []githubReview{
+		{User: struct{ Login string `json:"login"` }{Login: "alice"}, State: "CHANGES_REQUESTED"},
+		{User: struct{ Login string `json:"login"` }{Login: "alice"}, State: "DISMISSED"},
+	}
+	require.Equal(t, ReviewNone, computeReviewDecision(reviews, 0))
+}
+
+func TestComputeReviewDecision_CommentedIsIgnored(t *testing.T) {
+	// Only comments, no substantive review
+	reviews := []githubReview{
+		{User: struct{ Login string `json:"login"` }{Login: "alice"}, State: "COMMENTED"},
+		{User: struct{ Login string `json:"login"` }{Login: "bob"}, State: "COMMENTED"},
+	}
+	require.Equal(t, ReviewNone, computeReviewDecision(reviews, 0))
+}
+
+func TestComputeReviewDecision_PendingReviewersNoReviews(t *testing.T) {
+	require.Equal(t, ReviewRequired, computeReviewDecision(nil, 2))
+}
+
+func TestComputeReviewDecision_ApprovedWithPendingReviewers(t *testing.T) {
+	// One approved but still has pending reviewers → approved (review exists)
+	reviews := []githubReview{
+		{User: struct{ Login string `json:"login"` }{Login: "alice"}, State: "APPROVED"},
+	}
+	require.Equal(t, ReviewApproved, computeReviewDecision(reviews, 1))
+}
+
+func TestComputeReviewDecision_NoReviewsNoReviewers(t *testing.T) {
+	require.Equal(t, ReviewNone, computeReviewDecision(nil, 0))
+}
+
+func TestClient_GetPRDetails_WithReviews(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/repos/testowner/testrepo/pulls/1":
+			pr := map[string]interface{}{
+				"number":          1,
+				"state":           "open",
+				"title":           "Test PR",
+				"html_url":        "https://github.com/testowner/testrepo/pull/1",
+				"mergeable":       false,
+				"mergeable_state": "blocked",
+				"head":            map[string]string{"sha": "abc123"},
+				"requested_reviewers": []map[string]string{
+					{"login": "bob"},
+				},
+			}
+			json.NewEncoder(w).Encode(pr)
+		case "/repos/testowner/testrepo/commits/abc123/check-runs":
+			checks := map[string]interface{}{
+				"total_count": 1,
+				"check_runs": []map[string]interface{}{
+					{"name": "build", "status": "completed", "conclusion": "success"},
+				},
+			}
+			json.NewEncoder(w).Encode(checks)
+		case "/repos/testowner/testrepo/pulls/1/reviews":
+			reviews := []map[string]interface{}{
+				{"user": map[string]string{"login": "alice"}, "state": "APPROVED"},
+			}
+			json.NewEncoder(w).Encode(reviews)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	client := NewClient("", "")
+	client.apiURL = server.URL
+	client.SetToken("test_token")
+
+	details, err := client.GetPRDetails(context.Background(), "testowner", "testrepo", 1)
+	require.NoError(t, err)
+	require.NotNil(t, details)
+	require.Equal(t, ReviewApproved, details.ReviewDecision)
+	require.Equal(t, 1, details.RequestedReviewers)
+}
+
+func TestClient_GetPRDetails_ReviewsFetchFails(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/repos/testowner/testrepo/pulls/1":
+			pr := map[string]interface{}{
+				"number":          1,
+				"state":           "open",
+				"title":           "Test PR",
+				"html_url":        "https://github.com/testowner/testrepo/pull/1",
+				"mergeable":       true,
+				"mergeable_state": "clean",
+				"head":            map[string]string{"sha": "abc123"},
+			}
+			json.NewEncoder(w).Encode(pr)
+		case "/repos/testowner/testrepo/commits/abc123/check-runs":
+			checks := map[string]interface{}{
+				"total_count": 0,
+				"check_runs":  []map[string]interface{}{},
+			}
+			json.NewEncoder(w).Encode(checks)
+		case "/repos/testowner/testrepo/pulls/1/reviews":
+			w.WriteHeader(http.StatusInternalServerError)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	client := NewClient("", "")
+	client.apiURL = server.URL
+	client.SetToken("test_token")
+
+	details, err := client.GetPRDetails(context.Background(), "testowner", "testrepo", 1)
+	require.NoError(t, err)
+	require.NotNil(t, details)
+	// Should gracefully degrade to ReviewNone
+	require.Equal(t, ReviewNone, details.ReviewDecision)
+}
+
+// ============================================================================
+// GetPRFullDetails Tests
+// ============================================================================
+
 func TestClient_GetPRFullDetails_Success(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		require.Equal(t, "/repos/testowner/testrepo/pulls/42", r.URL.Path)

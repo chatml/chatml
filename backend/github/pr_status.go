@@ -22,6 +22,16 @@ const (
 	CheckStatusNone    CheckStatus = "none"
 )
 
+// ReviewDecision represents the computed review decision for a PR
+type ReviewDecision string
+
+const (
+	ReviewApproved         ReviewDecision = "approved"
+	ReviewChangesRequested ReviewDecision = "changes_requested"
+	ReviewRequired         ReviewDecision = "review_required"
+	ReviewNone             ReviewDecision = "none"
+)
+
 // CheckDetail represents a single CI check run
 type CheckDetail struct {
 	Name            string `json:"name"`
@@ -32,16 +42,18 @@ type CheckDetail struct {
 
 // PRDetails contains detailed information about a pull request
 type PRDetails struct {
-	Number         int           `json:"number"`
-	State          string        `json:"state"`         // "open", "closed"
-	Title          string        `json:"title"`
-	Body           string        `json:"body"`
-	HTMLURL        string        `json:"htmlUrl"`
-	Merged         bool          `json:"merged"`         // true if the PR has been merged
-	Mergeable      *bool         `json:"mergeable"`      // Can be null while GitHub computes it
-	MergeableState string        `json:"mergeableState"` // "clean", "dirty", "blocked", "unknown", "unstable"
-	CheckStatus    CheckStatus   `json:"checkStatus"`
-	CheckDetails   []CheckDetail `json:"checkDetails"`
+	Number             int            `json:"number"`
+	State              string         `json:"state"`              // "open", "closed"
+	Title              string         `json:"title"`
+	Body               string         `json:"body"`
+	HTMLURL            string         `json:"htmlUrl"`
+	Merged             bool           `json:"merged"`             // true if the PR has been merged
+	Mergeable          *bool          `json:"mergeable"`          // Can be null while GitHub computes it
+	MergeableState     string         `json:"mergeableState"`     // "clean", "dirty", "blocked", "unknown", "unstable"
+	CheckStatus        CheckStatus    `json:"checkStatus"`
+	CheckDetails       []CheckDetail  `json:"checkDetails"`
+	ReviewDecision     ReviewDecision `json:"reviewDecision"`     // "approved", "changes_requested", "review_required", "none"
+	RequestedReviewers int            `json:"requestedReviewers"` // Count of pending reviewer requests
 }
 
 // githubPR represents the GitHub API response for a pull request
@@ -57,6 +69,9 @@ type githubPR struct {
 	Head           struct {
 		SHA string `json:"sha"`
 	} `json:"head"`
+	RequestedReviewers []struct {
+		Login string `json:"login"`
+	} `json:"requested_reviewers"`
 }
 
 // githubCheckRuns represents the GitHub API response for check runs
@@ -69,6 +84,52 @@ type githubCheckRuns struct {
 		StartedAt   *string `json:"started_at"`
 		CompletedAt *string `json:"completed_at"`
 	} `json:"check_runs"`
+}
+
+// githubReview represents a single review from the GitHub API
+type githubReview struct {
+	User struct {
+		Login string `json:"login"`
+	} `json:"user"`
+	State string `json:"state"` // "APPROVED", "CHANGES_REQUESTED", "COMMENTED", "DISMISSED", "PENDING"
+}
+
+// computeReviewDecision determines the effective review decision from a list of reviews
+// and the count of pending reviewer requests.
+func computeReviewDecision(reviews []githubReview, requestedReviewers int) ReviewDecision {
+	// Track the latest substantive review per user
+	latestByUser := make(map[string]string)
+	for _, r := range reviews {
+		state := r.State
+		switch state {
+		case "APPROVED", "CHANGES_REQUESTED":
+			latestByUser[r.User.Login] = state
+		case "DISMISSED":
+			// Dismissed cancels the user's previous review
+			delete(latestByUser, r.User.Login)
+		}
+		// COMMENTED and PENDING are not decisions — skip
+	}
+
+	hasApproval := false
+	for _, state := range latestByUser {
+		if state == "CHANGES_REQUESTED" {
+			return ReviewChangesRequested
+		}
+		if state == "APPROVED" {
+			hasApproval = true
+		}
+	}
+
+	if hasApproval {
+		return ReviewApproved
+	}
+
+	if requestedReviewers > 0 {
+		return ReviewRequired
+	}
+
+	return ReviewNone
 }
 
 // GetPRDetails fetches detailed information about a pull request including CI status
@@ -112,16 +173,18 @@ func (c *Client) GetPRDetails(ctx context.Context, owner, repo string, prNumber 
 	}
 
 	details := &PRDetails{
-		Number:         pr.Number,
-		State:          pr.State,
-		Title:          pr.Title,
-		Body:           pr.Body,
-		HTMLURL:        pr.HTMLURL,
-		Merged:         pr.Merged,
-		Mergeable:      pr.Mergeable,
-		MergeableState: pr.MergeableState,
-		CheckStatus:    CheckStatusNone,
-		CheckDetails:   []CheckDetail{},
+		Number:             pr.Number,
+		State:              pr.State,
+		Title:              pr.Title,
+		Body:               pr.Body,
+		HTMLURL:            pr.HTMLURL,
+		Merged:             pr.Merged,
+		Mergeable:          pr.Mergeable,
+		MergeableState:     pr.MergeableState,
+		CheckStatus:        CheckStatusNone,
+		CheckDetails:       []CheckDetail{},
+		ReviewDecision:     ReviewNone,
+		RequestedReviewers: len(pr.RequestedReviewers),
 	}
 
 	// Fetch check runs for the PR's head commit
@@ -190,6 +253,29 @@ func (c *Client) GetPRDetails(ctx context.Context, owner, repo string, prNumber 
 			} else {
 				details.CheckStatus = CheckStatusSuccess
 			}
+		}
+	}
+
+	// Fetch PR reviews to determine review decision
+	reviewsURL := fmt.Sprintf("%s/repos/%s/%s/pulls/%d/reviews?per_page=100", c.apiURL, owner, repo, pr.Number)
+	reviewsReq, err := http.NewRequestWithContext(ctx, "GET", reviewsURL, nil)
+	if err != nil {
+		return details, nil
+	}
+
+	reviewsReq.Header.Set("Authorization", "Bearer "+token)
+	reviewsReq.Header.Set("Accept", "application/vnd.github+json")
+
+	reviewsResp, err := c.httpClient.Do(reviewsReq)
+	if err != nil {
+		return details, nil
+	}
+	defer reviewsResp.Body.Close()
+
+	if reviewsResp.StatusCode == http.StatusOK {
+		var reviews []githubReview
+		if err := json.NewDecoder(reviewsResp.Body).Decode(&reviews); err == nil {
+			details.ReviewDecision = computeReviewDecision(reviews, details.RequestedReviewers)
 		}
 	}
 
