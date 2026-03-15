@@ -41,25 +41,17 @@ function DeferredConversationMarkers({ messages, onScrollToIndex }: {
   return <ConversationMarkers messages={deferredMessages} onScrollToIndex={onScrollToIndex} />;
 }
 
-// Tiny gate that reads a ref to conditionally render StreamingMessage.
-// This avoids putting `isActive` in the messageListFooter useMemo deps,
-// keeping the footer reference stable across session switches (prevents
-// Virtuoso re-measure on the hidden pane).
+// Gate that conditionally renders StreamingMessage based on pane visibility.
 function StreamingMessageGate({
-  isActiveRef,
+  isActive,
   conversationId,
   worktreePath,
 }: {
-  isActiveRef: React.RefObject<boolean>;
+  isActive: boolean;
   conversationId: string;
   worktreePath?: string;
 }) {
-  // Subscribe to isActive changes via a minimal state sync
-  const [visible, setVisible] = useState(isActiveRef.current);
-  useEffect(() => {
-    setVisible(isActiveRef.current);
-  });
-  if (!visible) return null;
+  if (!isActive) return null;
   return (
     <ErrorBoundary
       section="StreamingMessage"
@@ -241,7 +233,9 @@ export function CachedConversationPane({
   const isAtBottomRef = useRef(true);
   const forceFollowRef = useRef(false);
   const isActiveRef = useRef(isActive);
-  isActiveRef.current = isActive;
+  useEffect(() => {
+    isActiveRef.current = isActive;
+  }, [isActive]);
 
   // Continuously track the visible range
   const handleRangeChanged = useCallback((range: { startIndex: number; endIndex: number }) => {
@@ -279,14 +273,13 @@ export function CachedConversationPane({
     messageListRef.current?.scrollToBottom('auto');
   }, []);
 
-  // Stable footer for VirtualizedMessageList — isActive is read via ref inside
-  // StreamingMessageGate so the footer identity stays stable across session switches.
+  // Footer for VirtualizedMessageList
   const messageListFooter = useMemo(() => {
     if (!conversationId) return undefined;
     return (
       <div className="pl-5 pr-12 pb-16">
         <StreamingMessageGate
-          isActiveRef={isActiveRef}
+          isActive={isActive}
           conversationId={conversationId}
           worktreePath={worktreePath}
         />
@@ -302,7 +295,7 @@ export function CachedConversationPane({
         )}
       </div>
     );
-  }, [conversationId, queuedMessages, removeQueuedMessage, worktreePath]);
+  }, [conversationId, isActive, queuedMessages, removeQueuedMessage, worktreePath]);
 
   // Listen for message submit events to force scroll to bottom.
   // Only the active pane registers the listener to avoid redundant work.

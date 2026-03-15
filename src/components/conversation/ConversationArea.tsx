@@ -291,10 +291,6 @@ export function ConversationArea({ children }: ConversationAreaProps) {
     return result;
   }, [fileTabs, recentSessions]);
 
-  const currentSession = useMemo(
-    () => sessions.find((s) => s.id === selectedSessionId),
-    [sessions, selectedSessionId]
-  );
   const sessionConversations = useMemo(
     () => conversations.filter((c) => c.sessionId === selectedSessionId),
     [conversations, selectedSessionId]
