@@ -111,6 +111,8 @@ export function AppearanceSettings() {
   const setShowChatCost = useSettingsStore((s) => s.setShowChatCost);
   const showMessageTokenCost = useSettingsStore((s) => s.showMessageTokenCost);
   const setShowMessageTokenCost = useSettingsStore((s) => s.setShowMessageTokenCost);
+  const autoExpandEditDiffs = useSettingsStore((s) => s.autoExpandEditDiffs);
+  const setAutoExpandEditDiffs = useSettingsStore((s) => s.setAutoExpandEditDiffs);
   const { theme, setTheme } = useTheme();
 
   return (
@@ -201,6 +203,16 @@ export function AppearanceSettings() {
           onReset={() => setShowMessageTokenCost(SETTINGS_DEFAULTS.showMessageTokenCost)}
         >
           <Switch checked={showMessageTokenCost} onCheckedChange={setShowMessageTokenCost} aria-label="Show per-message tokens and cost" />
+        </SettingsRow>
+
+        <SettingsRow
+          settingId="autoExpandEditDiffs"
+          title="Auto-expand edit diffs"
+          description="Show Edit tool diffs expanded by default in the conversation timeline"
+          isModified={autoExpandEditDiffs !== SETTINGS_DEFAULTS.autoExpandEditDiffs}
+          onReset={() => setAutoExpandEditDiffs(SETTINGS_DEFAULTS.autoExpandEditDiffs)}
+        >
+          <Switch checked={autoExpandEditDiffs} onCheckedChange={setAutoExpandEditDiffs} aria-label="Auto-expand edit diffs" />
         </SettingsRow>
       </SettingsGroup>
     </div>

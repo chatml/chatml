@@ -80,6 +80,7 @@ export const SETTINGS_DEFAULTS = {
   showTokenUsage: true,
   showChatCost: true,
   showMessageTokenCost: false,
+  autoExpandEditDiffs: true,
   zenMode: false,
   // AI & Models
   defaultModel: 'claude-opus-4-6',
@@ -125,6 +126,7 @@ interface SettingsState {
   autoConvertLongText: boolean;
   showChatCost: boolean;
   showMessageTokenCost: boolean; // Whether to show compact token/cost footer below each assistant message
+  autoExpandEditDiffs: boolean; // Whether to auto-expand Edit tool blocks to show diffs inline
   // Appearance settings
   theme: ThemeOption; // App theme (system, light, dark)
   fontSize: FontSize;
@@ -201,6 +203,7 @@ interface SettingsState {
   setAutoConvertLongText: (value: boolean) => void;
   setShowChatCost: (value: boolean) => void;
   setShowMessageTokenCost: (value: boolean) => void;
+  setAutoExpandEditDiffs: (value: boolean) => void;
   setTheme: (value: ThemeOption) => void;
   setFontSize: (value: FontSize) => void;
   setBranchSyncBanner: (value: boolean) => void;
@@ -298,6 +301,7 @@ export const useSettingsStore = create<SettingsState>()(
       setAutoConvertLongText: (value) => set({ autoConvertLongText: value }),
       setShowChatCost: (value) => set({ showChatCost: value }),
       setShowMessageTokenCost: (value) => set({ showMessageTokenCost: value }),
+      setAutoExpandEditDiffs: (value) => set({ autoExpandEditDiffs: value }),
       setTheme: (value) => set({ theme: value }),
       setFontSize: (value) => set({ fontSize: value }),
       setBranchSyncBanner: (value) => set({ branchSyncBanner: value }),

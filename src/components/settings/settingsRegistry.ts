@@ -161,6 +161,14 @@ export const SETTINGS_REGISTRY: SettingMeta[] = [
     category: 'appearance',
     categoryLabel: 'Appearance',
   },
+  {
+    id: 'autoExpandEditDiffs',
+    title: 'Auto-expand edit diffs',
+    description: 'Automatically expand Edit tool blocks to show diffs inline in the conversation timeline',
+    keywords: ['edit', 'diff', 'expand', 'tool', 'collapse', 'auto', 'inline'],
+    category: 'appearance',
+    categoryLabel: 'Appearance',
+  },
 
   // ── AI & Models: Models ──
   {

@@ -32,6 +32,7 @@ import { cn, toRelativePath } from '@/lib/utils';
 import { parseMcpToolName, formatToolDuration, stripCdPrefix } from '@/lib/format';
 import { TOOL_TARGET_TRUNCATE, TOOL_COMMAND_TRUNCATE } from '@/lib/constants';
 import { useAppStore } from '@/stores/appStore';
+import { useSettingsStore } from '@/stores/settingsStore';
 import { ErrorBoundary } from '@/components/shared/ErrorBoundary';
 import { CopyButton } from '@/components/shared/CopyButton';
 import { TodoToolDetail } from '@/components/conversation/tool-details/TodoToolDetail';
@@ -114,7 +115,8 @@ export const ToolUsageBlock = memo(function ToolUsageBlock({
   messageId,
   compacted,
 }: ToolUsageBlockProps) {
-  const [isOpen, setIsOpen] = useState(false);
+  const autoExpandEditDiffs = useSettingsStore((s) => s.autoExpandEditDiffs);
+  const [isOpen, setIsOpen] = useState(() => ['Edit', 'edit_file'].includes(tool) && autoExpandEditDiffs && !compacted);
   const [isHydrating, setIsHydrating] = useState(false);
   const isHydratingRef = useRef(false);
 
