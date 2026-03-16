@@ -612,7 +612,7 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onGitHubRepos,
                         <Plus className="h-4 w-4" />
                       </button>
                     </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" className="w-52">
+                    <DropdownMenuContent align="end" className="w-56">
                       <DropdownMenuItem onClick={() => {
                         const targetId = selectedWorkspaceId || workspaces[0]?.id;
                         if (targetId) handleCreateSession(targetId);
@@ -638,7 +638,7 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onGitHubRepos,
                     </DropdownMenuTrigger>
                     <DropdownMenuContent
                       align="end"
-                      className="w-52"
+                      className="w-56"
                       onKeyDown={(e) => {
                         const num = parseInt(e.key, 10);
                         if (num >= 1 && num <= workspaces.length) {
@@ -651,7 +651,9 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onGitHubRepos,
                       <DropdownMenuLabel>New session in...</DropdownMenuLabel>
                       {workspaces.map((w, i) => (
                         <DropdownMenuItem key={w.id} onClick={() => handleCreateSession(w.id)}>
-                          <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: workspaceColors[w.id] || getWorkspaceColor(w.id) }} />
+                          <div className="size-4 flex items-center justify-center shrink-0">
+                            <div className="w-2 h-2 rounded-full" style={{ backgroundColor: workspaceColors[w.id] || getWorkspaceColor(w.id) }} />
+                          </div>
                           <span className="truncate">{w.name}</span>
                           <DropdownMenuShortcut>{i + 1}</DropdownMenuShortcut>
                         </DropdownMenuItem>
@@ -1013,7 +1015,9 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onGitHubRepos,
                       <DropdownMenuSubContent className="w-48">
                         {workspaces.map((w) => (
                           <DropdownMenuItem key={w.id} onClick={() => handleCreateSession(w.id)}>
-                            <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: workspaceColors[w.id] || getWorkspaceColor(w.id) }} />
+                            <div className="size-4 flex items-center justify-center shrink-0">
+                              <div className="w-2 h-2 rounded-full" style={{ backgroundColor: workspaceColors[w.id] || getWorkspaceColor(w.id) }} />
+                            </div>
                             <span className="truncate">{w.name}</span>
                           </DropdownMenuItem>
                         ))}
