@@ -318,6 +318,37 @@ export function CachedConversationPane({
     };
   }, [isActive, forceScrollToBottom]);
 
+  // Pin scroll to bottom when content height changes during streaming.
+  // Virtuoso's followOutput only fires on new items/footer changes, not when
+  // existing content changes height (e.g., lazy-loaded EditToolDetail resolving
+  // inside a Suspense boundary, or CollapsibleContent expanding).
+  useEffect(() => {
+    if (!selectedStreaming.isStreaming || !isActive) return;
+
+    const scrollerEl = messageListRef.current?.getScrollerElement();
+    if (!scrollerEl) return;
+    const contentEl = scrollerEl.firstElementChild;
+    if (!contentEl) return;
+
+    let rafId: number | null = null;
+
+    const observer = new ResizeObserver(() => {
+      if (!isAtBottomRef.current && !forceFollowRef.current) return;
+      if (rafId) cancelAnimationFrame(rafId);
+      rafId = requestAnimationFrame(() => {
+        scrollerEl.scrollTop = scrollerEl.scrollHeight - scrollerEl.clientHeight;
+        rafId = null;
+      });
+    });
+
+    observer.observe(contentEl);
+
+    return () => {
+      observer.disconnect();
+      if (rafId) cancelAnimationFrame(rafId);
+    };
+  }, [selectedStreaming.isStreaming, isActive]);
+
   // Scroll handler for conversation markers minimap
   const handleMarkerScrollToIndex = useCallback((index: number) => {
     messageListRef.current?.scrollToIndex(index, { align: 'start', behavior: 'smooth' });
