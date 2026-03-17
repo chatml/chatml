@@ -297,25 +297,30 @@ export function CachedConversationPane({
   //     messages arrive after the switch. Virtuoso doesn't mount until data
   //     exists, so initialTopMostItemIndex is consumed on the first mount.
   // Paint gate: hide the frame where Virtuoso measures items before applying
-  // initialTopMostItemIndex during conversation switches. Derived during render
-  // (not in an effect) to satisfy react-hooks/set-state-in-effect.
-  const [paintReady, setPaintReady] = useState(true);
-  const paintGateConvRef = useRef(conversationId);
+  // initialTopMostItemIndex during conversation switches. Uses state (not refs)
+  // to satisfy react-hooks/refs and react-hooks/set-state-in-effect.
+  //
+  // paintGateConvId tracks the last conversation we gated for. When
+  // conversationId changes and messages exist, we set it to the new id
+  // (triggering opacity:0). The rAF effect clears it (restoring opacity:1).
+  const [paintGateConvId, setPaintGateConvId] = useState<string | null>(null);
+  const paintReady = paintGateConvId === null;
 
-  if (paintGateConvRef.current !== conversationId && hasMessages) {
-    paintGateConvRef.current = conversationId;
-    if (paintReady) setPaintReady(false);
-  }
-  paintGateConvRef.current = conversationId;
+  useEffect(() => {
+    if (hasMessages) {
+      // New conversation with cached messages — gate the paint.
+      setPaintGateConvId(conversationId);
+    }
+  }, [conversationId]); // eslint-disable-line react-hooks/exhaustive-deps -- intentionally only on conversationId change
 
   // Double-rAF matches scheduleScrollRestore — Virtuoso needs the post-paint
   // frame to finish measuring items and applying initialTopMostItemIndex.
   useEffect(() => {
-    if (!paintReady) {
+    if (paintGateConvId !== null) {
       let inner: number;
       const outer = requestAnimationFrame(() => {
         inner = requestAnimationFrame(() => {
-          setPaintReady(true);
+          setPaintGateConvId(null);
         });
       });
       return () => {
@@ -323,7 +328,7 @@ export function CachedConversationPane({
         cancelAnimationFrame(inner);
       };
     }
-  }, [paintReady]);
+  }, [paintGateConvId]);
 
   /** Reset all follow-state refs atomically. Call when the user submits a
    *  message, clicks "scroll to bottom", or switches conversations. */
