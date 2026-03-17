@@ -185,7 +185,7 @@ pub fn resolve_user_path() -> String {
         "echo $PATH"
     };
 
-    if let Ok(output) = Command::new(&shell_path)
+    let base_path = if let Ok(output) = Command::new(&shell_path)
         .args(["-l", "-c", path_cmd])
         .output()
     {
@@ -196,12 +196,151 @@ pub fn resolve_user_path() -> String {
                 user_path.matches(':').count() + 1,
                 shell_path
             );
-            return user_path;
+            user_path
+        } else {
+            std::env::var("PATH").unwrap_or_else(|_| "/usr/bin:/bin".to_string())
+        }
+    } else {
+        // Fallback to process PATH
+        std::env::var("PATH").unwrap_or_else(|_| "/usr/bin:/bin".to_string())
+    };
+
+    ensure_version_manager_shims(&base_path)
+}
+
+/// Detect common version manager shim directories and prepend any that exist
+/// but are missing from PATH. This catches edge cases where the login shell
+/// initialization is incomplete or uses lazy loading (e.g. nvm).
+fn ensure_version_manager_shims(path: &str) -> String {
+    let home = match std::env::var("HOME") {
+        Ok(h) => h,
+        Err(_) => return path.to_string(),
+    };
+
+    let path_entries: Vec<&str> = path.split(':').collect();
+    let mut prepend: Vec<String> = Vec::new();
+
+    // Standard shim directories for common version managers
+    let shim_dirs = [
+        format!("{}/.mise/shims", home),
+        format!("{}/.local/share/mise/shims", home),
+        format!("{}/.asdf/shims", home),
+        format!("{}/.rbenv/shims", home),
+        format!("{}/.pyenv/shims", home),
+        format!("{}/.local/share/fnm/aliases/default/bin", home),
+        format!("{}/.volta/bin", home),
+    ];
+
+    for dir in &shim_dirs {
+        if std::path::Path::new(dir).is_dir() && !path_entries.contains(&dir.as_str()) {
+            prepend.push(dir.clone());
         }
     }
 
-    // Fallback to process PATH
-    std::env::var("PATH").unwrap_or_else(|_| "/usr/bin:/bin".to_string())
+    // nvm: find the default Node version's bin directory
+    if let Some(nvm_node_bin) = detect_nvm_node_bin(&home) {
+        if !path_entries.contains(&nvm_node_bin.as_str()) {
+            prepend.push(nvm_node_bin);
+        }
+    }
+
+    if prepend.is_empty() {
+        return path.to_string();
+    }
+
+    log::info!(
+        "Prepending {} version manager shim dir(s) to PATH: {}",
+        prepend.len(),
+        prepend.join(", ")
+    );
+
+    let mut result = prepend.join(":");
+    result.push(':');
+    result.push_str(path);
+    result
+}
+
+/// Detect the nvm-managed default Node.js bin directory.
+/// Checks `$NVM_DIR` (or `~/.nvm`) for installed Node versions.
+fn detect_nvm_node_bin(home: &str) -> Option<String> {
+    let nvm_dir = std::env::var("NVM_DIR")
+        .unwrap_or_else(|_| format!("{}/.nvm", home));
+
+    let versions_dir = std::path::Path::new(&nvm_dir).join("versions").join("node");
+    if !versions_dir.is_dir() {
+        return None;
+    }
+
+    // Try to read the default alias to find the preferred version.
+    // The alias may be a version prefix like "18" or "v20", or an indirect
+    // reference like "lts/*" or "stable" — we only use version-like values.
+    let alias_path = std::path::Path::new(&nvm_dir).join("alias").join("default");
+    let target_prefix = std::fs::read_to_string(&alias_path)
+        .ok()
+        .map(|s| s.trim().to_string())
+        .filter(|s| {
+            !s.is_empty()
+                && s.trim_start_matches('v')
+                    .chars()
+                    .next()
+                    .is_some_and(|c| c.is_ascii_digit())
+        });
+
+    // List installed versions and find a match
+    let mut versions: Vec<String> = std::fs::read_dir(&versions_dir)
+        .ok()?
+        .filter_map(|entry| {
+            let entry = entry.ok()?;
+            let name = entry.file_name().into_string().ok()?;
+            // Only include directories that look like version numbers
+            if name.starts_with('v') && entry.path().join("bin").is_dir() {
+                Some(name)
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    if versions.is_empty() {
+        return None;
+    }
+
+    // Sort versions numerically so latest is last (lexicographic sort
+    // would order v10 before v9, v18 before v8, etc.)
+    versions.sort_by(|a, b| {
+        let parse = |s: &str| -> Vec<u64> {
+            s.trim_start_matches('v')
+                .split('.')
+                .filter_map(|p| p.parse().ok())
+                .collect()
+        };
+        parse(a).cmp(&parse(b))
+    });
+
+    // If we have a target prefix from the default alias, try to match it
+    let chosen = if let Some(ref prefix) = target_prefix {
+        // Strip leading 'v' from prefix if present for matching
+        let clean_prefix = prefix.strip_prefix('v').unwrap_or(prefix);
+        versions
+            .iter()
+            .rev()
+            .find(|v| {
+                let clean_v = v.strip_prefix('v').unwrap_or(v);
+                clean_v.starts_with(clean_prefix)
+            })
+            .or_else(|| versions.last())
+    } else {
+        // No alias — use the latest installed version
+        versions.last()
+    };
+
+    chosen.map(|v| {
+        versions_dir
+            .join(v)
+            .join("bin")
+            .to_string_lossy()
+            .to_string()
+    })
 }
 
 /// Spawn the sidecar and set up monitoring
@@ -224,8 +363,10 @@ pub fn spawn_sidecar(app: &tauri::AppHandle, state: &Arc<AppState>) -> AppResult
     sidecar_command = sidecar_command.env("PORT", port.to_string());
 
     // Resolve the user's login shell PATH so the Go backend can find `node`, `git`, etc.
+    // Also cache it in AppState so the frontend PTY can use it.
     {
         let user_path = resolve_user_path();
+        state.set_resolved_user_path(user_path.clone());
         sidecar_command = sidecar_command.env("PATH", &user_path);
     }
 

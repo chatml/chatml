@@ -13,6 +13,8 @@ pub struct AppState {
     pub auth_token: Mutex<Option<String>>,
     /// Pending OAuth callback URL (set by deep link handler, consumed by frontend)
     pub pending_oauth_callback: Mutex<Option<String>>,
+    /// Resolved user PATH with version manager shims (cached at startup)
+    pub resolved_user_path: Mutex<Option<String>>,
     /// Number of auto-restart attempts since last successful connection
     pub restart_attempts: Mutex<u32>,
     /// Whether an auto-restart is currently in progress
@@ -33,6 +35,7 @@ impl AppState {
             sidecar_port: Mutex::new(None),
             auth_token: Mutex::new(None),
             pending_oauth_callback: Mutex::new(None),
+            resolved_user_path: Mutex::new(None),
             restart_attempts: Mutex::new(0),
             restart_in_progress: AtomicBool::new(false),
         }
@@ -121,6 +124,27 @@ impl AppState {
             Ok(guard) => guard.clone(),
             Err(e) => {
                 log::warn!("auth_token mutex poisoned: {}", e);
+                None
+            }
+        }
+    }
+
+    /// Store the resolved user PATH (with version manager shims)
+    pub fn set_resolved_user_path(&self, path: String) {
+        match self.resolved_user_path.lock() {
+            Ok(mut guard) => {
+                *guard = Some(path);
+            }
+            Err(e) => log::warn!("resolved_user_path mutex poisoned: {}", e),
+        }
+    }
+
+    /// Get the resolved user PATH
+    pub fn get_resolved_user_path(&self) -> Option<String> {
+        match self.resolved_user_path.lock() {
+            Ok(guard) => guard.clone(),
+            Err(e) => {
+                log::warn!("resolved_user_path mutex poisoned: {}", e);
                 None
             }
         }

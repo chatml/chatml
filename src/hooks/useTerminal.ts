@@ -259,6 +259,15 @@ export function useTerminal(options: UseTerminalOptions = {}): UseTerminalReturn
           }
         }
 
+        // Fetch the resolved user PATH (includes version manager shims).
+        // Falls back gracefully if the sidecar hasn't resolved it yet.
+        let resolvedPath: string | undefined;
+        try {
+          resolvedPath = await invoke<string>('get_resolved_path');
+        } catch {
+          // Sidecar may not be ready yet — PTY will use inherited PATH
+        }
+
         for (const shell of shellChain) {
           if (cleanupCalled) return;
 
@@ -276,6 +285,7 @@ export function useTerminal(options: UseTerminalOptions = {}): UseTerminalReturn
                 COLORTERM: 'truecolor',
                 TERM_PROGRAM: 'ChatML',
                 LANG: 'en_US.UTF-8',
+                ...(resolvedPath ? { PATH: resolvedPath } : {}),
               },
             });
 

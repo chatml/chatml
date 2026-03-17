@@ -173,7 +173,9 @@ pub fn run() {
             commands::close_window,
             // System prerequisites
             commands::check_prerequisites,
-            commands::check_gh_auth_status
+            commands::check_gh_auth_status,
+            // Resolved user PATH (version manager shims)
+            commands::get_resolved_path
         ])
         .setup(move |app| {
             // Create and set the menu
