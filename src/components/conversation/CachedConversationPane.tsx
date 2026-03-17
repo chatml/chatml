@@ -41,17 +41,18 @@ function DeferredConversationMarkers({ messages, onScrollToIndex }: {
   return <ConversationMarkers messages={deferredMessages} onScrollToIndex={onScrollToIndex} />;
 }
 
-// Gate that conditionally renders StreamingMessage based on pane visibility.
+// Always mount StreamingMessage so Virtuoso's footer height stays stable across
+// pane activation cycles. The parent CachedConversationPane already applies
+// `invisible` when inactive, so no extra visibility toggle is needed here.
+// Returning null previously caused Virtuoso measurement race conditions when the
+// pane reactivated (footer component reference changed → internal reset).
 function StreamingMessageGate({
-  isActive,
   conversationId,
   worktreePath,
 }: {
-  isActive: boolean;
   conversationId: string;
   worktreePath?: string;
 }) {
-  if (!isActive) return null;
   return (
     <ErrorBoundary
       section="StreamingMessage"
@@ -260,21 +261,30 @@ export function CachedConversationPane({
   // While inactive, measurements may have gone stale (e.g. container was in a
   // display:none ancestor like the file-viewer wrapper). Scrolling to a position
   // forces Virtuoso to re-scan the viewport and re-measure visible items.
+  // Double-rAF: first fires before paint, second fires after paint — Virtuoso
+  // needs the post-paint frame to finish measuring items (matches the pattern
+  // used in ConversationArea for deferred session rendering).
   useEffect(() => {
     if (isActive && !prevIsActiveRef.current) {
       const targetId = conversationId ?? '';
-      const handle = requestAnimationFrame(() => {
-        // Bail if conversation changed before rAF fired
-        if ((conversationId ?? '') !== targetId) return;
-        const saved = scrollPositions.get(targetId);
-        if (!saved || saved.wasAtBottom) {
-          messageListRef.current?.scrollToBottom('auto');
-        } else {
-          messageListRef.current?.scrollToIndex(saved.dataIndex, { align: 'start' });
-        }
+      let innerHandle: number;
+      const outerHandle = requestAnimationFrame(() => {
+        innerHandle = requestAnimationFrame(() => {
+          // Bail if conversation changed before rAF fired
+          if ((conversationId ?? '') !== targetId) return;
+          const saved = scrollPositions.get(targetId);
+          if (!saved || saved.wasAtBottom) {
+            messageListRef.current?.scrollToBottom('auto');
+          } else {
+            messageListRef.current?.scrollToIndex(saved.dataIndex, { align: 'start' });
+          }
+        });
       });
       prevIsActiveRef.current = isActive;
-      return () => cancelAnimationFrame(handle);
+      return () => {
+        cancelAnimationFrame(outerHandle);
+        cancelAnimationFrame(innerHandle);
+      };
     }
     prevIsActiveRef.current = isActive;
   }, [isActive, conversationId]);
@@ -322,7 +332,6 @@ export function CachedConversationPane({
     return (
       <div className="pl-5 pr-12 pb-16">
         <StreamingMessageGate
-          isActive={isActive}
           conversationId={conversationId}
           worktreePath={worktreePath}
         />
@@ -338,7 +347,7 @@ export function CachedConversationPane({
         )}
       </div>
     );
-  }, [conversationId, isActive, queuedMessages, removeQueuedMessage, worktreePath]);
+  }, [conversationId, queuedMessages, removeQueuedMessage, worktreePath]);
 
   // Listen for message submit events to force scroll to bottom.
   // Only the active pane registers the listener to avoid redundant work.
