@@ -35,6 +35,7 @@ func Init() {
 		for _, dir := range []string{
 			filepath.Join(root, "state"),
 			filepath.Join(root, "workspaces"),
+			filepath.Join(root, "tmp"),
 		} {
 			if err := os.MkdirAll(dir, 0755); err != nil {
 				panic("appdir: failed to create directory " + dir + ": " + err.Error())
@@ -93,6 +94,43 @@ func DBPath() string {
 func WorkspacesDir() string {
 	mustInit()
 	return filepath.Join(root, "workspaces")
+}
+
+// TempDir returns Root()/tmp — a dedicated directory for temporary files
+// that can be swept on startup to clean up after crashes.
+func TempDir() string {
+	mustInit()
+	return filepath.Join(root, "tmp")
+}
+
+// CleanupTempDir removes all entries in TempDir(). It is intended to be called
+// once at application startup, before any processes are created, so every entry
+// present is an orphan from a previous run. Returns the number of entries
+// removed and the number of errors encountered.
+func CleanupTempDir() (removed int, failed int, err error) {
+	dir := TempDir()
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return 0, 0, nil
+		}
+		return 0, 0, err
+	}
+	for _, e := range entries {
+		p := filepath.Join(dir, e.Name())
+		var removeErr error
+		if e.IsDir() {
+			removeErr = os.RemoveAll(p)
+		} else {
+			removeErr = os.Remove(p)
+		}
+		if removeErr != nil {
+			failed++
+		} else {
+			removed++
+		}
+	}
+	return removed, failed, nil
 }
 
 // DataPath returns StateDir()/data.json.
