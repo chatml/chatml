@@ -5,6 +5,7 @@ import * as React from 'react';
 import type { TComboboxInputElement, TMentionElement } from 'platejs';
 import type { PlateElementProps } from 'platejs/react';
 
+import { filterWords } from '@platejs/combobox';
 import { getMentionOnSelectItem } from '@platejs/mention';
 import { IS_APPLE, KEYS } from 'platejs';
 import {
@@ -30,7 +31,7 @@ import {
 export interface MentionItem {
   key: string;
   text: string;
-  data?: unknown;
+  data?: { path: string; directory: string };
 }
 
 interface MentionItemsContextValue {
@@ -106,6 +107,15 @@ export function MentionInputElement(
   const [search, setSearch] = React.useState('');
   const { items, isLoading } = React.useContext(MentionItemsContext);
 
+  const filteredItems = React.useMemo(() => {
+    if (!search) return items;
+    return items.filter(
+      (item) =>
+        filterWords(item.text, search) ||
+        (item.data?.path && filterWords(item.data.path, search))
+    );
+  }, [items, search]);
+
   return (
     <PlateElement {...props} as="span">
       <InlineCombobox
@@ -114,6 +124,7 @@ export function MentionInputElement(
         setValue={setSearch}
         showTrigger={true}
         trigger="@"
+        filter={false}
       >
         <InlineComboboxInput />
 
@@ -123,7 +134,7 @@ export function MentionInputElement(
           </InlineComboboxEmpty>
 
           <InlineComboboxGroup>
-            {items.map((item) => (
+            {filteredItems.map((item) => (
               <InlineComboboxItem
                 key={item.key}
                 value={item.text}
@@ -133,9 +144,9 @@ export function MentionInputElement(
                 <FileIcon filename={item.text} />
                 <span className="truncate">
                   {item.text}
-                  {(item.data as { directory?: string } | undefined)?.directory ? (
+                  {item.data?.directory ? (
                     <span className="ml-1.5 text-muted-foreground font-normal">
-                      {(item.data as { directory: string }).directory}
+                      {item.data.directory}
                     </span>
                   ) : null}
                 </span>
