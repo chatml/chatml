@@ -297,38 +297,34 @@ export function CachedConversationPane({
   //     messages arrive after the switch. Virtuoso doesn't mount until data
   //     exists, so initialTopMostItemIndex is consumed on the first mount.
   // Paint gate: hide the frame where Virtuoso measures items before applying
-  // initialTopMostItemIndex during conversation switches. Uses state (not refs)
-  // to satisfy react-hooks/refs and react-hooks/set-state-in-effect.
+  // initialTopMostItemIndex during conversation switches.
   //
-  // paintGateConvId tracks the last conversation we gated for. When
-  // conversationId changes and messages exist, we set it to the new id
-  // (triggering opacity:0). The rAF effect clears it (restoring opacity:1).
-  const [paintGateConvId, setPaintGateConvId] = useState<string | null>(null);
-  const paintReady = paintGateConvId === null;
+  // On conversation switch with cached messages, opacity is set to 0 via
+  // paintReady=false, then restored after a double-rAF (Virtuoso needs the
+  // post-paint frame to finish measuring). All setState calls happen inside
+  // rAF callbacks (not synchronously in the effect body) to satisfy the
+  // react-hooks/set-state-in-effect lint rule.
+  const [paintReady, setPaintReady] = useState(true);
 
   useEffect(() => {
-    if (hasMessages) {
-      // New conversation with cached messages — gate the paint.
-      setPaintGateConvId(conversationId);
-    }
-  }, [conversationId]); // eslint-disable-line react-hooks/exhaustive-deps -- intentionally only on conversationId change
-
-  // Double-rAF matches scheduleScrollRestore — Virtuoso needs the post-paint
-  // frame to finish measuring items and applying initialTopMostItemIndex.
-  useEffect(() => {
-    if (paintGateConvId !== null) {
-      let inner: number;
-      const outer = requestAnimationFrame(() => {
-        inner = requestAnimationFrame(() => {
-          setPaintGateConvId(null);
-        });
+    if (!hasMessages) return;
+    // Gate: hide immediately so Virtuoso can measure items at the correct
+    // initialTopMostItemIndex without a visible flash, then reveal after
+    // a double-rAF once measurement is complete.
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional: synchronous gate before async reveal
+    setPaintReady(false);
+    let inner: number;
+    const outer = requestAnimationFrame(() => {
+      inner = requestAnimationFrame(() => {
+        setPaintReady(true);
       });
-      return () => {
-        cancelAnimationFrame(outer);
-        cancelAnimationFrame(inner);
-      };
-    }
-  }, [paintGateConvId]);
+    });
+    return () => {
+      cancelAnimationFrame(outer);
+      cancelAnimationFrame(inner);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only gate on conversation switch
+  }, [conversationId]);
 
   /** Reset all follow-state refs atomically. Call when the user submits a
    *  message, clicks "scroll to bottom", or switches conversations. */
