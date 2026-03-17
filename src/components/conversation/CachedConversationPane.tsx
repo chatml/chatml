@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback, useMemo, useDeferredValue } from 'react';
+import { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo, useDeferredValue } from 'react';
 import { useAppStore, type QueuedMessage } from '@/stores/appStore';
 import {
   useMessages,
@@ -287,6 +287,40 @@ export function CachedConversationPane({
   // haven't loaded yet, store the intent here and execute once data arrives.
   const pendingScrollRestoreRef = useRef<string | null>(null);
 
+  // Paint gate: two complementary mechanisms prevent flash-at-top on switch:
+  //  1. Paint gate (below): covers the *sync* case — switching between
+  //     conversations that already have cached messages. Hides the frame
+  //     where Virtuoso measures items before applying initialTopMostItemIndex.
+  //  2. Empty guard in VirtualizedMessageList: covers the *async* case —
+  //     messages arrive after the switch. Virtuoso doesn't mount until data
+  //     exists, so initialTopMostItemIndex is consumed on the first mount.
+  const [paintReady, setPaintReady] = useState(true);
+  const paintGateConvRef = useRef(conversationId);
+
+  useLayoutEffect(() => {
+    if (paintGateConvRef.current !== conversationId && hasMessages) {
+      setPaintReady(false);
+    }
+    paintGateConvRef.current = conversationId;
+  }, [conversationId, hasMessages]);
+
+  // Double-rAF matches scheduleScrollRestore — Virtuoso needs the post-paint
+  // frame to finish measuring items and applying initialTopMostItemIndex.
+  useEffect(() => {
+    if (!paintReady) {
+      let inner: number;
+      const outer = requestAnimationFrame(() => {
+        inner = requestAnimationFrame(() => {
+          setPaintReady(true);
+        });
+      });
+      return () => {
+        cancelAnimationFrame(outer);
+        cancelAnimationFrame(inner);
+      };
+    }
+  }, [paintReady]);
+
   /** Reset all follow-state refs atomically. Call when the user submits a
    *  message, clicks "scroll to bottom", or switches conversations. */
   const resetFollowState = useCallback(() => {
@@ -330,36 +364,38 @@ export function CachedConversationPane({
     };
   }, [conversationId]);
 
-  // Force Virtuoso to recalculate its viewport when the pane becomes active.
-  // If messages haven't loaded yet (e.g. evicted while inactive), we defer the
-  // scroll restore to a separate effect that fires once messages arrive.
+  // When the pane becomes active, handle scroll positioning.
+  // If messages are already loaded, initialTopMostItemIndex on the freshly-
+  // mounted Virtuoso (key={conversationId}) handles positioning — no extra
+  // scroll call needed. If messages haven't loaded yet (e.g. evicted while
+  // inactive), defer to the separate effect below that fires once data arrives.
   useEffect(() => {
     if (isActive && !prevIsActiveRef.current) {
       const targetId = conversationId ?? '';
 
-      // If no messages are available yet, defer scroll restoration until they
-      // load. Note: prevIsActiveRef is set here so the *activation* branch
-      // won't re-enter when hasMessages flips true; the deferred effect below
-      // picks up pendingScrollRestoreRef and handles the actual restore.
       if (!hasMessages) {
+        // Defer scroll restoration until messages load.
         pendingScrollRestoreRef.current = targetId;
         prevIsActiveRef.current = isActive;
         return;
       }
 
+      // Messages already loaded — Virtuoso remounts with initialTopMostItemIndex
+      // so no scheduleScrollRestore needed. Just clear any stale pending ref.
       pendingScrollRestoreRef.current = null;
-      const cancel = scheduleScrollRestore(targetId, firstItemIndex, conversationMessages.length);
-      prevIsActiveRef.current = isActive;
-      return cancel;
     }
     prevIsActiveRef.current = isActive;
-  }, [isActive, conversationId, hasMessages, firstItemIndex, conversationMessages.length, scheduleScrollRestore]);
+  }, [isActive, conversationId, hasMessages]);
 
   // Deferred scroll restoration: execute once messages arrive after a pane
   // was reactivated with no messages (e.g. after eviction or LRU cache miss).
   // This effect is the counterpart to the early-return branch above: when the
   // activation effect defers (sets pendingScrollRestoreRef), this effect fires
   // once hasMessages flips true and performs the actual scroll restore.
+  //
+  // When the saved position is "at bottom" (or absent), initialTopMostItemIndex
+  // on the freshly-mounted Virtuoso already handles it — skip the extra scroll.
+  // Only use scheduleScrollRestore for non-bottom saved positions.
   useEffect(() => {
     const targetId = pendingScrollRestoreRef.current;
     if (!targetId || !isActive || !hasMessages) return;
@@ -369,6 +405,13 @@ export function CachedConversationPane({
     }
 
     pendingScrollRestoreRef.current = null;
+
+    const saved = scrollPositions.get(targetId);
+    if (!saved || saved.wasAtBottom) {
+      // initialTopMostItemIndex: 'LAST' handles bottom positioning on mount
+      return;
+    }
+
     return scheduleScrollRestore(targetId, firstItemIndex, conversationMessages.length);
   }, [isActive, conversationId, hasMessages, firstItemIndex, conversationMessages.length, scheduleScrollRestore]);
 
@@ -574,8 +617,9 @@ export function CachedConversationPane({
       'flex flex-col absolute inset-0',
       isActive ? 'z-10' : 'invisible pointer-events-none z-0'
     )}>
-      {/* Messages */}
-      <div className="relative flex-1 min-h-0">
+      {/* Messages — opacity gate hides the single frame where Virtuoso measures
+           items before applying initialTopMostItemIndex */}
+      <div className="relative flex-1 min-h-0" style={{ opacity: paintReady ? 1 : 0 }}>
         {/* Chat Search Bar */}
         <ChatSearchBar
           isOpen={searchOpen}

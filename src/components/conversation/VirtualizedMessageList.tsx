@@ -168,15 +168,21 @@ export const VirtualizedMessageList = forwardRef<VirtualizedMessageListHandle, V
       };
     }, [isLoadingOlder]);
 
-    // Empty state when no messages
-    if (messages.length === 0 && emptyState) {
-      return (
-        <div className="h-full overflow-auto">
-          <div className="pt-3 pl-5 pr-12 pb-10">
-            {emptyState}
+    // Don't mount Virtuoso with empty data — initialTopMostItemIndex is consumed
+    // on first mount and NOT re-applied when data arrives later. By deferring
+    // the Virtuoso mount until messages exist, initialTopMostItemIndex: 'LAST'
+    // works correctly on the first (and only) mount.
+    if (messages.length === 0) {
+      if (emptyState) {
+        return (
+          <div className="h-full overflow-auto">
+            <div className="pt-3 pl-5 pr-12 pb-10">
+              {emptyState}
+            </div>
           </div>
-        </div>
-      );
+        );
+      }
+      return <div className="h-full" />;
     }
 
     // Default to bottom if no initial position provided
