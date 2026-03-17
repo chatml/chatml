@@ -78,6 +78,14 @@ pub fn get_auth_token(state: State<'_, Arc<AppState>>) -> Result<String, String>
         .ok_or_else(|| "Auth token not available".to_string())
 }
 
+/// Get the resolved user PATH (with version manager shims)
+#[tauri::command]
+pub fn get_resolved_path(state: State<'_, Arc<AppState>>) -> Result<String, String> {
+    state
+        .get_resolved_user_path()
+        .ok_or_else(|| "Resolved PATH not yet available".to_string())
+}
+
 /// Get the port the backend sidecar is running on
 #[tauri::command]
 pub fn get_backend_port(state: State<'_, Arc<AppState>>) -> Result<u16, String> {
