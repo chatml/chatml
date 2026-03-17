@@ -238,7 +238,19 @@ export function CachedConversationPane({
   const [showScrollButton, setShowScrollButton] = useState(false);
   const isAtBottomRef = useRef(true);
   const forceFollowRef = useRef(false);
+  // Tracks explicit user intent to scroll up (wheel, touch, keyboard).
+  // Coupled with forceFollowRef: any code that sets forceFollowRef=true
+  // must also clear userScrolledUpRef, otherwise the ResizeObserver guard
+  // will still suppress auto-scroll. Use resetFollowState() to do both.
+  const userScrolledUpRef = useRef(false);
   const isActiveRef = useRef(isActive);
+
+  /** Reset all follow-state refs atomically. Call when the user submits a
+   *  message, clicks "scroll to bottom", or switches conversations. */
+  const resetFollowState = useCallback(() => {
+    forceFollowRef.current = false;
+    userScrolledUpRef.current = false;
+  }, []);
   useEffect(() => {
     isActiveRef.current = isActive;
   }, [isActive]);
@@ -252,10 +264,10 @@ export function CachedConversationPane({
     });
   }, [conversationId]);
 
-  // Clear forceFollow on conversation switch
+  // Clear follow state on conversation switch
   useEffect(() => {
-    forceFollowRef.current = false;
-  }, [conversationId]);
+    resetFollowState();
+  }, [conversationId, resetFollowState]);
 
   const initialTopMostItemIndex = useMemo(() => {
     if (!conversationId) return { index: 'LAST' as const, align: 'end' as const };
@@ -268,16 +280,17 @@ export function CachedConversationPane({
 
   const handleAtBottomStateChange = useCallback((atBottom: boolean) => {
     isAtBottomRef.current = atBottom;
-    if (atBottom) forceFollowRef.current = false;
+    if (atBottom) resetFollowState();
     // Only update scroll-button state for the active pane to avoid
     // unnecessary re-renders on hidden Virtuoso instances.
     if (isActiveRef.current) setShowScrollButton(!atBottom);
-  }, []);
+  }, [resetFollowState]);
 
   const forceScrollToBottom = useCallback(() => {
     setShowScrollButton(false);
+    resetFollowState();
     messageListRef.current?.scrollToBottom('auto');
-  }, []);
+  }, [resetFollowState]);
 
   // Footer for VirtualizedMessageList
   const messageListFooter = useMemo(() => {
@@ -309,6 +322,7 @@ export function CachedConversationPane({
     if (!isActive) return;
     const handleMessageSubmit = () => {
       forceFollowRef.current = true;
+      userScrolledUpRef.current = false; // redundant with forceScrollToBottom but explicit
       forceScrollToBottom();
     };
 
@@ -319,9 +333,14 @@ export function CachedConversationPane({
   }, [isActive, forceScrollToBottom]);
 
   // Pin scroll to bottom when content height changes during streaming.
-  // Virtuoso's followOutput only fires on new items/footer changes, not when
-  // existing content changes height (e.g., lazy-loaded EditToolDetail resolving
-  // inside a Suspense boundary, or CollapsibleContent expanding).
+  // Virtuoso's followOutput only fires on data item changes, not when the
+  // footer grows (streaming content lives in the footer). The ResizeObserver
+  // is the primary auto-scroll mechanism during streaming.
+  //
+  // Guard uses userScrolledUpRef (explicit user intent) instead of
+  // isAtBottomRef (physical position) to avoid a race condition where rapid
+  // content growth outpaces RAF-batched scrolls, causing isAtBottom to flip
+  // false and permanently killing auto-scroll.
   useEffect(() => {
     if (!selectedStreaming.isStreaming || !isActive) return;
 
@@ -330,10 +349,18 @@ export function CachedConversationPane({
     const contentEl = scrollerEl.firstElementChild;
     if (!contentEl) return;
 
+    // Only reset on streaming start when the user just submitted a message
+    // (forceFollowRef is set by handleMessageSubmit). During agent
+    // auto-continuation the user may have intentionally scrolled up to read
+    // earlier context — don't override that intent.
+    if (forceFollowRef.current) {
+      userScrolledUpRef.current = false;
+    }
+
     let rafId: number | null = null;
 
     const observer = new ResizeObserver(() => {
-      if (!isAtBottomRef.current && !forceFollowRef.current) return;
+      if (userScrolledUpRef.current) return;
       if (rafId) cancelAnimationFrame(rafId);
       rafId = requestAnimationFrame(() => {
         scrollerEl.scrollTop = scrollerEl.scrollHeight - scrollerEl.clientHeight;
@@ -343,9 +370,41 @@ export function CachedConversationPane({
 
     observer.observe(contentEl);
 
+    // Detect explicit user scroll-up via wheel, touch, and keyboard events.
+    // Small thresholds filter out trackpad inertia jitter and imprecise touches.
+    const WHEEL_THRESHOLD = -3; // px — ignore sub-pixel trackpad noise
+    const TOUCH_THRESHOLD = 5;  // px — ignore accidental finger drift
+
+    const handleWheel = (e: WheelEvent) => {
+      if (e.deltaY < WHEEL_THRESHOLD) userScrolledUpRef.current = true;
+    };
+    let lastTouchY = 0;
+    const handleTouchStart = (e: TouchEvent) => {
+      lastTouchY = e.touches[0]?.clientY ?? 0;
+    };
+    const handleTouchMove = (e: TouchEvent) => {
+      const currentY = e.touches[0]?.clientY ?? 0;
+      if (currentY - lastTouchY > TOUCH_THRESHOLD) userScrolledUpRef.current = true;
+      lastTouchY = currentY;
+    };
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'PageUp' || e.key === 'ArrowUp' || e.key === 'Home') {
+        userScrolledUpRef.current = true;
+      }
+    };
+
+    scrollerEl.addEventListener('wheel', handleWheel, { passive: true });
+    scrollerEl.addEventListener('touchstart', handleTouchStart, { passive: true });
+    scrollerEl.addEventListener('touchmove', handleTouchMove, { passive: true });
+    scrollerEl.addEventListener('keydown', handleKeyDown);
+
     return () => {
       observer.disconnect();
       if (rafId) cancelAnimationFrame(rafId);
+      scrollerEl.removeEventListener('wheel', handleWheel);
+      scrollerEl.removeEventListener('touchstart', handleTouchStart);
+      scrollerEl.removeEventListener('touchmove', handleTouchMove);
+      scrollerEl.removeEventListener('keydown', handleKeyDown);
     };
   }, [selectedStreaming.isStreaming, isActive]);
 
