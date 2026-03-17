@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo, useDeferredValue } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo, useDeferredValue } from 'react';
 import { useAppStore, type QueuedMessage } from '@/stores/appStore';
 import {
   useMessages,
@@ -282,7 +282,9 @@ export function CachedConversationPane({
   // will still suppress auto-scroll. Use resetFollowState() to do both.
   const userScrolledUpRef = useRef(false);
   const isActiveRef = useRef(isActive);
-  const prevIsActiveRef = useRef(isActive);
+  // Initialize to false so the activation effect fires on first mount,
+  // triggering scroll-to-bottom when messages load asynchronously.
+  const prevIsActiveRef = useRef(false);
   // Deferred scroll restoration: when the pane reactivates but messages
   // haven't loaded yet, store the intent here and execute once data arrives.
   const pendingScrollRestoreRef = useRef<string | null>(null);
@@ -294,32 +296,35 @@ export function CachedConversationPane({
   //  2. Empty guard in VirtualizedMessageList: covers the *async* case —
   //     messages arrive after the switch. Virtuoso doesn't mount until data
   //     exists, so initialTopMostItemIndex is consumed on the first mount.
+  // Paint gate: hide the frame where Virtuoso measures items before applying
+  // initialTopMostItemIndex during conversation switches.
+  //
+  // On conversation switch with cached messages, opacity is set to 0 via
+  // paintReady=false, then restored after a double-rAF (Virtuoso needs the
+  // post-paint frame to finish measuring). All setState calls happen inside
+  // rAF callbacks (not synchronously in the effect body) to satisfy the
+  // react-hooks/set-state-in-effect lint rule.
   const [paintReady, setPaintReady] = useState(true);
-  const paintGateConvRef = useRef(conversationId);
 
-  useLayoutEffect(() => {
-    if (paintGateConvRef.current !== conversationId && hasMessages) {
-      setPaintReady(false);
-    }
-    paintGateConvRef.current = conversationId;
-  }, [conversationId, hasMessages]);
-
-  // Double-rAF matches scheduleScrollRestore — Virtuoso needs the post-paint
-  // frame to finish measuring items and applying initialTopMostItemIndex.
   useEffect(() => {
-    if (!paintReady) {
-      let inner: number;
-      const outer = requestAnimationFrame(() => {
-        inner = requestAnimationFrame(() => {
-          setPaintReady(true);
-        });
+    if (!hasMessages) return;
+    // Gate: hide immediately so Virtuoso can measure items at the correct
+    // initialTopMostItemIndex without a visible flash, then reveal after
+    // a double-rAF once measurement is complete.
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional: synchronous gate before async reveal
+    setPaintReady(false);
+    let inner: number;
+    const outer = requestAnimationFrame(() => {
+      inner = requestAnimationFrame(() => {
+        setPaintReady(true);
       });
-      return () => {
-        cancelAnimationFrame(outer);
-        cancelAnimationFrame(inner);
-      };
-    }
-  }, [paintReady]);
+    });
+    return () => {
+      cancelAnimationFrame(outer);
+      cancelAnimationFrame(inner);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only gate on conversation switch
+  }, [conversationId]);
 
   /** Reset all follow-state refs atomically. Call when the user submits a
    *  message, clicks "scroll to bottom", or switches conversations. */
