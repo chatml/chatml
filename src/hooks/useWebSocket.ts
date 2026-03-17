@@ -18,6 +18,7 @@ import { useSettingsStore } from '@/stores/settingsStore';
 import { useBranchCacheStore } from '@/stores/branchCacheStore';
 import { useSlashCommandStore } from '@/stores/slashCommandStore';
 import { notifyDesktop, getConversationLabel } from '@/hooks/useDesktopNotifications';
+import { trackEvent } from '@/lib/telemetry';
 
 // Import extracted modules
 import { markPlanModeExited, isInPlanModeExitCooldown, clearPlanModeState } from '@/hooks/useWebSocketPlanMode';
@@ -370,6 +371,9 @@ export function useWebSocket(enabled: boolean = true) {
         if (resultConv) {
           freshStore.setLastTurnCompletedAt(resultConv.sessionId, Date.now());
         }
+        trackEvent('conversation_completed', {
+          success: event.success !== false ? 1 : 0,
+        });
         notifyBackgroundSession(conversationId);
         notifyDesktop(
           conversationId,
@@ -1167,7 +1171,16 @@ export function useWebSocket(enabled: boolean = true) {
               updates.taskStatus = payload.taskStatus as import('@/lib/types').SessionTaskStatus;
             }
 
+            const prevPrStatus = getStore().sessions.find(
+              (s: { id: string }) => s.id === data.sessionId
+            )?.prStatus;
             getStore().updateSession(data.sessionId, updates);
+
+            if (updates.prStatus === 'open' && prevPrStatus !== 'open') {
+              trackEvent('pr_created');
+            } else if (updates.prStatus === 'merged' && prevPrStatus !== 'merged') {
+              trackEvent('pr_merged');
+            }
 
             // Clear stale input suggestions for conversations in this session
             const sessionConvs = getStore().conversations.filter(

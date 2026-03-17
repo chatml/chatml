@@ -26,6 +26,7 @@ import type { LinearIssueDTO } from '@/lib/api';
 import { PlateInput, type PlateInputHandle } from './PlateInput';
 import { MODELS as SHARED_MODELS, type ModelEntry } from '@/lib/models';
 import type { MentionItem } from '@/components/ui/mention-node';
+import { trackEvent } from '@/lib/telemetry';
 import { listSessionFiles, type FileNodeDTO } from '@/lib/api';
 
 // Extracted modules
@@ -296,11 +297,13 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
         conversationId: selectedConversationId,
         sessionId: selectedSessionId,
       });
+      trackEvent('slash_command_used', { command: cmd.trigger });
     } else if (cmd.executionType === 'skill') {
       // Skill commands: insert the trigger text for user to submit
       const text = `/${cmd.trigger}`;
       plateInputRef.current?.setText(text);
       setMessage(text);
+      trackEvent('skill_invoked', { skill_name: cmd.trigger });
     } else {
       // Prompt commands: set the prompt prefix
       cmd.execute({
@@ -312,6 +315,7 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
         conversationId: selectedConversationId,
         sessionId: selectedSessionId,
       });
+      trackEvent('slash_command_used', { command: cmd.trigger });
     }
   }, [sendMessage, selectedConversationId, selectedSessionId]);
 
@@ -795,6 +799,13 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
           planModeEnabled
         );
       }
+
+      // Track message sent
+      trackEvent('message_sent', {
+        model: selectedModel.id,
+        has_attachments: loadedAttachments.length > 0 ? 1 : 0,
+        has_mentions: mentionedFiles.length > 0 ? 1 : 0,
+      });
 
       // Clear attachments and linked context after successful send
       setAttachments([]);

@@ -20,6 +20,7 @@ import {
   mapSessionDTO, getConversationMessages, toStoreMessage,
   type RepoDTO, type ConversationDTO, type MessageDTO,
 } from '@/lib/api';
+import { trackEvent } from '@/lib/telemetry';
 import type { SetupInfo } from '@/lib/types';
 
 /**
@@ -408,6 +409,7 @@ export function useAppInitialization() {
       } finally {
         setShellReady(true);
         setContentReady(true);
+        trackEvent('app_opened');
       }
     }
 

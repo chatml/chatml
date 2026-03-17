@@ -36,6 +36,7 @@ tauri-plugin-mcp-bridge = "0.8"
 tauri-plugin-deep-link = "2"
 tauri-plugin-stronghold = "2"
 tauri-plugin-clipboard-manager = "2"
+tauri-plugin-aptabase = "1"
 sentry = { version = "0.46", default-features = false, features = ["backtrace", "contexts", "panic", "reqwest", "rustls"] }
 notify = { version = "8", features = ["serde"] }
 notify-debouncer-mini = "0.6"

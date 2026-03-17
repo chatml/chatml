@@ -320,7 +320,15 @@ export const useSettingsStore = create<SettingsState>()(
           setNeverLoadDotMcp(value).catch(() => {});
         });
       },
-      setStrictPrivacy: (value) => set({ strictPrivacy: value }),
+      setStrictPrivacy: (value) => {
+        set({ strictPrivacy: value });
+        // Track when strict privacy is disabled (only fires if telemetry is now enabled)
+        if (!value) {
+          import('@/lib/telemetry').then(({ trackEvent }) => {
+            trackEvent('strict_privacy_disabled');
+          });
+        }
+      },
       setZenMode: (value) => set({ zenMode: value }),
       setSidebarBottomPanelMinimized: (value) => set({ sidebarBottomPanelMinimized: value }),
       toggleSidebarBottomPanel: () => set((state) => ({ sidebarBottomPanelMinimized: !state.sidebarBottomPanelMinimized })),

@@ -133,6 +133,15 @@ pub fn run() {
         // Register shared state
         .manage(Arc::clone(&app_state));
 
+    // Aptabase analytics - release builds only, requires APTABASE_KEY env at compile time
+    #[cfg(not(debug_assertions))]
+    {
+        if let Some(key) = option_env!("APTABASE_KEY") {
+            builder = builder.plugin(tauri_plugin_aptabase::Builder::new(key).build());
+            log::info!("Aptabase analytics enabled");
+        }
+    }
+
     // MCP Bridge plugin - development only
     #[cfg(debug_assertions)]
     {
