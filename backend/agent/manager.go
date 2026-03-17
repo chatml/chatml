@@ -312,6 +312,9 @@ func (m *Manager) StartConversation(ctx context.Context, sessionID, conversation
 		procOpts.Model = opts.Model
 	}
 
+	// Enable 1M context window for models that support it
+	procOpts.Betas = betasForModel(procOpts.Model)
+
 	// Build combined system instructions: app context + custom instructions + conversation summaries
 	var existingInstructions string
 	if opts != nil {
@@ -1820,6 +1823,9 @@ func (m *Manager) ResumeConversation(ctx context.Context, convID string) error {
 		SettingSources:      "project,user,local",
 	}
 
+	// Enable 1M context window for models that support it
+	opts.Betas = betasForModel(opts.Model)
+
 	// Apply target branch from session
 	sessionWithWs, err := m.store.GetSessionWithWorkspace(ctx, conv.SessionID)
 	if err != nil {
@@ -2046,6 +2052,15 @@ func (m *Manager) GetActiveStreamingConversations() []string {
 		}
 	}
 	return active
+}
+
+// betasForModel returns comma-separated beta flags for the given model.
+// Opus 4.6 and Sonnet 4.6 support 1M context window via the context-1m beta.
+func betasForModel(model string) string {
+	if strings.Contains(model, "opus-4-6") || strings.Contains(model, "sonnet-4-6") {
+		return "context-1m-2025-08-07"
+	}
+	return ""
 }
 
 // formatSessionName converts a human-readable name into a branch-friendly format.
