@@ -38,9 +38,6 @@ function SortableTabItem({
   onClose,
   onPin,
   onRename,
-  onGenerateSummary,
-  onViewSummary,
-  summaryStatus,
   statusIndicator,
 }: {
   tab: TabItemData;
@@ -50,9 +47,6 @@ function SortableTabItem({
   onClose: (e?: React.MouseEvent) => void;
   onPin?: (pinned: boolean) => void;
   onRename?: () => void;
-  onGenerateSummary?: () => void;
-  onViewSummary?: () => void;
-  summaryStatus?: 'generating' | 'completed' | 'failed' | null;
   statusIndicator?: React.ReactNode;
 }) {
   const {
@@ -81,9 +75,6 @@ function SortableTabItem({
         onClose={onClose}
         onPin={onPin}
         onRename={onRename}
-        onGenerateSummary={onGenerateSummary}
-        onViewSummary={onViewSummary}
-        summaryStatus={summaryStatus}
         statusIndicator={statusIndicator}
       />
     </div>
@@ -112,9 +103,6 @@ export function TabBar({
   onReorder,
   onNewSession,
   onRenameConversation,
-  onGenerateSummary,
-  onViewSummary,
-  getSummaryStatus,
   onRestoreConversation,
   sessionId,
 }: TabBarProps) {
@@ -195,21 +183,6 @@ export function TabBar({
             ? () => onRenameConversation(tab.id)
             : undefined
         }
-        onGenerateSummary={
-          tab.type === 'conversation' && onGenerateSummary
-            ? () => onGenerateSummary(tab.id)
-            : undefined
-        }
-        onViewSummary={
-          tab.type === 'conversation' && onViewSummary
-            ? () => onViewSummary(tab.id)
-            : undefined
-        }
-        summaryStatus={
-          tab.type === 'conversation' && getSummaryStatus
-            ? getSummaryStatus(tab.id)
-            : undefined
-        }
         statusIndicator={statusIndicator}
       />
     ),
@@ -220,9 +193,6 @@ export function TabBar({
       handleClose,
       onPinTab,
       onRenameConversation,
-      onGenerateSummary,
-      onViewSummary,
-      getSummaryStatus,
     ]
   );
 

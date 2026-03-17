@@ -37,7 +37,7 @@ import { CodeViewer } from '@/components/files/CodeViewer';
 import { FileTabIcon } from '@/components/files/FileTabIcon';
 import { TabBar, type TabItemData } from '@/components/tabs';
 import { CachedConversationPane } from '@/components/conversation/CachedConversationPane';
-import { getSessionFileContent, getSessionFileDiff, updateReviewComment, deleteReviewComment as deleteReviewCommentApi, listReviewComments, createConversation, createReviewComment, generateSummary, getConversationSummary } from '@/lib/api';
+import { getSessionFileContent, getSessionFileDiff, updateReviewComment, deleteReviewComment as deleteReviewCommentApi, listReviewComments, createConversation, createReviewComment } from '@/lib/api';
 import { getDiffFromCache, setDiffInCache } from '@/lib/diffCache';
 import { getFileContentFromCache, setFileContentInCache } from '@/lib/fileContentCache';
 import { ErrorBoundary } from '@/components/shared/ErrorBoundary';
@@ -217,38 +217,7 @@ export function ConversationArea({ children }: ConversationAreaProps) {
   // Session handoff state (triggered by ContextMeter or RunSummaryBlock via store)
   const showHandoff = useAppStore((s) => s.showSessionHandoff);
   const setShowHandoff = useAppStore((s) => s.setShowSessionHandoff);
-
-  // Summary state
-  const summaries = useAppStore((s) => s.summaries);
-  const setSummary = useAppStore((s) => s.setSummary);
-  const [summaryViewerOpen, setSummaryViewerOpen] = useState(false);
-  const [summaryViewerConvId, setSummaryViewerConvId] = useState<string | null>(null);
   const [awsRefreshing, setAwsRefreshing] = useState(false);
-
-  const handleGenerateSummary = useCallback(async (conversationId: string) => {
-    try {
-      const summary = await generateSummary(conversationId);
-      setSummary(conversationId, summary);
-    } catch (error) {
-      console.error('Failed to generate summary:', error);
-    }
-  }, [setSummary]);
-
-  const handleViewSummary = useCallback((conversationId: string) => {
-    // Fetch latest if not in store
-    if (!summaries[conversationId]) {
-      getConversationSummary(conversationId).then((s) => {
-        if (s) setSummary(conversationId, s);
-      });
-    }
-    setSummaryViewerConvId(conversationId);
-    setSummaryViewerOpen(true);
-  }, [summaries, setSummary]);
-
-  const getSummaryStatus = useCallback((conversationId: string) => {
-    return summaries[conversationId]?.status ?? null;
-  }, [summaries]);
-
 
 // Filter tabs for current session only (strict session isolation)
   // All tabs are now session-scoped - no more workspace-level tabs
@@ -863,9 +832,6 @@ export function ConversationArea({ children }: ConversationAreaProps) {
         onReorder={reorderFileTabs}
         onNewSession={() => handleNewConversation('task')}
         onRenameConversation={handleRenameConversation}
-        onGenerateSummary={handleGenerateSummary}
-        onViewSummary={handleViewSummary}
-        getSummaryStatus={getSummaryStatus}
         onRestoreConversation={handleRestoreConversation}
         sessionId={selectedSessionId}
       />
@@ -1068,27 +1034,6 @@ export function ConversationArea({ children }: ConversationAreaProps) {
               Cancel
             </Button>
             <Button onClick={handleRenameSubmit}>Rename</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Summary Viewer Dialog */}
-      <Dialog open={summaryViewerOpen} onOpenChange={setSummaryViewerOpen}>
-        <DialogContent className="sm:max-w-[500px] max-h-[60vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Conversation Summary</DialogTitle>
-          </DialogHeader>
-          {summaryViewerConvId && summaries[summaryViewerConvId] ? (
-            <div className="text-sm whitespace-pre-wrap text-foreground">
-              {summaries[summaryViewerConvId].content}
-            </div>
-          ) : (
-            <div className="text-sm text-muted-foreground">Loading summary...</div>
-          )}
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setSummaryViewerOpen(false)}>
-              Close
-            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
