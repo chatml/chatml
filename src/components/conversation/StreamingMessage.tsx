@@ -8,6 +8,7 @@ import { ToolUsageBlock } from '@/components/conversation/ToolUsageBlock';
 import { ThinkingNode } from '@/components/conversation/ThinkingNode';
 import { SubAgentRow, SubAgentGroupedRow } from '@/components/conversation/SubAgentGroup';
 import { ApprovedPlanBlock } from '@/components/conversation/ApprovedPlanBlock';
+import { CompactBoundaryCard } from '@/components/conversation/CompactBoundaryCard';
 import { TurnStatusIndicator } from '@/components/conversation/TurnStatusIndicator';
 import { CachedMarkdown } from '@/components/shared/CachedMarkdown';
 import { StreamingMarkdown } from '@/components/shared/StreamingMarkdown';
@@ -24,6 +25,7 @@ type TimelineItem =
   | { type: 'thinking'; id: string; isActive: boolean; timestamp: number }
   | { type: 'plan'; id: string; content: string; timestamp: number }
   | { type: 'status'; id: string; content: string; variant?: string; timestamp: number }
+  | { type: 'compact'; id: string; content: string; summary?: string; timestamp: number }
   | { type: 'subagent'; agent: import('@/lib/types').SubAgent }
   | { type: 'subagent_group'; agents: import('@/lib/types').SubAgent[] };
 
@@ -35,6 +37,7 @@ function getItemTime(item: TimelineItem): number {
     case 'thinking': return item.timestamp;
     case 'plan': return item.timestamp;
     case 'status': return item.timestamp;
+    case 'compact': return item.timestamp;
     case 'subagent': return item.agent.startTime;
     case 'subagent_group': return item.agents[0].startTime;
     default: return item.startTime;
@@ -283,6 +286,9 @@ export function StreamingMessage({ conversationId, worktreePath }: StreamingMess
   const approvedPlanTimestamp = meta?.approvedPlanTimestamp;
   const pendingPlanApproval = meta?.pendingPlanApproval;
   const turnStartMeta = meta?.turnStartMeta;
+  const compactLabel = meta?.compactBoundary?.label;
+  const compactSummary = meta?.compactBoundary?.summary;
+  const compactTimestamp = meta?.compactBoundary?.timestamp;
 
   // Stage 1: Structural timeline — everything except text segments.
   // Only recomputes when tools/subAgents/structural meta fields change (rare during streaming).
@@ -359,6 +365,17 @@ export function StreamingMessage({ conversationId, worktreePath }: StreamingMess
       }
     }
 
+    // Add compact boundary at its chronological position
+    if (compactLabel && compactTimestamp) {
+      items.push({
+        type: 'compact',
+        id: 'compact-boundary',
+        content: compactLabel,
+        summary: compactSummary,
+        timestamp: compactTimestamp,
+      });
+    }
+
     // Add sub-agents into the timeline
     for (const agent of subAgents) {
       items.push({ type: 'subagent', agent });
@@ -368,7 +385,7 @@ export function StreamingMessage({ conversationId, worktreePath }: StreamingMess
     items.sort((a, b) => getItemTime(a) - getItemTime(b));
 
     return items;
-  }, [hasThinking, isThinkingActive, metaStartTime, approvedPlanContent, approvedPlanTimestamp, pendingPlanApproval, turnStartMeta, tools, subAgents]);
+  }, [hasThinking, isThinkingActive, metaStartTime, approvedPlanContent, approvedPlanTimestamp, pendingPlanApproval, turnStartMeta, compactLabel, compactSummary, compactTimestamp, tools, subAgents]);
 
   // Stage 2: Merge structural timeline with text segments via two-pointer merge,
   // then group consecutive sub-agents. Both inputs are pre-sorted by timestamp,
@@ -496,6 +513,15 @@ export function StreamingMessage({ conversationId, worktreePath }: StreamingMess
                   key={item.id}
                   content={item.content}
                   variant={item.variant}
+                />
+              );
+            } else if (item.type === 'compact') {
+              return (
+                <CompactBoundaryCard
+                  key={item.id}
+                  cacheKey={`compact:${conversationId}`}
+                  content={item.content}
+                  compactSummary={item.summary}
                 />
               );
             } else if (item.type === 'subagent_group') {

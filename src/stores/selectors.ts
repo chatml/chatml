@@ -244,6 +244,7 @@ export const useStreamingMeta = (conversationId: string | null) =>
         approvedPlanTimestamp: st.approvedPlanTimestamp,
         recovery: st.recovery,
         turnStartMeta: st.turnStartMeta,
+        compactBoundary: st.compactBoundary,
       };
     })
   );
