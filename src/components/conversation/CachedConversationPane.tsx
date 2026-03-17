@@ -244,6 +244,7 @@ export function CachedConversationPane({
   // will still suppress auto-scroll. Use resetFollowState() to do both.
   const userScrolledUpRef = useRef(false);
   const isActiveRef = useRef(isActive);
+  const prevIsActiveRef = useRef(isActive);
 
   /** Reset all follow-state refs atomically. Call when the user submits a
    *  message, clicks "scroll to bottom", or switches conversations. */
@@ -254,6 +255,29 @@ export function CachedConversationPane({
   useEffect(() => {
     isActiveRef.current = isActive;
   }, [isActive]);
+
+  // Force Virtuoso to recalculate its viewport when the pane becomes active.
+  // While inactive, measurements may have gone stale (e.g. container was in a
+  // display:none ancestor like the file-viewer wrapper). Scrolling to a position
+  // forces Virtuoso to re-scan the viewport and re-measure visible items.
+  useEffect(() => {
+    if (isActive && !prevIsActiveRef.current) {
+      const targetId = conversationId ?? '';
+      const handle = requestAnimationFrame(() => {
+        // Bail if conversation changed before rAF fired
+        if ((conversationId ?? '') !== targetId) return;
+        const saved = scrollPositions.get(targetId);
+        if (!saved || saved.wasAtBottom) {
+          messageListRef.current?.scrollToBottom('auto');
+        } else {
+          messageListRef.current?.scrollToIndex(saved.dataIndex, { align: 'start' });
+        }
+      });
+      prevIsActiveRef.current = isActive;
+      return () => cancelAnimationFrame(handle);
+    }
+    prevIsActiveRef.current = isActive;
+  }, [isActive, conversationId]);
 
   // Continuously track the visible range
   const handleRangeChanged = useCallback((range: { startIndex: number; endIndex: number }) => {
@@ -454,7 +478,10 @@ export function CachedConversationPane({
   }, [isActive, clampedMatchIndex, debouncedSearchQuery, searchMatches]);
 
   return (
-    <div className={isActive ? 'flex flex-col flex-1 min-h-0' : 'hidden'}>
+    <div className={cn(
+      'flex flex-col absolute inset-0',
+      isActive ? 'z-10' : 'invisible pointer-events-none z-0'
+    )}>
       {/* Messages */}
       <div className="relative flex-1 min-h-0">
         {/* Chat Search Bar */}
