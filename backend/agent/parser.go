@@ -318,6 +318,7 @@ const (
 	EventTypeInterrupted              = "interrupted"
 	EventTypeModelChanged             = "model_changed"
 	EventTypePermModeChanged          = "permission_mode_changed"
+	EventTypeFastModeChanged          = "fast_mode_changed"
 	EventTypeMaxThinkingTokensChanged = "max_thinking_tokens_changed"
 	EventTypeSupportedModels          = "supported_models"
 	EventTypeSupportedCommands        = "supported_commands"

@@ -90,6 +90,7 @@ export const SETTINGS_DEFAULTS = {
   reviewModel: 'claude-opus-4-6',
   reviewActionableOnly: false,
   defaultPlanMode: false,
+  defaultFastMode: false,
   // Git
   branchPrefixType: 'github' as BranchPrefixType,
   branchPrefixCustom: '',
@@ -123,6 +124,7 @@ interface SettingsState {
   reviewModel: string;
   reviewActionableOnly: boolean; // Only include actionable feedback (errors/warnings/suggestions) in code reviews
   defaultPlanMode: boolean;
+  defaultFastMode: boolean;
   autoConvertLongText: boolean;
   showChatCost: boolean;
   showMessageTokenCost: boolean; // Whether to show compact token/cost footer below each assistant message
@@ -200,6 +202,7 @@ interface SettingsState {
   setReviewModel: (value: string) => void;
   setReviewActionableOnly: (value: boolean) => void;
   setDefaultPlanMode: (value: boolean) => void;
+  setDefaultFastMode: (value: boolean) => void;
   setAutoConvertLongText: (value: boolean) => void;
   setShowChatCost: (value: boolean) => void;
   setShowMessageTokenCost: (value: boolean) => void;
@@ -298,6 +301,7 @@ export const useSettingsStore = create<SettingsState>()(
       setReviewModel: (value) => set({ reviewModel: value }),
       setReviewActionableOnly: (value) => set({ reviewActionableOnly: value }),
       setDefaultPlanMode: (value) => set({ defaultPlanMode: value }),
+      setDefaultFastMode: (value) => set({ defaultFastMode: value }),
       setAutoConvertLongText: (value) => set({ autoConvertLongText: value }),
       setShowChatCost: (value) => set({ showChatCost: value }),
       setShowMessageTokenCost: (value) => set({ showMessageTokenCost: value }),

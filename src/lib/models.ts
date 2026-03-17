@@ -18,6 +18,7 @@ export interface ModelEntry {
   supportsThinking: boolean;
   supportsEffort: boolean;
   supportedEffortLevels?: ('low' | 'medium' | 'high' | 'max')[];
+  supportsFastMode?: boolean;
 }
 
 export interface DynamicModelInfo {
@@ -79,10 +80,12 @@ export function getModelDisplayName(modelId: string): string {
 }
 
 /** Build the turn-start config label from init event metadata. */
-export function buildTurnConfigLabel(meta: { model?: string; effort?: string; permissionMode?: string }): string | null {
+export function buildTurnConfigLabel(meta: { model?: string; effort?: string; permissionMode?: string; fastModeState?: 'off' | 'cooldown' | 'on' }): string | null {
   const parts: string[] = [];
   if (meta.model) parts.push(getModelDisplayName(meta.model));
   if (meta.effort) parts.push(`${meta.effort} effort`);
+  if (meta.fastModeState === 'on') parts.push('fast');
+  else if (meta.fastModeState === 'cooldown') parts.push('fast (cooldown)');
   if (meta.permissionMode === 'plan') parts.push('plan mode');
   return parts.length > 0 ? parts.join(' \u00b7 ') : null;
 }

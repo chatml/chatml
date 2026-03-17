@@ -205,6 +205,7 @@ export async function createConversation(
     message?: string;
     model?: string;
     planMode?: boolean;
+    fastMode?: boolean;
     maxThinkingTokens?: number;
     effort?: string;
     attachments?: AttachmentDTO[];
@@ -354,6 +355,18 @@ export async function deleteConversation(convId: string): Promise<void> {
 
 export async function setConversationPlanMode(convId: string, enabled: boolean): Promise<void> {
   const res = await fetchWithAuth(`${getApiBase()}/api/conversations/${convId}/plan-mode`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ enabled }),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new ApiError(text || `HTTP ${res.status}`, res.status, text);
+  }
+}
+
+export async function setConversationFastMode(convId: string, enabled: boolean): Promise<void> {
+  const res = await fetchWithAuth(`${getApiBase()}/api/conversations/${convId}/fast-mode`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ enabled }),

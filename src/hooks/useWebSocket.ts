@@ -192,6 +192,7 @@ export function useWebSocket(enabled: boolean = true) {
           model: event?.model as string | undefined,
           effort: (event?.budgetConfig as Record<string, unknown> | undefined)?.effort as string | undefined,
           permissionMode: event?.permissionMode as string | undefined,
+          fastModeState: event?.fastModeState as 'off' | 'cooldown' | 'on' | undefined,
         });
         // Extract MCP tools grouped by server from the tools list
         if (event?.tools && Array.isArray(event.tools)) {
@@ -674,6 +675,13 @@ export function useWebSocket(enabled: boolean = true) {
         if (event?.model) {
           store.updateConversation(conversationId, { model: event.model as string });
         }
+        break;
+
+      case 'fast_mode_changed':
+        // Confirm fast mode toggle from agent-runner — dispatch event so ChatInput can sync
+        window.dispatchEvent(new CustomEvent('fast-mode-synced', {
+          detail: { conversationId, enabled: !!(event as unknown as { fastMode?: boolean })?.fastMode },
+        }));
         break;
 
       case 'interrupted':

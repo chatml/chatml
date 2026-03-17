@@ -50,6 +50,7 @@ type ProcessOptions struct {
 	MaxThinkingTokens   int
 	Effort              string // Reasoning effort: low, medium, high, max
 	PlanMode            bool   // Start agent in plan mode
+	FastMode            bool   // Enable fast output mode (Opus 4.6+)
 	Instructions        string // Additional instructions for the agent (e.g., conversation summaries)
 	StructuredOutput    string
 	SettingSources      string // Comma-separated: project,user,local
@@ -112,6 +113,8 @@ type InputMessage struct {
 	ServerEnabled *bool  `json:"serverEnabled,omitempty"`
 	// Task management (SDK v0.2.51+)
 	TaskId string `json:"taskId,omitempty"`
+	// Fast mode toggle
+	FastMode *bool `json:"fastMode,omitempty"`
 }
 
 // findAgentRunner locates the agent-runner executable
@@ -222,6 +225,9 @@ func NewProcessWithOptions(opts ProcessOptions) *Process {
 	}
 	if opts.PlanMode {
 		args = append(args, "--permission-mode", "plan")
+	}
+	if opts.FastMode {
+		args = append(args, "--fast-mode")
 	}
 
 	// Add instructions (e.g., from conversation summaries)
@@ -570,6 +576,14 @@ func (p *Process) SetModel(model string) error {
 	return p.sendInput(InputMessage{
 		Type:  "set_model",
 		Model: model,
+	})
+}
+
+// SetFastMode sends a message to toggle fast output mode
+func (p *Process) SetFastMode(enabled bool) error {
+	return p.sendInput(InputMessage{
+		Type:     "set_fast_mode",
+		FastMode: &enabled,
 	})
 }
 

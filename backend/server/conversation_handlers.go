@@ -48,6 +48,7 @@ type CreateConversationRequest struct {
 	Message           string              `json:"message"`           // Initial message (optional)
 	Model             string              `json:"model"`             // Model name override (optional)
 	PlanMode          bool                `json:"planMode"`          // Start in plan mode (optional)
+	FastMode          bool                `json:"fastMode"`          // Enable fast output mode (optional)
 	MaxThinkingTokens int                 `json:"maxThinkingTokens"` // Enable extended thinking (optional)
 	Effort            string              `json:"effort"`            // Reasoning effort: low, medium, high, max (optional)
 	Attachments       []models.Attachment `json:"attachments"`       // File attachments (optional)
@@ -179,12 +180,13 @@ func (h *Handlers) CreateConversation(w http.ResponseWriter, r *http.Request) {
 
 	// Build options for starting the conversation
 	var opts *agent.StartConversationOptions
-	if req.MaxThinkingTokens > 0 || len(req.Attachments) > 0 || req.PlanMode || instructions != "" || req.Model != "" || req.Effort != "" {
+	if req.MaxThinkingTokens > 0 || len(req.Attachments) > 0 || req.PlanMode || req.FastMode || instructions != "" || req.Model != "" || req.Effort != "" {
 		opts = &agent.StartConversationOptions{
 			MaxThinkingTokens: req.MaxThinkingTokens,
 			Effort:            req.Effort,
 			Attachments:       req.Attachments,
 			PlanMode:          req.PlanMode,
+			FastMode:          req.FastMode,
 			Instructions:      instructions,
 			Model:             req.Model,
 		}
@@ -587,6 +589,37 @@ func (h *Handlers) SetConversationPlanMode(w http.ResponseWriter, r *http.Reques
 
 	if err := h.agentManager.SetConversationPlanMode(convID, req.Enabled); err != nil {
 		writeInternalError(w, "failed to set plan mode", err)
+		return
+	}
+
+	writeJSON(w, map[string]bool{"enabled": req.Enabled})
+}
+
+type SetFastModeRequest struct {
+	Enabled bool `json:"enabled"`
+}
+
+func (h *Handlers) SetConversationFastMode(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	convID := chi.URLParam(r, "convId")
+	conv, err := h.store.GetConversationMeta(ctx, convID)
+	if err != nil {
+		writeDBError(w, err)
+		return
+	}
+	if conv == nil {
+		writeNotFound(w, "conversation")
+		return
+	}
+
+	var req SetFastModeRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeValidationError(w, "invalid request body")
+		return
+	}
+
+	if err := h.agentManager.SetConversationFastMode(convID, req.Enabled); err != nil {
+		writeInternalError(w, "failed to set fast mode", err)
 		return
 	}
 

@@ -188,6 +188,7 @@ type StartConversationOptions struct {
 	Effort            string              // Reasoning effort: low, medium, high, max
 	Attachments       []models.Attachment // File attachments for the initial message
 	PlanMode          bool                // Start agent in plan mode
+	FastMode          bool                // Enable fast output mode (Opus 4.6+)
 	Instructions      string              // Additional instructions (e.g., from conversation summaries)
 	Model             string              // Model name override (e.g., "claude-opus-4-6", "claude-sonnet-4-6")
 }
@@ -309,6 +310,7 @@ func (m *Manager) StartConversation(ctx context.Context, sessionID, conversation
 		procOpts.MaxThinkingTokens = opts.MaxThinkingTokens
 		procOpts.Effort = opts.Effort
 		procOpts.PlanMode = opts.PlanMode
+		procOpts.FastMode = opts.FastMode
 		procOpts.Model = opts.Model
 	}
 
@@ -1941,6 +1943,19 @@ func (m *Manager) SetConversationPlanMode(convID string, enabled bool) error {
 	}
 
 	return proc.SetPermissionMode(mode)
+}
+
+// SetConversationFastMode toggles fast output mode for a running conversation
+func (m *Manager) SetConversationFastMode(convID string, enabled bool) error {
+	m.mu.RLock()
+	proc, ok := m.convProcesses[convID]
+	m.mu.RUnlock()
+
+	if !ok || proc.IsStopped() || !proc.IsRunning() {
+		return nil
+	}
+
+	return proc.SetFastMode(enabled)
 }
 
 // IsConversationInPlanMode returns whether the conversation process is in plan mode

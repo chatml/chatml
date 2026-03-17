@@ -165,4 +165,19 @@ describe('buildTurnConfigLabel', () => {
     const label = buildTurnConfigLabel({ permissionMode: 'full' });
     expect(label).toBeNull();
   });
+
+  it('shows fast label when fastModeState is on', () => {
+    const label = buildTurnConfigLabel({ model: 'claude-opus-4-6', fastModeState: 'on' });
+    expect(label).toBe('Claude Opus 4.6 \u00b7 fast');
+  });
+
+  it('shows cooldown label when fastModeState is cooldown', () => {
+    const label = buildTurnConfigLabel({ fastModeState: 'cooldown' });
+    expect(label).toBe('fast (cooldown)');
+  });
+
+  it('omits fast label when fastModeState is off', () => {
+    const label = buildTurnConfigLabel({ model: 'claude-opus-4-6', fastModeState: 'off' });
+    expect(label).toBe('Claude Opus 4.6');
+  });
 });
