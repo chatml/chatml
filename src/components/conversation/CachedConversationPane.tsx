@@ -282,7 +282,9 @@ export function CachedConversationPane({
   // will still suppress auto-scroll. Use resetFollowState() to do both.
   const userScrolledUpRef = useRef(false);
   const isActiveRef = useRef(isActive);
-  const prevIsActiveRef = useRef(isActive);
+  // Initialize to false so the activation effect fires on first mount,
+  // triggering scroll-to-bottom when messages load asynchronously.
+  const prevIsActiveRef = useRef(false);
   // Deferred scroll restoration: when the pane reactivates but messages
   // haven't loaded yet, store the intent here and execute once data arrives.
   const pendingScrollRestoreRef = useRef<string | null>(null);
@@ -383,15 +385,9 @@ export function CachedConversationPane({
       // Messages already loaded — Virtuoso remounts with initialTopMostItemIndex
       // so no scheduleScrollRestore needed. Just clear any stale pending ref.
       pendingScrollRestoreRef.current = null;
-      initialScrollDoneRef.current = true;
     }
     prevIsActiveRef.current = isActive;
   }, [isActive, conversationId, hasMessages]);
-
-  // Track whether initial scroll-to-bottom has been performed for this conversation.
-  // On first mount, the activation effect doesn't fire (prevIsActive === isActive),
-  // so we need a separate mechanism to scroll to bottom when messages first load.
-  const initialScrollDoneRef = useRef(false);
 
   // Deferred scroll restoration: execute once messages arrive after a pane
   // was reactivated with no messages (e.g. after eviction or LRU cache miss).
@@ -411,7 +407,6 @@ export function CachedConversationPane({
     }
 
     pendingScrollRestoreRef.current = null;
-    initialScrollDoneRef.current = true;
 
     const saved = scrollPositions.get(targetId);
     if (!saved || saved.wasAtBottom) {
@@ -421,20 +416,6 @@ export function CachedConversationPane({
 
     return scheduleScrollRestore(targetId, firstItemIndex, conversationMessages.length);
   }, [isActive, conversationId, hasMessages, firstItemIndex, conversationMessages.length, scheduleScrollRestore]);
-
-  // Reset when conversation changes
-  useEffect(() => {
-    initialScrollDoneRef.current = false;
-  }, [conversationId]);
-
-  // Scroll to bottom on initial message load (first mount)
-  useEffect(() => {
-    if (!isActive || !hasMessages || initialScrollDoneRef.current) return;
-    // Don't interfere if the deferred restore is pending (activation effect handles it)
-    if (pendingScrollRestoreRef.current) return;
-    initialScrollDoneRef.current = true;
-    return scheduleScrollRestore(conversationId ?? '', firstItemIndex, conversationMessages.length);
-  }, [isActive, hasMessages, conversationId, firstItemIndex, conversationMessages.length, scheduleScrollRestore]);
 
   // Continuously track the visible range
   const handleRangeChanged = useCallback((range: { startIndex: number; endIndex: number }) => {
