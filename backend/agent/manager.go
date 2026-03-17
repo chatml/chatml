@@ -23,7 +23,7 @@ import (
 )
 
 const snapshotDebounceInterval = 500 * time.Millisecond
-const supportedCommandsRetryDelay = 3 * time.Second
+const initRetryDelay = 3 * time.Second
 
 // prURLPattern matches GitHub PR URLs in tool output (e.g., "https://github.com/owner/repo/pull/123")
 // Capture group 1 = PR number.
@@ -1259,16 +1259,22 @@ outer:
 				if err := proc.GetSupportedCommands(); err != nil {
 					logger.Manager.Errorf("Conversation %s: failed to request supported commands: %v", convID, err)
 				}
+				if err := proc.GetSupportedModels(); err != nil {
+					logger.Manager.Errorf("Conversation %s: failed to request supported models: %v", convID, err)
+				}
 				// Retry after delay — plugins may still be loading during init.
 				// The frontend merges responses, so a second call enriches rather
 				// than overwrites the first result.
 				// Look up proc by convID instead of capturing the reference so
 				// the goroutine doesn't keep a terminated process alive.
 				go func(cID string) {
-					time.Sleep(supportedCommandsRetryDelay)
+					time.Sleep(initRetryDelay)
 					if p := m.GetConversationProcess(cID); p != nil && p.IsRunning() {
 						if err := p.GetSupportedCommands(); err != nil {
 							logger.Manager.Debugf("Conversation %s: retry GetSupportedCommands failed: %v", cID, err)
+						}
+						if err := p.GetSupportedModels(); err != nil {
+							logger.Manager.Debugf("Conversation %s: retry GetSupportedModels failed: %v", cID, err)
 						}
 					}
 				}(convID)
