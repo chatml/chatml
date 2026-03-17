@@ -36,7 +36,6 @@ import {
   Copy,
   GitMerge,
   MessageSquare,
-  FileText,
   RefreshCw,
   Zap,
   Search,
@@ -624,9 +623,6 @@ export function SessionToolbarContent() {
               <DropdownMenuContent align="end" className="w-52">
                 <DropdownMenuItem onSelect={handleNewConversation}>
                   <MessageSquare /> New Conversation
-                </DropdownMenuItem>
-                <DropdownMenuItem onSelect={() => handleGitActionMessage('Provide a summary of all work done in this session, including files changed, key decisions, and current status.')}>
-                  <FileText /> View Summary
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onSelect={handleCopyBranch}>
