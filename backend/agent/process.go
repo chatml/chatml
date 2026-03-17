@@ -17,6 +17,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/chatml/chatml-backend/appdir"
 	"github.com/chatml/chatml-backend/logger"
 	"github.com/chatml/chatml-backend/models"
 )
@@ -227,7 +228,7 @@ func NewProcessWithOptions(opts ProcessOptions) *Process {
 	var instructionsFile string
 	if opts.Instructions != "" {
 		// Write to temp file to avoid shell arg length limits
-		tmpFile, err := os.CreateTemp("", "chatml-instructions-*.txt")
+		tmpFile, err := os.CreateTemp(appdir.TempDir(), "chatml-instructions-*.txt")
 		if err != nil {
 			logger.Process.Errorf("[%s] Failed to create instructions temp file: %v", opts.ID, err)
 		} else {
@@ -248,7 +249,7 @@ func NewProcessWithOptions(opts ProcessOptions) *Process {
 	// Add MCP servers config (write to temp file like instructions)
 	var mcpServersFile string
 	if opts.McpServersJSON != "" {
-		tmpFile, err := os.CreateTemp("", "chatml-mcp-servers-*.json")
+		tmpFile, err := os.CreateTemp(appdir.TempDir(), "chatml-mcp-servers-*.json")
 		if err != nil {
 			logger.Process.Errorf("[%s] Failed to create MCP servers temp file: %v", opts.ID, err)
 		} else {
@@ -269,7 +270,7 @@ func NewProcessWithOptions(opts ProcessOptions) *Process {
 	// Add programmatic agent definitions (write to temp file like MCP servers)
 	var agentsFile string
 	if opts.AgentsJSON != "" {
-		tmpFile, err := os.CreateTemp("", "chatml-agents-*.json")
+		tmpFile, err := os.CreateTemp(appdir.TempDir(), "chatml-agents-*.json")
 		if err != nil {
 			logger.Process.Errorf("[%s] Failed to create agents temp file: %v", opts.ID, err)
 		} else {
@@ -517,7 +518,7 @@ func (p *Process) SendMessageWithAttachments(content string, attachments []model
 			ext = ".webp"
 		}
 
-		tmpFile, err := os.CreateTemp("", "chatml-img-*"+ext)
+		tmpFile, err := os.CreateTemp(appdir.TempDir(), "chatml-img-*"+ext)
 		if err != nil {
 			logger.Process.Errorf("[%s] Failed to create temp file for image: %v", p.ID, err)
 			continue // Fall back to inline base64

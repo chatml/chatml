@@ -87,6 +87,18 @@ func main() {
 
 	appdir.Init()
 
+	// Clean up orphaned temp files from any previous crash before starting processes.
+	if removed, failed, err := appdir.CleanupTempDir(); err != nil {
+		logger.Main.Warnf("Temp file cleanup: %v", err)
+	} else {
+		if removed > 0 {
+			logger.Main.Infof("Cleaned up %d orphaned temp files", removed)
+		}
+		if failed > 0 {
+			logger.Main.Warnf("Failed to remove %d orphaned temp files", failed)
+		}
+	}
+
 	s, err := store.NewSQLiteStore()
 	if err != nil {
 		logger.Main.Fatalf("Failed to initialize store: %v", err)
