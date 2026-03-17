@@ -18,7 +18,6 @@ import {
   Plus,
   Link,
   FolderSymlink,
-  ScrollText,
   Check,
   Star,
 } from 'lucide-react';
@@ -50,8 +49,6 @@ export interface AttachmentMenuProps {
   linkedLinearIssue: LinearIssueDTO | null;
   onWorkspacePickerOpen: () => void;
   linkedWorkspaceIds: string[];
-  onSummaryPickerOpen: () => void;
-  selectedSummaryIds: string[];
 }
 
 export interface ActionButtonProps {
@@ -275,23 +272,12 @@ export function ChatInputToolbar({
               <span className="ml-auto text-xs text-muted-foreground">⌘I</span>
             )}
           </DropdownMenuItem>
-          <DropdownMenuSeparator />
           <DropdownMenuItem onClick={attachments.onWorkspacePickerOpen}>
             <FolderSymlink className="size-4" />
             Link workspaces
             {attachments.linkedWorkspaceIds.length > 0 && (
               <span className="ml-auto text-xs bg-brand/20 text-brand px-1.5 py-0.5 rounded-full">
                 {attachments.linkedWorkspaceIds.length}
-              </span>
-            )}
-          </DropdownMenuItem>
-          <DropdownMenuSeparator />
-          <DropdownMenuItem onClick={attachments.onSummaryPickerOpen}>
-            <ScrollText className="size-4" />
-            Attach conversation context
-            {attachments.selectedSummaryIds.length > 0 && (
-              <span className="ml-auto text-xs bg-brand/20 text-brand px-1.5 py-0.5 rounded-full">
-                {attachments.selectedSummaryIds.length}
               </span>
             )}
           </DropdownMenuItem>

@@ -6,7 +6,7 @@ import { createConversation, sendConversationMessage, stopConversation, setConve
 import { markPlanModeExited } from '@/hooks/useWebSocket';
 import { useAppEventListener } from '@/lib/custom-events';
 import { useShortcut } from '@/hooks/useShortcut';
-import { Bot, Upload, Link, FolderSymlink, ScrollText } from 'lucide-react';
+import { Bot, Upload, Link, FolderSymlink } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useClaudeAuthStatus } from '@/hooks/useClaudeAuthStatus';
 import { useToast } from '@/components/ui/toast';
@@ -20,7 +20,6 @@ import { usePendingUserQuestion, useStreamingChatInput, useSelectedIds, useConve
 import { useSettingsStore } from '@/stores/settingsStore';
 import { THINKING_LEVELS, type ThinkingLevel, resolveThinkingParams, clampThinkingLevel, canDisableThinking } from '@/lib/thinkingLevels';
 import { useSlashCommandStore, type UnifiedSlashCommand } from '@/stores/slashCommandStore';
-import { SummaryPicker } from './SummaryPicker';
 import { LinearIssuePicker } from './LinearIssuePicker';
 import { WorkspacePicker } from './WorkspacePicker';
 import type { LinearIssueDTO } from '@/lib/api';
@@ -131,8 +130,6 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
   const sendWithEnter = useSettingsStore((s) => s.sendWithEnter);
   const suggestionsEnabled = useSettingsStore((s) => s.suggestionsEnabled);
   const autoSubmitPill = useSettingsStore((s) => s.autoSubmitPillSuggestion);
-  const [summaryPickerOpen, setSummaryPickerOpen] = useState(false);
-  const [selectedSummaryIds, setSelectedSummaryIds] = useState<string[]>([]);
   const [linearPickerOpen, setLinearPickerOpen] = useState(false);
   const [linkedLinearIssue, setLinkedLinearIssue] = useState<LinearIssueDTO | null>(null);
   const [isFocused, setIsFocused] = useState(false);
@@ -664,7 +661,6 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
           maxThinkingTokens: thinkingParams.maxThinkingTokens,
           effort: thinkingParams.effort,
           attachments: loadedAttachments.length > 0 ? loadedAttachments : undefined,
-          summaryIds: selectedSummaryIds.length > 0 ? selectedSummaryIds : undefined,
           linearIssue: linkedLinearIssue ? {
             identifier: linkedLinearIssue.identifier,
             title: linkedLinearIssue.title,
@@ -769,7 +765,6 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
 
       // Clear attachments and linked context after successful send
       setAttachments([]);
-      setSelectedSummaryIds([]);
       setLinkedLinearIssue(null);
       setLinkedWorkspaceIds([]);
     } catch (error) {
@@ -911,24 +906,6 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
           />
         )}
 
-        {/* Summary context indicator */}
-        {selectedSummaryIds.length > 0 && (
-          <div className="px-3 py-1.5 flex items-center gap-2">
-            <div className="flex items-center gap-1.5 text-xs text-brand bg-brand/10 px-2 py-1 rounded-md">
-              <ScrollText className="size-3" />
-              {selectedSummaryIds.length} {selectedSummaryIds.length === 1 ? 'summary' : 'summaries'} attached
-              <button
-                type="button"
-                className="ml-1 hover:text-destructive"
-                onClick={() => setSelectedSummaryIds([])}
-                aria-label="Remove summaries"
-              >
-                ×
-              </button>
-            </div>
-          </div>
-        )}
-
         {/* Linked Linear issue indicator */}
         {linkedLinearIssue && (
           <div className="px-3 py-1.5 flex items-center gap-2">
@@ -1032,8 +1009,6 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
             linkedLinearIssue,
             onWorkspacePickerOpen: () => setWorkspacePickerOpen(true),
             linkedWorkspaceIds,
-            onSummaryPickerOpen: () => setSummaryPickerOpen(true),
-            selectedSummaryIds,
           }}
           action={{
             buttonMode,
@@ -1048,18 +1023,6 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
         />
       </div>
       </div>
-
-      {/* Summary Picker Dialog */}
-      {selectedWorkspaceId && selectedSessionId && (
-        <SummaryPicker
-          open={summaryPickerOpen}
-          onOpenChange={setSummaryPickerOpen}
-          workspaceId={selectedWorkspaceId}
-          sessionId={selectedSessionId}
-          selectedIds={selectedSummaryIds}
-          onSelectionChange={setSelectedSummaryIds}
-        />
-      )}
 
       {/* Linear Issue Picker Dialog */}
       <LinearIssuePicker

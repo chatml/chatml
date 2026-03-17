@@ -36,9 +36,6 @@ export interface TabBarProps {
   onReorder?: (activeId: string, overId: string) => void;
   onNewSession: () => void;
   onRenameConversation?: (id: string) => void;
-  onGenerateSummary?: (conversationId: string) => void;
-  onViewSummary?: (conversationId: string) => void;
-  getSummaryStatus?: (conversationId: string) => 'generating' | 'completed' | 'failed' | null;
   onRestoreConversation?: (convId: string) => Promise<void>;
   sessionId?: string | null;
 }
@@ -54,9 +51,6 @@ export interface TabItemProps {
   onClose: (e?: MouseEvent) => void;
   onPin?: (pinned: boolean) => void;
   onRename?: () => void;
-  onGenerateSummary?: () => void;
-  onViewSummary?: () => void;
-  summaryStatus?: 'generating' | 'completed' | 'failed' | null;
   // Status indicator for conversations
   statusIndicator?: ReactNode;
 }
