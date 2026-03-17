@@ -69,6 +69,7 @@ const STATIC_MODELS: ModelEntry[] = SHARED_MODELS.map((m) => ({
   icon: Bot,
   supportsThinking: m.supportsThinking,
   supportsEffort: m.supportsEffort,
+  supportsFastMode: m.supportsFastMode,
 }));
 
 /** Build the model list from SDK-reported dynamic models, with static fallback. */

@@ -119,6 +119,7 @@ describe('getModelInfo', () => {
       expect(info!.provider).toBe('claude');
       expect(info!.supportsThinking).toBe(model.supportsThinking);
       expect(info!.supportsEffort).toBe(model.supportsEffort);
+      expect(info!.supportsFastMode).toBe(model.supportsFastMode);
     }
   });
 });
