@@ -27,7 +27,7 @@ const extensionMap: Record<string, string> = {
   xml: 'xml',
   // Documentation
   md: 'markdown',
-  mdx: 'mdx',
+  mdx: 'markdown',
   // Programming languages
   go: 'go',
   py: 'python',
