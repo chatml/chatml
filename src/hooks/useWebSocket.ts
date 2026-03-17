@@ -43,9 +43,6 @@ export function cleanupConversationState(conversationId: string) {
   clearPlanModeState(conversationId);
 }
 
-// Tracks the most recent compact_boundary system message ID so post_compact can
-// enrich it with the compaction summary instead of creating a duplicate message.
-let lastCompactMessageId: string | null = null;
 
 export function useWebSocket(enabled: boolean = true) {
   const wsRef = useRef<WebSocket | null>(null);
@@ -599,24 +596,12 @@ export function useWebSocket(enabled: boolean = true) {
             conversationId,
           }
         }));
-        {
-          const compactContent = event?.trigger
-            ? `Context was compacted (${event.trigger}).`
-            : 'Context was compacted to stay within limits.';
-          addSystemMessage(conversationId, compactContent)
-            .then(({ id }) => {
-              store.addMessage({
-                id,
-                conversationId,
-                role: 'system',
-                content: compactContent,
-                timestamp: new Date().toISOString(),
-              });
-              // Stash the message ID so post_compact can enrich it with the summary
-              lastCompactMessageId = id;
-            })
-            .catch((err) => console.warn('Failed to persist compact message:', err));
-        }
+        // Inject compact boundary into the streaming timeline so it appears
+        // inline at the correct chronological position (not as a separate system message).
+        store.setCompactBoundary(conversationId, {
+          timestamp: Date.now(),
+          trigger: typeof event?.trigger === 'string' ? event.trigger : undefined,
+        });
         break;
 
       case 'pre_compact':
@@ -624,13 +609,9 @@ export function useWebSocket(enabled: boolean = true) {
 
       case 'post_compact':
         // SDK 0.2.76: PostCompact hook fires after compaction with the conversation summary.
-        // Enrich the existing compact_boundary message instead of adding a duplicate.
-        if (event?.compactSummary && lastCompactMessageId) {
-          const enrichedContent = event.trigger
-            ? `Context was compacted (${event.trigger}). Summary: ${event.compactSummary}`
-            : `Context was compacted. Summary: ${event.compactSummary}`;
-          store.updateMessage(conversationId, lastCompactMessageId, { content: enrichedContent });
-          lastCompactMessageId = null;
+        // Enrich the compact boundary in the streaming state with the summary.
+        if (typeof event?.compactSummary === 'string' && event.compactSummary) {
+          store.setCompactSummary(conversationId, event.compactSummary);
         }
         break;
 

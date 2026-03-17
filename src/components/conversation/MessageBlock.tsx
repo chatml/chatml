@@ -32,6 +32,7 @@ import { AttachmentGrid } from '@/components/conversation/AttachmentGrid';
 import { AttachmentPreviewModal } from '@/components/conversation/AttachmentPreviewModal';
 import { MentionText } from '@/components/conversation/MentionText';
 import { ApprovedPlanBlock } from '@/components/conversation/ApprovedPlanBlock';
+import { CompactBoundaryCard } from '@/components/conversation/CompactBoundaryCard';
 import { TurnStatusIndicator } from '@/components/conversation/TurnStatusIndicator';
 import { MessageTokenFooter } from '@/components/conversation/MessageTokenFooter';
 
@@ -253,6 +254,15 @@ export const MessageBlock = memo(function MessageBlock({
                         key={`tl-status-${idx}`}
                         content={entry.content}
                         variant={entry.variant}
+                      />
+                    );
+                  } else if (entry.type === 'compact') {
+                    return (
+                      <CompactBoundaryCard
+                        key={`tl-compact-${idx}`}
+                        cacheKey={`compact:${message.id}`}
+                        content={entry.content}
+                        compactSummary={entry.summary}
                       />
                     );
                   }

@@ -242,6 +242,7 @@ interface StreamingState {
   approvedPlanTimestamp?: number; // When the plan was approved (for timeline ordering)
   recovery?: { attempt: number; maxAttempts: number }; // Agent crash recovery in progress
   turnStartMeta?: { model?: string; effort?: string; permissionMode?: string }; // Turn-start config from init event
+  compactBoundary?: { timestamp: number; trigger?: string; summary?: string; label: string }; // Auto-compact boundary from SDK
 }
 
 // Info about a conversation interrupted by app shutdown, detected on restart
@@ -461,6 +462,8 @@ interface AppState {
   setAgentRecovering: (conversationId: string, attempt: number, maxAttempts: number) => void;
   clearAgentRecovery: (conversationId: string) => void;
   setTurnStartMeta: (conversationId: string, meta: { model?: string; effort?: string; permissionMode?: string }) => void;
+  setCompactBoundary: (conversationId: string, boundary: { timestamp: number; trigger?: string }) => void;
+  setCompactSummary: (conversationId: string, summary: string) => void;
   clearStreamingText: (conversationId: string) => void;
   clearStreamingContent: (conversationId: string) => void;
   appendThinkingText: (conversationId: string, text: string) => void;
@@ -1642,6 +1645,27 @@ updateFileTabContent: (id, content) => set((state) => ({
       turnStartMeta: meta,
     }),
   })),
+  setCompactBoundary: (conversationId, boundary) => set((state) => ({
+    streamingState: updateStreamingConv(state.streamingState, conversationId, {
+      compactBoundary: {
+        ...boundary,
+        label: boundary.trigger
+          ? `Context was compacted (${boundary.trigger}).`
+          : 'Context was compacted.',
+      },
+      // Force a new text segment so the compact marker appears between pre/post text
+      currentSegmentId: null,
+    }),
+  })),
+  setCompactSummary: (conversationId, summary) => set((state) => {
+    const current = state.streamingState[conversationId];
+    if (!current?.compactBoundary) return state;
+    return {
+      streamingState: updateStreamingConv(state.streamingState, conversationId, {
+        compactBoundary: { ...current.compactBoundary, summary },
+      }),
+    };
+  }),
   clearStreamingText: (conversationId) => set((state) => ({
     streamingState: updateStreamingConv(state.streamingState, conversationId, {
       text: '',
@@ -1653,6 +1677,7 @@ updateFileTabContent: (id, content) => set((state) => ({
       isThinking: false,
       pendingPlanApproval: null,
       startTime: undefined,
+      compactBoundary: undefined,
     }),
   })),
   // Clear stale content on process restart while preserving isStreaming and startTime
@@ -1665,6 +1690,7 @@ updateFileTabContent: (id, content) => set((state) => ({
       error: null,
       thinking: null,
       isThinking: false,
+      compactBoundary: undefined,
     }),
   })),
   appendThinkingText: (conversationId, text) => set((state) => {
@@ -2083,6 +2109,13 @@ updateFileTabContent: (id, content) => set((state) => ({
       // Add approved plan content at its chronological position
       if (streaming.approvedPlanContent && streaming.approvedPlanTimestamp) {
         timelineItems.push({ timestamp: streaming.approvedPlanTimestamp, entry: { type: 'plan', content: streaming.approvedPlanContent } });
+      }
+      // Add compact boundary at its chronological position
+      if (streaming.compactBoundary) {
+        timelineItems.push({
+          timestamp: streaming.compactBoundary.timestamp,
+          entry: { type: 'compact', content: streaming.compactBoundary.label, summary: streaming.compactBoundary.summary },
+        });
       }
       timelineItems.sort((a, b) => a.timestamp - b.timestamp);
       const timeline: TimelineEntry[] | undefined =
