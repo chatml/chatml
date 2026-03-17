@@ -47,13 +47,16 @@ export function useActionState(
   return useMemo(() => {
     // Merge WebSocket-updated store value (session.checkStatus) with polled API value
     // (prDetails.checkStatus). WebSocket is real-time but updates can be missed, while
-    // prDetails polls every 90s but is reliable. If the session is still 'pending' but
-    // polling already shows a terminal state, prefer the terminal state.
+    // prDetails polls every 90s but is reliable.
+    // - If polling says 'pending', trust it — it fetches the *current* PR, so session
+    //   may be stale from a previous PR cycle (e.g. after merge → new PR).
+    // - If session is still 'pending' but polling shows a terminal state, prefer terminal.
     const sessionCheck = session?.checkStatus ?? null;
     const prCheck = prDetails?.checkStatus ?? null;
     const isTerminal = (s: string | null) => s === 'success' || s === 'failure';
     const effectiveCheckStatus =
-      sessionCheck === 'pending' && isTerminal(prCheck) ? prCheck
+      prCheck === 'pending' ? 'pending'                              // polling says pending → trust it (current PR)
+      : sessionCheck === 'pending' && isTerminal(prCheck) ? prCheck  // polling caught up first
       : sessionCheck ?? prCheck;
 
     const archiveAction: PrimaryAction = {
