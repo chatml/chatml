@@ -8,6 +8,7 @@ import {
 } from '@/lib/api';
 import { useSelectedIds } from '@/stores/selectors';
 import { useSettingsStore } from '@/stores/settingsStore';
+import { trackEvent } from '@/lib/telemetry';
 import { toBase64 } from '@/lib/utils';
 
 const MARKDOWN_INSTRUCTION =
@@ -259,6 +260,7 @@ export function useReviewTrigger() {
           model: reviewModel,
           attachments: [templateAttachment],
         });
+        trackEvent('review_started', { type: reviewType });
 
         // Always add the conversation and message to the store, even if the
         // user switched sessions. The conversation exists on the backend;

@@ -8,6 +8,9 @@ importers:
 
   .:
     dependencies:
+      '@aptabase/tauri':
+        specifier: github:aptabase/tauri-plugin-aptabase
+        version: https://codeload.github.com/aptabase/tauri-plugin-aptabase/tar.gz/de6df6b8671568aad53eabaf4b49207a3d6c5622
       '@ariakit/react':
         specifier: ^0.4.23
         version: 0.4.23(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
@@ -288,6 +291,10 @@ packages:
 
   '@antfu/install-pkg@1.1.0':
     resolution: {integrity: sha512-MGQsmw10ZyI+EJo45CdSER4zEb+p31LpDAFp2Z3gkSd1yqVZGi0Ebx++YTEMonJy4oChEMLsxZ64j8FH6sSqtQ==}
+
+  '@aptabase/tauri@https://codeload.github.com/aptabase/tauri-plugin-aptabase/tar.gz/de6df6b8671568aad53eabaf4b49207a3d6c5622':
+    resolution: {tarball: https://codeload.github.com/aptabase/tauri-plugin-aptabase/tar.gz/de6df6b8671568aad53eabaf4b49207a3d6c5622}
+    version: 0.4.2
 
   '@ariakit/core@0.4.18':
     resolution: {integrity: sha512-9urEa+GbZTSyredq3B/3thQjTcSZSUC68XctwCkJNH/xNfKN5O+VThiem2rcJxpsGw8sRUQenhagZi0yB4foyg==}
@@ -5089,6 +5096,11 @@ snapshots:
     dependencies:
       package-manager-detector: 1.6.0
       tinyexec: 1.0.2
+
+  '@aptabase/tauri@https://codeload.github.com/aptabase/tauri-plugin-aptabase/tar.gz/de6df6b8671568aad53eabaf4b49207a3d6c5622':
+    dependencies:
+      '@tauri-apps/api': 2.10.1
+      tslib: 2.8.1
 
   '@ariakit/core@0.4.18': {}
 

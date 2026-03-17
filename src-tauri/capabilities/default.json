@@ -149,6 +149,7 @@
     "clipboard-manager:allow-write-text",
     "clipboard-manager:allow-read-image",
     "core:image:allow-rgba",
-    "core:image:allow-size"
+    "core:image:allow-size",
+    "aptabase:allow-track-event"
   ]
 }

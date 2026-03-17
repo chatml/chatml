@@ -36,6 +36,7 @@ import {
   mapSessionDTO, listConversations, type RepoDTO,
 } from '@/lib/api';
 import { registerSession, getSessionDirName, openFolderDialog } from '@/lib/tauri';
+import { trackEvent } from '@/lib/telemetry';
 import { useBranchCacheStore } from '@/stores/branchCacheStore';
 import { useRecentlyClosedStore } from '@/stores/recentlyClosedStore';
 import { captureClosedConversation, useRestoreConversation } from '@/hooks/useRecentlyClosed';
@@ -265,6 +266,7 @@ export default function Home() {
         conversationId: firstConvId ?? undefined,
         contentView: { type: 'conversation' },
       });
+      trackEvent('session_created');
     } catch (error) {
       console.error('Failed to create session:', error);
       showError(error instanceof Error ? error.message : 'Failed to create session. Please try again.', 'Session Error');
@@ -304,6 +306,7 @@ export default function Home() {
         updatedAt: newConv.updatedAt,
       });
       useAppStore.getState().selectConversation(newConv.id);
+      trackEvent('conversation_created');
     } catch (error) {
       console.error('Failed to create conversation:', error);
       showError(error instanceof Error ? error.message : 'Failed to create conversation. Please try again.', 'Conversation Error');
@@ -412,6 +415,7 @@ export default function Home() {
       conversationId: convs.length > 0 ? convs[0].id : undefined,
       contentView: { type: 'conversation' },
     });
+    trackEvent('workspace_added');
   }, [repoToWorkspace, expandWorkspace]);
 
   const handleOpenProject = useCallback(async () => {
