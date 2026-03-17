@@ -987,30 +987,36 @@ export function ConversationArea({ children }: ConversationAreaProps) {
       )}
 
       {/* Conversation panes — LRU cached across session switches.
-           Each recent session keeps its VirtualizedMessageList mounted (hidden)
-           so switching back is instant (no Virtuoso remount/measure cycle). */}
-      {recentSessions.map((cached) => {
-        const isCachedActive = cached.sessionId === selectedSessionId && !isFileActive;
-        const cachedSession = sessionMap.get(cached.sessionId);
-        const hasConvs = conversationsBySession.has(cached.sessionId);
-        return (
-          <CachedConversationPane
-            key={cached.sessionId}
-            conversationId={
-              cached.sessionId === selectedSessionId
-                ? selectedConversationId
-                : cached.activeConversationId
-            }
-            isActive={isCachedActive}
-            worktreePath={cachedSession?.worktreePath}
-            sessionName={cachedSession?.name}
-            sessionBranch={cachedSession?.branch}
-            hasConversations={hasConvs}
-          >
-            {isCachedActive ? children : null}
-          </CachedConversationPane>
-        );
-      })}
+           During session switches, inactive panes use visibility:hidden (not
+           display:none) so react-virtuoso can still measure item heights.
+           When the file viewer is active the whole container is hidden
+           (display:none); CachedConversationPane compensates with a rAF-based
+           remeasurement when re-activated. The relative container provides
+           real dimensions for absolutely-positioned child panes. */}
+      <div className={isFileActive ? 'hidden' : 'relative flex-1 min-h-0'}>
+        {recentSessions.map((cached) => {
+          const isCachedActive = cached.sessionId === selectedSessionId && !isFileActive;
+          const cachedSession = sessionMap.get(cached.sessionId);
+          const hasConvs = conversationsBySession.has(cached.sessionId);
+          return (
+            <CachedConversationPane
+              key={cached.sessionId}
+              conversationId={
+                cached.sessionId === selectedSessionId
+                  ? selectedConversationId
+                  : cached.activeConversationId
+              }
+              isActive={isCachedActive}
+              worktreePath={cachedSession?.worktreePath}
+              sessionName={cachedSession?.name}
+              sessionBranch={cachedSession?.branch}
+              hasConversations={hasConvs}
+            >
+              {isCachedActive ? children : null}
+            </CachedConversationPane>
+          );
+        })}
+      </div>
 
       {/* Rename Conversation Dialog */}
       <Dialog open={renameDialogOpen} onOpenChange={setRenameDialogOpen}>
