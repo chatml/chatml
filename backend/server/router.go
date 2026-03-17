@@ -26,6 +26,7 @@ func NewRouter(ctx context.Context, s *store.SQLiteStore, hub *Hub, agentMgr *ag
 	auth := NewAuthHandlers(ghClient, s)
 	linearAuth := NewLinearAuthHandlers(linearClient, s)
 
+	r.Use(middleware.Compress(5))
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
 	r.Use(TokenAuthMiddleware)
