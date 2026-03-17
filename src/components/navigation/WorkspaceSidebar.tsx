@@ -391,7 +391,13 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onGitHubRepos,
       if (event && (event.metaKey || event.button === 1)) {
         navigateOrOpenTab({ workspaceId, sessionId, contentView: { type: 'conversation' } }, event);
       } else {
-        refreshPRStatus(workspaceId, sessionId).catch(() => {});
+        // If we're not in conversation view (e.g. Sessions module), navigate back to it
+        const { contentView: currentView } = useSettingsStore.getState();
+        if (currentView.type !== 'conversation') {
+          navigate({ workspaceId, sessionId, contentView: { type: 'conversation' } });
+        } else {
+          refreshPRStatus(workspaceId, sessionId).catch(() => {});
+        }
       }
       return;
     }
