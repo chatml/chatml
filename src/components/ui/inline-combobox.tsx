@@ -115,8 +115,10 @@ const InlineCombobox = ({
   /**
    * Track the point just before the input element so we know where to
    * insertText if the combobox closes due to a selection change.
+   * We store the live pointRef (not a snapshot) so it stays up-to-date
+   * as the document changes (undo/redo, collaboration, etc.).
    */
-  const insertPoint = React.useRef<Point | null>(null);
+  const insertPointRef = React.useRef<{ current: Point | null; unref: () => Point | null } | null>(null);
 
   React.useEffect(() => {
     const path = editor.api.findPath(element);
@@ -128,10 +130,11 @@ const InlineCombobox = ({
     if (!point) return;
 
     const pointRef = editor.api.pointRef(point);
-    insertPoint.current = pointRef.current;
+    insertPointRef.current = pointRef;
 
     return () => {
       pointRef.unref();
+      insertPointRef.current = null;
     };
   }, [editor, element]);
 
@@ -143,7 +146,7 @@ const InlineCombobox = ({
     onCancelInput: (cause) => {
       if (cause !== 'backspace') {
         editor.tf.insertText(trigger + value, {
-          at: insertPoint?.current ?? undefined,
+          at: insertPointRef.current?.current ?? undefined,
         });
       }
       if (cause === 'arrowLeft' || cause === 'arrowRight') {
@@ -243,8 +246,8 @@ const InlineComboboxInput = ({
         const activeId = store.getState().activeId;
         if (activeId) {
           event.preventDefault();
-          // Find and click the active item to trigger selection
-          const activeItem = document.querySelector(`[data-active-item="true"]`) as HTMLElement;
+          // Find and click the active item by its ID
+          const activeItem = document.getElementById(activeId);
           activeItem?.click();
           return;
         }

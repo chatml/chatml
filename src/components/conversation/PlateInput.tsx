@@ -45,17 +45,20 @@ interface PlateInputProps {
   onBlur?: () => void;
 }
 
-// Helper to extract text from Plate value
-function extractText(value: Value): string {
+// Extract text and mentioned files from Plate value in a single pass
+function extractContent(value: Value): { text: string; mentionedFiles: string[] } {
   let text = '';
+  const mentionedFiles: string[] = [];
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Plate nodes have dynamic structure
   const processNode = (node: any) => {
     if (node.text !== undefined) {
       text += node.text;
     } else if (node.type === 'mention') {
-      // Mention nodes store the value (file path)
       text += `@${node.value}`;
+      if (node.value) {
+        mentionedFiles.push(node.value);
+      }
     } else if (node.children) {
       node.children.forEach(processNode);
     }
@@ -69,25 +72,7 @@ function extractText(value: Value): string {
     }
   });
 
-  return text.trim();
-}
-
-// Helper to extract mentioned files from Plate value
-function extractMentionedFiles(value: Value): string[] {
-  const files: string[] = [];
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Plate nodes have dynamic structure
-  const processNode = (node: any) => {
-    if (node.type === 'mention' && node.value) {
-      files.push(node.value);
-    } else if (node.children) {
-      node.children.forEach(processNode);
-    }
-  };
-
-  value.forEach(processNode);
-
-  return files;
+  return { text: text.trim(), mentionedFiles };
 }
 
 const emptyValue: Value = [{ type: 'p', children: [{ text: '' }] }];
@@ -133,7 +118,7 @@ export const PlateInput = forwardRef<PlateInputHandle, PlateInputProps>(
     // Track changes and notify parent
     const handleChange = useCallback(
       ({ value }: { value: Value }) => {
-        const text = extractText(value);
+        const { text } = extractContent(value);
         onInput?.(text);
       },
       [onInput]
@@ -146,37 +131,26 @@ export const PlateInput = forwardRef<PlateInputHandle, PlateInputProps>(
       },
       clear: () => {
         editor.tf.reset();
-        // Defer until React reconciles the DOM after reset
-        setTimeout(() => {
+        // Defer to allow synchronous Slate DOM updates to complete
+        queueMicrotask(() => {
           editor.tf.focus();
-        }, 0);
+        });
       },
       getText: () => {
-        return extractText(editor.children);
+        return extractContent(editor.children).text;
       },
       getContent: () => {
-        return {
-          text: extractText(editor.children),
-          mentionedFiles: extractMentionedFiles(editor.children),
-        };
+        return extractContent(editor.children);
       },
       setText: (text: string) => {
         editor.tf.reset();
-        // Defer until React reconciles the DOM after reset
-        setTimeout(() => {
+        // Defer to allow synchronous Slate DOM updates to complete
+        queueMicrotask(() => {
           editor.tf.focus();
           editor.tf.insertText(text);
-        }, 0);
+        });
       },
     }));
-
-    // Handle keyboard events
-    const handleKeyDown = useCallback(
-      (e: React.KeyboardEvent) => {
-        onKeyDown?.(e);
-      },
-      [onKeyDown]
-    );
 
     const mentionContextValue = React.useMemo(
       () => ({
@@ -198,25 +172,27 @@ export const PlateInput = forwardRef<PlateInputHandle, PlateInputProps>(
       <SlashCommandItemsContext.Provider value={slashCommandContextValue}>
         <MentionItemsContext.Provider value={mentionContextValue}>
           <Plate editor={editor} onChange={handleChange}>
-            <div onKeyDown={handleKeyDown} onPasteCapture={onPaste}>
-              <EditorContainer variant="default" className="p-0 rounded-none">
-                <Editor
-                  variant="none"
-                  placeholder={placeholder}
-                  autoCorrect="off"
-                  autoCapitalize="off"
-                  spellCheck={false}
-                  autoComplete="off"
-                  className={cn(
-                    'min-h-[100px] max-h-[200px] py-1 text-base rounded-none',
-                    'caret-foreground [&_[data-slate-editor]]:min-h-[1lh]',
-                    className
-                  )}
-                  onFocus={onFocus}
-                  onBlur={onBlur}
-                />
-              </EditorContainer>
-            </div>
+            {/* onPasteCapture runs in the capture phase, before Plate's
+                internal paste handler, so image interception via
+                preventDefault() works reliably. */}
+            <EditorContainer variant="default" className="p-0 rounded-none" onPasteCapture={onPaste}>
+              <Editor
+                variant="none"
+                placeholder={placeholder}
+                autoCorrect="off"
+                autoCapitalize="off"
+                spellCheck={false}
+                autoComplete="off"
+                className={cn(
+                  'min-h-[100px] max-h-[200px] py-1 text-base rounded-none',
+                  'caret-foreground [&_[data-slate-editor]]:min-h-[1lh]',
+                  className
+                )}
+                onKeyDown={onKeyDown}
+                onFocus={onFocus}
+                onBlur={onBlur}
+              />
+            </EditorContainer>
           </Plate>
         </MentionItemsContext.Provider>
       </SlashCommandItemsContext.Provider>
