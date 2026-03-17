@@ -14,6 +14,9 @@ import { getShikiLanguage } from '@/lib/languageMapping';
 
 const PIERRE_THEMES = { dark: 'pierre-dark', light: 'pierre-light' } as const;
 
+// Ensure strings end with newline to suppress Pierre's "No newline at end of file" marker
+const ensureTrailingNewline = (s: string) => s.endsWith('\n') ? s : s + '\n';
+
 interface EditToolDetailProps {
   oldString: string;
   newString: string;
@@ -36,14 +39,14 @@ export const EditToolDetail = memo(function EditToolDetail({
 
   const oldFile: FileContents = useMemo(() => ({
     name: filename,
-    contents: oldString,
+    contents: ensureTrailingNewline(oldString),
     lang: language as FileContents['lang'],
     cacheKey: `tool-edit-old:${filePath}:${oldString.length}:${oldString.slice(0, 64)}`,
   }), [filename, filePath, oldString, language]);
 
   const newFile: FileContents = useMemo(() => ({
     name: filename,
-    contents: newString,
+    contents: ensureTrailingNewline(newString),
     lang: language as FileContents['lang'],
     cacheKey: `tool-edit-new:${filePath}:${newString.length}:${newString.slice(0, 64)}`,
   }), [filename, filePath, newString, language]);
