@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo, useDeferredValue } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo, useDeferredValue } from 'react';
 import { useAppStore, type QueuedMessage } from '@/stores/appStore';
 import {
   useMessages,
@@ -296,15 +296,17 @@ export function CachedConversationPane({
   //  2. Empty guard in VirtualizedMessageList: covers the *async* case —
   //     messages arrive after the switch. Virtuoso doesn't mount until data
   //     exists, so initialTopMostItemIndex is consumed on the first mount.
+  // Paint gate: hide the frame where Virtuoso measures items before applying
+  // initialTopMostItemIndex during conversation switches. Derived during render
+  // (not in an effect) to satisfy react-hooks/set-state-in-effect.
   const [paintReady, setPaintReady] = useState(true);
   const paintGateConvRef = useRef(conversationId);
 
-  useLayoutEffect(() => {
-    if (paintGateConvRef.current !== conversationId && hasMessages) {
-      setPaintReady(false);
-    }
+  if (paintGateConvRef.current !== conversationId && hasMessages) {
     paintGateConvRef.current = conversationId;
-  }, [conversationId, hasMessages]);
+    if (paintReady) setPaintReady(false);
+  }
+  paintGateConvRef.current = conversationId;
 
   // Double-rAF matches scheduleScrollRestore — Virtuoso needs the post-paint
   // frame to finish measuring items and applying initialTopMostItemIndex.
