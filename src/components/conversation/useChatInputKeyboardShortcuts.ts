@@ -11,6 +11,7 @@ interface UseChatInputKeyboardShortcutsOptions {
   setThinkingLevel: React.Dispatch<React.SetStateAction<ThinkingLevel>>;
   setMessage: (msg: string) => void;
   handlePlanModeToggle: () => void;
+  handleFastModeToggle: () => void;
   handleOpenFilePicker: () => void;
   setLinearPickerOpen: (open: boolean) => void;
   getAvailableThinkingLevels: (model: ModelEntry) => ThinkingLevel[];
@@ -28,6 +29,7 @@ export function useChatInputKeyboardShortcuts({
   setThinkingLevel,
   setMessage,
   handlePlanModeToggle,
+  handleFastModeToggle,
   handleOpenFilePicker,
   setLinearPickerOpen,
   getAvailableThinkingLevels,
@@ -61,6 +63,11 @@ export function useChatInputKeyboardShortcuts({
         e.preventDefault();
         handlePlanModeToggle();
       }
+      // Alt+F to toggle fast mode
+      if (e.code === 'KeyF' && e.altKey && !e.metaKey && !e.ctrlKey && !e.shiftKey) {
+        e.preventDefault();
+        handleFastModeToggle();
+      }
       // Cmd+U to open file picker
       if (e.code === 'KeyU' && (e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey) {
         e.preventDefault();
@@ -83,6 +90,7 @@ export function useChatInputKeyboardShortcuts({
       });
     };
     const handleTogglePlanMode = () => handlePlanModeToggle();
+    const handleToggleFastMode = () => handleFastModeToggle();
 
     // Handle template selection from SessionHomeState quick actions
     const handleTemplateSelected = (e: Event) => {
@@ -97,13 +105,15 @@ export function useChatInputKeyboardShortcuts({
     window.addEventListener('focus-input', handleFocusInput);
     window.addEventListener('toggle-thinking', handleToggleThinking);
     window.addEventListener('toggle-plan-mode', handleTogglePlanMode);
+    window.addEventListener('toggle-fast-mode', handleToggleFastMode);
     window.addEventListener('session-home-template-selected', handleTemplateSelected);
     return () => {
       document.removeEventListener('keydown', handleGlobalKeyDown);
       window.removeEventListener('focus-input', handleFocusInput);
       window.removeEventListener('toggle-thinking', handleToggleThinking);
       window.removeEventListener('toggle-plan-mode', handleTogglePlanMode);
+      window.removeEventListener('toggle-fast-mode', handleToggleFastMode);
       window.removeEventListener('session-home-template-selected', handleTemplateSelected);
     };
-  }, [handlePlanModeToggle, handleOpenFilePicker, selectedModel, MODELS, setMessage, plateInputRef, setSelectedModel, setThinkingLevel, setLinearPickerOpen, getAvailableThinkingLevels]);
+  }, [handlePlanModeToggle, handleFastModeToggle, handleOpenFilePicker, selectedModel, MODELS, setMessage, plateInputRef, setSelectedModel, setThinkingLevel, setLinearPickerOpen, getAvailableThinkingLevels]);
 }

@@ -27,6 +27,8 @@ export function AIModelSettings() {
   const setReviewModel = useSettingsStore((s) => s.setReviewModel);
   const defaultPlanMode = useSettingsStore((s) => s.defaultPlanMode);
   const setDefaultPlanMode = useSettingsStore((s) => s.setDefaultPlanMode);
+  const defaultFastMode = useSettingsStore((s) => s.defaultFastMode);
+  const setDefaultFastMode = useSettingsStore((s) => s.setDefaultFastMode);
   const maxThinkingTokens = useSettingsStore((s) => s.maxThinkingTokens);
   const setMaxThinkingTokens = useSettingsStore((s) => s.setMaxThinkingTokens);
   return (
@@ -103,6 +105,16 @@ export function AIModelSettings() {
           onReset={() => setDefaultPlanMode(SETTINGS_DEFAULTS.defaultPlanMode)}
         >
           <Switch checked={defaultPlanMode} onCheckedChange={setDefaultPlanMode} aria-label="Default to plan mode" />
+        </SettingsRow>
+
+        <SettingsRow
+          settingId="defaultFastMode"
+          title="Default to fast mode"
+          description="Start new conversations with faster output (same model, optimized for speed)"
+          isModified={defaultFastMode !== SETTINGS_DEFAULTS.defaultFastMode}
+          onReset={() => setDefaultFastMode(SETTINGS_DEFAULTS.defaultFastMode)}
+        >
+          <Switch checked={defaultFastMode} onCheckedChange={setDefaultFastMode} aria-label="Default to fast mode" />
         </SettingsRow>
 
         {defaultThinkingLevel !== 'off' && (

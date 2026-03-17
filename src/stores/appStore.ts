@@ -241,7 +241,7 @@ interface StreamingState {
   approvedPlanContent?: string; // Plan content to persist after approval
   approvedPlanTimestamp?: number; // When the plan was approved (for timeline ordering)
   recovery?: { attempt: number; maxAttempts: number }; // Agent crash recovery in progress
-  turnStartMeta?: { model?: string; effort?: string; permissionMode?: string }; // Turn-start config from init event
+  turnStartMeta?: { model?: string; effort?: string; permissionMode?: string; fastModeState?: 'off' | 'cooldown' | 'on' }; // Turn-start config from init event
   compactBoundary?: { timestamp: number; trigger?: string; summary?: string; label: string }; // Auto-compact boundary from SDK
 }
 
@@ -461,7 +461,7 @@ interface AppState {
   setStreamingError: (conversationId: string, error: string | null) => void;
   setAgentRecovering: (conversationId: string, attempt: number, maxAttempts: number) => void;
   clearAgentRecovery: (conversationId: string) => void;
-  setTurnStartMeta: (conversationId: string, meta: { model?: string; effort?: string; permissionMode?: string }) => void;
+  setTurnStartMeta: (conversationId: string, meta: { model?: string; effort?: string; permissionMode?: string; fastModeState?: 'off' | 'cooldown' | 'on' }) => void;
   setCompactBoundary: (conversationId: string, boundary: { timestamp: number; trigger?: string }) => void;
   setCompactSummary: (conversationId: string, summary: string) => void;
   clearStreamingText: (conversationId: string) => void;

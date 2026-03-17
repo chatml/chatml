@@ -344,6 +344,7 @@ export interface AgentEvent {
     maxThinkingTokens?: number;
     effort?: string;
   };
+  fastModeState?: 'off' | 'cooldown' | 'on';
 
   // Extended result fields
   durationMs?: number;
@@ -813,8 +814,9 @@ export interface SetupProgress {
   status: 'running' | 'completed' | 'failed';
 }
 
-// Per-session toggle state for ChatInput (thinking level & plan mode)
+// Per-session toggle state for ChatInput (thinking level, plan mode & fast mode)
 export interface SessionToggleState {
   thinkingLevel: import('@/lib/thinkingLevels').ThinkingLevel;
   planModeEnabled: boolean;
+  fastModeEnabled?: boolean; // Optional for backward compat with persisted state pre-fast-mode
 }

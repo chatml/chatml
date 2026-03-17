@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { useAppStore } from '@/stores/appStore';
-import { createConversation, sendConversationMessage, stopConversation, setConversationPlanMode, approvePlan } from '@/lib/api';
+import { createConversation, sendConversationMessage, stopConversation, setConversationPlanMode, setConversationFastMode, approvePlan } from '@/lib/api';
 import { markPlanModeExited } from '@/hooks/useWebSocket';
 import { useAppEventListener } from '@/lib/custom-events';
 import { useShortcut } from '@/hooks/useShortcut';
@@ -81,6 +81,7 @@ function buildModelList(dynamic: ReturnType<typeof useAppStore.getState>['suppor
     supportsThinking: m.supportsAdaptiveThinking ?? true,
     supportsEffort: m.supportsEffort ?? false,
     supportedEffortLevels: m.supportedEffortLevels,
+    supportsFastMode: m.supportsFastMode,
   }));
 }
 
@@ -127,6 +128,8 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
   const defaultMaxThinkingTokens = useSettingsStore((s) => s.maxThinkingTokens);
   const defaultPlanMode = useSettingsStore((s) => s.defaultPlanMode);
   const [planModeEnabled, setPlanModeEnabled] = useState(defaultPlanMode);
+  const defaultFastMode = useSettingsStore((s) => s.defaultFastMode);
+  const [fastModeEnabled, setFastModeEnabled] = useState(defaultFastMode);
   const sendWithEnter = useSettingsStore((s) => s.sendWithEnter);
   const suggestionsEnabled = useSettingsStore((s) => s.suggestionsEnabled);
   const autoSubmitPill = useSettingsStore((s) => s.autoSubmitPillSuggestion);
@@ -401,18 +404,32 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
     if (saved) {
       setThinkingLevel(saved.thinkingLevel);
       setPlanModeEnabled(saved.planModeEnabled);
+      setFastModeEnabled(saved.fastModeEnabled ?? defaultFastMode);
     } else {
       setThinkingLevel(defaultThinkingLevel);
       setPlanModeEnabled(defaultPlanMode);
+      setFastModeEnabled(defaultFastMode);
     }
-  }, [selectedSessionId, defaultThinkingLevel, defaultPlanMode]);
+  }, [selectedSessionId, defaultThinkingLevel, defaultPlanMode, defaultFastMode]);
 
   // Persist toggle state changes to the store for the current session.
   useEffect(() => {
     if (!selectedSessionId || selectedSessionId !== prevSessionRef.current) return;
-    setSessionToggleState(selectedSessionId, { thinkingLevel, planModeEnabled });
-  }, [selectedSessionId, thinkingLevel, planModeEnabled, setSessionToggleState]);
+    setSessionToggleState(selectedSessionId, { thinkingLevel, planModeEnabled, fastModeEnabled });
+  }, [selectedSessionId, thinkingLevel, planModeEnabled, fastModeEnabled, setSessionToggleState]);
 
+
+  // Sync fast mode state from agent-runner confirmation events
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const { conversationId: convId, enabled } = (e as CustomEvent).detail;
+      if (convId === selectedConversationId) {
+        setFastModeEnabled(enabled);
+      }
+    };
+    window.addEventListener('fast-mode-synced', handler);
+    return () => window.removeEventListener('fast-mode-synced', handler);
+  }, [selectedConversationId]);
 
   // Check if there's a pending user question
   const pendingQuestion = usePendingUserQuestion(selectedConversationId);
@@ -455,6 +472,19 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
     }
   }, [planModeEnabled, selectedConversationId, setPlanModeActive, clearApprovedPlanContent, clearPendingPlanApproval]);
 
+  const handleFastModeToggle = useCallback(async () => {
+    const newValue = !fastModeEnabled;
+    setFastModeEnabled(newValue);
+
+    if (selectedConversationId) {
+      try {
+        await setConversationFastMode(selectedConversationId, newValue);
+      } catch (err) {
+        // Process may not be running — fast mode will be applied when the next message starts
+        console.debug('setConversationFastMode failed (will apply on next message):', err);
+      }
+    }
+  }, [fastModeEnabled, selectedConversationId]);
 
   // Handle plan approval
   const handleApprovePlan = useCallback(async () => {
@@ -592,6 +622,7 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
     setThinkingLevel,
     setMessage,
     handlePlanModeToggle,
+    handleFastModeToggle,
     handleOpenFilePicker,
     setLinearPickerOpen,
     getAvailableThinkingLevels,
@@ -658,6 +689,7 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
           message: trimmedContent,
           model: selectedModel.id,
           planMode: planModeEnabled ? true : undefined,
+          fastMode: fastModeEnabled ? true : undefined,
           maxThinkingTokens: thinkingParams.maxThinkingTokens,
           effort: thinkingParams.effort,
           attachments: loadedAttachments.length > 0 ? loadedAttachments : undefined,
@@ -1001,6 +1033,9 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
           }}
           planModeEnabled={planModeEnabled}
           onPlanModeToggle={handlePlanModeToggle}
+          fastModeEnabled={fastModeEnabled}
+          onFastModeToggle={handleFastModeToggle}
+          showFastMode={selectedModel.supportsFastMode === true}
           selectedConversationId={selectedConversationId}
           selectedSessionId={selectedSessionId}
           attachments={{

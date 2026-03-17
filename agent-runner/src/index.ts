@@ -142,6 +142,9 @@ const agentsFilePath = getArg("--agents-file");
 const enablePromptSuggestions = hasFlag("--prompt-suggestions");
 const enableAgentProgressSummaries = hasFlag("--agent-progress-summaries");
 
+// Fast mode (Opus 4.6 fast output — same model, optimized for speed)
+let fastModeEnabled = hasFlag("--fast-mode");
+
 // Task 5: Budget Controls
 const maxBudgetUsd = getNumericArg("--max-budget-usd");
 const maxTurns = getNumericArg("--max-turns");
@@ -248,7 +251,7 @@ interface Attachment {
 
 // Input message types from Go backend
 interface InputMessage {
-  type: "message" | "stop" | "interrupt" | "set_model" | "set_permission_mode" | "set_max_thinking_tokens" | "get_supported_models" | "get_supported_commands" | "get_mcp_status" | "get_account_info" | "rewind_files" | "user_question_response" | "plan_approval_response" | "reconnect_mcp_server" | "toggle_mcp_server" | "stop_task" | "get_supported_agents" | "set_mcp_servers" | "get_initialization_result" | "fork_session" | "cancel_message";
+  type: "message" | "stop" | "interrupt" | "set_model" | "set_permission_mode" | "set_max_thinking_tokens" | "set_fast_mode" | "get_supported_models" | "get_supported_commands" | "get_mcp_status" | "get_account_info" | "rewind_files" | "user_question_response" | "plan_approval_response" | "reconnect_mcp_server" | "toggle_mcp_server" | "stop_task" | "get_supported_agents" | "set_mcp_servers" | "get_initialization_result" | "fork_session" | "cancel_message";
   content?: string;
   model?: string;
   permissionMode?: string;
@@ -274,6 +277,8 @@ interface InputMessage {
   sourceSessionId?: string;
   upToMessageId?: string;
   forkTitle?: string;
+  // Fast mode toggle
+  fastMode?: boolean;
   // Message UUID — used by "message" (for queue tracking) and "cancel_message" (to identify target)
   messageUuid?: string;
 }
@@ -584,6 +589,15 @@ function setupInputQueue(): void {
         } else {
           emit({ type: "command_error", command: "set_max_thinking_tokens", error: "No active query" });
         }
+        return;
+      }
+
+      if (input.type === "set_fast_mode" && input.fastMode !== undefined) {
+        // No runtime setFastMode() on Query — store the value so the next
+        // query() call (auto-restart) picks it up via the settings option.
+        fastModeEnabled = input.fastMode;
+        debug(`Fast mode ${fastModeEnabled ? "enabled" : "disabled"} (applies on next query restart)`);
+        emit({ type: "fast_mode_changed", fastMode: fastModeEnabled });
         return;
       }
 
@@ -1879,6 +1893,10 @@ async function main(): Promise<void> {
 
     // Shared query options (everything except resume, abortController, and prompt
     // which change per recovery attempt)
+    // SDK settings bag — build incrementally so future properties merge safely
+    const sdkSettings: Record<string, unknown> = {};
+    if (fastModeEnabled) sdkSettings.fastMode = true;
+
     const queryOptions = {
       cwd,
       permissionMode: initialPermissionMode,
@@ -1912,6 +1930,8 @@ async function main(): Promise<void> {
       model,
       // Effort level controls adaptive thinking depth (Opus 4.6+)
       ...(effort ? { effort } : {}),
+      // SDK settings (built above to avoid shallow-merge conflicts)
+      ...(Object.keys(sdkSettings).length > 0 ? { settings: sdkSettings } : {}),
       fallbackModel,
       // Custom session ID — aligns SDK session with our conversation ID (SDK v0.2.33+)
       ...(customSessionId ? { sessionId: customSessionId } : {}),
@@ -2422,6 +2442,7 @@ function handleMessage(message: SDKMessage): void {
           modelUsage: resultMsg.modelUsage,
           structuredOutput: resultMsg.structured_output,
           sessionId: resultMsg.session_id,
+          fastModeState: resultMsg.fast_mode_state,
           ...(permissionDenials ? { permissionDenials } : {}),
           stats: {
             toolCalls: runStats.toolCalls,
@@ -2451,6 +2472,7 @@ function handleMessage(message: SDKMessage): void {
           usage: resultMsg.usage,
           modelUsage: resultMsg.modelUsage,
           sessionId: resultMsg.session_id,
+          fastModeState: resultMsg.fast_mode_state,
           ...(permissionDenials ? { permissionDenials } : {}),
           stats: {
             toolCalls: runStats.toolCalls,
@@ -2528,6 +2550,7 @@ function handleMessage(message: SDKMessage): void {
             maxThinkingTokens,
             effort,
           },
+          fastModeState: initMsg.fast_mode_state,
         });
         currentSessionId = initMsg.session_id;
       } else if (sysMsg.subtype === "compact_boundary") {
