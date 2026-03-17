@@ -265,6 +265,7 @@ interface AppState {
   conversationsBySession: Record<string, Conversation[]>; // sessionId → conversations (index)
   conversationsVersion: number;
   messagesByConversation: Record<string, Message[]>;
+  messagesLoading: Record<string, boolean>;
   fileChanges: FileChange[];
 
   selectedWorkspaceId: string | null;
@@ -423,6 +424,7 @@ interface AppState {
   setMessagePage: (convId: string, messages: Message[], hasMore: boolean, oldestPosition: number, totalCount: number) => void;
   prependMessages: (convId: string, messages: Message[], hasMore: boolean, oldestPosition: number) => void;
   setLoadingMoreMessages: (convId: string, loading: boolean) => void;
+  setMessagesLoading: (convId: string, loading: boolean) => void;
   hydrateMessage: (convId: string, msgId: string, fullMsg: Message) => void;
 
   // File changes
@@ -617,6 +619,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   conversationsBySession: {},
   conversationsVersion: 0,
   messagesByConversation: {},
+  messagesLoading: {},
   fileChanges: [],
   selectedWorkspaceId: null,
   selectedSessionId: null,
@@ -1141,6 +1144,8 @@ export const useAppStore = create<AppState>((set, get) => ({
     const { [id]: _queued, ...remainingQueuedMessages } = state.queuedMessages;
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { [id]: _pagination, ...remainingPagination } = state.messagePagination;
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { [id]: _loading, ...remainingMessagesLoading } = state.messagesLoading;
 
     const removedConv = state.conversations.find((c) => c.id === id);
     const newConversations = state.conversations.filter((c) => c.id !== id);
@@ -1189,6 +1194,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       contextUsage: remainingContextUsage,
       queuedMessages: remainingQueuedMessages,
       messagePagination: remainingPagination,
+      messagesLoading: remainingMessagesLoading,
     };
   });
   },
@@ -1286,6 +1292,10 @@ export const useAppStore = create<AppState>((set, get) => ({
       ...state.messagePagination,
       [convId]: { hasMore, oldestPosition, isLoadingMore: false, totalCount },
     },
+    messagesLoading: {
+      ...state.messagesLoading,
+      [convId]: false,
+    },
   })),
   prependMessages: (convId, messages, hasMore, oldestPosition) => set((state) => {
     const existing = state.messagesByConversation[convId] ?? [];
@@ -1314,6 +1324,12 @@ export const useAppStore = create<AppState>((set, get) => ({
         ...state.messagePagination[convId],
         isLoadingMore: loading,
       },
+    },
+  })),
+  setMessagesLoading: (convId, loading) => set((state) => ({
+    messagesLoading: {
+      ...state.messagesLoading,
+      [convId]: loading,
     },
   })),
 

@@ -5,6 +5,7 @@ import { useAppStore, type QueuedMessage } from '@/stores/appStore';
 import {
   useMessages,
   useMessagePagination,
+  useMessagesLoading,
   useHasUserMessages,
   useStreamingConversationArea,
 } from '@/stores/selectors';
@@ -30,6 +31,11 @@ const EMPTY_QUEUED_MESSAGES: readonly QueuedMessage[] = [];
 // Stored outside the component to avoid ref-in-render lint issues since we read it
 // during render to compute initialTopMostItemIndex for Virtuoso.
 const scrollPositions = new Map<string, { dataIndex: number; wasAtBottom: boolean }>();
+
+/** Remove a cached scroll position (call when a conversation is deleted). */
+export function clearScrollPosition(conversationId: string) {
+  scrollPositions.delete(conversationId);
+}
 
 // Wrapper that defers messages to ConversationMarkers so marker extraction
 // doesn't block higher-priority streaming or message rendering.
@@ -85,7 +91,9 @@ export function CachedConversationPane({
   // Message data from store
   const allConversationMessages = useMessages(conversationId);
   const pagination = useMessagePagination(conversationId);
+  const isLoadingInitial = useMessagesLoading(conversationId);
   const setMessagePage = useAppStore((s) => s.setMessagePage);
+  const setMessagesLoading = useAppStore((s) => s.setMessagesLoading);
   const prependMessages = useAppStore((s) => s.prependMessages);
   const setLoadingMoreMessages = useAppStore((s) => s.setLoadingMoreMessages);
   const hasUserMessages = useHasUserMessages(conversationId);
@@ -104,6 +112,10 @@ export function CachedConversationPane({
     return allConversationMessages.filter(m => !(m.role === 'system' && m.setupInfo));
   }, [allConversationMessages, conversationId, hasUserMessages]);
 
+  // Coarse boolean so scroll-restore effects only re-fire on the 0→N
+  // transition rather than on every streaming message.
+  const hasMessages = conversationMessages.length > 0;
+
   // Load messages on-demand when conversation is selected (paginated)
   useEffect(() => {
     if (!conversationId) return;
@@ -121,20 +133,45 @@ export function CachedConversationPane({
     // Messages arrived inline (e.g. via WebSocket) — skip paginated load.
     if (messageCount > 0) return;
 
+    // Clear stale scroll position — the virtual index space will change
+    // after a fresh page load, so any saved dataIndex is invalid.
+    scrollPositions.delete(conversationId);
+
+    setMessagesLoading(conversationId, true);
+
     let cancelled = false;
     async function loadMessages() {
-      try {
-        const page = await getConversationMessages(conversationId!, { limit: 50, compact: true });
-        if (cancelled) return;
-        const messages = page.messages.map((m) => toStoreMessage(m, conversationId!, { compacted: true }));
-        setMessagePage(conversationId!, messages, page.hasMore, page.oldestPosition ?? 0, page.totalCount);
-      } catch (error) {
-        console.error('Failed to load conversation messages:', error);
+      const MAX_RETRIES = 3;
+      for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+        try {
+          const page = await getConversationMessages(conversationId!, { limit: 50, compact: true });
+          if (cancelled) return;
+          const messages = page.messages.map((m) => toStoreMessage(m, conversationId!, { compacted: true }));
+          // setMessagePage also clears messagesLoading for this conversation
+          setMessagePage(conversationId!, messages, page.hasMore, page.oldestPosition ?? 0, page.totalCount);
+          return;
+        } catch (error) {
+          if (cancelled) return;
+          console.error(`Failed to load conversation messages (attempt ${attempt + 1}/${MAX_RETRIES}):`, error);
+          if (attempt < MAX_RETRIES - 1) {
+            // Exponential backoff with jitter to avoid thundering herd
+            const base = 1000 * Math.pow(2, attempt);
+            await new Promise(r => setTimeout(r, base * (0.5 + Math.random() * 0.5)));
+            if (cancelled) return;
+          }
+        }
       }
+      // All retries exhausted — clear loading so empty state renders
+      if (!cancelled) setMessagesLoading(conversationId!, false);
     }
     loadMessages();
-    return () => { cancelled = true; };
-  }, [conversationId, setMessagePage]);
+    return () => {
+      cancelled = true;
+      // Clear loading flag so a stale `true` doesn't persist if the effect
+      // is cancelled (e.g. rapid conversation switches) before load completes.
+      setMessagesLoading(conversationId!, false);
+    };
+  }, [conversationId, setMessagePage, setMessagesLoading]);
 
   // Chat search state - keyed by conversation to auto-reset
   const [searchOpen, setSearchOpen] = useState(false);
@@ -246,6 +283,9 @@ export function CachedConversationPane({
   const userScrolledUpRef = useRef(false);
   const isActiveRef = useRef(isActive);
   const prevIsActiveRef = useRef(isActive);
+  // Deferred scroll restoration: when the pane reactivates but messages
+  // haven't loaded yet, store the intent here and execute once data arrives.
+  const pendingScrollRestoreRef = useRef<string | null>(null);
 
   /** Reset all follow-state refs atomically. Call when the user submits a
    *  message, clicks "scroll to bottom", or switches conversations. */
@@ -257,37 +297,80 @@ export function CachedConversationPane({
     isActiveRef.current = isActive;
   }, [isActive]);
 
+  // Schedule a double-rAF scroll restore for the given conversation.
+  // Double-rAF: first fires before paint, second fires after — Virtuoso needs
+  // the post-paint frame to finish measuring items.
+  // `messageCount` is captured eagerly by the caller so we don't read a stale
+  // closure inside the async rAF callback.
+  const scheduleScrollRestore = useCallback((
+    targetId: string,
+    currentFirstItemIndex: number,
+    messageCount: number,
+  ): (() => void) => {
+    let innerHandle: number;
+    const outerHandle = requestAnimationFrame(() => {
+      innerHandle = requestAnimationFrame(() => {
+        if ((conversationId ?? '') !== targetId) return;
+        const saved = scrollPositions.get(targetId);
+        if (!saved || saved.wasAtBottom) {
+          messageListRef.current?.scrollToBottom('auto');
+        } else {
+          const lastIndex = currentFirstItemIndex + messageCount - 1;
+          if (saved.dataIndex >= currentFirstItemIndex && saved.dataIndex <= lastIndex) {
+            messageListRef.current?.scrollToIndex(saved.dataIndex, { align: 'start' });
+          } else {
+            messageListRef.current?.scrollToBottom('auto');
+          }
+        }
+      });
+    });
+    return () => {
+      cancelAnimationFrame(outerHandle);
+      cancelAnimationFrame(innerHandle);
+    };
+  }, [conversationId]);
+
   // Force Virtuoso to recalculate its viewport when the pane becomes active.
-  // While inactive, measurements may have gone stale (e.g. container was in a
-  // display:none ancestor like the file-viewer wrapper). Scrolling to a position
-  // forces Virtuoso to re-scan the viewport and re-measure visible items.
-  // Double-rAF: first fires before paint, second fires after paint — Virtuoso
-  // needs the post-paint frame to finish measuring items (matches the pattern
-  // used in ConversationArea for deferred session rendering).
+  // If messages haven't loaded yet (e.g. evicted while inactive), we defer the
+  // scroll restore to a separate effect that fires once messages arrive.
   useEffect(() => {
     if (isActive && !prevIsActiveRef.current) {
       const targetId = conversationId ?? '';
-      let innerHandle: number;
-      const outerHandle = requestAnimationFrame(() => {
-        innerHandle = requestAnimationFrame(() => {
-          // Bail if conversation changed before rAF fired
-          if ((conversationId ?? '') !== targetId) return;
-          const saved = scrollPositions.get(targetId);
-          if (!saved || saved.wasAtBottom) {
-            messageListRef.current?.scrollToBottom('auto');
-          } else {
-            messageListRef.current?.scrollToIndex(saved.dataIndex, { align: 'start' });
-          }
-        });
-      });
+
+      // If no messages are available yet, defer scroll restoration until they
+      // load. Note: prevIsActiveRef is set here so the *activation* branch
+      // won't re-enter when hasMessages flips true; the deferred effect below
+      // picks up pendingScrollRestoreRef and handles the actual restore.
+      if (!hasMessages) {
+        pendingScrollRestoreRef.current = targetId;
+        prevIsActiveRef.current = isActive;
+        return;
+      }
+
+      pendingScrollRestoreRef.current = null;
+      const cancel = scheduleScrollRestore(targetId, firstItemIndex, conversationMessages.length);
       prevIsActiveRef.current = isActive;
-      return () => {
-        cancelAnimationFrame(outerHandle);
-        cancelAnimationFrame(innerHandle);
-      };
+      return cancel;
     }
     prevIsActiveRef.current = isActive;
-  }, [isActive, conversationId]);
+  }, [isActive, conversationId, hasMessages, firstItemIndex, conversationMessages.length, scheduleScrollRestore]);
+
+  // Deferred scroll restoration: execute once messages arrive after a pane
+  // was reactivated with no messages (e.g. after eviction or LRU cache miss).
+  // This effect is the counterpart to the early-return branch above: when the
+  // activation effect defers (sets pendingScrollRestoreRef), this effect fires
+  // once hasMessages flips true and performs the actual scroll restore.
+  useEffect(() => {
+    const targetId = pendingScrollRestoreRef.current;
+    if (!targetId || !isActive || !hasMessages) return;
+    if ((conversationId ?? '') !== targetId) {
+      pendingScrollRestoreRef.current = null;
+      return;
+    }
+
+    pendingScrollRestoreRef.current = null;
+    return scheduleScrollRestore(targetId, firstItemIndex, conversationMessages.length);
+  }, [isActive, conversationId, hasMessages, firstItemIndex, conversationMessages.length, scheduleScrollRestore]);
 
   // Continuously track the visible range
   const handleRangeChanged = useCallback((range: { startIndex: number; endIndex: number }) => {
@@ -522,7 +605,7 @@ export function CachedConversationPane({
           firstItemIndex={firstItemIndex}
           isLoadingOlder={pagination?.isLoadingMore}
           emptyState={
-            (!conversationId || conversationMessages.length === 0) ? (
+            (!conversationId || (conversationMessages.length === 0 && !isLoadingInitial)) ? (
               !hasConversations
                 ? <SessionHomeState sessionName={sessionBranch || sessionName} />
                 : <ConversationEmptyState sessionName={sessionName} />

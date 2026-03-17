@@ -36,7 +36,7 @@ import type { FileTab, Conversation } from '@/lib/types';
 import { CodeViewer } from '@/components/files/CodeViewer';
 import { FileTabIcon } from '@/components/files/FileTabIcon';
 import { TabBar, type TabItemData } from '@/components/tabs';
-import { CachedConversationPane } from '@/components/conversation/CachedConversationPane';
+import { CachedConversationPane, clearScrollPosition } from '@/components/conversation/CachedConversationPane';
 import { getSessionFileContent, getSessionFileDiff, updateReviewComment, deleteReviewComment as deleteReviewCommentApi, listReviewComments, createConversation, createReviewComment } from '@/lib/api';
 import { getDiffFromCache, setDiffInCache } from '@/lib/diffCache';
 import { getFileContentFromCache, setFileContentInCache } from '@/lib/fileContentCache';
@@ -686,6 +686,7 @@ export function ConversationArea({ children }: ConversationAreaProps) {
         if (conv && selectedWorkspaceId) {
           captureClosedConversation(conv, selectedWorkspaceId);
         }
+        clearScrollPosition(id);
         startTransition(() => removeConversation(id));
       }
     },

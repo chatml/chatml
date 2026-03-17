@@ -82,6 +82,13 @@ export const useMessagePagination = (conversationId: string | null) =>
   useAppStore((s) => (conversationId ? s.messagePagination[conversationId] ?? null : null));
 
 /**
+ * Whether an initial page of messages is currently being fetched for a conversation.
+ * Used to suppress the empty-state UI while the first page loads.
+ */
+export const useMessagesLoading = (conversationId: string | null) =>
+  useAppStore((s) => (conversationId ? s.messagesLoading[conversationId] ?? false : false));
+
+/**
  * Check if a conversation has any user messages.
  * Use in: ConversationArea for "fresh conversation" indicator
  *
