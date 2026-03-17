@@ -263,8 +263,7 @@ fn ensure_version_manager_shims(path: &str) -> String {
 /// Detect the nvm-managed default Node.js bin directory.
 /// Checks `$NVM_DIR` (or `~/.nvm`) for installed Node versions.
 fn detect_nvm_node_bin(home: &str) -> Option<String> {
-    let nvm_dir = std::env::var("NVM_DIR")
-        .unwrap_or_else(|_| format!("{}/.nvm", home));
+    let nvm_dir = std::env::var("NVM_DIR").unwrap_or_else(|_| format!("{}/.nvm", home));
 
     let versions_dir = std::path::Path::new(&nvm_dir).join("versions").join("node");
     if !versions_dir.is_dir() {
