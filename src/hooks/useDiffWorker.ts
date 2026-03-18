@@ -1,4 +1,4 @@
-import { useEffect, useRef, useSyncExternalStore } from 'react';
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import type { FileContents, FileDiffMetadata } from '@/lib/pierre';
 import { parseDiffFromFile } from '@/lib/pierre';
 
@@ -59,10 +59,8 @@ export function useDiffWorker(
   oldFile: FileContents | null,
   newFile: FileContents | null,
 ): { fileDiff: FileDiffMetadata | null; isPending: boolean } {
-  // Stable per-hook store — created once, never changes.
-  const storeRef = useRef<ReturnType<typeof createDiffStore>>();
-  if (!storeRef.current) storeRef.current = createDiffStore();
-  const store = storeRef.current;
+  // Stable per-hook store — created once via useState initializer, never changes.
+  const [store] = useState(createDiffStore);
 
   // Track the latest request so we can ignore stale worker responses
   const latestRequestId = useRef(0);
