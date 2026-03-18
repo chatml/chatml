@@ -5,7 +5,6 @@ import { ThemeProvider } from "@/components/shared/ThemeProvider";
 import { ThemeScript } from "@/components/shared/ThemeScript";
 import { ToastProvider } from "@/components/ui/toast";
 import { GlobalErrorHandler } from "@/components/shared/GlobalErrorHandler";
-import { PierreWorkerPoolProvider } from "@/components/shared/PierreWorkerPoolProvider";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -30,12 +29,10 @@ export default function RootLayout({
           enableSystem
           disableTransitionOnChange
         >
-          <PierreWorkerPoolProvider>
-            <ToastProvider>
-              <GlobalErrorHandler />
-              {children}
-            </ToastProvider>
-          </PierreWorkerPoolProvider>
+          <ToastProvider>
+            <GlobalErrorHandler />
+            {children}
+          </ToastProvider>
         </ThemeProvider>
       </body>
     </html>

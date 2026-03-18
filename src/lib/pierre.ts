@@ -18,7 +18,10 @@ import '@/lib/pierrePreload';
 export const PIERRE_THEMES = { dark: 'pierre-dark', light: 'pierre-light' } as const;
 
 // React components
-export { File, FileDiff, WorkerPoolContextProvider } from '@pierre/diffs/react';
+// NOTE: Pierre's WorkerPoolContextProvider is NOT used because workers run in
+// isolated JS contexts without access to the pre-loaded language/theme Maps
+// from pierrePreload.ts, and the shiki shim stubs bundledLanguages as empty.
+export { File, FileDiff } from '@pierre/diffs/react';
 
 // Types from react entry
 export type { FileContents, FileOptions, DiffLineAnnotation } from '@pierre/diffs/react';
