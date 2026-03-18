@@ -9,13 +9,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { ArrowRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
-
-function formatTokenCount(tokens: number): string {
-  if (tokens >= 1000) {
-    return `${(tokens / 1000).toFixed(1)}k`;
-  }
-  return tokens.toString();
-}
+import { formatTokens } from '@/lib/format';
 
 interface ContextMeterProps {
   conversationId: string | null;
@@ -67,7 +61,7 @@ export function ContextMeter({ conversationId }: ContextMeterProps) {
             'hover:bg-accent/50 transition-colors cursor-default',
             colorClass
           )}
-          aria-label={`Context usage: ${Math.round(percentage)}% (${formatTokenCount(used)} of ${formatTokenCount(maxTokens)} tokens)`}
+          aria-label={`Context usage: ${Math.round(percentage)}% (${formatTokens(used)} of ${formatTokens(maxTokens)} tokens)`}
         >
           <svg className="h-3.5 w-3.5" viewBox="0 0 18 18">
             <circle
@@ -98,7 +92,7 @@ export function ContextMeter({ conversationId }: ContextMeterProps) {
         <div className="flex items-center justify-between mb-2">
           <span className="text-sm font-medium">Context</span>
           <span className={cn('text-sm tabular-nums', colorClass)}>
-            {formatTokenCount(used)} / {formatTokenCount(maxTokens)}
+            {formatTokens(used)} / {formatTokens(maxTokens)}
           </span>
         </div>
 
@@ -164,7 +158,7 @@ function BreakdownRow({
   return (
     <div className="flex items-center justify-between">
       <span>{label}</span>
-      <span className="tabular-nums">{formatTokenCount(value)}</span>
+      <span className="tabular-nums">{formatTokens(value)}</span>
     </div>
   );
 }
