@@ -83,11 +83,11 @@ export const SETTINGS_DEFAULTS = {
   autoExpandEditDiffs: true,
   zenMode: false,
   // AI & Models
-  defaultModel: 'claude-opus-4-6',
+  defaultModel: 'auto',
   defaultThinkingLevel: 'high' as ThinkingLevel,
   maxThinkingTokens: 16000,
   showThinkingBlocks: true,
-  reviewModel: 'claude-opus-4-6',
+  reviewModel: 'auto',
   reviewActionableOnly: false,
   defaultPlanMode: false,
   defaultFastMode: false,

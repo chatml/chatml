@@ -19,7 +19,7 @@ import { navigate } from '@/lib/navigation';
 import { copyToClipboard } from '@/lib/tauri';
 import { useToast } from '@/components/ui/toast';
 import { getShortcutById, formatShortcutKeys } from '@/lib/shortcuts';
-import { MODELS } from '@/lib/models';
+import { MODELS, AUTO_MODEL_ID, isAutoModel } from '@/lib/models';
 import type { LucideIcon } from 'lucide-react';
 import {
   // Navigation
@@ -314,8 +314,11 @@ const COMMANDS: Command[] = [
     action: () => {
       const store = useSettingsStore.getState();
       const dynamic = useAppStore.getState().supportedModels;
-      // Use SDK-reported models if available, fall back to static list
-      const models = dynamic.length > 0 ? dynamic.map((m) => m.value) : MODELS.map((m) => m.id);
+      // Use SDK-reported models if available, fall back to static list.
+      // Map SDK "Default (recommended)" → AUTO_MODEL_ID sentinel.
+      const models = dynamic.length > 0
+        ? dynamic.map((m) => isAutoModel(m.displayName) ? AUTO_MODEL_ID : m.value)
+        : [AUTO_MODEL_ID, ...MODELS.map((m) => m.id)];
       const idx = models.indexOf(store.defaultModel);
       const next = models[(idx + 1) % models.length];
       store.setDefaultModel(next);

@@ -24,7 +24,7 @@ import { LinearIssuePicker } from './LinearIssuePicker';
 import { WorkspacePicker } from './WorkspacePicker';
 import type { LinearIssueDTO } from '@/lib/api';
 import { PlateInput, type PlateInputHandle } from './PlateInput';
-import { MODELS as SHARED_MODELS, type ModelEntry } from '@/lib/models';
+import { MODELS as SHARED_MODELS, type ModelEntry, AUTO_MODEL_ID, resolveModelName, isAutoModel } from '@/lib/models';
 import type { MentionItem } from '@/components/ui/mention-node';
 import { trackEvent } from '@/lib/telemetry';
 import { listSessionFiles, type FileNodeDTO } from '@/lib/api';
@@ -64,27 +64,33 @@ function flattenFileTree(nodes: FileNodeDTO[], parentPath: string = ''): FlatFil
 }
 
 /** Static fallback model list (used when no SDK models are available). */
-const STATIC_MODELS: ModelEntry[] = SHARED_MODELS.map((m) => ({
-  id: m.id,
-  name: m.name,
-  icon: Bot,
-  supportsThinking: m.supportsThinking,
-  supportsEffort: m.supportsEffort,
-  supportsFastMode: m.supportsFastMode,
-}));
+const STATIC_MODELS: ModelEntry[] = [
+  { id: AUTO_MODEL_ID, name: 'Auto', icon: Bot, supportsThinking: true, supportsEffort: true, supportsFastMode: true },
+  ...SHARED_MODELS.map((m) => ({
+    id: m.id,
+    name: m.name,
+    icon: Bot,
+    supportsThinking: m.supportsThinking,
+    supportsEffort: m.supportsEffort,
+    supportsFastMode: m.supportsFastMode,
+  })),
+];
 
 /** Build the model list from SDK-reported dynamic models, with static fallback. */
 function buildModelList(dynamic: ReturnType<typeof useAppStore.getState>['supportedModels']): ModelEntry[] {
   if (dynamic.length === 0) return STATIC_MODELS;
-  return dynamic.map((m) => ({
-    id: m.value,
-    name: m.displayName,
-    icon: Bot,
-    supportsThinking: m.supportsAdaptiveThinking ?? true,
-    supportsEffort: m.supportsEffort ?? false,
-    supportedEffortLevels: m.supportedEffortLevels,
-    supportsFastMode: m.supportsFastMode,
-  }));
+  return dynamic.map((m) => {
+    const name = resolveModelName(m.value, m.displayName);
+    return {
+      id: isAutoModel(m.displayName) ? AUTO_MODEL_ID : m.value,
+      name,
+      icon: Bot,
+      supportsThinking: m.supportsAdaptiveThinking ?? true,
+      supportsEffort: m.supportsEffort ?? false,
+      supportedEffortLevels: m.supportedEffortLevels,
+      supportsFastMode: m.supportsFastMode,
+    };
+  });
 }
 
 
@@ -534,7 +540,7 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
       const conv = await createConversation(selectedWorkspaceId, selectedSessionId, {
         type: 'task',
         message: pendingPlanApproval.planContent,
-        model: selectedModel.id,
+        model: selectedModel.id === AUTO_MODEL_ID ? undefined : selectedModel.id,
       });
 
       addConversation({
@@ -692,7 +698,7 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
         const conv = await createConversation(selectedWorkspaceId, selectedSessionId, {
           type: convType,
           message: trimmedContent,
-          model: selectedModel.id,
+          model: selectedModel.id === AUTO_MODEL_ID ? undefined : selectedModel.id,
           planMode: planModeEnabled ? true : undefined,
           fastMode: fastModeEnabled ? true : undefined,
           maxThinkingTokens: thinkingParams.maxThinkingTokens,

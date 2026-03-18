@@ -1,6 +1,9 @@
 import React from 'react';
 import { useAppStore } from '@/stores/appStore';
 
+/** Sentinel model ID meaning "let the SDK choose the best model". */
+export const AUTO_MODEL_ID = 'auto';
+
 /** Static fallback model definitions used when no agent is connected. */
 export const MODELS = [
   { id: 'claude-opus-4-6', name: 'Claude Opus 4.6', provider: 'claude', supportsThinking: true, supportsEffort: true, supportsFastMode: true },
@@ -9,6 +12,26 @@ export const MODELS = [
 ] as const;
 
 export type ModelId = (typeof MODELS)[number]['id'];
+
+/** Check whether an SDK display name represents the auto/default model. */
+export function isAutoModel(sdkDisplayName: string): boolean {
+  return /\bdefault\b/i.test(sdkDisplayName) || /\brecommended\b/i.test(sdkDisplayName);
+}
+
+/**
+ * Resolve a clean display name for an SDK-reported model.
+ * - SDK "Default (recommended)" → "Auto"
+ * - Known static models → our clean name (e.g. "Claude Opus 4.6")
+ * - Unknown models → SDK displayName as-is
+ */
+export function resolveModelName(sdkValue: string, sdkDisplayName: string): string {
+  if (isAutoModel(sdkDisplayName)) {
+    return 'Auto';
+  }
+  const staticMatch = MODELS.find((m) => m.id === sdkValue);
+  if (staticMatch) return staticMatch.name;
+  return sdkDisplayName;
+}
 
 /** Model entry used for UI model selectors and keyboard shortcut cycling. */
 export interface ModelEntry {
@@ -38,16 +61,31 @@ export interface DynamicModelInfo {
 export function getModelInfo(modelId: string): DynamicModelInfo | undefined {
   // Check dynamic models from SDK
   const dynamic = useAppStore.getState().supportedModels;
-  const sdkModel = dynamic.find((m) => m.value === modelId);
+  // For 'auto', find the SDK's default/recommended model
+  const sdkModel = modelId === AUTO_MODEL_ID
+    ? dynamic.find((m) => isAutoModel(m.displayName))
+    : dynamic.find((m) => m.value === modelId);
   if (sdkModel) {
     return {
-      id: sdkModel.value,
-      name: sdkModel.displayName,
+      id: modelId === AUTO_MODEL_ID ? AUTO_MODEL_ID : sdkModel.value,
+      name: resolveModelName(sdkModel.value, sdkModel.displayName),
       provider: 'claude',
       supportsThinking: sdkModel.supportsAdaptiveThinking ?? true,
       supportsEffort: sdkModel.supportsEffort ?? false,
       supportedEffortLevels: sdkModel.supportedEffortLevels,
       supportsFastMode: sdkModel.supportsFastMode,
+    };
+  }
+
+  // Auto fallback when SDK hasn't connected yet
+  if (modelId === AUTO_MODEL_ID) {
+    return {
+      id: AUTO_MODEL_ID,
+      name: 'Auto',
+      provider: 'claude',
+      supportsThinking: true,
+      supportsEffort: true,
+      supportsFastMode: true,
     };
   }
 
@@ -68,6 +106,7 @@ export function getModelInfo(modelId: string): DynamicModelInfo | undefined {
 }
 
 export function getModelDisplayName(modelId: string): string {
+  if (modelId === AUTO_MODEL_ID) return 'Auto';
   const info = getModelInfo(modelId);
   if (info) return info.name;
 

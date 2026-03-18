@@ -9,7 +9,7 @@ vi.mock('@/stores/appStore', () => ({
   },
 }));
 
-const { getModelDisplayName, getModelInfo, buildTurnConfigLabel, MODELS } = await import('../models');
+const { getModelDisplayName, getModelInfo, buildTurnConfigLabel, MODELS, AUTO_MODEL_ID, resolveModelName, isAutoModel } = await import('../models');
 
 describe('getModelDisplayName', () => {
   it('returns display name for known static models', () => {
@@ -120,6 +120,97 @@ describe('getModelInfo', () => {
       expect(info!.supportsThinking).toBe(model.supportsThinking);
       expect(info!.supportsEffort).toBe(model.supportsEffort);
       expect(info!.supportsFastMode).toBe(model.supportsFastMode);
+    }
+  });
+});
+
+describe('isAutoModel', () => {
+  it('returns true for "Default (recommended)"', () => {
+    expect(isAutoModel('Default (recommended)')).toBe(true);
+  });
+
+  it('returns true for display names containing "default"', () => {
+    expect(isAutoModel('The default model')).toBe(true);
+  });
+
+  it('returns true for display names containing "recommended"', () => {
+    expect(isAutoModel('Recommended model')).toBe(true);
+  });
+
+  it('returns false for regular model names', () => {
+    expect(isAutoModel('Claude Opus 4.6')).toBe(false);
+    expect(isAutoModel('Claude Sonnet 4.6')).toBe(false);
+  });
+
+  it('is case-insensitive', () => {
+    expect(isAutoModel('DEFAULT (RECOMMENDED)')).toBe(true);
+  });
+});
+
+describe('resolveModelName', () => {
+  it('returns "Auto" for SDK default/recommended model', () => {
+    expect(resolveModelName('claude-opus-4-6', 'Default (recommended)')).toBe('Auto');
+  });
+
+  it('returns clean name for known static models', () => {
+    expect(resolveModelName('claude-opus-4-6', 'Claude Opus 4.6')).toBe('Claude Opus 4.6');
+    expect(resolveModelName('claude-sonnet-4-6', 'Claude Sonnet 4.6')).toBe('Claude Sonnet 4.6');
+  });
+
+  it('returns SDK displayName for unknown models', () => {
+    expect(resolveModelName('custom-model', 'My Custom Model')).toBe('My Custom Model');
+  });
+});
+
+describe('AUTO_MODEL_ID', () => {
+  it('getModelDisplayName returns "Auto"', () => {
+    expect(getModelDisplayName(AUTO_MODEL_ID)).toBe('Auto');
+  });
+
+  it('getModelInfo returns fallback capabilities when no SDK models', () => {
+    const info = getModelInfo(AUTO_MODEL_ID);
+    expect(info).toBeDefined();
+    expect(info!.id).toBe(AUTO_MODEL_ID);
+    expect(info!.name).toBe('Auto');
+    expect(info!.supportsThinking).toBe(true);
+    expect(info!.supportsEffort).toBe(true);
+    expect(info!.supportsFastMode).toBe(true);
+  });
+
+  it('getModelInfo resolves from SDK default model when available', async () => {
+    const { useAppStore } = await import('@/stores/appStore');
+
+    const spy = vi.spyOn(useAppStore, 'getState').mockReturnValue({
+      ...useAppStore.getState(),
+      supportedModels: [
+        {
+          value: 'claude-opus-4-6',
+          displayName: 'Default (recommended)',
+          description: 'Most capable',
+          supportsAdaptiveThinking: true,
+          supportsEffort: true,
+          supportedEffortLevels: ['low', 'medium', 'high', 'max'],
+          supportsFastMode: true,
+        },
+        {
+          value: 'claude-sonnet-4-6',
+          displayName: 'Claude Sonnet 4.6',
+          description: 'Fast',
+          supportsAdaptiveThinking: true,
+          supportsEffort: true,
+          supportsFastMode: true,
+        },
+      ],
+    } as ReturnType<typeof useAppStore.getState>);
+
+    try {
+      const info = getModelInfo(AUTO_MODEL_ID);
+      expect(info).toBeDefined();
+      expect(info!.id).toBe(AUTO_MODEL_ID);
+      expect(info!.name).toBe('Auto');
+      expect(info!.supportsThinking).toBe(true);
+    } finally {
+      spy.mockRestore();
     }
   });
 });
