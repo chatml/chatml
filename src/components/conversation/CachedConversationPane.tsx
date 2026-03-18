@@ -288,6 +288,12 @@ export function CachedConversationPane({
   // Deferred scroll restoration: when the pane reactivates but messages
   // haven't loaded yet, store the intent here and execute once data arrives.
   const pendingScrollRestoreRef = useRef<string | null>(null);
+  // Snapshot refs for values needed inside the activation effect but that
+  // must NOT be in the dep array (changes would cancel the rAF cleanup).
+  const firstItemIndexRef = useRef(firstItemIndex);
+  firstItemIndexRef.current = firstItemIndex;
+  const messageCountRef = useRef(conversationMessages.length);
+  messageCountRef.current = conversationMessages.length;
 
   // Paint gate: two complementary mechanisms prevent flash-at-top on switch:
   //  1. Paint gate (below): covers the *sync* case — switching between
@@ -370,10 +376,10 @@ export function CachedConversationPane({
   }, [conversationId]);
 
   // When the pane becomes active, handle scroll positioning.
-  // If messages are already loaded, initialTopMostItemIndex on the freshly-
-  // mounted Virtuoso (key={conversationId}) handles positioning — no extra
-  // scroll call needed. If messages haven't loaded yet (e.g. evicted while
-  // inactive), defer to the separate effect below that fires once data arrives.
+  // Virtuoso stays mounted (hidden) during session switches, so
+  // initialTopMostItemIndex won't re-apply — we must explicitly restore
+  // scroll. If messages haven't loaded yet (e.g. evicted while inactive),
+  // defer to the separate effect below that fires once data arrives.
   useEffect(() => {
     if (isActive && !prevIsActiveRef.current) {
       const targetId = conversationId ?? '';
@@ -385,12 +391,24 @@ export function CachedConversationPane({
         return;
       }
 
-      // Messages already loaded — Virtuoso remounts with initialTopMostItemIndex
-      // so no scheduleScrollRestore needed. Just clear any stale pending ref.
       pendingScrollRestoreRef.current = null;
+
+      // Reset follow state to clear any stale forceFollow/userScrolledUp
+      // from the previous active period.
+      resetFollowState();
+
+      // Virtuoso stays mounted (hidden via visibility:hidden) during session
+      // switches — initialTopMostItemIndex won't re-apply on an already-mounted
+      // instance. Explicitly restore scroll position (bottom or saved index).
+      // Read from refs so firstItemIndex/messageCount changes don't re-run
+      // this effect and cancel the in-flight rAF restore.
+      const cancel = scheduleScrollRestore(targetId, firstItemIndexRef.current, messageCountRef.current);
+      prevIsActiveRef.current = isActive;
+      return cancel;
     }
     prevIsActiveRef.current = isActive;
-  }, [isActive, conversationId, hasMessages]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- firstItemIndex & messageCount read from refs to avoid dep-churn canceling the rAF cleanup
+  }, [isActive, conversationId, hasMessages, scheduleScrollRestore, resetFollowState]);
 
   // Deferred scroll restoration: execute once messages arrive after a pane
   // was reactivated with no messages (e.g. after eviction or LRU cache miss).
@@ -422,7 +440,7 @@ export function CachedConversationPane({
 
   // Continuously track the visible range
   const handleRangeChanged = useCallback((range: { startIndex: number; endIndex: number }) => {
-    if (!conversationId) return;
+    if (!conversationId || !isActiveRef.current) return;
     scrollPositions.set(conversationId, {
       dataIndex: range.startIndex,
       wasAtBottom: isAtBottomRef.current,
@@ -444,11 +462,14 @@ export function CachedConversationPane({
   }, [conversationId]);
 
   const handleAtBottomStateChange = useCallback((atBottom: boolean) => {
+    // Always track the actual Virtuoso bottom state so handleRangeChanged
+    // persists an accurate wasAtBottom — even if the pane is inactive.
     isAtBottomRef.current = atBottom;
+    // Only update UI state and follow behavior for the active pane —
+    // background streaming shouldn't reset follow state or toggle the button.
+    if (!isActiveRef.current) return;
     if (atBottom) resetFollowState();
-    // Only update scroll-button state for the active pane to avoid
-    // unnecessary re-renders on hidden Virtuoso instances.
-    if (isActiveRef.current) setShowScrollButton(!atBottom);
+    setShowScrollButton(!atBottom);
   }, [resetFollowState]);
 
   const forceScrollToBottom = useCallback(() => {
