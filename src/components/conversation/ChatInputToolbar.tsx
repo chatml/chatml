@@ -149,6 +149,25 @@ export function ChatInputToolbar({
         </DropdownMenuContent>
       </DropdownMenu>
 
+      {/* Fast Mode Toggle */}
+      {showFastMode && (
+        <Button
+          variant="ghost"
+          size={fastModeEnabled ? 'sm' : 'icon'}
+          className={cn(
+            fastModeEnabled ? 'h-7 gap-1.5 px-2' : 'h-7 w-7',
+            fastModeEnabled && 'text-amber-500 hover:text-amber-600 bg-amber-500/10 hover:bg-amber-500/20'
+          )}
+          onClick={onFastModeToggle}
+          title={`Fast mode ${fastModeEnabled ? 'on' : 'off'} — applies to next message (⌥F)`}
+          aria-label={`Fast mode ${fastModeEnabled ? 'on' : 'off'}`}
+          aria-pressed={fastModeEnabled}
+        >
+          <Zap className="h-4 w-4" />
+          {fastModeEnabled && <span className="text-xs font-medium">Fast</span>}
+        </Button>
+      )}
+
       {/* Unified Thinking Level Dropdown */}
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
@@ -248,25 +267,6 @@ export function ChatInputToolbar({
         <BookOpen className="h-4 w-4" />
         {planModeEnabled && <span className="text-xs font-medium">Plan</span>}
       </Button>
-
-      {/* Fast Mode Toggle */}
-      {showFastMode && (
-        <Button
-          variant="ghost"
-          size={fastModeEnabled ? 'sm' : 'icon'}
-          className={cn(
-            fastModeEnabled ? 'h-7 gap-1.5 px-2' : 'h-7 w-7',
-            fastModeEnabled && 'text-amber-500 hover:text-amber-600 bg-amber-500/10 hover:bg-amber-500/20'
-          )}
-          onClick={onFastModeToggle}
-          title={`Fast mode ${fastModeEnabled ? 'on' : 'off'} — applies to next message (⌥F)`}
-          aria-label={`Fast mode ${fastModeEnabled ? 'on' : 'off'}`}
-          aria-pressed={fastModeEnabled}
-        >
-          <Zap className="h-4 w-4" />
-          {fastModeEnabled && <span className="text-xs font-medium">Fast</span>}
-        </Button>
-      )}
 
       {/* Spacer */}
       <div className="flex-1" />
