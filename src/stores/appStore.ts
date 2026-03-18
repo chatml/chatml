@@ -2444,8 +2444,9 @@ updateFileTabContent: (id, content) => set((state) => ({
   // Context usage actions
   setContextUsage: (conversationId, usage) => set((state) => {
     // Derive default from model — extended context [1m] = 1M tokens
-    const conv = state.conversations.find((c) => c.id === conversationId);
-    const isExtendedContext = conv?.turnStartMeta?.model?.includes('[1m]');
+    const model = state.streamingState[conversationId]?.turnStartMeta?.model
+      ?? state.conversations.find((c) => c.id === conversationId)?.model;
+    const isExtendedContext = model?.includes('[1m]');
     const defaultContextWindow = isExtendedContext ? 1_000_000 : 200_000;
 
     const existing = state.contextUsage[conversationId] || {
