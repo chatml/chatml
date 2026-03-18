@@ -20,10 +20,10 @@ import { ENABLE_BROWSER_TABS } from '@/lib/constants';
 function hasSessionMessagesCached(sessionId: string): boolean {
   const state = useAppStore.getState();
   const conversations = state.conversations.filter(c => c.sessionId === sessionId);
-  const lastActiveId = state.lastActiveConversationPerSession[sessionId];
+  const lastActiveId = state.lastActiveConversationPerSession?.[sessionId];
   const targetConv = (lastActiveId && conversations.find(c => c.id === lastActiveId)) || conversations[0];
   if (!targetConv) return false;
-  return (state.messagesByConversation[targetConv.id]?.length ?? 0) > 0;
+  return (state.messagesByConversation?.[targetConv.id]?.length ?? 0) > 0;
 }
 
 /**
