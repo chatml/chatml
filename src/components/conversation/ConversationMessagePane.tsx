@@ -468,7 +468,7 @@ export function ConversationMessagePane({
       <div className="absolute bottom-0 left-0 right-0 h-12 bg-gradient-to-t from-chat-background to-transparent pointer-events-none z-10" />
       {/* Scroll to bottom button */}
       <div className={cn(
-        "absolute bottom-14 right-4 z-20 transition-opacity duration-200",
+        "absolute bottom-2 right-4 z-20 transition-opacity duration-200",
         showScrollButton && isActive ? "opacity-100" : "opacity-0 pointer-events-none"
       )}>
         <Button
