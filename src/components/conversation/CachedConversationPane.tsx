@@ -20,20 +20,30 @@ export function clearScrollPosition(conversationId: string) {
 
 // --- Conversation LRU reducer ---
 
+type ConvCacheState = { ids: string[]; activeId: string | null };
+
 type ConvCacheAction =
   | { type: 'activate'; conversationId: string }
+  | { type: 'deactivate' }
   | { type: 'remove'; conversationId: string };
 
-function convCacheReducer(state: string[], action: ConvCacheAction): string[] {
+const INITIAL_CONV_CACHE: ConvCacheState = { ids: [], activeId: null };
+
+function convCacheReducer(state: ConvCacheState, action: ConvCacheAction): ConvCacheState {
   switch (action.type) {
     case 'activate': {
       // Move to front, evict oldest if over limit
-      const filtered = state.filter(id => id !== action.conversationId);
+      const filtered = state.ids.filter(id => id !== action.conversationId);
       const next = [action.conversationId, ...filtered];
-      return next.length > MAX_CACHED_CONVERSATIONS ? next.slice(0, MAX_CACHED_CONVERSATIONS) : next;
+      const ids = next.length > MAX_CACHED_CONVERSATIONS ? next.slice(0, MAX_CACHED_CONVERSATIONS) : next;
+      return { ids, activeId: action.conversationId };
     }
-    case 'remove':
-      return state.filter(id => id !== action.conversationId);
+    case 'deactivate':
+      return state.activeId === null ? state : { ...state, activeId: null };
+    case 'remove': {
+      const ids = state.ids.filter(id => id !== action.conversationId);
+      return ids.length === state.ids.length ? state : { ids, activeId: state.activeId };
+    }
     default:
       return state;
   }
@@ -63,14 +73,22 @@ export function CachedConversationPane({
   // Conversation-level LRU cache: keeps up to MAX_CACHED_CONVERSATIONS
   // Virtuoso instances mounted per session. Switching between cached
   // conversations toggles visibility instead of remounting.
-  const [cachedConversations, dispatch] = useReducer(convCacheReducer, []);
+  const [convCache, dispatch] = useReducer(convCacheReducer, INITIAL_CONV_CACHE);
 
-  // Add current conversation to cache when it changes
-  useEffect(() => {
+  // Dispatch during render (React-endorsed "adjust state during rendering"
+  // pattern) so the ConversationMessagePane mounts on the same paint frame.
+  // A useEffect would run post-paint, leaving a blank frame where no pane
+  // exists for the new conversationId. activeId is tracked inside the reducer
+  // so a single dispatch handles both tracking and cache update — no separate
+  // useState needed. Null transitions are also tracked so re-selecting a
+  // previously evicted conversation correctly re-activates it.
+  if (conversationId !== convCache.activeId) {
     if (conversationId) {
       dispatch({ type: 'activate', conversationId });
+    } else {
+      dispatch({ type: 'deactivate' });
     }
-  }, [conversationId]);
+  }
 
   // Evict conversations from the LRU when they are deleted (tab closed).
   // clearScrollPosition() fires a custom event so the reducer stays in sync.
@@ -106,7 +124,7 @@ export function CachedConversationPane({
         )}
 
         {/* Cached conversation panes */}
-        {cachedConversations.map((cachedConvId) => (
+        {convCache.ids.map((cachedConvId) => (
           <ConversationMessagePane
             key={cachedConvId}
             conversationId={cachedConvId}
