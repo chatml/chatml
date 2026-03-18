@@ -228,35 +228,6 @@ export function ConversationMessagePane({
   const userScrolledUpRef = useRef(false);
   const isActiveRef = useRef(isActive);
 
-  // Paint gate: hide the measurement frame on initial mount only.
-  // Unlike the old approach (which fired on every conversation switch via key=),
-  // this only fires once when ConversationMessagePane first mounts with messages.
-  // Uses visibility:hidden instead of opacity:0 to prevent scrollbar artifacts.
-  const [paintReady, setPaintReady] = useState(false);
-  const paintGateFiredRef = useRef(false);
-
-  useEffect(() => {
-    if (!hasMessages || paintGateFiredRef.current) return;
-    paintGateFiredRef.current = true;
-
-    // Gate: hide immediately, reveal after double-rAF once Virtuoso finishes measuring.
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional: synchronous gate before async reveal
-    setPaintReady(false);
-    let inner: number;
-    const outer = requestAnimationFrame(() => {
-      inner = requestAnimationFrame(() => {
-        setPaintReady(true);
-      });
-    });
-    return () => {
-      cancelAnimationFrame(outer);
-      cancelAnimationFrame(inner);
-    };
-  }, [hasMessages]);
-
-  // If no messages yet (loading), ensure paint is hidden until the gate fires
-  // after messages arrive. Once gate has fired, paintReady is managed by the effect.
-
   /** Reset all follow-state refs atomically. */
   const resetFollowState = useCallback(() => {
     forceFollowRef.current = false;
@@ -453,7 +424,6 @@ export function ConversationMessagePane({
         'absolute inset-0 flex flex-col',
         isActive ? 'z-10' : 'invisible pointer-events-none z-0'
       )}
-      style={{ visibility: paintReady || !hasMessages ? undefined : 'hidden' }}
     >
       {/* Chat Search Bar */}
       <ChatSearchBar

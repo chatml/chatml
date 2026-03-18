@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo, useReducer, startTransition } from 'react';
 import { useShallow } from 'zustand/react/shallow';
-import { useAppStore, setCachedSessionIds } from '@/stores/appStore';
+import { useAppStore, setCachedSessionIds, setOnConversationEvict } from '@/stores/appStore';
 import { captureClosedConversation, useRestoreConversation } from '@/hooks/useRecentlyClosed';
 import {
   useConversationState,
@@ -253,6 +253,15 @@ export function ConversationArea({ children }: ConversationAreaProps) {
   // A useEffect would run post-paint, creating a race where eviction sees stale IDs.
   const cachedIds = useMemo(() => new Set(recentSessions.map(s => s.sessionId)), [recentSessions]);
   setCachedSessionIds(cachedIds);
+
+  // Wire up store eviction → CachedConversationPane LRU cleanup so stale
+  // conversation entries are removed when messages are evicted.
+  useEffect(() => {
+    setOnConversationEvict((convIds) => {
+      for (const id of convIds) clearScrollPosition(id);
+    });
+    return () => setOnConversationEvict(null);
+  }, []);
 
   // Only the last-active tab from each recently-viewed session is kept mounted
   // (hidden) so its Pierre Shadow DOM survives session switches. This caps
