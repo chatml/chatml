@@ -1,6 +1,6 @@
 # Frontend State & Rendering
 
-The ChatML frontend is a Next.js 15 / React 19 application rendered inside a Tauri webview. This document covers the component architecture, Zustand state management, streaming rendering pipeline, and the performance optimizations that keep the UI responsive during high-throughput agent operations.
+The ChatML frontend is a Next.js 16 / React 19 application rendered inside a Tauri webview. This document covers the component architecture, Zustand state management, streaming rendering pipeline, and the performance optimizations that keep the UI responsive during high-throughput agent operations.
 
 ## Component Architecture
 
@@ -21,7 +21,7 @@ The frontend consists of 44+ React components organized by feature area. The mai
 
 ## State Management
 
-ChatML uses Zustand for state management with 11 stores. Zustand was chosen over Redux for its simplicity, minimal boilerplate, and excellent support for scoped subscriptions that prevent unnecessary re-renders.
+ChatML uses Zustand for state management with 13 stores. Zustand was chosen over Redux for its simplicity, minimal boilerplate, and excellent support for scoped subscriptions that prevent unnecessary re-renders.
 
 ### Store Overview
 
@@ -31,13 +31,15 @@ ChatML uses Zustand for state management with 11 stores. Zustand was chosen over
 | `authStore` | `src/stores/authStore.ts` | GitHub authentication state |
 | `connectionStore` | `src/stores/connectionStore.ts` | WebSocket and backend connection status |
 | `linearAuthStore` | `src/stores/linearAuthStore.ts` | Linear OAuth state |
-| `navigationStore` | `src/stores/navigationStore.ts` | Active workspace, session, panel selection |
+| `navigationStore` | `src/stores/navigationStore.ts` | Per-tab back/forward navigation history (max 50 entries per tab) |
+| `recentlyClosedStore` | `src/stores/recentlyClosedStore.ts` | Recently closed conversations (max 10, localStorage-persisted) |
 | `selectors` | `src/stores/selectors.ts` | Optimized derived state selectors |
 | `settingsStore` | `src/stores/settingsStore.ts` | User preferences (model, theme, etc.) |
 | `skillsStore` | `src/stores/skillsStore.ts` | Skills catalog and installation state |
 | `slashCommandStore` | `src/stores/slashCommandStore.ts` | Slash command registry |
-| `tabStore` | `src/stores/tabStore.ts` | File tab management |
-| `uiStore` | `src/stores/uiStore.ts` | UI-specific state (panel sizes, modals) |
+| `tabStore` | `src/stores/tabStore.ts` | Browser tab management (active workspace/session/conversation per tab) |
+| `uiStore` | `src/stores/uiStore.ts` | Toolbar configuration and tab title layout |
+| `updateStore` | `src/stores/updateStore.ts` | App update state (idle/checking/available/downloading/ready) |
 
 ### StreamingState
 
@@ -227,7 +229,7 @@ if (updated.length > MAX_OUTPUT_LINES) {
 
 ### Tab LRU Eviction
 
-File tabs use LRU (Least Recently Used) eviction with `MAX_FILE_TABS` (10). When a new tab would exceed the limit, the oldest non-pinned, non-dirty tab is automatically closed.
+File tabs use LRU (Least Recently Used) eviction with `MAX_TABS` (20). When a new tab would exceed the limit, the oldest non-pinned, non-dirty tab is automatically closed.
 
 ### Script Output Outside Zustand
 

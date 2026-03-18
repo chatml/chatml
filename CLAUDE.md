@@ -36,7 +36,7 @@ Then work through each task, updating status as you go.
 
 | Directory | Tech | Purpose |
 |-----------|------|---------|
-| `src/` | Next.js 15 / React 19 | Frontend UI components & hooks |
+| `src/` | Next.js 16 / React 19 | Frontend UI components & hooks |
 | `backend/` | Go 1.25 | REST API, WebSocket, SQLite |
 | `agent-runner/` | Node.js / TypeScript | Claude Agent SDK wrapper |
 | `src-tauri/` | Rust / Tauri 2 | Native desktop shell |

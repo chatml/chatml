@@ -15,7 +15,7 @@ ChatML uses a polyglot architecture with four primary components working togethe
 
 ```mermaid
 graph TB
-    subgraph Frontend["Frontend (Next.js 15 / React 19)"]
+    subgraph Frontend["Frontend (Next.js 16 / React 19)"]
         UI[Conversation UI]
         Store[Zustand Stores]
         WS[WebSocket Hook]
