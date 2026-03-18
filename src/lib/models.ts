@@ -25,12 +25,34 @@ export function isAutoModel(sdkDisplayName: string): boolean {
  * - Unknown models → SDK displayName as-is
  */
 export function resolveModelName(sdkValue: string, sdkDisplayName: string): string {
-  if (isAutoModel(sdkDisplayName)) {
+  if (isAutoModel(sdkDisplayName) || sdkValue === AUTO_MODEL_ID) {
     return 'Auto';
   }
   const staticMatch = MODELS.find((m) => m.id === sdkValue);
   if (staticMatch) return staticMatch.name;
   return sdkDisplayName;
+}
+
+/**
+ * Normalize an SDK-reported model value to the canonical ID used in the UI.
+ * Models matching the "auto/default/recommended" heuristic map to AUTO_MODEL_ID.
+ */
+export function normalizeModelId(m: { value: string; displayName: string }): string {
+  return isAutoModel(m.displayName) || m.value === AUTO_MODEL_ID ? AUTO_MODEL_ID : m.value;
+}
+
+/**
+ * Deduplicate an array of objects by their `id` field, keeping the first occurrence.
+ * The SDK may report the same logical model under multiple entries (e.g. both
+ * "Default (recommended)" and the explicit auto sentinel).
+ */
+export function deduplicateById<T extends { id: string }>(entries: T[]): T[] {
+  const seen = new Set<string>();
+  return entries.filter((entry) => {
+    if (seen.has(entry.id)) return false;
+    seen.add(entry.id);
+    return true;
+  });
 }
 
 /** Model entry used for UI model selectors and keyboard shortcut cycling. */
