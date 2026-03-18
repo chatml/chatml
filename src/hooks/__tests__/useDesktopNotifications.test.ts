@@ -167,16 +167,15 @@ describe('useDesktopNotifications', () => {
     vi.useRealTimers();
   });
 
-  it('navigates to conversation when window is focused within 3 seconds of notification', () => {
+  it('navigates to conversation when window is focused within 1 second of notification', () => {
     vi.spyOn(document, 'hasFocus').mockReturnValue(false);
 
     const { unmount } = renderHook(() => useDesktopNotifications());
 
-    // Trigger a notification (use unique ID to avoid debounce from other tests)
     notifyDesktop('conv-1', 'Task completed', 'Fix auth');
 
-    // Simulate window gaining focus within 3 seconds
-    vi.advanceTimersByTime(1000);
+    // Simulate window gaining focus within 1 second (e.g. clicking notification)
+    vi.advanceTimersByTime(500);
     act(() => {
       window.dispatchEvent(new Event('focus'));
     });
@@ -188,15 +187,15 @@ describe('useDesktopNotifications', () => {
     unmount();
   });
 
-  it('does not navigate if focus happens after 3 seconds', () => {
+  it('does not navigate if focus happens after 1 second (casual alt-tab)', () => {
     vi.spyOn(document, 'hasFocus').mockReturnValue(false);
 
     const { unmount } = renderHook(() => useDesktopNotifications());
 
     notifyDesktop('conv-1', 'Task completed', 'Fix auth');
 
-    // Focus after the 3-second window
-    vi.advanceTimersByTime(4000);
+    // Focus after the 1-second window (e.g. user alt-tabbed back)
+    vi.advanceTimersByTime(1500);
     act(() => {
       window.dispatchEvent(new Event('focus'));
     });
