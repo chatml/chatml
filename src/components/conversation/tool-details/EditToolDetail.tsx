@@ -1,11 +1,10 @@
 'use client';
 
 import { memo, useMemo, useState, useCallback } from 'react';
-import { FileDiff } from '@/lib/pierre';
-import type { FileContents } from '@/lib/pierre';
+import { FileDiff, parseDiffFromFile } from '@/lib/pierre';
+import type { FileContents, FileDiffMetadata } from '@/lib/pierre';
 import { useResolvedThemeType } from '@/hooks/useResolvedThemeType';
-import { useDiffWorker } from '@/hooks/useDiffWorker';
-import { FileCode, Loader2, Rows, SplitSquareHorizontal, WrapText } from 'lucide-react';
+import { FileCode, Rows, SplitSquareHorizontal, WrapText } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { ErrorBoundary } from '@/components/shared/ErrorBoundary';
@@ -52,7 +51,10 @@ export const EditToolDetail = memo(function EditToolDetail({
     cacheKey: `tool-edit-new:${filePath}:${newString.length}:${newString.slice(0, 64)}`,
   }), [filename, filePath, newString, language]);
 
-  const { fileDiff, isPending: isDiffPending } = useDiffWorker(oldFile, newFile);
+  const fileDiff: FileDiffMetadata = useMemo(
+    () => parseDiffFromFile(oldFile, newFile),
+    [oldFile, newFile],
+  );
 
   const renderHeaderMetadata = useCallback(() => (
     <div className="flex items-center gap-1">
@@ -109,20 +111,11 @@ export const EditToolDetail = memo(function EditToolDetail({
       }
     >
       <div className="max-h-[400px] overflow-auto overscroll-contain relative z-0 rounded border">
-        {isDiffPending && !fileDiff ? (
-          <div className="flex items-center justify-center py-8">
-            <div className="flex items-center gap-2 text-muted-foreground">
-              <Loader2 className="w-4 h-4 animate-spin" />
-              <span className="text-sm">Computing diff...</span>
-            </div>
-          </div>
-        ) : fileDiff ? (
-          <FileDiff
-            fileDiff={fileDiff}
-            options={options}
-            renderHeaderMetadata={renderHeaderMetadata}
-          />
-        ) : null}
+        <FileDiff
+          fileDiff={fileDiff}
+          options={options}
+          renderHeaderMetadata={renderHeaderMetadata}
+        />
       </div>
     </ErrorBoundary>
   );

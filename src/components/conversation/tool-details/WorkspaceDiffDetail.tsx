@@ -1,10 +1,9 @@
 'use client';
 
 import { memo, useMemo, useState, useEffect, useCallback, useRef } from 'react';
-import { FileDiff } from '@/lib/pierre';
-import type { FileContents } from '@/lib/pierre';
+import { FileDiff, parseDiffFromFile } from '@/lib/pierre';
+import type { FileContents, FileDiffMetadata } from '@/lib/pierre';
 import { useResolvedThemeType } from '@/hooks/useResolvedThemeType';
-import { useDiffWorker } from '@/hooks/useDiffWorker';
 import {
   ChevronRight,
   ChevronDown,
@@ -321,7 +320,10 @@ const FileDiffViewer = memo(function FileDiffViewer({
     };
   }, [filename, filePath, diffData, language]);
 
-  const { fileDiff, isPending: isDiffPending } = useDiffWorker(oldFile, newFile);
+  const fileDiff: FileDiffMetadata | null = useMemo(() => {
+    if (!oldFile || !newFile) return null;
+    return parseDiffFromFile(oldFile, newFile);
+  }, [oldFile, newFile]);
 
   const renderHeaderMetadata = useCallback(() => (
     <div className="flex items-center gap-1">
@@ -398,15 +400,6 @@ const FileDiffViewer = memo(function FileDiffViewer({
             {diffData.unifiedDiff}
           </pre>
         )}
-      </div>
-    );
-  }
-
-  if (isDiffPending && !fileDiff) {
-    return (
-      <div className="flex items-center gap-2 px-3 py-3 text-2xs text-muted-foreground">
-        <Loader2 className="w-3 h-3 animate-spin" />
-        Computing diff...
       </div>
     );
   }

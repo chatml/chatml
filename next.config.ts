@@ -17,9 +17,6 @@ const nextConfig: NextConfig = {
   // that fail in Tauri release builds.
   // Uses @/ path alias because Turbopack's resolveAlias prepends './' to
   // both relative and absolute paths, breaking resolution in CI.
-  // NOTE: The diff Web Worker (src/workers/diffWorker.ts) also depends on
-  // this alias — it imports pierrePreload which reaches shiki. If the alias
-  // stops applying to worker bundles, Tauri release builds will break.
   turbopack: {
     resolveAlias: {
       shiki: '@/lib/shiki-shim',

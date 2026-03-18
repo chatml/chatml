@@ -1,11 +1,10 @@
 'use client';
 
 import { memo, useMemo, useState, useCallback, useRef, useEffect, type ReactNode } from 'react';
-import { FileDiff } from '@/lib/pierre';
-import type { FileContents, DiffLineAnnotation, FileDiffOptions, OnDiffLineClickProps } from '@/lib/pierre';
+import { FileDiff, parseDiffFromFile } from '@/lib/pierre';
+import type { FileContents, DiffLineAnnotation, FileDiffOptions, FileDiffMetadata, OnDiffLineClickProps } from '@/lib/pierre';
 import { useResolvedThemeType } from '@/hooks/useResolvedThemeType';
-import { useDiffWorker } from '@/hooks/useDiffWorker';
-import { FileCode, Loader2, Rows, SplitSquareHorizontal, WrapText } from 'lucide-react';
+import { FileCode, Rows, SplitSquareHorizontal, WrapText } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { ErrorBoundary } from '@/components/shared/ErrorBoundary';
@@ -112,9 +111,11 @@ export const PierreDiffEditor = memo(function PierreDiffEditor({
     cacheKey: `new:${filename}:${truncatedNew.length}:${truncatedNew.slice(0, 64)}`,
   }), [filename, truncatedNew, language]);
 
-  // Parse diff in a Web Worker to avoid blocking the main thread.
-  // Falls back to synchronous computation if the worker is unavailable.
-  const { fileDiff, isPending: isDiffPending } = useDiffWorker(oldFile, newFile);
+  // Parse diff structure (fast — just computes which lines changed).
+  // Shiki tokenization is offloaded to Pierre's worker pool via WorkerPoolContext.
+  const fileDiff: FileDiffMetadata = useMemo(() => {
+    return parseDiffFromFile(oldFile, newFile);
+  }, [oldFile, newFile]);
 
   // Handle line number click to open comment input
   const handleLineNumberClick = useCallback((props: OnDiffLineClickProps) => {
@@ -302,22 +303,13 @@ export const PierreDiffEditor = memo(function PierreDiffEditor({
       }
     >
       <div ref={scrollContainerRef} className="h-full overflow-auto overscroll-contain relative z-0">
-        {isDiffPending && !fileDiff ? (
-          <div className="h-full flex items-center justify-center">
-            <div className="flex items-center gap-2 text-muted-foreground">
-              <Loader2 className="w-4 h-4 animate-spin" />
-              <span className="text-sm">Computing diff...</span>
-            </div>
-          </div>
-        ) : fileDiff ? (
-          <FileDiff<CommentAnnotationData>
-            fileDiff={fileDiff}
-            options={options}
-            lineAnnotations={lineAnnotations}
-            renderAnnotation={renderAnnotation}
-            renderHeaderMetadata={renderHeaderMetadata}
-          />
-        ) : null}
+        <FileDiff<CommentAnnotationData>
+          fileDiff={fileDiff}
+          options={options}
+          lineAnnotations={lineAnnotations}
+          renderAnnotation={renderAnnotation}
+          renderHeaderMetadata={renderHeaderMetadata}
+        />
         {isDiffTruncated && (
           <div className="text-center py-3 text-xs text-muted-foreground border-t bg-muted/30">
             Diff truncated to {MAX_DIFF_LINES.toLocaleString()} lines for performance
