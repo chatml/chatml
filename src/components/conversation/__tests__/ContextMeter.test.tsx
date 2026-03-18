@@ -182,8 +182,8 @@ describe('ContextMeter', () => {
     fireEvent.click(screen.getByRole('button'));
 
     expect(screen.getByText('Context')).toBeInTheDocument();
-    // The popover header shows "70.4k / 200.0k"
-    expect(screen.getByText('70.4k / 200.0k')).toBeInTheDocument();
+    // The popover header shows "70.4K / 200.0K"
+    expect(screen.getByText('70.4K / 200.0K')).toBeInTheDocument();
   });
 
   it('shows progress bar in popover', () => {
@@ -221,8 +221,8 @@ describe('ContextMeter', () => {
     fireEvent.click(screen.getByRole('button'));
 
     expect(screen.getByText('Input tokens')).toBeInTheDocument();
-    // Should show raw input tokens (80.0k), not total (100.0k), and no percentage
-    expect(screen.getByText('80.0k')).toBeInTheDocument();
+    // Should show raw input tokens (80.0K), not total (100.0k), and no percentage
+    expect(screen.getByText('80.0K')).toBeInTheDocument();
   });
 
   it('shows output tokens in breakdown', () => {
@@ -236,7 +236,7 @@ describe('ContextMeter', () => {
     fireEvent.click(screen.getByRole('button'));
 
     expect(screen.getByText('Output tokens')).toBeInTheDocument();
-    expect(screen.getByText('3.0k')).toBeInTheDocument();
+    expect(screen.getByText('3.0K')).toBeInTheDocument();
   });
 
   it('hides cache read row when zero', () => {
@@ -263,7 +263,7 @@ describe('ContextMeter', () => {
     fireEvent.click(screen.getByRole('button'));
 
     expect(screen.getByText('Cache read')).toBeInTheDocument();
-    expect(screen.getByText('5.0k')).toBeInTheDocument();
+    expect(screen.getByText('5.0K')).toBeInTheDocument();
   });
 
   it('hides cache creation row when zero', () => {
@@ -290,7 +290,7 @@ describe('ContextMeter', () => {
     fireEvent.click(screen.getByRole('button'));
 
     expect(screen.getByText('Cache creation')).toBeInTheDocument();
-    expect(screen.getByText('2.0k')).toBeInTheDocument();
+    expect(screen.getByText('2.0K')).toBeInTheDocument();
   });
 
   // ==========================================================================
@@ -326,7 +326,7 @@ describe('ContextMeter', () => {
     fireEvent.click(screen.getByRole('button'));
 
     // Falls back to 200000, so 50000/200000 = 25.0%
-    expect(screen.getByText('50.0k / 200.0k')).toBeInTheDocument();
+    expect(screen.getByText('50.0K / 200.0K')).toBeInTheDocument();
   });
 
   // ==========================================================================
@@ -362,7 +362,7 @@ describe('ContextMeter', () => {
     render(<ContextMeter conversationId={CONV_ID} />);
     fireEvent.click(screen.getByRole('button'));
     // Total: 400 + 150000 + 10000 = 160400 -> 160.4k
-    expect(screen.getByText('160.4k / 200.0k')).toBeInTheDocument();
+    expect(screen.getByText('160.4K / 200.0K')).toBeInTheDocument();
   });
 
   it('uses amber color when cache tokens push usage >= 80%', () => {
@@ -393,7 +393,7 @@ describe('ContextMeter', () => {
     render(<ContextMeter conversationId={CONV_ID} />);
     const button = screen.getByRole('button');
     // 105010/200000 = 52.505% → rounds to 53%
-    expect(button).toHaveAttribute('aria-label', 'Context usage: 53% (105.0k of 200.0k tokens)');
+    expect(button).toHaveAttribute('aria-label', 'Context usage: 53% (105.0K of 200.0K tokens)');
   });
 
   it('caps percentage at 100% when total tokens exceed contextWindow', () => {
