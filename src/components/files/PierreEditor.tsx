@@ -1,7 +1,7 @@
 'use client';
 
 import { memo, useState, useMemo, useCallback } from 'react';
-import { File as PierreFile } from '@/lib/pierre';
+import { File as PierreFile, PIERRE_THEMES } from '@/lib/pierre';
 import type { FileContents, FileOptions } from '@/lib/pierre';
 import { useResolvedThemeType } from '@/hooks/useResolvedThemeType';
 import { FileCode, Eye, WrapText } from 'lucide-react';
@@ -11,8 +11,6 @@ import { ErrorBoundary } from '@/components/shared/ErrorBoundary';
 import { BlockErrorFallback } from '@/components/shared/ErrorFallbacks';
 import { CopyButton } from '@/components/shared/CopyButton';
 import { getShikiLanguage } from '@/lib/languageMapping';
-
-const PIERRE_THEMES = { dark: 'pierre-dark', light: 'pierre-light' } as const;
 
 // Injected into Pierre's Shadow DOM to improve scroll performance.
 // - Removes position:sticky from line numbers (avoids 1000s of sticky recalculations per scroll frame)

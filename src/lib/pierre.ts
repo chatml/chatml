@@ -14,8 +14,11 @@ import '@/lib/pierrePreload';
 // ⚠️ DO NOT import from '@pierre/diffs' or '@pierre/diffs/react' directly.
 // Add new exports here so the pierrePreload side-effect always runs first.
 
+// Shared theme identifiers used by every Pierre consumer
+export const PIERRE_THEMES = { dark: 'pierre-dark', light: 'pierre-light' } as const;
+
 // React components
-export { File, FileDiff } from '@pierre/diffs/react';
+export { File, FileDiff, WorkerPoolContextProvider } from '@pierre/diffs/react';
 
 // Types from react entry
 export type { FileContents, FileOptions, DiffLineAnnotation } from '@pierre/diffs/react';
