@@ -7,7 +7,9 @@ import { useSettingsStore } from '@/stores/settingsStore';
 import { useAppStore } from '@/stores/appStore';
 
 const DEBOUNCE_MS = 5000;
-const FOCUS_NAVIGATE_WINDOW_MS = 3000;
+// Short window so only actual notification clicks (near-instant focus) trigger navigation,
+// not casual alt-tabs back to the app.
+const FOCUS_NAVIGATE_WINDOW_MS = 1000;
 
 // Module-level state so notifyDesktop can be called outside of React hooks
 let lastNotification: { conversationId: string; time: number } | null = null;
@@ -90,6 +92,9 @@ function navigateToConversation(conversationId: string): void {
 /**
  * Hook that listens for window focus events and navigates to the conversation
  * that triggered the most recent notification. Mount once at the app level.
+ *
+ * Uses a 1s window so only near-instant focus events (clicking a notification)
+ * trigger navigation, not casual alt-tabs.
  */
 export function useDesktopNotifications(): void {
   useEffect(() => {
