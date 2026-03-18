@@ -18,6 +18,7 @@ const BENIGN_ERROR_PATTERNS = [
   'NotAllowedError',
   'not allowed by ACL',
   'not allowed. Permissions associated with this command',
+  'listeners[eventId]',
 ];
 
 function isBenignError(message: string): boolean {

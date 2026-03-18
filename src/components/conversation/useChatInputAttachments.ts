@@ -233,7 +233,12 @@ export function useChatInputAttachments({ autoConvertLongText, showError, showIn
     let unlistenLeave: (() => void) | undefined;
 
     const safeUnlisten = (fn?: () => void): undefined => {
-      try { fn?.(); } catch { /* listener already removed */ }
+      try {
+        const result = fn?.() as unknown;
+        if (result && typeof (result as Promise<unknown>).catch === 'function') {
+          (result as Promise<unknown>).catch(() => {});
+        }
+      } catch { /* listener already removed */ }
       return undefined;
     };
 
