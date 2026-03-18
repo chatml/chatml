@@ -468,8 +468,8 @@ export function WorkspaceReviewSettings({ workspaceId }: { workspaceId: string }
           const hasOverride = !!(prompts[key]?.trim());
 
           return (
-            <div key={key}>
-              <div className="flex items-center gap-2 mb-1.5">
+            <div key={key} className="border rounded-lg p-4">
+              <div className="flex items-center gap-2 mb-2">
                 <label className="text-sm font-medium">{label}</label>
                 {hasOverride && (
                   <span className="inline-flex items-center rounded-full bg-brand/10 px-1.5 py-0.5 text-2xs font-medium text-brand">
@@ -477,11 +477,21 @@ export function WorkspaceReviewSettings({ workspaceId }: { workspaceId: string }
                   </span>
                 )}
               </div>
-              <p className="text-xs text-muted-foreground mb-1.5 line-clamp-1">
-                Default: {REVIEW_PROMPTS[key]?.slice(0, 80)}...
-              </p>
+
+              <Collapsible>
+                <CollapsibleTrigger className="group flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors">
+                  <ChevronRight className="h-3.5 w-3.5 transition-transform group-data-[state=open]:rotate-90" />
+                  View built-in default
+                </CollapsibleTrigger>
+                <CollapsibleContent>
+                  <div className="mt-2 p-3 bg-muted/50 rounded-md text-xs font-mono whitespace-pre-wrap max-h-48 overflow-y-auto border border-border/50">
+                    {REVIEW_PROMPTS[key]}
+                  </div>
+                </CollapsibleContent>
+              </Collapsible>
+
               <Textarea
-                className="text-sm min-h-[60px]"
+                className="text-sm min-h-[60px] mt-3"
                 placeholder={effectivePlaceholder}
                 value={prompts[key] || ''}
                 onChange={(e) => setPrompts((prev) => ({ ...prev, [key]: e.target.value }))}
