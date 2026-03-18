@@ -150,11 +150,21 @@ export function useWebSocket(enabled: boolean = true) {
 
     switch (data.type) {
       case 'init':
-        // If an init event arrives for an already-streaming conversation, it means the
-        // process was restarted. Clear stale content but preserve isStreaming and startTime
-        // so the "Agent is working" timer continues uninterrupted.
+        // If an init event arrives for an already-streaming conversation, finalize
+        // the previous turn. When queued messages exist, this is the earliest signal
+        // that the agent picked up the queued message — commit it to the timeline.
         if (store.streamingState[conversationId]?.isStreaming) {
-          store.clearStreamingContent(conversationId);
+          const hasQueued = (store.queuedMessages[conversationId] ?? []).length > 0;
+          if (hasQueued) {
+            // Agent picked up a queued message. Finalize previous turn's streaming
+            // content as an assistant message and commit the queued user message.
+            // Idempotent: if result/turn_complete already committed, queue is empty.
+            store.finalizeStreamingMessage(conversationId, { commitQueued: true });
+          } else {
+            // No queued messages — process restart recovery. Clear stale content
+            // without creating a message.
+            store.clearStreamingContent(conversationId);
+          }
           store.clearActiveTools(conversationId);
           store.clearThinking(conversationId);
           store.clearSubAgents(conversationId);
