@@ -13,6 +13,32 @@ import { useNavigationStore, type NavigationEntry } from '@/stores/navigationSto
 import { useTabStore } from '@/stores/tabStore';
 import { ENABLE_BROWSER_TABS } from '@/lib/constants';
 
+/**
+ * Check if a session's target conversation has messages cached in the store.
+ * When true, session switching can be synchronous (no startTransition needed).
+ */
+function hasSessionMessagesCached(sessionId: string): boolean {
+  const state = useAppStore.getState();
+  const conversations = state.conversations.filter(c => c.sessionId === sessionId);
+  const lastActiveId = state.lastActiveConversationPerSession?.[sessionId];
+  const targetConv = (lastActiveId && conversations.find(c => c.id === lastActiveId)) || conversations[0];
+  if (!targetConv) return false;
+  return (state.messagesByConversation?.[targetConv.id]?.length ?? 0) > 0;
+}
+
+/**
+ * Run `fn` synchronously if the target session's messages are already cached
+ * (instant switch), otherwise wrap in startTransition to avoid UI freeze
+ * while the new component tree mounts.
+ */
+function runMaybeTransition(sessionId: string | undefined | null, fn: () => void): void {
+  if (sessionId && hasSessionMessagesCached(sessionId)) {
+    fn();
+  } else {
+    startTransition(fn);
+  }
+}
+
 export interface NavigateParams {
   workspaceId?: string | null;
   sessionId?: string | null;
@@ -165,7 +191,7 @@ function isEntryValid(entry: NavigationEntry): boolean {
 
 /** Apply a navigation entry to the app and tab state */
 function applyEntry(entry: NavigationEntry): void {
-  startTransition(() => {
+  const mutations = () => {
     const appStore = useAppStore.getState();
     const settingsStore = useSettingsStore.getState();
 
@@ -194,7 +220,9 @@ function applyEntry(entry: NavigationEntry): void {
         label: entry.label,
       });
     }
-  });
+  };
+
+  runMaybeTransition(entry.sessionId, mutations);
 }
 
 /**
@@ -221,10 +249,7 @@ export function navigate(params: NavigateParams): void {
     useSettingsStore.getState().markWorkspaceRead(params.workspaceId);
   }
 
-  // Wrap state mutations in startTransition so React can keep displaying
-  // the current UI while the new session's component tree renders.
-  // This eliminates the perceived 1+ second freeze on session navigation.
-  startTransition(() => {
+  const applyMutations = () => {
     const appStore = useAppStore.getState();
     const settingsStore = useSettingsStore.getState();
 
@@ -251,7 +276,9 @@ export function navigate(params: NavigateParams): void {
         label: params.label ?? buildLabelForParams(params),
       });
     }
-  });
+  };
+
+  runMaybeTransition(params.sessionId, applyMutations);
 }
 
 /**

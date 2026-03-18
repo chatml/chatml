@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback, useMemo, useDeferredValue } from 'react';
-import { useAppStore, type QueuedMessage } from '@/stores/appStore';
+import { useAppStore, setOnConversationEvict, type QueuedMessage } from '@/stores/appStore';
 import {
   useMessages,
   useMessagePagination,
@@ -36,6 +36,12 @@ const scrollPositions = new Map<string, { dataIndex: number; wasAtBottom: boolea
 export function clearScrollPosition(conversationId: string) {
   scrollPositions.delete(conversationId);
 }
+
+// When messages are evicted from the store, clear the corresponding scroll
+// positions so the paint gate isn't incorrectly skipped on re-activation.
+setOnConversationEvict((convIds) => {
+  for (const id of convIds) scrollPositions.delete(id);
+});
 
 // Wrapper that defers messages to ConversationMarkers so marker extraction
 // doesn't block higher-priority streaming or message rendering.
@@ -314,6 +320,11 @@ export function CachedConversationPane({
 
   useEffect(() => {
     if (!hasMessages) return;
+    // Skip the paint gate if Virtuoso already measured this conversation
+    // on a previous activation — the saved scroll position proves items
+    // were laid out correctly, so hiding/revealing is unnecessary overhead.
+    if (conversationId && scrollPositions.has(conversationId)) return;
+
     // Gate: hide immediately so Virtuoso can measure items at the correct
     // initialTopMostItemIndex without a visible flash, then reveal after
     // a double-rAF once measurement is complete.

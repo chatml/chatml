@@ -58,6 +58,21 @@ const MAX_FILE_TABS = 10;
 const MESSAGE_EVICTION_THRESHOLD = 100;
 const MESSAGE_EVICTION_KEEP = 50;
 
+// Session IDs currently mounted in the LRU conversation cache.
+// Eviction is skipped for these so switching back is instant (no re-fetch).
+let cachedSessionIds = new Set<string>();
+export function setCachedSessionIds(ids: Set<string>) {
+  cachedSessionIds = ids;
+}
+
+// Callback invoked when conversation messages are evicted, allowing external
+// modules (e.g. CachedConversationPane) to clear associated state like scroll
+// positions without creating circular imports between store and component.
+let onConversationEvict: ((conversationIds: string[]) => void) | null = null;
+export function setOnConversationEvict(cb: ((conversationIds: string[]) => void) | null) {
+  onConversationEvict = cb;
+}
+
 type PaginationState = {
   hasMore: boolean;
   oldestPosition: number | null;
@@ -966,16 +981,21 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     // Evict messages from the previous session's conversations to free memory.
     // Only conversations exceeding the threshold are trimmed.
+    // Skip eviction for sessions still in the LRU cache — switching back
+    // would otherwise trigger an async IPC re-fetch, causing visible delay.
     const prevSessionId = state.selectedSessionId;
     let evictedMessages = state.messagesByConversation;
     let evictedPagination = state.messagePagination;
-    if (prevSessionId && prevSessionId !== id) {
+    if (prevSessionId && prevSessionId !== id && !cachedSessionIds.has(prevSessionId)) {
       const prevConvIds = state.conversations
         .filter(c => c.sessionId === prevSessionId)
         .map(c => c.id);
       const evicted = evictConversationMessages(evictedMessages, evictedPagination, prevConvIds);
       evictedMessages = evicted.messages;
       evictedPagination = evicted.pagination;
+      // Notify listeners (e.g. CachedConversationPane) so they can clear
+      // stale scroll positions that would otherwise skip the paint gate.
+      onConversationEvict?.(prevConvIds);
     }
 
     set({
@@ -1207,9 +1227,11 @@ export const useAppStore = create<AppState>((set, get) => ({
     // Keeps the most recent messages so scroll-to-bottom still works; older
     // messages are re-fetched on demand via pagination when the user scrolls up.
     const prevId = state.selectedConversationId;
-    const evicted = prevId && prevId !== id
+    const shouldEvict = prevId && prevId !== id;
+    const evicted = shouldEvict
       ? evictConversationMessages(state.messagesByConversation, state.messagePagination, [prevId])
       : { messages: state.messagesByConversation, pagination: state.messagePagination };
+    if (shouldEvict) onConversationEvict?.([prevId]);
 
     set({
       selectedConversationId: id,

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo, useReducer, startTransition } from 'react';
 import { useShallow } from 'zustand/react/shallow';
-import { useAppStore } from '@/stores/appStore';
+import { useAppStore, setCachedSessionIds } from '@/stores/appStore';
 import { captureClosedConversation, useRestoreConversation } from '@/hooks/useRecentlyClosed';
 import {
   useConversationState,
@@ -246,6 +246,13 @@ export function ConversationArea({ children }: ConversationAreaProps) {
     setPrevSessionKey(sessionKey);
     dispatchRecentSession({ selectedSessionId, selectedFileTabId, selectedConversationId });
   }
+
+  // Sync LRU session IDs to the store so message eviction skips cached sessions.
+  // Runs synchronously during render (same as the reducer dispatch above) so the
+  // set is up-to-date before selectSession reads it in the same render cycle.
+  // A useEffect would run post-paint, creating a race where eviction sees stale IDs.
+  const cachedIds = useMemo(() => new Set(recentSessions.map(s => s.sessionId)), [recentSessions]);
+  setCachedSessionIds(cachedIds);
 
   // Only the last-active tab from each recently-viewed session is kept mounted
   // (hidden) so its Pierre Shadow DOM survives session switches. This caps
