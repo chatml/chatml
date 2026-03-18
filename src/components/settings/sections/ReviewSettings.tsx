@@ -1,9 +1,11 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
+import { Collapsible, CollapsibleTrigger, CollapsibleContent } from '@/components/ui/collapsible';
 import { useToast } from '@/components/ui/toast';
 import { getGlobalReviewPrompts, setGlobalReviewPrompts, getGlobalPRTemplate, setGlobalPRTemplate } from '@/lib/api';
 import { REVIEW_PROMPTS, REVIEW_TYPE_META } from '@/hooks/useReviewTrigger';
@@ -97,13 +99,23 @@ export function ReviewSettings() {
 
       <div data-setting-id="reviewPrompts" className="space-y-5 mt-6">
         {REVIEW_TYPE_META.map(({ key, label, placeholder }) => (
-          <div key={key}>
-            <label className="text-sm font-medium block mb-1.5">{label}</label>
-            <p className="text-xs text-muted-foreground mb-1.5 line-clamp-1">
-              Default: {REVIEW_PROMPTS[key]?.slice(0, 80)}…
-            </p>
+          <div key={key} className="border rounded-lg p-4">
+            <label className="text-sm font-medium block mb-2">{label}</label>
+
+            <Collapsible>
+              <CollapsibleTrigger className="group flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors">
+                <ChevronRight className="h-3.5 w-3.5 transition-transform group-data-[state=open]:rotate-90" />
+                View built-in default
+              </CollapsibleTrigger>
+              <CollapsibleContent>
+                <div className="mt-2 p-3 bg-muted/50 rounded-md text-xs font-mono whitespace-pre-wrap max-h-48 overflow-y-auto border border-border/50">
+                  {REVIEW_PROMPTS[key]}
+                </div>
+              </CollapsibleContent>
+            </Collapsible>
+
             <Textarea
-              className="text-sm min-h-[60px]"
+              className="text-sm min-h-[60px] mt-3"
               placeholder={placeholder}
               value={prompts[key] || ''}
               onChange={(e) => setPrompts((prev) => ({ ...prev, [key]: e.target.value }))}
