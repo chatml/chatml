@@ -157,6 +157,9 @@ type AgentEvent struct {
 	ServerName string `json:"serverName,omitempty"`
 	Enabled    *bool  `json:"enabled,omitempty"`
 
+	// Fast mode toggle confirmation (fast_mode_changed events from agent-runner)
+	FastMode *bool `json:"fastMode,omitempty"`
+
 	// Task lifecycle fields (SDK 0.2.51+ — task_started, task_progress, task_stopped)
 	TaskId       string                 `json:"taskId,omitempty"`
 	LastToolName string                 `json:"lastToolName,omitempty"`
