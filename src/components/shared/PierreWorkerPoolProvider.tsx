@@ -1,9 +1,24 @@
 'use client';
 
-import { WorkerPoolContextProvider } from '@/lib/pierre';
+import { WorkerPoolContextProvider, PIERRE_THEMES } from '@/lib/pierre';
 import type { ReactNode } from 'react';
 
-const PIERRE_THEMES = { dark: 'pierre-dark', light: 'pierre-light' } as const;
+// Stable references — defined outside the component so they survive remounts
+// and WorkerPoolContextProvider doesn't re-create the pool on every render.
+const poolOptions = {
+  workerFactory: () =>
+    new Worker(
+      new URL('@pierre/diffs/worker/worker-portable.js', import.meta.url),
+      { type: 'module' },
+    ),
+  poolSize: 2,
+};
+
+const highlighterOptions = {
+  theme: PIERRE_THEMES,
+  tokenizeMaxLineLength: 500,
+  lineDiffType: 'word' as const,
+};
 
 /**
  * Initializes Pierre's built-in Web Worker pool for Shiki syntax tokenization.
@@ -17,19 +32,8 @@ const PIERRE_THEMES = { dark: 'pierre-dark', light: 'pierre-light' } as const;
 export function PierreWorkerPoolProvider({ children }: { children: ReactNode }) {
   return (
     <WorkerPoolContextProvider
-      poolOptions={{
-        workerFactory: () =>
-          new Worker(
-            new URL('@pierre/diffs/worker/worker-portable.js', import.meta.url),
-            { type: 'module' },
-          ),
-        poolSize: 2,
-      }}
-      highlighterOptions={{
-        theme: PIERRE_THEMES,
-        tokenizeMaxLineLength: 500,
-        lineDiffType: 'word',
-      }}
+      poolOptions={poolOptions}
+      highlighterOptions={highlighterOptions}
     >
       {children}
     </WorkerPoolContextProvider>

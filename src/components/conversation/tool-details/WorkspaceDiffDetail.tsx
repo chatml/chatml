@@ -1,7 +1,7 @@
 'use client';
 
-import { memo, useMemo, useState, useEffect, useCallback, useRef } from 'react';
-import { FileDiff, parseDiffFromFile } from '@/lib/pierre';
+import { memo, useMemo, useDeferredValue, useState, useEffect, useCallback, useRef } from 'react';
+import { FileDiff, parseDiffFromFile, PIERRE_THEMES } from '@/lib/pierre';
 import type { FileContents, FileDiffMetadata } from '@/lib/pierre';
 import { useResolvedThemeType } from '@/hooks/useResolvedThemeType';
 import {
@@ -31,7 +31,6 @@ import {
   type FileDiffDTO,
 } from '@/lib/api';
 
-const PIERRE_THEMES = { dark: 'pierre-dark', light: 'pierre-light' } as const;
 const LARGE_FILE_THRESHOLD = 500_000; // 500KB combined old+new
 const MANY_FILES_THRESHOLD = 50;
 
@@ -324,6 +323,7 @@ const FileDiffViewer = memo(function FileDiffViewer({
     if (!oldFile || !newFile) return null;
     return parseDiffFromFile(oldFile, newFile);
   }, [oldFile, newFile]);
+  const deferredFileDiff = useDeferredValue(fileDiff);
 
   const renderHeaderMetadata = useCallback(() => (
     <div className="flex items-center gap-1">
@@ -404,7 +404,7 @@ const FileDiffViewer = memo(function FileDiffViewer({
     );
   }
 
-  if (!fileDiff) return null;
+  if (!deferredFileDiff) return null;
 
   // Guard against very large files
   const totalSize = (diffData.oldContent?.length ?? 0) + (diffData.newContent?.length ?? 0);
@@ -430,7 +430,7 @@ const FileDiffViewer = memo(function FileDiffViewer({
     >
       <div className="max-h-[350px] overflow-auto overscroll-contain relative z-0">
         <FileDiff
-          fileDiff={fileDiff}
+          fileDiff={deferredFileDiff}
           options={options}
           renderHeaderMetadata={renderHeaderMetadata}
         />

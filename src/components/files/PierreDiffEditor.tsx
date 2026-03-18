@@ -1,7 +1,7 @@
 'use client';
 
-import { memo, useMemo, useState, useCallback, useRef, useEffect, type ReactNode } from 'react';
-import { FileDiff, parseDiffFromFile } from '@/lib/pierre';
+import { memo, useMemo, useDeferredValue, useState, useCallback, useRef, useEffect, type ReactNode } from 'react';
+import { FileDiff, parseDiffFromFile, PIERRE_THEMES } from '@/lib/pierre';
 import type { FileContents, DiffLineAnnotation, FileDiffOptions, FileDiffMetadata, OnDiffLineClickProps } from '@/lib/pierre';
 import { useResolvedThemeType } from '@/hooks/useResolvedThemeType';
 import { FileCode, Rows, SplitSquareHorizontal, WrapText } from 'lucide-react';
@@ -14,8 +14,6 @@ import { CommentThread } from '@/components/comments/CommentThread';
 import { InlineCommentInput } from '@/components/comments/InlineCommentInput';
 import { getShikiLanguage } from '@/lib/languageMapping';
 import type { ReviewComment } from '@/lib/types';
-
-const PIERRE_THEMES = { dark: 'pierre-dark', light: 'pierre-light' } as const;
 
 // Injected into Pierre's Shadow DOM to prevent annotation slots from causing horizontal overflow
 // when the diff viewer is in scroll mode (line wrap off).
@@ -113,9 +111,12 @@ export const PierreDiffEditor = memo(function PierreDiffEditor({
 
   // Parse diff structure (fast — just computes which lines changed).
   // Shiki tokenization is offloaded to Pierre's worker pool via WorkerPoolContext.
+  // useDeferredValue keeps the UI responsive if the worker pool fails to
+  // initialize and Pierre falls back to synchronous main-thread tokenization.
   const fileDiff: FileDiffMetadata = useMemo(() => {
     return parseDiffFromFile(oldFile, newFile);
   }, [oldFile, newFile]);
+  const deferredFileDiff = useDeferredValue(fileDiff);
 
   // Handle line number click to open comment input
   const handleLineNumberClick = useCallback((props: OnDiffLineClickProps) => {
@@ -289,7 +290,7 @@ export const PierreDiffEditor = memo(function PierreDiffEditor({
       }
     }, intervalMs);
     return () => clearInterval(timerId);
-  }, [scrollToLine, fileDiff]);
+  }, [scrollToLine, deferredFileDiff]);
 
   return (
     <ErrorBoundary
@@ -304,7 +305,7 @@ export const PierreDiffEditor = memo(function PierreDiffEditor({
     >
       <div ref={scrollContainerRef} className="h-full overflow-auto overscroll-contain relative z-0">
         <FileDiff<CommentAnnotationData>
-          fileDiff={fileDiff}
+          fileDiff={deferredFileDiff}
           options={options}
           lineAnnotations={lineAnnotations}
           renderAnnotation={renderAnnotation}

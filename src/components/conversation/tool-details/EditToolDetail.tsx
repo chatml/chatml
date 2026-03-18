@@ -1,7 +1,7 @@
 'use client';
 
 import { memo, useMemo, useState, useCallback } from 'react';
-import { FileDiff, parseDiffFromFile } from '@/lib/pierre';
+import { FileDiff, parseDiffFromFile, PIERRE_THEMES } from '@/lib/pierre';
 import type { FileContents, FileDiffMetadata } from '@/lib/pierre';
 import { useResolvedThemeType } from '@/hooks/useResolvedThemeType';
 import { FileCode, Rows, SplitSquareHorizontal, WrapText } from 'lucide-react';
@@ -11,8 +11,6 @@ import { ErrorBoundary } from '@/components/shared/ErrorBoundary';
 import { BlockErrorFallback } from '@/components/shared/ErrorFallbacks';
 import { CopyButton } from '@/components/shared/CopyButton';
 import { getShikiLanguage } from '@/lib/languageMapping';
-
-const PIERRE_THEMES = { dark: 'pierre-dark', light: 'pierre-light' } as const;
 
 // Ensure strings end with newline to suppress Pierre's "No newline at end of file" marker
 const ensureTrailingNewline = (s: string) => s.endsWith('\n') ? s : s + '\n';

@@ -1,11 +1,9 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { File as PierreFile } from '@/lib/pierre';
+import { File as PierreFile, PIERRE_THEMES } from '@/lib/pierre';
 import type { FileContents, FileOptions } from '@/lib/pierre';
 import { useResolvedThemeType } from '@/hooks/useResolvedThemeType';
-
-const PIERRE_THEMES = { dark: 'pierre-dark', light: 'pierre-light' } as const;
 
 const WARMUP_FILE: FileContents = {
   name: 'warmup.ts',
