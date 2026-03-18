@@ -46,7 +46,7 @@ This starts the Go backend, Next.js dev server, and Tauri application concurrent
 
 ```bash
 make backend      # Go backend only (port 9876)
-npm run dev       # Next.js frontend only (port 3000)
+npm run dev       # Next.js frontend only (port 3100)
 ```
 
 ### Building
@@ -69,7 +69,7 @@ cd backend && go vet ./...    # Go vet
 
 ```
 pangyo-v1/
-├── src/                        # Next.js 15 frontend
+├── src/                        # Next.js 16 frontend
 │   ├── app/                    # Next.js app router
 │   │   └── page.tsx            # Main dashboard (entry point)
 │   ├── components/             # React components (44+)
@@ -84,7 +84,7 @@ pangyo-v1/
 │   ├── stores/                 # Zustand state management
 │   │   ├── appStore.ts         # Main store
 │   │   ├── selectors.ts        # Optimized selectors
-│   │   └── ...                 # 12 stores total
+│   │   └── ...                 # 13 stores total
 │   └── lib/                    # Utilities and types
 │       ├── types.ts            # TypeScript type definitions
 │       └── api.ts              # REST API client

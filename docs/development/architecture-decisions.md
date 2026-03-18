@@ -37,7 +37,7 @@ Use four languages, each for the layer it serves best:
 | Desktop shell | Rust (Tauri 2) | Native OS access, small bundles, security sandbox |
 | Backend API | Go 1.25 | Concurrency, fast compilation, single binary, strong stdlib for HTTP/WebSocket/git |
 | Agent runner | Node.js / TypeScript | Claude Agent SDK is JavaScript-only, rich npm ecosystem |
-| Frontend UI | Next.js 15 / React 19 | Component model, ecosystem, Shiki/Mermaid/Monaco integration |
+| Frontend UI | Next.js 16 / React 19 | Component model, ecosystem, Shiki/Mermaid/Monaco integration |
 
 ### Alternatives Considered
 

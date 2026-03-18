@@ -6,7 +6,7 @@ ChatML is a native macOS desktop application for AI-assisted software developmen
 
 ChatML wraps the Claude AI into a purpose-built development environment. Rather than using a chat interface with copy-paste workflows, ChatML gives Claude direct access to your codebase through isolated workspaces. Each task gets its own git worktree, its own branch, and its own AI agent process. This means you can have multiple AI-driven development tasks running in parallel without any of them interfering with each other.
 
-The application runs as a native macOS app built with Tauri, with a Go backend managing all server-side operations and a Node.js agent runner bridging the Claude Agent SDK. The frontend is a Next.js 15 / React 19 single-page application that renders in the Tauri webview.
+The application runs as a native macOS app built with Tauri, with a Go backend managing all server-side operations and a Node.js agent runner bridging the Claude Agent SDK. The frontend is a Next.js 16 / React 19 single-page application that renders in the Tauri webview.
 
 ## Architecture at a Glance
 
@@ -14,7 +14,7 @@ The application runs as a native macOS app built with Tauri, with a Go backend m
 ┌─────────────────────────────────────────────────────────┐
 │  Tauri Desktop Shell (Rust)                             │
 │  ┌────────────────────────────────────────────────────┐ │
-│  │  Next.js 15 Frontend (React 19 + TypeScript)       │ │
+│  │  Next.js 16 Frontend (React 19 + TypeScript)       │ │
 │  │  Zustand stores, WebSocket, REST API calls         │ │
 │  └────────────────────┬───────────────────────────────┘ │
 │                       │ HTTP + WebSocket (port 9876)    │
@@ -128,11 +128,11 @@ ChatML organizes work into a four-level hierarchy:
 
 ```
 pangyo-v1/
-├── src/                    # Next.js 15 frontend (React 19, TypeScript)
+├── src/                    # Next.js 16 frontend (React 19, TypeScript)
 │   ├── app/                # Next.js app router pages
 │   ├── components/         # 44+ React components
 │   ├── hooks/              # Custom hooks (WebSocket, etc.)
-│   ├── stores/             # Zustand state management (12 stores)
+│   ├── stores/             # Zustand state management (13 stores)
 │   └── lib/                # Types, utilities, API client
 ├── backend/                # Go 1.25 backend
 │   ├── server/             # HTTP router, handlers, WebSocket hub

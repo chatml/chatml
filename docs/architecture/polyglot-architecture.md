@@ -11,7 +11,7 @@ A single-language stack would be simpler to maintain but would require compromis
 | **Rust** | Tauri desktop shell | Small binary size (~15MB vs Electron's ~150MB), native macOS APIs, secure by default, Stronghold encrypted storage |
 | **Go** | Backend server | Excellent concurrency (goroutines for WebSocket hub), fast compilation, strong standard library for HTTP/SQL/Git |
 | **Node.js / TypeScript** | Agent runner | The Claude Agent SDK (`@anthropic-ai/claude-agent-sdk`) is a Node.js package — this is the only language with first-class SDK support |
-| **TypeScript / React** | Frontend UI | React 19's concurrent features, Next.js 15 for the rendering framework, rich ecosystem of UI components |
+| **TypeScript / React** | Frontend UI | React 19's concurrent features, Next.js 16 for the rendering framework, rich ecosystem of UI components |
 
 ## Component Responsibilities
 
