@@ -8,6 +8,9 @@ importers:
 
   .:
     dependencies:
+      '@aptabase/web':
+        specifier: ^0.5.0
+        version: 0.5.0
       '@ariakit/react':
         specifier: ^0.4.23
         version: 0.4.23(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
@@ -288,6 +291,9 @@ packages:
 
   '@antfu/install-pkg@1.1.0':
     resolution: {integrity: sha512-MGQsmw10ZyI+EJo45CdSER4zEb+p31LpDAFp2Z3gkSd1yqVZGi0Ebx++YTEMonJy4oChEMLsxZ64j8FH6sSqtQ==}
+
+  '@aptabase/web@0.5.0':
+    resolution: {integrity: sha512-+RFdaS0bLJtqTZyB1uG32S7tuTfJTGbG2bkdVMs3AT7yG7DP2yb6JY5rZoBf3UyW9sigFHGRkbXoAXdCMZibWA==}
 
   '@ariakit/core@0.4.18':
     resolution: {integrity: sha512-9urEa+GbZTSyredq3B/3thQjTcSZSUC68XctwCkJNH/xNfKN5O+VThiem2rcJxpsGw8sRUQenhagZi0yB4foyg==}
@@ -5121,6 +5127,8 @@ snapshots:
     dependencies:
       package-manager-detector: 1.6.0
       tinyexec: 1.0.2
+
+  '@aptabase/web@0.5.0': {}
 
   '@ariakit/core@0.4.18': {}
 

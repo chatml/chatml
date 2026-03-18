@@ -233,6 +233,8 @@ jobs:
           NEXT_PUBLIC_GITHUB_CLIENT_ID: ${{ secrets.OAUTH_GITHUB_CLIENT_ID }}
           # Linear OAuth (embedded in frontend at build time)
           NEXT_PUBLIC_LINEAR_CLIENT_ID: ${{ secrets.OAUTH_LINEAR_CLIENT_ID }}
+          # Aptabase analytics (embedded in frontend at build time)
+          NEXT_PUBLIC_APTABASE_KEY: ${{ secrets.APTABASE_KEY }}
           # Tauri update signing
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
