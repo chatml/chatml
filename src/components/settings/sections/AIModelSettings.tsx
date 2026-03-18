@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Switch } from '@/components/ui/switch';
 import { Button } from '@/components/ui/button';
 import {
@@ -12,6 +12,8 @@ import {
 } from '@/components/ui/select';
 import { Eye, EyeOff } from 'lucide-react';
 import { useSettingsStore, SETTINGS_DEFAULTS } from '@/stores/settingsStore';
+import { useAppStore } from '@/stores/appStore';
+import { MODELS as SHARED_MODELS, AUTO_MODEL_ID, resolveModelName, isAutoModel } from '@/lib/models';
 import type { ThinkingLevel } from '@/lib/thinkingLevels';
 import { getAnthropicApiKey, setAnthropicApiKey } from '@/lib/api';
 import { useToast } from '@/components/ui/toast';
@@ -31,6 +33,26 @@ export function AIModelSettings() {
   const setDefaultFastMode = useSettingsStore((s) => s.setDefaultFastMode);
   const maxThinkingTokens = useSettingsStore((s) => s.maxThinkingTokens);
   const setMaxThinkingTokens = useSettingsStore((s) => s.setMaxThinkingTokens);
+
+  // Build model options from SDK-reported models, with static fallback.
+  // Always include "Auto" so the setting is selectable even before SDK connects.
+  const dynamicModels = useAppStore((s) => s.supportedModels);
+  const modelOptions = useMemo(() => {
+    const autoOption = { id: AUTO_MODEL_ID, name: 'Auto' };
+    if (dynamicModels.length === 0) {
+      return [autoOption, ...SHARED_MODELS.map((m) => ({ id: m.id, name: m.name }))];
+    }
+    const mapped = dynamicModels.map((m) => {
+      const name = resolveModelName(m.value, m.displayName);
+      return { id: isAutoModel(m.displayName) ? AUTO_MODEL_ID : m.value, name };
+    });
+    // Ensure Auto is present (SDK may not always include a "Default" entry)
+    if (!mapped.some((m) => m.id === AUTO_MODEL_ID)) {
+      return [autoOption, ...mapped];
+    }
+    return mapped;
+  }, [dynamicModels]);
+
   return (
     <div>
       <h2 className="text-xl font-semibold mb-5">AI & Models</h2>
@@ -48,9 +70,9 @@ export function AIModelSettings() {
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="claude-opus-4-6">Claude Opus 4.6</SelectItem>
-              <SelectItem value="claude-sonnet-4-6">Claude Sonnet 4.6</SelectItem>
-              <SelectItem value="claude-haiku-4-5-20251001">Claude Haiku 4.5</SelectItem>
+              {modelOptions.map((m) => (
+                <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>
+              ))}
             </SelectContent>
           </Select>
         </SettingsRow>
@@ -67,9 +89,9 @@ export function AIModelSettings() {
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="claude-opus-4-6">Claude Opus 4.6</SelectItem>
-              <SelectItem value="claude-sonnet-4-6">Claude Sonnet 4.6</SelectItem>
-              <SelectItem value="claude-haiku-4-5-20251001">Claude Haiku 4.5</SelectItem>
+              {modelOptions.map((m) => (
+                <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>
+              ))}
             </SelectContent>
           </Select>
         </SettingsRow>
