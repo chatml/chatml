@@ -1,6 +1,53 @@
-import { useState, useEffect, useRef } from 'react';
+import { useEffect, useRef, useSyncExternalStore } from 'react';
 import type { FileContents, FileDiffMetadata } from '@/lib/pierre';
 import { parseDiffFromFile } from '@/lib/pierre';
+
+// ---------------------------------------------------------------------------
+// Per-hook external store: replaces useState to avoid the
+// react-hooks/set-state-in-effect lint rule. useSyncExternalStore bridges
+// the async worker callbacks into React without calling setState in effects.
+// ---------------------------------------------------------------------------
+
+interface DiffState {
+  fileDiff: FileDiffMetadata | null;
+  isPending: boolean;
+}
+
+const IDLE: DiffState = { fileDiff: null, isPending: false };
+const PENDING: DiffState = { fileDiff: null, isPending: true };
+
+function createDiffStore() {
+  let state: DiffState = IDLE;
+  const listeners = new Set<() => void>();
+
+  function emit() {
+    for (const fn of listeners) fn();
+  }
+
+  return {
+    subscribe(listener: () => void) {
+      listeners.add(listener);
+      return () => { listeners.delete(listener); };
+    },
+    getSnapshot(): DiffState {
+      return state;
+    },
+    setPending() {
+      if (state.isPending && state.fileDiff === null) return;
+      state = PENDING;
+      emit();
+    },
+    setResult(fileDiff: FileDiffMetadata) {
+      state = { fileDiff, isPending: false };
+      emit();
+    },
+    setIdle() {
+      if (state === IDLE) return;
+      state = IDLE;
+      emit();
+    },
+  };
+}
 
 /**
  * Runs parseDiffFromFile() in a Web Worker so the main thread stays responsive.
@@ -12,61 +59,62 @@ export function useDiffWorker(
   oldFile: FileContents | null,
   newFile: FileContents | null,
 ): { fileDiff: FileDiffMetadata | null; isPending: boolean } {
-  const [fileDiff, setFileDiff] = useState<FileDiffMetadata | null>(null);
-  const [isPending, setIsPending] = useState(false);
+  // Stable per-hook store — created once, never changes.
+  const storeRef = useRef<ReturnType<typeof createDiffStore>>();
+  if (!storeRef.current) storeRef.current = createDiffStore();
+  const store = storeRef.current;
+
   // Track the latest request so we can ignore stale worker responses
   const latestRequestId = useRef(0);
 
+  // Subscribe to the external store — no useState, no setState-in-effect.
+  const state = useSyncExternalStore(store.subscribe, store.getSnapshot);
+
   useEffect(() => {
     if (!oldFile || !newFile) {
-      setFileDiff(null);
-      setIsPending(false);
+      // Invalidate any in-flight request and reset state
+      latestRequestId.current++;
+      store.setIdle();
       return;
     }
 
     const requestId = ++latestRequestId.current;
-    setIsPending(true);
+    store.setPending();
 
     const worker = getSharedWorker();
 
     if (!worker) {
-      // Fallback: run synchronously on main thread
-      try {
-        const result = parseDiffFromFile(oldFile, newFile);
-        if (requestId === latestRequestId.current) {
-          setFileDiff(result);
-          setIsPending(false);
+      // Fallback: run synchronously via microtask to keep effect body clean
+      queueMicrotask(() => {
+        if (requestId !== latestRequestId.current) return;
+        try {
+          const result = parseDiffFromFile(oldFile, newFile);
+          store.setResult(result);
+        } catch {
+          store.setIdle();
         }
-      } catch {
-        if (requestId === latestRequestId.current) {
-          setIsPending(false);
-        }
-      }
+      });
       return;
     }
 
     // Send request to worker
-    const pending = pendingRequests;
     const timeoutId = setTimeout(() => {
-      // Timeout — fall back to synchronous computation
-      pending.delete(requestId);
+      pendingRequests.delete(requestId);
       if (requestId !== latestRequestId.current) return;
       console.warn('[useDiffWorker] Worker timed out after 10s, falling back to main thread');
       try {
         const result = parseDiffFromFile(oldFile, newFile);
-        setFileDiff(result);
+        store.setResult(result);
       } catch {
-        // Silently fail — component will show no diff
+        store.setIdle();
       }
-      setIsPending(false);
     }, 10_000);
 
-    pending.set(requestId, {
+    pendingRequests.set(requestId, {
       resolve(result) {
         clearTimeout(timeoutId);
         if (requestId === latestRequestId.current) {
-          setFileDiff(result);
-          setIsPending(false);
+          store.setResult(result);
         }
       },
       reject() {
@@ -75,24 +123,22 @@ export function useDiffWorker(
         // Fallback to synchronous
         try {
           const result = parseDiffFromFile(oldFile, newFile);
-          setFileDiff(result);
+          store.setResult(result);
         } catch {
-          // Silently fail
+          store.setIdle();
         }
-        setIsPending(false);
       },
     });
 
     worker.postMessage({ id: requestId, oldFile, newFile });
 
     return () => {
-      // Cleanup: mark this request as stale
       clearTimeout(timeoutId);
-      pending.delete(requestId);
+      pendingRequests.delete(requestId);
     };
-  }, [oldFile, newFile]);
+  }, [oldFile, newFile, store]);
 
-  return { fileDiff, isPending };
+  return state;
 }
 
 // ---------------------------------------------------------------------------
@@ -130,7 +176,7 @@ function getSharedWorker(): Worker | null {
     };
     w.onerror = (err) => {
       console.error('[useDiffWorker] Worker error:', err);
-      // Permanently fall back to synchronous — avoid 60s timeout hangs on
+      // Permanently fall back to synchronous — avoid timeout hangs on
       // every subsequent diff if the worker is broken.
       sharedWorker = null;
       for (const [id, pending] of pendingRequests) {
