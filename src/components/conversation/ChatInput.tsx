@@ -24,7 +24,7 @@ import { LinearIssuePicker } from './LinearIssuePicker';
 import { WorkspacePicker } from './WorkspacePicker';
 import type { LinearIssueDTO } from '@/lib/api';
 import { PlateInput, type PlateInputHandle } from './PlateInput';
-import { MODELS as SHARED_MODELS, type ModelEntry, AUTO_MODEL_ID, resolveModelName, isAutoModel } from '@/lib/models';
+import { MODELS as SHARED_MODELS, type ModelEntry, AUTO_MODEL_ID, resolveModelName, isAutoModel, normalizeModelId, deduplicateById } from '@/lib/models';
 import type { MentionItem } from '@/components/ui/mention-node';
 import { trackEvent } from '@/lib/telemetry';
 import { listSessionFiles, type FileNodeDTO } from '@/lib/api';
@@ -79,18 +79,19 @@ const STATIC_MODELS: ModelEntry[] = [
 /** Build the model list from SDK-reported dynamic models, with static fallback. */
 function buildModelList(dynamic: ReturnType<typeof useAppStore.getState>['supportedModels']): ModelEntry[] {
   if (dynamic.length === 0) return STATIC_MODELS;
-  return dynamic.map((m) => {
-    const name = resolveModelName(m.value, m.displayName);
-    return {
-      id: isAutoModel(m.displayName) ? AUTO_MODEL_ID : m.value,
-      name,
+  // Dedup keeps first occurrence. Auto entries from the SDK always carry the same
+  // capability flags, so first-wins is safe.
+  return deduplicateById(
+    dynamic.map((m) => ({
+      id: normalizeModelId(m),
+      name: resolveModelName(m.value, m.displayName),
       icon: Bot,
       supportsThinking: m.supportsAdaptiveThinking ?? true,
       supportsEffort: m.supportsEffort ?? false,
       supportedEffortLevels: m.supportedEffortLevels,
       supportsFastMode: m.supportsFastMode,
-    };
-  });
+    }))
+  );
 }
 
 
@@ -549,7 +550,7 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
         type: conv.type,
         name: conv.name,
         status: conv.status,
-        model: conv.model || selectedModel.id,
+        model: selectedModel.id === AUTO_MODEL_ID ? AUTO_MODEL_ID : (conv.model || selectedModel.id),
         messages: [],
         toolSummary: [],
         createdAt: conv.createdAt,
@@ -727,7 +728,7 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
           type: conv.type,
           name: conv.name,
           status: conv.status,
-          model: conv.model || selectedModel.id,
+          model: selectedModel.id === AUTO_MODEL_ID ? AUTO_MODEL_ID : (conv.model || selectedModel.id),
           messages: [],
           toolSummary: [],
           createdAt: conv.createdAt,
@@ -796,11 +797,14 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
 
         // Always send to backend (it queues in agent-runner if busy)
         const modelChanged = selectedModel.id !== currentConversation?.model;
+        // AUTO_MODEL_ID ("auto") signals the backend to clear the model override.
+        // Omitting the field (undefined) leaves the current model unchanged.
+        const modelToSend = selectedModel.id;
         await sendConversationMessage(
           selectedConversationId,
           trimmedContent,
           loadedAttachments.length > 0 ? loadedAttachments : undefined,
-          modelChanged ? selectedModel.id : undefined,
+          modelChanged ? modelToSend : undefined,
           mentionedFiles.length > 0 ? mentionedFiles : undefined,
           planModeEnabled
         );

@@ -329,18 +329,24 @@ func (h *Handlers) SendConversationMessage(w http.ResponseWriter, r *http.Reques
 		}
 	}
 
-	// Switch model if specified
+	// Switch model if specified; "auto" clears the override so the SDK picks the default.
 	if req.Model != "" {
-		// Always persist model to DB first - this ensures auto-restart will use the correct model
+		dbModel := req.Model
+		if req.Model == "auto" {
+			dbModel = "" // Clear override; next process start will run without --model flag
+		}
+		// Always persist to DB first - this ensures auto-restart will use the correct model
 		if err := h.store.UpdateConversation(ctx, convID, func(c *models.Conversation) {
-			c.Model = req.Model
+			c.Model = dbModel
 		}); err != nil {
 			logger.Handlers.Warnf("Failed to persist model for conv %s: %v", convID, err)
 		}
-		// Also try to update running process if there is one
-		if err := h.agentManager.SetConversationModel(convID, req.Model); err != nil {
-			// Not an error - process may not be running yet, auto-restart will use DB value
-			logger.Handlers.Debugf("Model change won't apply to running process for conv %s: %v", convID, err)
+		// Also try to update running process; skip when clearing (no valid model to push)
+		if dbModel != "" {
+			if err := h.agentManager.SetConversationModel(convID, dbModel); err != nil {
+				// Not an error - process may not be running yet, auto-restart will use DB value
+				logger.Handlers.Debugf("Model change won't apply to running process for conv %s: %v", convID, err)
+			}
 		}
 	}
 
