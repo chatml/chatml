@@ -30,6 +30,7 @@ import { useMenuState } from '@/hooks/useMenuState';
 import { useMessagePrefetch } from '@/hooks/useMessagePrefetch';
 import { useDotMcpTrustCheck } from '@/hooks/useDotMcpTrustCheck';
 import { PierreWarmup } from '@/components/shared/PierreWarmup';
+import { PierreWorkerPoolProvider } from '@/components/shared/PierreWorkerPoolProvider';
 import { useToast } from '@/components/ui/toast';
 import {
   createSession, createConversation, addRepo,
@@ -537,6 +538,7 @@ export default function Home() {
     <>
       <StreamingWarningHandler />
       <ConnectionStatusHandler />
+      <PierreWorkerPoolProvider>
       <PierreWarmup />
       <TooltipProvider>
         <div className="h-screen overflow-hidden flex relative bg-background">
@@ -789,6 +791,7 @@ export default function Home() {
 
         </div>
       </TooltipProvider>
+      </PierreWorkerPoolProvider>
     </>
   );
 }
