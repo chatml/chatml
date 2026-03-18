@@ -165,6 +165,42 @@ export function useChatInputAttachments({ autoConvertLongText, showError, showIn
     return () => window.removeEventListener('clipboard-paste-image', handleClipboardImage);
   }, [addImageAttachment]);
 
+  // Listen for clipboard-paste-long-text events from the Tauri menu paste handler
+  const autoConvertLongTextRef = useRef(autoConvertLongText);
+  useEffect(() => { autoConvertLongTextRef.current = autoConvertLongText; }, [autoConvertLongText]);
+
+  useEffect(() => {
+    const handleClipboardLongText = (e: Event) => {
+      const { text } = (e as CustomEvent).detail;
+      if (!autoConvertLongTextRef.current || !text || text.length <= 5000) return;
+
+      let base64Data: string;
+      try {
+        base64Data = btoa(unescape(encodeURIComponent(text)));
+      } catch {
+        showError('Pasted text is too large to convert to attachment');
+        return;
+      }
+
+      const attachment: Attachment = {
+        id: generateAttachmentId(),
+        type: 'file',
+        name: 'pasted-text.txt',
+        mimeType: 'text/plain',
+        size: new TextEncoder().encode(text).byteLength,
+        lineCount: text.split('\n').length,
+        base64Data,
+        preview: text.slice(0, 200),
+      };
+
+      setAttachments(prev => [...prev, attachment]);
+      showInfo(`Long text (${Math.round(text.length / 1000)}k chars) converted to attachment`);
+    };
+
+    window.addEventListener('clipboard-paste-long-text', handleClipboardLongText);
+    return () => window.removeEventListener('clipboard-paste-long-text', handleClipboardLongText);
+  }, [showError, showInfo]);
+
   // Handle attachment removal
   const handleRemoveAttachment = useCallback((id: string) => {
     setAttachments(prev => prev.filter(a => a.id !== id));

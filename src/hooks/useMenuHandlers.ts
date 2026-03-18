@@ -136,6 +136,12 @@ export function useMenuHandlers(options: MenuHandlersOptions) {
               const { readText } = await import('@tauri-apps/plugin-clipboard-manager');
               const text = await readText().catch(() => '');
               if (text) {
+                // Auto-convert long text to attachment (mirrors handlePaste in useChatInputAttachments)
+                const { autoConvertLongText } = useSettingsStore.getState();
+                if (autoConvertLongText && text.length > 5000) {
+                  window.dispatchEvent(new CustomEvent('clipboard-paste-long-text', { detail: { text } }));
+                  return;
+                }
                 document.execCommand('insertText', false, text);
                 return;
               }
