@@ -30,6 +30,13 @@ export function resolveModelName(sdkValue: string, sdkDisplayName: string): stri
   }
   const staticMatch = MODELS.find((m) => m.id === sdkValue);
   if (staticMatch) return staticMatch.name;
+
+  // Pattern-based fallback for unknown SDK model IDs (e.g. future versions)
+  const val = sdkValue.toLowerCase();
+  if (val.includes('opus')) return 'Claude Opus 4.6';
+  if (val.includes('sonnet')) return 'Claude Sonnet 4.6';
+  if (val.includes('haiku')) return 'Claude Haiku 4.5';
+
   return sdkDisplayName;
 }
 
