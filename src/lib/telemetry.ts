@@ -3,24 +3,31 @@
  *
  * - Only active when NEXT_PUBLIC_APTABASE_KEY is set (release builds via CI).
  * - Respects the strictPrivacy setting — no events sent when enabled.
- * - Lazy initialization: Aptabase is initialized on first trackEvent call.
+ * - Fully lazy: @aptabase/web is only imported on first trackEvent call,
+ *   so it never interferes with module loading in any environment.
  */
-
-import { init, trackEvent as aptaTrackEvent } from '@aptabase/web';
 
 type EventProps = Record<string, string | number>;
 
 const APTABASE_KEY = process.env.NEXT_PUBLIC_APTABASE_KEY ?? '';
 
 let initialized = false;
+let aptaTrack: ((name: string, props?: EventProps) => void) | null = null;
 
-function ensureInit(): boolean {
+async function ensureInit(): Promise<boolean> {
   if (!APTABASE_KEY) return false;
   if (initialized) return true;
 
-  init(APTABASE_KEY);
-  initialized = true;
-  return true;
+  try {
+    const { init, trackEvent: track } = await import('@aptabase/web');
+    init(APTABASE_KEY);
+    aptaTrack = track;
+    initialized = true;
+    return true;
+  } catch (e) {
+    console.warn('[telemetry] Failed to initialize Aptabase:', e);
+    return false;
+  }
 }
 
 export async function trackEvent(name: string, props?: EventProps): Promise<void> {
@@ -28,6 +35,6 @@ export async function trackEvent(name: string, props?: EventProps): Promise<void
   const { useSettingsStore } = await import('@/stores/settingsStore');
   if (useSettingsStore.getState().strictPrivacy) return;
 
-  if (!ensureInit()) return;
-  aptaTrackEvent(name, props);
+  if (!(await ensureInit())) return;
+  aptaTrack?.(name, props);
 }
