@@ -8,8 +8,6 @@ import (
 	"math"
 	"net/http"
 	"os"
-	"os/exec"
-	"path/filepath"
 	"slices"
 	"strings"
 	"time"
@@ -668,18 +666,12 @@ func (h *Handlers) RefreshAWSCredentials(w http.ResponseWriter, r *http.Request)
 	cmdCtx, cancel := context.WithTimeout(ctx, 120*time.Second)
 	defer cancel()
 
-	// Use sh -c so the command string is parsed by the shell, supporting quoting,
-	// pipes, env vars, and the user's PATH (important for macOS app bundles where
-	// the Go process may have a minimal PATH).
-	cmd := exec.CommandContext(cmdCtx, "sh", "-c", authRefreshCmd)
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		log.Printf("AWS auth refresh failed: %v (output: %s)", err, string(output))
+	if err := ai.RunAuthRefreshCommand(cmdCtx, authRefreshCmd); err != nil {
+		log.Printf("AWS auth refresh failed: %v", err)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
 		_ = json.NewEncoder(w).Encode(map[string]string{
-			"error":  fmt.Sprintf("Auth refresh command failed: %v", err),
-			"output": string(output),
+			"error": err.Error(),
 		})
 		return
 	}
@@ -710,77 +702,22 @@ func (h *Handlers) GetAWSSSOTokenStatus(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	// Scan ~/.aws/sso/cache/*.json for valid tokens.
-	home, err := os.UserHomeDir()
-	if err != nil {
+	status := ai.CheckSSOTokenStatus()
+
+	if status.Valid == nil {
 		writeJSON(w, map[string]interface{}{"applicable": true, "valid": nil})
 		return
 	}
 
-	cacheDir := filepath.Join(home, ".aws", "sso", "cache")
-	entries, err := filepath.Glob(filepath.Join(cacheDir, "*.json"))
-	if err != nil || len(entries) == 0 {
-		writeJSON(w, map[string]interface{}{"applicable": true, "valid": nil})
-		return
-	}
-
-	// Find the most recent valid (non-registration) SSO token.
-	type ssoToken struct {
-		AccessToken string `json:"accessToken"`
-		ExpiresAt   string `json:"expiresAt"`
-		// Registration entries have clientId/clientSecret but no accessToken.
-		ClientID     string `json:"clientId"`
-		ClientSecret string `json:"clientSecret"`
-	}
-
-	var bestExpiry time.Time
-	found := false
-
-	for _, entry := range entries {
-		data, readErr := os.ReadFile(entry)
-		if readErr != nil {
-			continue
-		}
-		var tok ssoToken
-		if jsonErr := json.Unmarshal(data, &tok); jsonErr != nil {
-			continue
-		}
-		// Skip registration client entries (no access token).
-		if tok.AccessToken == "" {
-			continue
-		}
-		if tok.ExpiresAt == "" {
-			continue
-		}
-		// AWS SSO cache uses UTC format: "2024-01-15T10:30:00UTC" or RFC3339.
-		expiry, parseErr := time.Parse("2006-01-02T15:04:05UTC", tok.ExpiresAt)
-		if parseErr != nil {
-			expiry, parseErr = time.Parse(time.RFC3339, tok.ExpiresAt)
-		}
-		if parseErr != nil {
-			continue
-		}
-		if !found || expiry.After(bestExpiry) {
-			bestExpiry = expiry
-			found = true
-		}
-	}
-
-	if !found {
-		writeJSON(w, map[string]interface{}{"applicable": true, "valid": nil})
-		return
-	}
-
-	now := time.Now().UTC()
-	valid := bestExpiry.After(now)
-	minutesLeft := math.Floor(bestExpiry.Sub(now).Minutes())
-
-	writeJSON(w, map[string]interface{}{
+	resp := map[string]interface{}{
 		"applicable":       true,
-		"valid":            valid,
-		"expiresAt":        bestExpiry.Format(time.RFC3339),
-		"expiresInMinutes": minutesLeft,
-	})
+		"valid":            *status.Valid,
+		"expiresInMinutes": math.Floor(status.ExpiresInMinutes),
+	}
+	if status.ExpiresAt != nil {
+		resp["expiresAt"] = status.ExpiresAt.Format(time.RFC3339)
+	}
+	writeJSON(w, resp)
 }
 
 // settingKeyMcpServers returns the settings key for MCP servers in a workspace

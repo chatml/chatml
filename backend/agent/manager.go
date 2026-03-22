@@ -336,6 +336,13 @@ func (m *Manager) StartConversation(ctx context.Context, sessionID, conversation
 	envVars["CHATML_BACKEND_URL"] = fmt.Sprintf("http://127.0.0.1:%d", m.backendPort)
 	procOpts.EnvVars = envVars
 
+	// Pre-flight SSO token check for Bedrock users: logs a warning if the token
+	// is expired. The frontend handles refresh proactively via useClaudeAuthStatus
+	// and the pre-send check in ChatInput, or reactively via the error banner.
+	if envVars["CLAUDE_CODE_USE_BEDROCK"] == "true" {
+		m.ensureBedrockSSOToken(ctx)
+	}
+
 	// Load workspace MCP server configs from settings
 	mcpJSON, err := m.loadMcpServers(ctx, session.WorkspaceID)
 	if err != nil {
@@ -1850,6 +1857,11 @@ func (m *Manager) ResumeConversation(ctx context.Context, convID string) error {
 	}
 	opts.EnvVars = envVars
 
+	// Pre-flight SSO token check for Bedrock users (same as StartConversation).
+	if envVars != nil && envVars["CLAUDE_CODE_USE_BEDROCK"] == "true" {
+		m.ensureBedrockSSOToken(ctx)
+	}
+
 	mcpServersJSON, err := m.loadMcpServers(ctx, session.WorkspaceID)
 	if err != nil {
 		logger.Manager.Errorf("Failed to load MCP servers for resume %s: %v", convID, err)
@@ -2213,6 +2225,24 @@ func (m *Manager) newAIClient() ai.Provider {
 // packages that need an AI client (e.g. server handlers).
 func (m *Manager) CreateAIClient() ai.Provider {
 	return m.newAIClient()
+}
+
+// ensureBedrockSSOToken checks if the AWS SSO token is valid for Bedrock users.
+// This is a non-blocking validation check only — it logs a warning if the token is
+// expired but does NOT run the auth refresh command (which would block for up to 120s
+// with no UI feedback). The frontend handles refresh proactively via useClaudeAuthStatus
+// and the pre-send check in ChatInput, or reactively via the error banner.
+func (m *Manager) ensureBedrockSSOToken(ctx context.Context) {
+	status := ai.CheckSSOTokenStatus()
+	if status.Valid != nil && *status.Valid {
+		return // Token is valid, nothing to do
+	}
+
+	if status.Valid != nil && !*status.Valid {
+		logger.Manager.Warnf("Bedrock SSO token is expired — agent may fail with auth error (frontend should have prompted refresh)")
+	} else {
+		logger.Manager.Debugf("Bedrock SSO token status unknown (no cached tokens found)")
+	}
 }
 
 // tryBedrockFromClaudeSettings checks pre-loaded Claude Code settings for Bedrock configuration.

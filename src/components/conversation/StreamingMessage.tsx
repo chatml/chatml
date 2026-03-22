@@ -131,7 +131,8 @@ function ErrorDisplay({ error, onDismiss }: { error: string; onDismiss: () => vo
     lowerError.includes('unrecognizedclientexception') ||
     lowerError.includes('the security token included in the request is expired') ||
     lowerError.includes('aws credentials') || lowerError.includes('sso login') ||
-    (lowerError.includes('expired') && lowerError.includes('sso'));
+    (lowerError.includes('expired') && lowerError.includes('sso')) ||
+    lowerError.includes('not logged in. please run');
   const isAuthError = isAwsAuthError || lowerError.includes('authentication') || lowerError.includes('api key') || lowerError.includes('oauth');
 
   const handleAwsRefresh = async () => {

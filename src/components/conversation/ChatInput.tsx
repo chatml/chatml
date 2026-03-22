@@ -8,7 +8,7 @@ import { useAppEventListener } from '@/lib/custom-events';
 import { useShortcut } from '@/hooks/useShortcut';
 import { Bot, Upload, Link, FolderSymlink } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { useClaudeAuthStatus } from '@/hooks/useClaudeAuthStatus';
+import { useClaudeAuthStatus, refreshClaudeAuthStatus } from '@/hooks/useClaudeAuthStatus';
 import { useToast } from '@/components/ui/toast';
 import { copyToClipboard } from '@/lib/tauri';
 import type { Attachment, SuggestionPill } from '@/lib/types';
@@ -677,6 +677,23 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
           showError(`Failed to load attachment content: ${err instanceof Error ? err.message : 'Unknown error'}`);
           setIsSending(false);
           return;
+        }
+      }
+
+      // Pre-send SSO token check for Bedrock users — refresh expired tokens before
+      // sending so the backend doesn't block for 120s with no UI feedback.
+      // Applies to both new conversations and follow-up messages (token can expire mid-session).
+      if (claudeAuthStatus?.hasBedrock && claudeAuthStatus.ssoTokenValid === false) {
+        showInfo('AWS SSO token expired — refreshing credentials...');
+        try {
+          const { refreshAWSCredentials } = await import('@/lib/api');
+          await refreshAWSCredentials();
+          // Fire-and-forget: the server-side token is already refreshed; this updates
+          // the cached UI status asynchronously (won't be reflected in this render cycle).
+          refreshClaudeAuthStatus();
+        } catch (err) {
+          showError(`AWS credential refresh failed: ${err instanceof Error ? err.message : 'Unknown error'}. You can retry or continue — the agent will prompt if needed.`);
+          // Don't block — let the user continue, the backend/agent will handle the auth error
         }
       }
 
