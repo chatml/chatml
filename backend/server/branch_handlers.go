@@ -352,64 +352,6 @@ func (h *Handlers) ExecuteBranchCleanup(w http.ResponseWriter, r *http.Request) 
 	writeJSON(w, result)
 }
 
-// PruneStaleBranches cleans up branches: prunes stale remote-tracking refs
-// and deletes local branches that are fully merged into main.
-// POST /api/repos/{id}/branches/prune
-func (h *Handlers) PruneStaleBranches(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-	workspaceID := chi.URLParam(r, "id")
-
-	repo, err := h.store.GetRepo(ctx, workspaceID)
-	if err != nil {
-		writeDBError(w, err)
-		return
-	}
-	if repo == nil {
-		writeNotFound(w, "workspace")
-		return
-	}
-
-	// Step 1: Prune stale remote-tracking refs
-	if err := h.repoManager.FetchAndPrune(ctx, repo.Path); err != nil {
-		writeInternalError(w, "failed to prune stale branches", err)
-		return
-	}
-
-	// Step 2: Clean up merged local branches (protect session-linked branches)
-	sessionBranchMap, err := h.getSessionBranchMap(ctx, workspaceID)
-	if err != nil {
-		writeDBError(w, err)
-		return
-	}
-	// Convert to simple set for CleanMergedLocalBranches
-	protectedBranches := make(map[string]bool)
-	for branchName := range sessionBranchMap {
-		protectedBranches[branchName] = true
-	}
-
-	deletedBranches, cleanErr := h.repoManager.CleanMergedLocalBranches(ctx, repo.Path, protectedBranches)
-	if cleanErr != nil {
-		logger.Handlers.Warnf("Merged branch cleanup failed for %s: %v", repo.Path, cleanErr)
-	}
-
-	h.branchCache.MarkPruned(repo.Path)
-	h.branchCache.InvalidateRepo(repo.Path)
-
-	if h.hub != nil {
-		h.hub.Broadcast(Event{
-			Type: "branch_dashboard_update",
-			Payload: map[string]interface{}{
-				"reason": "prune_complete",
-			},
-		})
-	}
-
-	writeJSON(w, map[string]interface{}{
-		"success":              true,
-		"deletedLocalBranches": deletedBranches,
-	})
-}
-
 // GetAvatars returns GitHub avatar URLs for a batch of email addresses
 // GET /api/avatars?emails=email1@example.com,email2@example.com
 func (h *Handlers) GetAvatars(w http.ResponseWriter, r *http.Request) {
