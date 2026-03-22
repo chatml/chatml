@@ -110,6 +110,9 @@ import { useArchiveSession } from '@/hooks/useArchiveSession';
 import { ErrorBoundary } from '@/components/shared/ErrorBoundary';
 import { PRNumberBadge } from '@/components/shared/PRNumberBadge';
 import { CardErrorFallback } from '@/components/shared/ErrorFallbacks';
+import { HoverCard, HoverCardTrigger, HoverCardContent } from '@/components/ui/hover-card';
+import { SessionHoverCardBody } from '@/components/shared/SessionHoverCard';
+import { dispatchAppEvent } from '@/lib/custom-events';
 
 interface WorkspaceSidebarProps {
   onOpenProject: () => void;
@@ -1432,154 +1435,171 @@ function SessionRow({
   };
 
   const prStatusInfo = getPRStatusInfo();
+  const [hoverOpen, setHoverOpen] = useState(false);
 
   return (
-    <ContextMenu>
+    <ContextMenu onOpenChange={(open) => { if (open) setHoverOpen(false); }}>
       <ContextMenuTrigger asChild>
-        <div
-          className={cn(
-            'group relative flex flex-row items-center py-2 rounded-md cursor-pointer my-0.5',
-            'px-2',
-            isSessionSelected
-              ? 'bg-surface-2 hover:bg-surface-3'
-              : 'hover:bg-surface-1'
-          )}
-          onClick={(e) => onSelectSession(session.id, e)}
-        >
-          {/* Unread indicator dot — absolutely positioned in left padding area */}
-          {isSessionUnread && !isSessionSelected && (
-            <div className="absolute left-0.5 top-1/2 -translate-y-1/2 w-1.5 h-1.5 rounded-full bg-brand" />
-          )}
-          {/* Content column */}
-          <div className="flex flex-col flex-1 min-w-0">
-          {/* First line: status icon + branch name + stats/actions */}
-          <div className="flex items-center gap-1">
-            {/* Task status / active indicator */}
-            {activityState === 'working' ? (
-              <div className="w-4 shrink-0 flex items-center justify-center">
-                <div className="session-active-indicator">
-                  <div className="bar" />
-                  <div className="bar" />
-                  <div className="bar" />
+        <HoverCard openDelay={500} closeDelay={100} open={hoverOpen} onOpenChange={setHoverOpen}>
+          <HoverCardTrigger asChild>
+            <div
+              className={cn(
+                'group relative flex flex-row items-center py-2 rounded-md cursor-pointer my-0.5',
+                'px-2',
+                isSessionSelected
+                  ? 'bg-surface-2 hover:bg-surface-3'
+                  : 'hover:bg-surface-1'
+              )}
+              onClick={(e) => onSelectSession(session.id, e)}
+            >
+              {/* Unread indicator dot — absolutely positioned in left padding area */}
+              {isSessionUnread && !isSessionSelected && (
+                <div className="absolute left-0.5 top-1/2 -translate-y-1/2 w-1.5 h-1.5 rounded-full bg-brand" />
+              )}
+              {/* Content column */}
+              <div className="flex flex-col flex-1 min-w-0">
+                {/* First line: status icon + branch name + stats/actions */}
+                <div className="flex items-center gap-1">
+                  {/* Task status / active indicator */}
+                  {activityState === 'working' ? (
+                    <div className="w-4 shrink-0 flex items-center justify-center">
+                      <div className="session-active-indicator">
+                        <div className="bar" />
+                        <div className="bar" />
+                        <div className="bar" />
+                      </div>
+                    </div>
+                  ) : activityState === 'awaiting_input' ? (
+                    <div className="w-4 shrink-0 flex items-center justify-center">
+                      <div className="session-awaiting-input-indicator">
+                        <MessageCircleQuestion className="w-3.5 h-3.5 text-purple-500" />
+                      </div>
+                    </div>
+                  ) : activityState === 'awaiting_approval' ? (
+                    <div className="w-4 shrink-0 flex items-center justify-center">
+                      <div className="session-awaiting-approval-indicator">
+                        <ClipboardCheck className="w-3.5 h-3.5 text-blue-500" />
+                      </div>
+                    </div>
+                  ) : (
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <button
+                          className="w-4 shrink-0 flex items-center justify-center rounded hover:bg-surface-1 transition-colors"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <TaskStatusIcon status={session.taskStatus} className="w-3.5 h-3.5" />
+                        </button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="start" className="w-44">
+                        {TASK_STATUS_OPTIONS.map((option) => (
+                          <DropdownMenuItem
+                            key={option.value}
+                            onSelect={() => onTaskStatusChange(session.id, option.value)}
+                          >
+                            <TaskStatusIcon status={option.value} className="h-4 w-4" />
+                            <span className="flex-1">{option.label}</span>
+                            {option.value === session.taskStatus && (
+                              <Check className="h-3.5 w-3.5 text-muted-foreground" />
+                            )}
+                          </DropdownMenuItem>
+                        ))}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  )}
+                  {/* Branch name container - grows and truncates */}
+                  <div className="flex items-center gap-1.5 flex-1 min-w-0 overflow-hidden">
+                    <span className={cn(
+                      "text-base truncate flex-1 w-0",
+                      isSessionSelected ? "text-foreground font-normal" : "text-foreground/60 font-normal",
+                      isSessionUnread && !isSessionSelected && "font-medium text-foreground/80"
+                    )}>
+                      {session.branch || session.name}
+                    </span>
+                  </div>
+                  {/* Git line stats badge and actions container */}
+                  <div className="shrink-0 flex items-center">
+                    {/* Stats - hidden on hover, replaced by archive action */}
+                    {hasStats && (
+                      <span className="text-xs px-1 py-px rounded border border-text-success/40 font-mono tabular-nums group-hover:hidden whitespace-nowrap">
+                        <span className="text-text-success">+{session.stats!.additions}</span>
+                        <span className="text-text-error ml-1">-{session.stats!.deletions}</span>
+                      </span>
+                    )}
+                    {/* Archive action - visible on hover */}
+                    <div className="hidden group-hover:flex items-center gap-1">
+                      <button
+                        className="p-0.5 rounded hover:bg-muted text-muted-foreground/60 hover:text-muted-foreground"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onArchiveSession(session.id);
+                        }}
+                      >
+                        <Archive className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+                {/* Second line: project indicator · priority · session name · PR info · status */}
+                <div className="flex items-center gap-1 mt-0.5 pl-1 text-sm text-muted-foreground">
+                  {/* Project indicator for non-project grouping modes */}
+                  {showProjectIndicator && workspaceColor && (
+                    <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: workspaceColor }} />
+                  )}
+                  {showProjectIndicator && workspaceName && (
+                    <span className="shrink-0 text-muted-foreground/70">{workspaceName}</span>
+                  )}
+                  {/* PR badge if applicable */}
+                  {hasPR && session.prNumber && (
+                    <>
+                      {showProjectIndicator && workspaceName && <span className="text-muted-foreground/50">·</span>}
+                      <PRNumberBadge
+                        prNumber={session.prNumber}
+                        prStatus={session.prStatus as 'open' | 'merged' | 'closed'}
+                        checkStatus={session.checkStatus}
+                        hasMergeConflict={session.hasMergeConflict}
+                        prUrl={session.prUrl}
+                        size="sm"
+                      />
+                    </>
+                  )}
+                  {hasPR && !session.prNumber && (
+                    <>
+                      {showProjectIndicator && workspaceName && <span className="text-muted-foreground/50">·</span>}
+                      <GitPullRequest className="h-3 w-3 shrink-0 text-nav-icon-prs" />
+                    </>
+                  )}
+                  {prStatusInfo && (
+                    <>
+                      <span className="text-muted-foreground/50">·</span>
+                      <span className={cn('shrink-0', prStatusInfo.color)}>
+                        {prStatusInfo.text}
+                      </span>
+                    </>
+                  )}
+                  {!hasPR && (
+                    <>
+                      {showProjectIndicator && workspaceName && <span className="text-muted-foreground/50">·</span>}
+                      <span className="shrink-0">{formatTimeAgo(session.updatedAt)}</span>
+                    </>
+                  )}
                 </div>
               </div>
-            ) : activityState === 'awaiting_input' ? (
-              <div className="w-4 shrink-0 flex items-center justify-center">
-                <div className="session-awaiting-input-indicator">
-                  <MessageCircleQuestion className="w-3.5 h-3.5 text-purple-500" />
-                </div>
-              </div>
-            ) : activityState === 'awaiting_approval' ? (
-              <div className="w-4 shrink-0 flex items-center justify-center">
-                <div className="session-awaiting-approval-indicator">
-                  <ClipboardCheck className="w-3.5 h-3.5 text-blue-500" />
-                </div>
-              </div>
-            ) : (
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <button
-                    className="w-4 shrink-0 flex items-center justify-center rounded hover:bg-surface-1 transition-colors"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <TaskStatusIcon status={session.taskStatus} className="w-3.5 h-3.5" />
-                  </button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="start" className="w-44">
-                  {TASK_STATUS_OPTIONS.map((option) => (
-                    <DropdownMenuItem
-                      key={option.value}
-                      onSelect={() => onTaskStatusChange(session.id, option.value)}
-                    >
-                      <TaskStatusIcon status={option.value} className="h-4 w-4" />
-                      <span className="flex-1">{option.label}</span>
-                      {option.value === session.taskStatus && (
-                        <Check className="h-3.5 w-3.5 text-muted-foreground" />
-                      )}
-                    </DropdownMenuItem>
-                  ))}
-                </DropdownMenuContent>
-              </DropdownMenu>
-            )}
-            {/* Branch name container - grows and truncates */}
-            <div className="flex items-center gap-1.5 flex-1 min-w-0 overflow-hidden">
-              <span className={cn(
-                "text-base truncate flex-1 w-0",
-                isSessionSelected ? "text-foreground font-normal" : "text-foreground/60 font-normal",
-                isSessionUnread && !isSessionSelected && "font-medium text-foreground/80"
-              )}>
-                {session.branch || session.name}
-              </span>
             </div>
-            {/* Git line stats badge and actions container */}
-            <div className="shrink-0 flex items-center">
-              {/* Stats - hidden on hover, replaced by archive action */}
-              {hasStats && (
-                <span className="text-xs px-1 py-px rounded border border-text-success/40 font-mono tabular-nums group-hover:hidden whitespace-nowrap">
-                  <span className="text-text-success">+{session.stats!.additions}</span>
-                  <span className="text-text-error ml-1">-{session.stats!.deletions}</span>
-                </span>
-              )}
-              {/* Archive action - visible on hover */}
-              <div className="hidden group-hover:flex items-center gap-1">
-                <button
-                  className="p-0.5 rounded hover:bg-muted text-muted-foreground/60 hover:text-muted-foreground"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onArchiveSession(session.id);
-                  }}
-                >
-                  <Archive className="h-3.5 w-3.5" />
-                </button>
-              </div>
-            </div>
-          </div>
-          {/* Second line: project indicator · priority · session name · PR info · status */}
-          <div className="flex items-center gap-1 mt-0.5 pl-1 text-sm text-muted-foreground">
-              {/* Project indicator for non-project grouping modes */}
-              {showProjectIndicator && workspaceColor && (
-                <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: workspaceColor }} />
-              )}
-              {showProjectIndicator && workspaceName && (
-                <span className="shrink-0 text-muted-foreground/70">{workspaceName}</span>
-              )}
-              {/* PR badge if applicable */}
-              {hasPR && session.prNumber && (
-                <>
-                  {showProjectIndicator && workspaceName && <span className="text-muted-foreground/50">·</span>}
-                  <PRNumberBadge
-                    prNumber={session.prNumber}
-                    prStatus={session.prStatus as 'open' | 'merged' | 'closed'}
-                    checkStatus={session.checkStatus}
-                    hasMergeConflict={session.hasMergeConflict}
-                    prUrl={session.prUrl}
-                    size="sm"
-                  />
-                </>
-              )}
-              {hasPR && !session.prNumber && (
-                <>
-                  {showProjectIndicator && workspaceName && <span className="text-muted-foreground/50">·</span>}
-                  <GitPullRequest className="h-3 w-3 shrink-0 text-nav-icon-prs" />
-                </>
-              )}
-              {prStatusInfo && (
-                <>
-                  <span className="text-muted-foreground/50">·</span>
-                  <span className={cn('shrink-0', prStatusInfo.color)}>
-                    {prStatusInfo.text}
-                  </span>
-                </>
-              )}
-              {!hasPR && (
-                <>
-                  {showProjectIndicator && workspaceName && <span className="text-muted-foreground/50">·</span>}
-                  <span className="shrink-0">{formatTimeAgo(session.updatedAt)}</span>
-                </>
-              )}
-          </div>
-          </div>
-        </div>
+          </HoverCardTrigger>
+          <HoverCardContent side="right" align="start" sideOffset={8} className="w-72 p-0">
+            <SessionHoverCardBody
+              session={session}
+              formatTimeAgo={formatTimeAgo}
+              onCreatePR={() => {
+                setHoverOpen(false);
+                onSelectSession(session.id);
+                // Dispatch after a frame to let session selection settle
+                requestAnimationFrame(() => dispatchAppEvent('git-create-pr'));
+              }}
+            />
+          </HoverCardContent>
+        </HoverCard>
       </ContextMenuTrigger>
       <ContextMenuContent>
         <ContextMenuSub>
