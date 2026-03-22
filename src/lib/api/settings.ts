@@ -108,3 +108,32 @@ export async function getAWSSSOTokenStatus(): Promise<{
   const res = await fetchWithAuth(`${getApiBase()}/api/settings/aws-sso-token-status`);
   return handleResponse(res);
 }
+
+// Relay / Mobile Pairing
+export async function startRelayPairing(relayUrl: string): Promise<{ token: string; qrData: string }> {
+  const res = await fetchWithAuth(`${getApiBase()}/api/relay/pair/start`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ relayUrl }),
+  });
+  return handleResponse<{ token: string; qrData: string }>(res);
+}
+
+export async function cancelRelayPairing(): Promise<void> {
+  const res = await fetchWithAuth(`${getApiBase()}/api/relay/pair/cancel`, {
+    method: 'POST',
+  });
+  await handleResponse(res);
+}
+
+export async function getRelayStatus(): Promise<{ connected: boolean; relayUrl?: string; qrData?: string }> {
+  const res = await fetchWithAuth(`${getApiBase()}/api/relay/status`);
+  return handleResponse<{ connected: boolean; relayUrl?: string; qrData?: string }>(res);
+}
+
+export async function disconnectRelay(): Promise<void> {
+  const res = await fetchWithAuth(`${getApiBase()}/api/relay/disconnect`, {
+    method: 'POST',
+  });
+  await handleResponse(res);
+}

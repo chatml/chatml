@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/chatml/chatml-backend/agent"
@@ -25,6 +26,13 @@ func NewRouter(ctx context.Context, s *store.SQLiteStore, hub *Hub, agentMgr *ag
 	h := NewHandlers(ctx, s, agentMgr, dirCacheConfig, bw, prw, hub, ghClient, prCache, issueCache, statsCache, diffCache, aiClient, scriptRunner)
 	auth := NewAuthHandlers(ghClient, s)
 	linearAuth := NewLinearAuthHandlers(linearClient, s)
+	// Relay is only enabled when CHATML_RELAY_URL is set (i.e., a cloud relay
+	// exists to connect to). Without it, relay endpoints are not registered and
+	// the mobile pairing UI hides itself automatically.
+	var relayH *RelayHandlers
+	if os.Getenv("CHATML_RELAY_URL") != "" {
+		relayH = NewRelayHandlers(hub, os.Getenv("CHATML_AUTH_TOKEN"))
+	}
 
 	r.Use(middleware.Compress(5))
 	r.Use(middleware.Logger)
@@ -281,6 +289,16 @@ func NewRouter(ctx context.Context, s *store.SQLiteStore, hub *Hub, agentMgr *ag
 		r.Get("/{id}/content", h.GetSkillContent)
 	})
 
+	// Relay endpoints for mobile remote control (only when relay is configured)
+	if relayH != nil {
+		r.Route("/api/relay", func(r chi.Router) {
+			r.Post("/pair/start", relayH.StartPairing)
+			r.Post("/pair/cancel", relayH.CancelPairing)
+			r.Get("/status", relayH.GetStatus)
+			r.Post("/disconnect", relayH.Disconnect)
+		})
+	}
+
 	// Wire up agent manager callbacks (legacy)
 	agentMgr.SetOutputHandler(func(agentID, line string) {
 		hub.Broadcast(Event{
@@ -331,6 +349,13 @@ func NewRouter(ctx context.Context, s *store.SQLiteStore, hub *Hub, agentMgr *ag
 		AllowedHeaders:   []string{"Content-Type", "Authorization"},
 		AllowCredentials: false, // Not needed for this app
 	}).Handler(r)
+
+	// Set the router reference for the relay HTTP-over-WebSocket proxy.
+	// This must happen after the CORS-wrapped handler is built so that
+	// proxied requests go through the full middleware stack.
+	if relayH != nil {
+		relayH.SetRouter(handler)
+	}
 
 	return handler, h.Close
 }

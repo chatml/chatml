@@ -58,12 +58,13 @@ type Event struct {
 
 // Client represents a connected WebSocket client with its own send buffer
 type Client struct {
-	hub       *Hub
-	conn      *websocket.Conn
-	send      chan []byte  // Buffered channel for outgoing messages
-	closeOnce sync.Once   // Ensures send channel is closed only once
-	evicting  atomic.Bool // Prevents multiple eviction goroutines
-	writeMu   sync.Mutex  // Protects concurrent writes to conn
+	hub            *Hub
+	conn           *websocket.Conn
+	send           chan []byte  // Buffered channel for outgoing messages
+	closeOnce      sync.Once   // Ensures send channel is closed only once
+	evicting       atomic.Bool // Prevents multiple eviction goroutines
+	writeMu        sync.Mutex  // Protects concurrent writes to conn
+	isProgrammatic bool        // True for relay clients (no WebSocket conn, no writePump)
 }
 
 // HubMetrics tracks WebSocket hub statistics
@@ -420,7 +421,9 @@ func (c *Client) readPump() {
 // eviction. Writes directly to the connection (bypassing the full send channel)
 // with a short deadline. Best-effort; errors are ignored.
 func (c *Client) sendEvictionWarning() {
-	if c.conn == nil {
+	// Programmatic clients (e.g., relay) have no WebSocket conn — skip the warning.
+	// The Hub will still unregister them, closing the send channel.
+	if c.conn == nil || c.isProgrammatic {
 		return
 	}
 	warningEvent := Event{
@@ -439,6 +442,31 @@ func (c *Client) sendEvictionWarning() {
 	defer c.writeMu.Unlock()
 	c.conn.SetWriteDeadline(time.Now().Add(evictionWarningDeadline))
 	c.conn.WriteMessage(websocket.TextMessage, data)
+}
+
+// RegisterProgrammaticClient creates a Hub client without a WebSocket connection.
+// The caller is responsible for draining the returned client's SendChan().
+// Call UnregisterProgrammaticClient to clean up.
+func (h *Hub) RegisterProgrammaticClient() *Client {
+	client := &Client{
+		hub:            h,
+		conn:           nil,
+		send:           make(chan []byte, clientSendBufferSize),
+		isProgrammatic: true,
+	}
+	h.register <- client
+	return client
+}
+
+// UnregisterProgrammaticClient removes a programmatic client from the hub.
+func (h *Hub) UnregisterProgrammaticClient(client *Client) {
+	h.unregister <- client
+}
+
+// SendChan returns the client's send channel for programmatic consumption.
+// Used by relay clients that drain events without a real WebSocket connection.
+func (c *Client) SendChan() <-chan []byte {
+	return c.send
 }
 
 // GetStats returns current hub statistics

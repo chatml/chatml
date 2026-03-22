@@ -39,6 +39,9 @@ var (
 	// Caching
 	DirCache *log.Logger
 
+	// Relay
+	Relay *log.Logger
+
 	// Utilities
 	Cleanup *log.Logger
 	GitHub  *log.Logger
@@ -118,6 +121,9 @@ func init() {
 
 	// Caching
 	DirCache = base.WithPrefix(colorWatch.Render("dir-cache"))
+
+	// Relay
+	Relay = base.WithPrefix(colorHTTP.Render("relay"))
 
 	// Utilities
 	Cleanup = base.WithPrefix(colorUtil.Render("cleanup"))
