@@ -79,13 +79,10 @@ export function GstackSettings({ workspaceId }: { workspaceId: string }) {
   }
 
   return (
-    <SettingsGroup
-      title="gstack Skills"
-      description="Install gstack — a curated collection of 25 Claude Code skills for sprint workflows, reviews, QA, and shipping."
-    >
+    <SettingsGroup label="gstack Skills">
       <SettingsRow
-        label="Enable gstack"
-        description="Clone and install gstack skills into this workspace's .claude/commands/ directory."
+        title="Enable gstack"
+        description="Install gstack — a curated collection of 25 Claude Code skills for sprint workflows, reviews, QA, and shipping."
       >
         <Switch
           checked={status?.enabled ?? false}
@@ -97,7 +94,7 @@ export function GstackSettings({ workspaceId }: { workspaceId: string }) {
       {status?.enabled && (
         <>
           <SettingsRow
-            label="Version"
+            title="Version"
             description={status.version ? `Commit ${status.version}` : 'Unknown'}
           >
             <div className="flex items-center gap-2">
@@ -120,7 +117,7 @@ export function GstackSettings({ workspaceId }: { workspaceId: string }) {
           </SettingsRow>
 
           <SettingsRow
-            label="Learn more"
+            title="Learn more"
             description="View the gstack repository for documentation and available skills."
           >
             <Button
