@@ -107,7 +107,7 @@ export function PairMobileSettings() {
     }
     setState('idle');
     setQrData('');
-  }, [toast]);
+  }, [success]);
 
   const handleCopy = useCallback(async () => {
     try {
