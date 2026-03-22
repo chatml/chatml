@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import type { Attachment } from '@/lib/types';
+import type { Attachment, SprintPhase } from '@/lib/types';
 
 /**
  * Typed custom event map. Add new events here for compile-time safety
@@ -14,6 +14,12 @@ export interface AppCustomEventMap {
   'chat-message-submitted': void;
   /** Insert text and/or instruction attachments into the composer without auto-submitting */
   'compose-action': { text: string; attachments?: Attachment[] };
+  /** Auto-advance sprint phase (dispatched by Primary Action button click) */
+  'sprint-phase-advance': { phase: SprintPhase | null };
+  /** Toggle sprint on/off (dispatched by /sprint slash command) */
+  'toggle-sprint': void;
+  /** Plan was approved (dispatched by ChatInput so toolbar can auto-advance sprint phase) */
+  'plan-approved': void;
 }
 
 type EventDetail<K extends keyof AppCustomEventMap> =

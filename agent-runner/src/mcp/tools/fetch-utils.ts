@@ -6,6 +6,16 @@
 
 const RETRY_DELAYS_MS = [500, 1000, 2000];
 
+const AUTH_TOKEN = process.env.CHATML_AUTH_TOKEN || "";
+
+/** Build standard headers for backend requests (auth + optional JSON content-type). */
+export function buildHeaders(json = false): Record<string, string> {
+  const headers: Record<string, string> = {};
+  if (json) headers["Content-Type"] = "application/json";
+  if (AUTH_TOKEN) headers["Authorization"] = `Bearer ${AUTH_TOKEN}`;
+  return headers;
+}
+
 /** Extract a useful error message from a fetch TypeError, including the root cause. */
 export function formatFetchError(error: unknown): string {
   if (error instanceof TypeError) {

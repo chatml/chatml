@@ -164,6 +164,17 @@ func (h *Handlers) CreateConversation(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Build instructions from sprint phase
+	if session.SprintPhase != "" {
+		section := sprintPhaseInstructions(session.SprintPhase)
+		if section != "" {
+			if instructions != "" {
+				instructions += "\n\n"
+			}
+			instructions += section
+		}
+	}
+
 	// Gracefully degrade features not supported by the current provider.
 	// For Claude, all capabilities are true so these are no-ops today.
 	// TODO: Replace DefaultProvider() with a session-aware lookup when multi-provider support lands.
@@ -546,6 +557,43 @@ func (h *Handlers) AnswerConversationQuestion(w http.ResponseWriter, r *http.Req
 	w.WriteHeader(http.StatusNoContent)
 }
 
+type AnswerSprintPhaseRequest struct {
+	RequestID string `json:"requestId"`
+	Approved  bool   `json:"approved"`
+}
+
+func (h *Handlers) AnswerSprintPhaseProposal(w http.ResponseWriter, r *http.Request) {
+	convID := chi.URLParam(r, "convId")
+	if convID == "" {
+		writeValidationError(w, "conversation ID required")
+		return
+	}
+
+	var req AnswerSprintPhaseRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeValidationError(w, "invalid request body")
+		return
+	}
+
+	if req.RequestID == "" {
+		writeValidationError(w, "requestId is required")
+		return
+	}
+
+	proc := h.agentManager.GetConversationProcess(convID)
+	if proc == nil {
+		writeNotFound(w, "no active process for conversation")
+		return
+	}
+
+	if err := proc.SendSprintPhaseResponse(req.RequestID, req.Approved); err != nil {
+		writeInternalError(w, "failed to send sprint phase response", err)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func (h *Handlers) DeleteConversation(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	convID := chi.URLParam(r, "convId")
@@ -910,4 +958,32 @@ func (h *Handlers) ListSessionSummaries(w http.ResponseWriter, r *http.Request) 
 		summaries = []*models.Summary{}
 	}
 	writeJSON(w, summaries)
+}
+
+// sprintPhaseInstructions returns system prompt instructions for the given sprint phase.
+// Keep in sync with: backend/models/types.go, agent-runner/src/mcp/tools/sprint.ts
+func sprintPhaseInstructions(phase string) string {
+	header := "## Sprint Workflow Phase\n\n"
+
+	var body string
+	switch phase {
+	case "think":
+		body = "You are in the **Think** phase. Challenge assumptions, explore alternatives, and ask forcing questions before committing to an approach. Do NOT write implementation code yet."
+	case "plan":
+		body = "You are in the **Plan** phase. Create a detailed implementation plan with clear steps, dependencies, and verification criteria. Use plan mode for structured planning."
+	case "build":
+		body = "You are in the **Build** phase. Implement the approved plan. Write code and tests. Focus on correctness."
+	case "review":
+		body = "You are in the **Review** phase. Review all changes critically. Use review tools to add structured feedback. Look for bugs, edge cases, and code quality issues."
+	case "test":
+		body = "You are in the **Test** phase. Run the test suite and report results. Verify edge cases and check coverage. Add missing tests."
+	case "ship":
+		body = "You are in the **Ship** phase. Prepare for merge: commit changes, push to remote, and create a pull request."
+	case "reflect":
+		body = "You are in the **Reflect** phase. Summarize what was accomplished, lessons learned, and potential follow-up work."
+	default:
+		return ""
+	}
+
+	return header + body
 }

@@ -4,7 +4,7 @@ import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { useAppStore } from '@/stores/appStore';
 import { createConversation, sendConversationMessage, stopConversation, setConversationPlanMode, setConversationFastMode, approvePlan } from '@/lib/api';
 import { markPlanModeExited } from '@/hooks/useWebSocket';
-import { useAppEventListener } from '@/lib/custom-events';
+import { dispatchAppEvent, useAppEventListener } from '@/lib/custom-events';
 import { useShortcut } from '@/hooks/useShortcut';
 import { Bot, Upload, Link, FolderSymlink } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -16,6 +16,7 @@ import { AttachmentGrid } from './AttachmentGrid';
 import { AttachmentPreviewModal } from './AttachmentPreviewModal';
 import { loadAllAttachmentContents } from '@/lib/attachments';
 import { UserQuestionPrompt } from './UserQuestionPrompt';
+import { SprintPhaseProposalPrompt } from './SprintPhaseProposalPrompt';
 import { usePendingUserQuestion, useStreamingChatInput, useSelectedIds, useConversationState, useChatInputActions, useConversationHasMessages } from '@/stores/selectors';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { THINKING_LEVELS, type ThinkingLevel, resolveThinkingParams, clampThinkingLevel, canDisableThinking } from '@/lib/thinkingLevels';
@@ -446,6 +447,11 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
   // Check if there's a pending user question
   const pendingQuestion = usePendingUserQuestion(selectedConversationId);
 
+  // Check if there's a pending sprint phase proposal
+  const pendingSprintPhaseProposal = useAppStore((s) =>
+    selectedConversationId ? s.pendingSprintPhaseProposal[selectedConversationId] : null
+  );
+
   // Listen for compose-action events (e.g., Fix All review, Add to Chat)
   useAppEventListener('compose-action', ({ text, attachments: incoming }) => {
     if (text) {
@@ -516,6 +522,7 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
 
     try {
       await approvePlan(selectedConversationId, requestId, true);
+      dispatchAppEvent('plan-approved');
     } catch (error) {
       console.error('Failed to approve plan:', error);
       showError(error instanceof Error ? error.message : 'Failed to approve plan');
@@ -896,9 +903,15 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
     }
   };
 
-  // If there's a pending question, show the question UI instead of the normal input
+  // If there's a pending question, show the question UI instead of the normal input.
+  // User questions block agent execution, so they take priority over sprint proposals.
   if (pendingQuestion && selectedConversationId) {
     return <UserQuestionPrompt conversationId={selectedConversationId} />;
+  }
+
+  // If there's a pending sprint phase proposal, show the proposal UI
+  if (pendingSprintPhaseProposal && selectedConversationId) {
+    return <SprintPhaseProposalPrompt conversationId={selectedConversationId} />;
   }
 
   return (

@@ -59,8 +59,9 @@ import {
   PopoverTrigger,
   PopoverContent,
 } from '@/components/ui/popover';
-import type { SessionTaskStatus } from '@/lib/types';
+import type { SessionTaskStatus, SprintPhase } from '@/lib/types';
 import { TaskStatusSelector } from '@/components/shared/TaskStatusSelector';
+import { SprintPhaseBar } from '@/components/shared/SprintPhaseBar';
 import { TargetBranchSelector } from '@/components/shared/TargetBranchSelector';
 import { useInstalledApps } from '@/hooks/useInstalledApps';
 import type { InstalledApp } from '@/hooks/useInstalledApps';
@@ -89,6 +90,18 @@ const REVIEW_COLOR_CLASSES: Record<string, { icon: string; bg: string; hoverBg: 
   green:  { icon: 'text-green-500',  bg: 'bg-green-500/10',  hoverBg: 'group-hover:bg-green-500/20' },
   purple: { icon: 'text-purple-500', bg: 'bg-purple-500/10', hoverBg: 'group-hover:bg-purple-500/20' },
   teal:   { icon: 'text-teal-500',   bg: 'bg-teal-500/10',   hoverBg: 'group-hover:bg-teal-500/20' },
+};
+
+// Auto-sync sprint phase → taskStatus so sidebar grouping stays consistent.
+// Note: this is a one-way override — changing sprint phase will overwrite any manually-set taskStatus.
+const PHASE_TO_STATUS: Record<SprintPhase, SessionTaskStatus> = {
+  think: 'in_progress',
+  plan: 'in_progress',
+  build: 'in_progress',
+  review: 'in_review',
+  test: 'in_review',
+  ship: 'in_progress',
+  reflect: 'done',
 };
 
 function dispatchReview(type: string) {
@@ -372,6 +385,48 @@ export function SessionToolbarContent() {
     });
   }, [selectedSession, selectedWorkspaceId, storeUpdateSession, showError]);
 
+  const handleSprintPhaseChange = useCallback((value: SprintPhase | null) => {
+    if (!selectedSession || !selectedWorkspaceId) return;
+    const prevPhase = selectedSession.sprintPhase;
+    const prevStatus = selectedSession.taskStatus;
+
+    // Build optimistic update: always update sprintPhase, conditionally sync taskStatus
+    const updates: Record<string, unknown> = { sprintPhase: value };
+    const apiPayload: Record<string, unknown> = { sprintPhase: value ?? '' };
+
+    if (value && PHASE_TO_STATUS[value] !== prevStatus) {
+      updates.taskStatus = PHASE_TO_STATUS[value];
+      apiPayload.taskStatus = PHASE_TO_STATUS[value];
+    }
+
+    storeUpdateSession(selectedSession.id, updates);
+    apiUpdateSession(selectedWorkspaceId, selectedSession.id, apiPayload).catch(() => {
+      storeUpdateSession(selectedSession.id, { sprintPhase: prevPhase, taskStatus: prevStatus });
+      showError('Failed to update sprint phase');
+    });
+  }, [selectedSession, selectedWorkspaceId, storeUpdateSession, showError]);
+
+  // Listen for toggle-sprint events from slash command
+  useAppEventListener('toggle-sprint', () => {
+    if (!selectedSession) return;
+    const newPhase = selectedSession.sprintPhase ? null : 'think' as SprintPhase;
+    handleSprintPhaseChange(newPhase);
+  }, [selectedSession, handleSprintPhaseChange]);
+
+  // Listen for sprint-phase-advance events from PrimaryActionButton
+  useAppEventListener('sprint-phase-advance', (detail) => {
+    if (detail?.phase !== undefined) {
+      handleSprintPhaseChange(detail.phase);
+    }
+  }, [handleSprintPhaseChange]);
+
+  // Auto-advance sprint phase: plan → build when plan is approved
+  useAppEventListener('plan-approved', () => {
+    if (selectedSession?.sprintPhase === 'plan') {
+      handleSprintPhaseChange('build');
+    }
+  }, [selectedSession, handleSprintPhaseChange]);
+
   const toolbarConfig = useMemo(() => {
     if (!selectedWorkspace || !selectedSession) return {};
 
@@ -401,6 +456,11 @@ export function SessionToolbarContent() {
               value={selectedSession.taskStatus}
               onChange={handleTaskStatusChange}
               size="sm"
+            />
+            <SprintPhaseBar
+              phase={selectedSession.sprintPhase}
+              onChange={handleSprintPhaseChange}
+              disabled={isAgentWorking}
             />
             {selectedSession.prStatus && selectedSession.prStatus !== 'none' && selectedSession.prNumber && selectedWorkspaceId && (
               <PRHoverCard
@@ -656,7 +716,7 @@ export function SessionToolbarContent() {
         ),
       },
     };
-  }, [selectedWorkspace, selectedSession, selectedWorkspaceId, selectedSessionId, handleGitActionMessage, handleActionWithBubble, handleActionWithBubbleAndTemplate, handleFixIssues, handleNewConversation, handleCopyBranch, handleArchive, requestArchive, handleTaskStatusChange, reviewPopoverOpen, openAppPopoverOpen, defaultOpenApp, installedApps, workspaceColors, showSuccess, showWarning, isAgentWorking]);
+  }, [selectedWorkspace, selectedSession, selectedWorkspaceId, selectedSessionId, handleGitActionMessage, handleActionWithBubble, handleActionWithBubbleAndTemplate, handleFixIssues, handleNewConversation, handleCopyBranch, handleArchive, requestArchive, handleTaskStatusChange, handleSprintPhaseChange, reviewPopoverOpen, openAppPopoverOpen, defaultOpenApp, installedApps, workspaceColors, showSuccess, showWarning, isAgentWorking]);
 
   useMainToolbarContent(toolbarConfig);
 

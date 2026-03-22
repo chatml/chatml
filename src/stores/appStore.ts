@@ -346,6 +346,9 @@ interface AppState {
   // Pending user questions from AskUserQuestion tool (keyed by conversationId)
   pendingUserQuestion: { [conversationId: string]: PendingUserQuestion | null };
 
+  // Pending sprint phase proposals from update_sprint_phase tool (keyed by conversationId)
+  pendingSprintPhaseProposal: { [conversationId: string]: import('@/lib/types').PendingSprintPhaseProposal | null };
+
   // Interrupted conversations detected on app restart (keyed by conversationId)
   interruptedState: { [conversationId: string]: InterruptedInfo | null };
 
@@ -606,6 +609,9 @@ interface AppState {
   prevUserQuestion: (conversationId: string) => void;
   clearPendingUserQuestion: (conversationId: string) => void;
 
+  // Sprint phase proposal actions (update_sprint_phase tool)
+  setPendingSprintPhaseProposal: (conversationId: string, proposal: import('@/lib/types').PendingSprintPhaseProposal | null) => void;
+
   // Interrupted conversation actions (app restart recovery)
   setInterruptedState: (conversationId: string, info: InterruptedInfo | null) => void;
   setInterruptedResuming: (conversationId: string, resuming: boolean) => void;
@@ -670,6 +676,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   branchSyncCompletedAt: {},
   lastTurnCompletedAt: {},
   pendingUserQuestion: {},
+  pendingSprintPhaseProposal: {},
   interruptedState: {},
   inputSuggestions: {},
   summaries: {},
@@ -1157,6 +1164,8 @@ export const useAppStore = create<AppState>((set, get) => ({
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { [id]: _question, ...remainingPendingQuestions } = state.pendingUserQuestion;
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { [id]: _sprintProposal, ...remainingSprintProposals } = state.pendingSprintPhaseProposal;
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { [id]: _interrupted, ...remainingInterruptedState } = state.interruptedState;
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { [id]: _context, ...remainingContextUsage } = state.contextUsage;
@@ -1210,6 +1219,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       activeTools: remainingActiveTools,
       agentTodos: remainingAgentTodos,
       pendingUserQuestion: remainingPendingQuestions,
+      pendingSprintPhaseProposal: remainingSprintProposals,
       interruptedState: remainingInterruptedState,
       contextUsage: remainingContextUsage,
       queuedMessages: remainingQueuedMessages,
@@ -2604,6 +2614,14 @@ updateFileTabContent: (id, content) => set((state) => ({
     pendingUserQuestion: {
       ...state.pendingUserQuestion,
       [conversationId]: null,
+    },
+  })),
+
+  // Sprint phase proposal actions (update_sprint_phase tool)
+  setPendingSprintPhaseProposal: (conversationId, proposal) => set((state) => ({
+    pendingSprintPhaseProposal: {
+      ...state.pendingSprintPhaseProposal,
+      [conversationId]: proposal,
     },
   })),
 

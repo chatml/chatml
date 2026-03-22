@@ -540,6 +540,7 @@ type UpdateSessionRequest struct {
 	DeleteBranch     *bool   `json:"deleteBranch,omitempty"`
 	Priority         *int    `json:"priority,omitempty"`
 	TaskStatus       *string `json:"taskStatus,omitempty"`
+	SprintPhase      *string `json:"sprintPhase,omitempty"`
 }
 
 func (h *Handlers) UpdateSession(w http.ResponseWriter, r *http.Request) {
@@ -576,6 +577,10 @@ func (h *Handlers) UpdateSession(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.TaskStatus != nil && !models.ValidTaskStatuses[*req.TaskStatus] {
 		writeValidationError(w, "invalid taskStatus value")
+		return
+	}
+	if req.SprintPhase != nil && !models.ValidSprintPhases[*req.SprintPhase] {
+		writeValidationError(w, "invalid sprintPhase value")
 		return
 	}
 	if req.TargetBranch != nil && *req.TargetBranch != "" {
@@ -653,6 +658,9 @@ func (h *Handlers) UpdateSession(w http.ResponseWriter, r *http.Request) {
 		}
 		if req.TaskStatus != nil {
 			s.TaskStatus = *req.TaskStatus
+		}
+		if req.SprintPhase != nil {
+			s.SprintPhase = *req.SprintPhase
 		}
 		s.UpdatedAt = time.Now()
 	}); err != nil {

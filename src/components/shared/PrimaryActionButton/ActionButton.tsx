@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Loader2, ChevronDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { dispatchAppEvent } from '@/lib/custom-events';
 import type { ActionButtonProps, DropdownAction, DropdownColor } from './types';
 
 const PENDING_TIMEOUT_MS = 8000;
@@ -86,13 +87,23 @@ export function ActionButton({
     } else if (action.message) {
       onSendMessage(action.message, action.type);
     }
+
+    // Auto-advance sprint phase if specified
+    if (action.nextPhase !== undefined) {
+      dispatchAppEvent('sprint-phase-advance', { phase: action.nextPhase });
+    }
   };
 
-  const handleDropdownClick = (message: string) => {
+  const handleDropdownClick = (da: DropdownAction) => {
     if (pendingAction) return;
     markPending();
     setPopoverOpen(false);
-    onSendMessage(message, action.type);
+    if (da.message) {
+      onSendMessage(da.message, action.type);
+    }
+    if (da.nextPhase !== undefined) {
+      dispatchAppEvent('sprint-phase-advance', { phase: da.nextPhase });
+    }
   };
 
   const handleSecondaryClick = () => {
@@ -127,7 +138,7 @@ export function ActionButton({
       const num = parseInt(e.key, 10);
       if (num >= 1 && num <= richActions.length) {
         e.preventDefault();
-        handleDropdownClick(richActions[num - 1].message);
+        handleDropdownClick(richActions[num - 1]);
         return;
       }
 
@@ -200,7 +211,7 @@ export function ActionButton({
                   tabIndex={-1}
                   key={da.label}
                   className="group w-full text-left rounded-md px-2.5 py-2 hover:bg-accent transition-colors flex items-center gap-2.5"
-                  onClick={() => handleDropdownClick(da.message)}
+                  onClick={() => handleDropdownClick(da)}
                 >
                   {SimpleIcon && <SimpleIcon className="h-3.5 w-3.5 text-muted-foreground" />}
                   <span className="text-sm font-medium">{da.label}</span>
@@ -221,7 +232,7 @@ export function ActionButton({
                   tabIndex={-1}
                   key={da.label}
                   className="group w-full text-left rounded-md px-2.5 py-2 hover:bg-accent transition-colors"
-                  onClick={() => handleDropdownClick(da.message)}
+                  onClick={() => handleDropdownClick(da)}
                 >
                   <div className="flex items-center gap-2.5">
                     {RichIcon && colors && (
