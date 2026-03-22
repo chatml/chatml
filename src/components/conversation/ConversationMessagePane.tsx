@@ -226,6 +226,7 @@ export function ConversationMessagePane({
   const isAtBottomRef = useRef(true);
   const forceFollowRef = useRef(false);
   const userScrolledUpRef = useRef(false);
+  const isStreamingRef = useRef(selectedStreaming.isStreaming);
   const isActiveRef = useRef(isActive);
 
   /** Reset all follow-state refs atomically. */
@@ -237,6 +238,9 @@ export function ConversationMessagePane({
   useEffect(() => {
     isActiveRef.current = isActive;
   }, [isActive]);
+  useEffect(() => {
+    isStreamingRef.current = selectedStreaming.isStreaming;
+  }, [selectedStreaming.isStreaming]);
 
   // When the pane becomes active after being hidden (e.g. session switch where
   // the parent container was display:none), Virtuoso may need a scroll nudge.
@@ -364,6 +368,47 @@ export function ConversationMessagePane({
       scrollerEl.removeEventListener('keydown', handleKeyDown);
     };
   }, [selectedStreaming.isStreaming, isActive]);
+
+  // Supplementary scroll listener: ensures the scroll-to-bottom pill shows
+  // even when Virtuoso's atBottomStateChange doesn't fire on initial scroll
+  // away from bottom (it requires a true→false transition cycle).
+  // This listener is unidirectional — it only SHOWS the pill. Virtuoso's
+  // atBottomStateChange remains the sole authority for hiding it.
+  useEffect(() => {
+    if (!isActive || !hasMessages) return;
+
+    let scrollCleanup: (() => void) | null = null;
+
+    // Poll until Virtuoso mounts and exposes the scroller element
+    const timerId = setInterval(() => {
+      const scrollerEl = messageListRef.current?.getScrollerElement();
+      if (!scrollerEl) return;
+      clearInterval(timerId);
+
+      const handleScroll = () => {
+        const threshold = isStreamingRef.current ? 200 : 50;
+        const atBottom = scrollerEl.scrollHeight - scrollerEl.scrollTop - scrollerEl.clientHeight <= threshold;
+        // Only override to show the pill; let Virtuoso handle the "returned to bottom" case
+        if (!atBottom && isAtBottomRef.current) {
+          isAtBottomRef.current = false;
+          setShowScrollButton(true);
+        }
+      };
+
+      scrollerEl.addEventListener('scroll', handleScroll, { passive: true });
+      // Check immediately in case we're already not at bottom
+      handleScroll();
+
+      scrollCleanup = () => {
+        scrollerEl.removeEventListener('scroll', handleScroll);
+      };
+    }, 100);
+
+    return () => {
+      clearInterval(timerId);
+      scrollCleanup?.();
+    };
+  }, [isActive, hasMessages]);
 
   // Scroll handler for conversation markers minimap
   const handleMarkerScrollToIndex = useCallback((index: number) => {
