@@ -24,7 +24,7 @@ export function PairMobileSettings() {
   const [relayUrl, setRelayUrl] = useState(DEFAULT_RELAY_URL);
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState('');
-  const { toast } = useToast();
+  const { success } = useToast();
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Check initial status — also detects if relay endpoints are available
@@ -59,7 +59,7 @@ export function PairMobileSettings() {
         const status = await getRelayStatus();
         if (mounted && status.connected) {
           setState('connected');
-          toast({ description: 'Mobile device connected' });
+          success('Mobile device connected');
         }
       } catch {
         // Ignore polling errors
@@ -73,7 +73,7 @@ export function PairMobileSettings() {
         pollRef.current = null;
       }
     };
-  }, [state, toast]);
+  }, [state, success]);
 
   const handleStartPairing = useCallback(async () => {
     setState('connecting');
@@ -101,7 +101,7 @@ export function PairMobileSettings() {
   const handleDisconnect = useCallback(async () => {
     try {
       await disconnectRelay();
-      toast({ description: 'Mobile device disconnected' });
+      success('Mobile device disconnected');
     } catch {
       // Best effort
     }
