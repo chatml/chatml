@@ -103,6 +103,11 @@ export function MermaidDiagram({ code }: MermaidDiagramProps) {
           setError(err instanceof Error ? err.message : 'Failed to render diagram');
           setIsLoading(false);
         }
+        // Clean up orphaned mermaid error element from DOM
+        const errorElement = document.getElementById(`dmermaid-${uniqueId}`);
+        if (errorElement) {
+          errorElement.remove();
+        }
       }
     };
 
@@ -110,6 +115,11 @@ export function MermaidDiagram({ code }: MermaidDiagramProps) {
 
     return () => {
       cancelled = true;
+      // Clean up any orphaned mermaid elements
+      const el = document.getElementById(`dmermaid-${uniqueId}`);
+      if (el) {
+        el.remove();
+      }
     };
   }, [code, uniqueId]);
 
