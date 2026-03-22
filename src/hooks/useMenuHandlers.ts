@@ -136,6 +136,11 @@ export function useMenuHandlers(options: MenuHandlersOptions) {
               const { readText } = await import('@tauri-apps/plugin-clipboard-manager');
               const text = await readText().catch(() => '');
               if (text) {
+                // If an xterm terminal is focused, paste directly to PTY
+                if (document.activeElement?.closest('.xterm') != null) {
+                  window.dispatchEvent(new CustomEvent('terminal-paste', { detail: { text } }));
+                  return;
+                }
                 // Auto-convert long text to attachment (mirrors handlePaste in useChatInputAttachments)
                 const { autoConvertLongText } = useSettingsStore.getState();
                 if (autoConvertLongText && text.length > 5000) {

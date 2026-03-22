@@ -395,6 +395,23 @@ export function useTerminal(options: UseTerminalOptions = {}): UseTerminalReturn
     };
   }, []);
 
+  // Handle CMD+V paste from Tauri menu accelerator
+  useEffect(() => {
+    const handlePaste = (e: Event) => {
+      const text = (e as CustomEvent).detail?.text;
+      if (!text || !ptyRef.current || ptyRef.current.stopped) return;
+      // Only handle if this terminal instance is focused
+      const el = terminalRef.current?.element;
+      if (el && el.contains(document.activeElement)) {
+        ptyRef.current.write(text).catch((e) => {
+          console.warn('PTY paste write error:', e);
+        });
+      }
+    };
+    window.addEventListener('terminal-paste', handlePaste);
+    return () => window.removeEventListener('terminal-paste', handlePaste);
+  }, []);
+
   // Sync terminal theme when app theme changes
   useEffect(() => {
     if (terminalRef.current) {
