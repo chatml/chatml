@@ -2137,6 +2137,8 @@ const AUTH_ERROR_PATTERNS = [
   "unable to locate credentials",
   "could not resolve credentials",
   "invalid identity token",
+  // Claude Code SDK patterns
+  "not logged in. please run",
 ];
 
 function detectAuthError(text: string): boolean {

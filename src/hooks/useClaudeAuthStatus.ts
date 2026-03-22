@@ -51,6 +51,11 @@ export function refreshClaudeAuthStatus() {
     .catch(() => notify(DEFAULT_AUTH_STATUS));
 }
 
+// Re-check interval for Bedrock SSO token validity (5 minutes).
+// This ensures the expiry banner appears proactively mid-session,
+// before the token actually expires and breaks the running agent.
+const SSO_RECHECK_INTERVAL_MS = 5 * 60 * 1000;
+
 export function useClaudeAuthStatus(): ClaudeAuthStatus | null {
   const [status, setStatus] = useState<ClaudeAuthStatus | null>(cachedStatus);
 
@@ -62,6 +67,15 @@ export function useClaudeAuthStatus(): ClaudeAuthStatus | null {
     }
     return () => { listeners.delete(setStatus); };
   }, []);
+
+  // Periodic re-check when Bedrock is configured — keeps the SSO expiry banner current.
+  // Stabilize to a plain boolean so transient DEFAULT_AUTH_STATUS responses don't reset the interval.
+  const hasBedrock = !!status?.hasBedrock;
+  useEffect(() => {
+    if (!hasBedrock) return;
+    const id = setInterval(refreshClaudeAuthStatus, SSO_RECHECK_INTERVAL_MS);
+    return () => clearInterval(id);
+  }, [hasBedrock]);
 
   return status;
 }
