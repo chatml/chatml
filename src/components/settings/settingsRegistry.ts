@@ -10,7 +10,7 @@ export type SettingsCategory =
   | 'advanced'
   | 'about';
 
-export type WorkspaceSettingsSection = 'repository' | 'review' | 'actions' | 'agents' | 'memory';
+export type WorkspaceSettingsSection = 'repository' | 'review' | 'actions' | 'agents' | 'memory' | 'gstack';
 
 export type SettingsView =
   | { type: 'app'; category: SettingsCategory }

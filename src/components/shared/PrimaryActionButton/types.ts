@@ -11,7 +11,11 @@ export type PrimaryActionType =
   | 'create-pr'
   | 'view-pr'
   | 'merge-pr'
-  | 'archive-session';
+  | 'archive-session'
+  // Sprint phase actions
+  | 'sprint-think'
+  | 'sprint-review'
+  | 'sprint-test';
 
 export type ButtonVariant = 'default' | 'destructive' | 'success' | 'warning';
 
@@ -26,6 +30,7 @@ export interface DropdownAction {
   icon?: LucideIcon;
   color?: DropdownColor;
   shortcut?: string;
+  nextPhase?: import('@/lib/types').SprintPhase | null; // Auto-advance sprint phase on click
 }
 
 export interface PrimaryAction {
@@ -37,6 +42,7 @@ export interface PrimaryAction {
   message?: string; // Message to send to agent (undefined for 'view-pr' and 'archive-session')
   prUrl?: string; // For 'view-pr' action
   sessionId?: string; // For 'archive-session' action
+  nextPhase?: import('@/lib/types').SprintPhase | null; // Auto-advance sprint phase on click
   dropdownActions?: DropdownAction[]; // Multiple dropdown options
   secondaryAction?: {
     label: string;

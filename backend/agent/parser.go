@@ -139,6 +139,9 @@ type AgentEvent struct {
 	// Plan approval fields (ExitPlanMode tool)
 	PlanContent string `json:"planContent,omitempty"`
 
+	// Sprint phase proposal fields (update_sprint_phase tool)
+	Phase string `json:"phase,omitempty"`
+
 	// Input suggestion fields (Haiku-generated prompt suggestions)
 	GhostText string              `json:"ghostText,omitempty"`
 	Pills     []ai.SuggestionPill `json:"pills,omitempty"`
@@ -350,7 +353,8 @@ const (
 	EventTypeUserQuestionTimeout = "user_question_timeout"
 
 	// Plan approval events (ExitPlanMode tool)
-	EventTypePlanApprovalRequest = "plan_approval_request"
+	EventTypePlanApprovalRequest  = "plan_approval_request"
+	EventTypeSprintPhaseProposal = "sprint_phase_proposal"
 
 	// Command error (SDK runtime command failed)
 	EventTypeCommandError = "command_error"

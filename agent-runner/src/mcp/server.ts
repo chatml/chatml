@@ -6,6 +6,7 @@ import { createLinearTools } from "./tools/linear.js";
 import { createCommentTools } from "./tools/comments.js";
 import { createPRTools } from "./tools/pr.js";
 import { createScriptTools } from "./tools/scripts.js";
+import { createSprintTools } from "./tools/sprint.js";
 
 const BACKEND_URL = process.env.CHATML_BACKEND_URL || "http://127.0.0.1:9876";
 const AUTH_TOKEN = process.env.CHATML_AUTH_TOKEN || "";
@@ -269,6 +270,9 @@ export function createChatMLMcpServer(options: McpServerOptions) {
 
       // Script config tools
       ...createScriptTools(context),
+
+      // Sprint phase tools
+      ...createSprintTools(context),
     ],
   });
 }

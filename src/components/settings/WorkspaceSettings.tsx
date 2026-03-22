@@ -52,6 +52,7 @@ import { SettingsGroup } from './shared/SettingsGroup';
 import { SettingsRow } from './shared/SettingsRow';
 import type { WorkspaceSettingsSection } from './settingsRegistry';
 import { MemorySettings } from './sections/MemorySettings';
+import { GstackSettings } from './sections/GstackSettings';
 
 /**
  * Standalone content component for rendering workspace settings sections.
@@ -95,6 +96,9 @@ export function WorkspaceSettingsContent({ workspaceId, section }: {
       )}
       {section === 'memory' && (
         <MemorySettings workspaceId={workspaceId} />
+      )}
+      {section === 'gstack' && (
+        <GstackSettings workspaceId={workspaceId} />
       )}
     </>
   );

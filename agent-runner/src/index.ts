@@ -251,7 +251,7 @@ interface Attachment {
 
 // Input message types from Go backend
 interface InputMessage {
-  type: "message" | "stop" | "interrupt" | "set_model" | "set_permission_mode" | "set_max_thinking_tokens" | "set_fast_mode" | "get_supported_models" | "get_supported_commands" | "get_mcp_status" | "get_account_info" | "rewind_files" | "user_question_response" | "plan_approval_response" | "reconnect_mcp_server" | "toggle_mcp_server" | "stop_task" | "get_supported_agents" | "set_mcp_servers" | "get_initialization_result" | "fork_session" | "cancel_message";
+  type: "message" | "stop" | "interrupt" | "set_model" | "set_permission_mode" | "set_max_thinking_tokens" | "set_fast_mode" | "get_supported_models" | "get_supported_commands" | "get_mcp_status" | "get_account_info" | "rewind_files" | "user_question_response" | "plan_approval_response" | "sprint_phase_response" | "reconnect_mcp_server" | "toggle_mcp_server" | "stop_task" | "get_supported_agents" | "set_mcp_servers" | "get_initialization_result" | "fork_session" | "cancel_message";
   content?: string;
   model?: string;
   permissionMode?: string;
@@ -279,6 +279,8 @@ interface InputMessage {
   forkTitle?: string;
   // Fast mode toggle
   fastMode?: boolean;
+  // Sprint phase response fields
+  approved?: boolean;
   // Message UUID — used by "message" (for queue tracking) and "cancel_message" (to identify target)
   messageUuid?: string;
 }
@@ -408,6 +410,18 @@ interface PendingPlanApprovalRequest {
 }
 const pendingPlanApprovalRequests = new Map<string, PendingPlanApprovalRequest>();
 let planApprovalRequestCounter = 0;
+
+// Pending sprint phase proposal requests (for update_sprint_phase tool)
+const SPRINT_PHASE_HOOK_TIMEOUT_S = 86400; // 24 hours
+interface PendingSprintPhaseRequest {
+  resolve: () => void;
+  reject: (error: Error) => void;
+}
+const pendingSprintPhaseRequests = new Map<string, PendingSprintPhaseRequest>();
+let sprintPhaseRequestCounter = 0;
+let lastSprintPhaseApprovalTime = 0;
+let lastApprovedSprintPhase: string | null = null;
+const SPRINT_PHASE_COOLDOWN_MS = 5_000; // 5 seconds — tight window for SDK retries only
 
 // Track the last file written during plan mode so we can include plan content
 // in the plan_approval_request event when ExitPlanMode fires.
@@ -756,6 +770,25 @@ function setupInputQueue(): void {
           emit({
             type: "warning",
             message: `Received response for unknown plan approval request: ${input.planApprovalRequestId}`,
+          });
+        }
+        return;
+      }
+
+      // Handle sprint phase proposal responses from the Go backend
+      if (input.type === "sprint_phase_response" && input.questionRequestId) {
+        const pending = pendingSprintPhaseRequests.get(input.questionRequestId);
+        if (pending) {
+          pendingSprintPhaseRequests.delete(input.questionRequestId);
+          if (input.approved) {
+            pending.resolve();
+          } else {
+            pending.reject(new Error("User rejected the sprint phase transition"));
+          }
+        } else {
+          emit({
+            type: "warning",
+            message: `Received response for unknown sprint phase request: ${input.questionRequestId}`,
           });
         }
         return;
@@ -1662,6 +1695,76 @@ const exitPlanModeHook: HookCallback = async (_input) => {
   }
 };
 
+// PreToolUse hook that intercepts update_sprint_phase to route approval through our UI.
+// Follows the same pattern as AskUserQuestion: emit event → wait for stdin response.
+const updateSprintPhaseHook: HookCallback = async (input) => {
+  const hookInput = input as PreToolUseHookInput;
+  const toolInput = hookInput.tool_input as { phase: string; reason: string };
+
+  // Retry dedup: if the exact same phase was just approved, auto-allow.
+  // This handles SDK retries only — uses a tight 5s window scoped to the specific phase.
+  if (
+    lastApprovedSprintPhase === toolInput.phase &&
+    Date.now() - lastSprintPhaseApprovalTime < SPRINT_PHASE_COOLDOWN_MS
+  ) {
+    debug("Auto-allowing update_sprint_phase retry (cooldown active for same phase)");
+    return {
+      hookSpecificOutput: {
+        hookEventName: "PreToolUse" as const,
+        permissionDecision: "allow" as const,
+        updatedInput: hookInput.tool_input as Record<string, unknown>,
+      },
+    };
+  }
+
+  const requestId = `sprint-phase-${++sprintPhaseRequestCounter}-${Date.now()}`;
+
+  // Flush buffered text so it appears before the proposal UI
+  flushBlockBuffer();
+
+  // Emit the sprint phase proposal to the Go backend
+  emit({
+    type: "sprint_phase_proposal",
+    requestId,
+    phase: toolInput.phase,
+    reason: toolInput.reason,
+    sessionId: currentSessionId,
+  });
+
+  // Wait for user response
+  try {
+    await new Promise<void>((resolve, reject) => {
+      pendingSprintPhaseRequests.set(requestId, { resolve, reject });
+      setTimeout(() => {
+        if (pendingSprintPhaseRequests.has(requestId)) {
+          pendingSprintPhaseRequests.delete(requestId);
+          reject(new Error("Sprint phase proposal timed out"));
+        }
+      }, SPRINT_PHASE_HOOK_TIMEOUT_S * 1000);
+    });
+
+    // User approved
+    lastSprintPhaseApprovalTime = Date.now();
+    lastApprovedSprintPhase = toolInput.phase;
+    return {
+      hookSpecificOutput: {
+        hookEventName: "PreToolUse" as const,
+        permissionDecision: "allow" as const,
+        updatedInput: hookInput.tool_input as Record<string, unknown>,
+      },
+    };
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    return {
+      hookSpecificOutput: {
+        hookEventName: "PreToolUse" as const,
+        permissionDecision: "deny" as const,
+        permissionDecisionReason: errorMessage,
+      },
+    };
+  }
+};
+
 // Tools that are NOT allowed in plan mode (write/execute tools).
 // Plan mode restricts the agent to read-only until ExitPlanMode is approved.
 const PLAN_MODE_DENIED_TOOLS = new Set([
@@ -1693,6 +1796,7 @@ const hooks = {
   PreToolUse: [
     { matcher: "AskUserQuestion", timeout: ASK_USER_QUESTION_HOOK_TIMEOUT_S, hooks: [askUserQuestionHook] },
     { matcher: "ExitPlanMode", timeout: PLAN_APPROVAL_HOOK_TIMEOUT_S, hooks: [exitPlanModeHook] },
+    { matcher: "update_sprint_phase", timeout: SPRINT_PHASE_HOOK_TIMEOUT_S, hooks: [updateSprintPhaseHook] },
     { hooks: [preToolUseHook] },
   ],
   PostToolUse: [{ hooks: [postToolUseHook] }],

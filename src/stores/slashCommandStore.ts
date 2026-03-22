@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { dispatchAppEvent } from '@/lib/custom-events';
 import type { LucideIcon } from 'lucide-react';
 import {
   RefreshCw,
@@ -12,6 +13,7 @@ import {
   Sparkles,
   FileText,
   Plug,
+  Play,
 } from 'lucide-react';
 import type { SkillDTO } from '@/lib/api';
 
@@ -176,6 +178,20 @@ const BUILTIN_COMMANDS: UnifiedSlashCommand[] = [
     source: 'builtin',
     executionType: 'action',
     execute: () => window.dispatchEvent(new CustomEvent('toggle-thinking')),
+  },
+
+  // Sprint commands
+  {
+    id: 'builtin:sprint',
+    trigger: 'sprint',
+    label: 'Start Sprint',
+    description: 'Start a sprint workflow (Think → Plan → Build → Review → Test → Ship → Reflect)',
+    keywords: ['workflow', 'gstack', 'phases', 'lifecycle'],
+    icon: Play,
+    source: 'builtin',
+    executionType: 'action',
+    available: requiresSession,
+    execute: () => dispatchAppEvent('toggle-sprint'),
   },
 ];
 

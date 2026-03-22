@@ -4,6 +4,13 @@ export type SessionPriority = 0 | 1 | 2 | 3 | 4;
 // Session task status (user-managed workflow state, distinct from agent execution status)
 export type SessionTaskStatus = 'backlog' | 'in_progress' | 'in_review' | 'done' | 'cancelled';
 
+// Sprint phase (development lifecycle workflow, complements taskStatus)
+// Keep in sync with: backend/models/types.go, agent-runner/src/mcp/tools/sprint.ts, src/lib/session-fields.ts
+export type SprintPhase = 'think' | 'plan' | 'build' | 'review' | 'test' | 'ship' | 'reflect';
+
+// Ordered sprint phases for UI stepper
+export const SPRINT_PHASES: SprintPhase[] = ['think', 'plan', 'build', 'review', 'test', 'ship', 'reflect'];
+
 // Session activity state (derived from agent process state for sidebar indicators)
 export type SessionActivityState = 'working' | 'awaiting_input' | 'awaiting_approval' | 'idle';
 
@@ -47,6 +54,7 @@ export interface WorktreeSession {
   hasCheckFailures?: boolean;
   checkStatus?: 'none' | 'pending' | 'success' | 'failure';
   targetBranch?: string; // Per-session target branch override (e.g. "origin/develop")
+  sprintPhase?: SprintPhase | null; // Current sprint workflow phase (null = no sprint active)
   createdAt: string;
   updatedAt: string;
 }
@@ -435,6 +443,9 @@ export interface AgentEvent {
   // Plan approval fields (ExitPlanMode tool)
   planContent?: string;
 
+  // Sprint phase proposal fields (update_sprint_phase tool)
+  phase?: string;
+
   // Input suggestion fields
   ghostText?: string;
   pills?: SuggestionPill[];
@@ -625,6 +636,12 @@ export interface PendingUserQuestion {
   questions: UserQuestion[];
   currentIndex: number;  // Track which question is being shown
   answers: Record<string, string>;  // header -> selected label(s)
+}
+
+export interface PendingSprintPhaseProposal {
+  requestId: string;
+  phase: SprintPhase;
+  reason: string;
 }
 
 export interface VerificationResult {

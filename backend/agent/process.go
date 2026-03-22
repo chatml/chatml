@@ -115,6 +115,8 @@ type InputMessage struct {
 	TaskId string `json:"taskId,omitempty"`
 	// Fast mode toggle
 	FastMode *bool `json:"fastMode,omitempty"`
+	// Sprint phase response fields (for update_sprint_phase tool)
+	Approved *bool `json:"approved,omitempty"`
 }
 
 // findAgentRunner locates the agent-runner executable
@@ -676,6 +678,15 @@ func (p *Process) SendPlanApprovalResponse(requestId string, approved bool, reas
 		PlanApprovalRequestID: requestId,
 		PlanApproved:          &approved,
 		PlanApprovalReason:    reason,
+	})
+}
+
+// SendSprintPhaseResponse sends the user's approval/rejection of a sprint phase transition.
+func (p *Process) SendSprintPhaseResponse(requestId string, approved bool) error {
+	return p.sendInput(InputMessage{
+		Type:              "sprint_phase_response",
+		QuestionRequestID: requestId,
+		Approved:          &approved,
 	})
 }
 

@@ -575,6 +575,18 @@ export function useWebSocket(enabled: boolean = true) {
         }
         break;
 
+      case 'sprint_phase_proposal':
+        if (event?.requestId && event?.phase) {
+          store.setPendingSprintPhaseProposal(conversationId, {
+            requestId: event.requestId as string,
+            phase: event.phase as import('@/lib/types').SprintPhase,
+            reason: (event.reason as string) || '',
+          });
+          notifyBackgroundSession(conversationId);
+          notifyDesktop(conversationId, 'Sprint Phase Proposal', `Advance to ${event.phase}?`);
+        }
+        break;
+
       case 'context_usage':
         if (event?.inputTokens !== undefined) {
           store.setContextUsage(conversationId, {
