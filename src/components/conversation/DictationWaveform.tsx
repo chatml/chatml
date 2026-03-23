@@ -1,11 +1,19 @@
 'use client';
 
-import { useRef, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { Mic } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { isMacOS } from '@/lib/platform';
 
 const BAR_COUNT = 24;
+
+// Pre-compute deterministic base offsets (no randomness needed — visual variety
+// comes from the audio-level multipliers which change per frame).
+const BAR_OFFSETS = Array.from({ length: BAR_COUNT }, (_, i) => {
+  // Use a simple hash-like formula for deterministic but varied offsets
+  const t = ((i * 7 + 3) % BAR_COUNT) / BAR_COUNT;
+  return t * 0.3 + 0.05;
+});
 
 interface DictationWaveformProps {
   audioLevel: number;
@@ -13,21 +21,15 @@ interface DictationWaveformProps {
 }
 
 export function DictationWaveform({ audioLevel, isActive }: DictationWaveformProps) {
-  // Stable per-bar offsets and multipliers stored in refs (initialized lazily in effect)
-  const barOffsetsRef = useRef<number[]>([]);
-  const barMultipliersRef = useRef<number[]>([]);
-
-  // Initialize offsets once on mount
-  useEffect(() => {
-    barOffsetsRef.current = Array.from({ length: BAR_COUNT }, () => Math.random() * 0.3 + 0.05);
-    barMultipliersRef.current = Array.from({ length: BAR_COUNT }, () => Math.random());
-  }, []);
+  // Multipliers stored in state so they can be read during render
+  const [barMultipliers, setBarMultipliers] = useState<number[]>(
+    () => Array.from({ length: BAR_COUNT }, () => 1)
+  );
 
   // Refresh random multipliers on each audio level change for organic movement
   useEffect(() => {
-    barMultipliersRef.current = Array.from(
-      { length: BAR_COUNT },
-      () => 0.6 + Math.random() * 0.4
+    setBarMultipliers(
+      Array.from({ length: BAR_COUNT }, () => 0.6 + Math.random() * 0.4)
     );
   }, [audioLevel]);
 
@@ -51,8 +53,8 @@ export function DictationWaveform({ audioLevel, isActive }: DictationWaveformPro
 
       {/* Waveform bars */}
       <div className="flex items-center gap-[2px] h-6 flex-1 min-w-0">
-        {barOffsetsRef.current.map((baseOffset, i) => {
-          const multiplier = barMultipliersRef.current[i] ?? 1;
+        {BAR_OFFSETS.map((baseOffset, i) => {
+          const multiplier = barMultipliers[i] ?? 1;
           const height = Math.min(
             1,
             baseOffset + audioLevel * multiplier

@@ -51,12 +51,9 @@ export function useDictation(options: UseDictationOptions): UseDictationReturn {
     isDictatingRef.current = isDictating;
   });
 
-  // Check availability on mount
+  // Check availability on mount (isAvailable starts as false, so non-macOS needs no setState)
   useEffect(() => {
-    if (!isMacOS()) {
-      setIsAvailable(false);
-      return;
-    }
+    if (!isMacOS()) return;
 
     safeInvoke<DictationPermissionStatus>('check_dictation_permissions').then(
       (status) => {
