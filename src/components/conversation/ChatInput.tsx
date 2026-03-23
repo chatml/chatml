@@ -5,7 +5,7 @@ import { useAppStore } from '@/stores/appStore';
 import { createConversation, sendConversationMessage, stopConversation, setConversationPlanMode, setConversationFastMode, approvePlan } from '@/lib/api';
 import { markPlanModeExited } from '@/hooks/useWebSocket';
 import { dispatchAppEvent, useAppEventListener } from '@/lib/custom-events';
-import { useShortcut } from '@/hooks/useShortcut';
+import { useShortcut, useCustomShortcut } from '@/hooks/useShortcut';
 import { Sparkles, Upload, Link, FolderSymlink } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useClaudeAuthStatus, refreshClaudeAuthStatus } from '@/hooks/useClaudeAuthStatus';
@@ -38,6 +38,45 @@ import { ChatInputPillSuggestions } from './ChatInputPillSuggestions';
 import { ChatInputPlanApproval } from './ChatInputPlanApproval';
 import { ToolApprovalBanner } from './ToolApprovalBanner';
 import { ChatInputToolbar } from './ChatInputToolbar';
+import { DictationWaveform } from './DictationWaveform';
+import { useDictation } from '@/hooks/useDictation';
+
+import type { Shortcut, ModifierKey } from '@/lib/shortcuts';
+import type { DictationShortcutPreset } from '@/stores/settingsStore';
+
+/** Convert a dictation shortcut preset + custom string into a Shortcut definition. */
+function parseDictationShortcut(preset: DictationShortcutPreset, custom: string): Shortcut {
+  const base = { id: 'toggleDictation', label: 'Toggle dictation', category: 'Chat' as const };
+  switch (preset) {
+    case 'capslock':
+      return { ...base, key: 'CapsLock', modifiers: [] };
+    case 'cmd-shift-d':
+      return { ...base, key: 'd', modifiers: ['meta', 'shift'] };
+    case 'custom': {
+      if (!custom) return { ...base, key: 'd', modifiers: ['meta', 'shift'] };
+      const parts = custom.split('+');
+      const key = parts[parts.length - 1];
+      const modifiers = parts.slice(0, -1) as ModifierKey[];
+      return { ...base, key, modifiers };
+    }
+  }
+}
+
+/** Format a Shortcut into a human-readable hint string (e.g. "⌘⇧D"). */
+function formatShortcutHint(shortcut: Shortcut): string {
+  const parts: string[] = [];
+  for (const mod of shortcut.modifiers) {
+    switch (mod) {
+      case 'meta': parts.push('\u2318'); break;
+      case 'ctrl': parts.push('Ctrl'); break;
+      case 'alt': parts.push('\u2325'); break;
+      case 'shift': parts.push('\u21E7'); break;
+    }
+  }
+  const key = shortcut.key.length === 1 ? shortcut.key.toUpperCase() : shortcut.key;
+  parts.push(key);
+  return parts.join('');
+}
 
 // Flat file type for mention items
 interface FlatFile {
@@ -207,6 +246,35 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
     setDraftInput,
     clearDraftInput,
   });
+
+  // Speech-to-text dictation
+  const preDictationTextRef = useRef('');
+  const { isDictating, toggle: toggleDictation, isAvailable: dictationAvailable, audioLevel } = useDictation({
+    onTranscript: (text, isFinal) => {
+      const prefix = preDictationTextRef.current;
+      const combined = prefix ? `${prefix} ${text}` : text;
+      plateInputRef.current?.setText(combined);
+      setMessage(combined);
+    },
+    onError: (msg) => showError(msg),
+  });
+
+  // Capture existing text when dictation starts
+  const prevDictatingRef = useRef(false);
+  useEffect(() => {
+    if (isDictating && !prevDictatingRef.current) {
+      preDictationTextRef.current = messageRef.current;
+    }
+    prevDictatingRef.current = isDictating;
+  }, [isDictating]);
+
+  // Register dictation shortcut (configurable via settings)
+  const dictationShortcutPref = useSettingsStore((s) => s.dictationShortcut);
+  const dictationCustomShortcut = useSettingsStore((s) => s.dictationCustomShortcut);
+  const dictationShortcutDef = useMemo(() => {
+    return parseDictationShortcut(dictationShortcutPref, dictationCustomShortcut);
+  }, [dictationShortcutPref, dictationCustomShortcut]);
+  useCustomShortcut(dictationShortcutDef, toggleDictation, { enabled: dictationAvailable });
 
   // Session-scoped streaming state — prevents cross-session plan/state leakage
   const streamingInput = useStreamingChatInput(selectedConversationId);
@@ -950,6 +1018,9 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
         <ToolApprovalBanner conversationId={selectedConversationId} />
       )}
 
+      {/* Dictation waveform visualizer */}
+      <DictationWaveform audioLevel={audioLevel} isActive={isDictating} />
+
       <div className={cn(
         'relative',
         pendingPlanApproval && 'plan-approval-border'
@@ -1130,6 +1201,12 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
             onStop: handleStop,
           }}
           showInfo={showInfo}
+          dictation={{
+            isDictating,
+            isAvailable: dictationAvailable,
+            onToggle: toggleDictation,
+            shortcutHint: formatShortcutHint(dictationShortcutDef),
+          }}
         />
       </div>
       </div>

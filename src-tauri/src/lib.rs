@@ -3,6 +3,7 @@ mod error;
 mod icons;
 mod menu;
 mod sidecar;
+mod speech;
 mod state;
 mod watcher;
 
@@ -175,7 +176,11 @@ pub fn run() {
             commands::check_prerequisites,
             commands::check_gh_auth_status,
             // Resolved user PATH (version manager shims)
-            commands::get_resolved_path
+            commands::get_resolved_path,
+            // Speech-to-text dictation
+            commands::check_dictation_permissions,
+            commands::start_dictation,
+            commands::stop_dictation
         ])
         .setup(move |app| {
             // Create and set the menu
