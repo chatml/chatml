@@ -341,7 +341,10 @@ mod tests {
     #[test]
     fn test_icon_cache_hit_returns_stored_value() {
         let state = AppState::new();
-        state.cache_icon("/Applications/Foo.app".to_string(), "base64data".to_string());
+        state.cache_icon(
+            "/Applications/Foo.app".to_string(),
+            "base64data".to_string(),
+        );
         assert_eq!(
             state.get_cached_icon("/Applications/Foo.app"),
             Some("base64data".to_string())

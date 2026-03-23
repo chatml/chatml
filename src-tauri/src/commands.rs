@@ -446,8 +446,9 @@ fn check_tool(
 /// Uses the cached login shell PATH from AppState, falling back to resolving it fresh.
 #[tauri::command]
 pub fn check_prerequisites(state: State<'_, Arc<AppState>>) -> PrerequisitesResult {
-    let user_path = state.get_resolved_user_path()
-        .unwrap_or_else(|| sidecar::resolve_user_path());
+    let user_path = state
+        .get_resolved_user_path()
+        .unwrap_or_else(sidecar::resolve_user_path);
 
     let tools = vec![
         check_tool(
@@ -504,8 +505,9 @@ pub struct GhCliStatus {
 /// Uses the cached login shell PATH from AppState, falling back to resolving it fresh.
 #[tauri::command]
 pub fn check_gh_auth_status(state: State<'_, Arc<AppState>>) -> GhCliStatus {
-    let user_path = state.get_resolved_user_path()
-        .unwrap_or_else(|| sidecar::resolve_user_path());
+    let user_path = state
+        .get_resolved_user_path()
+        .unwrap_or_else(sidecar::resolve_user_path);
 
     // Check if gh is installed
     let version_output = Command::new("gh")
