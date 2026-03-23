@@ -19,7 +19,7 @@ import { getApiBase } from '@/lib/api';
 
 // GitHub OAuth configuration
 const GITHUB_CLIENT_ID = process.env.NEXT_PUBLIC_GITHUB_CLIENT_ID || '';
-const OAUTH_SCHEME = import.meta.env.DEV ? 'chatml-dev' : 'chatml';
+const OAUTH_SCHEME = process.env.NODE_ENV === 'production' ? 'chatml' : 'chatml-dev';
 const GITHUB_REDIRECT_URI = `${OAUTH_SCHEME}://oauth/callback`;
 const GITHUB_SCOPES = 'repo,read:user';
 
