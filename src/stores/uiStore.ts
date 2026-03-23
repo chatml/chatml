@@ -40,6 +40,9 @@ interface UIState {
   // Per-tab cached rich titles (ReactNode) for the tab strip
   tabTitles: Record<string, ReactNode>;
 
+  // Sprint phase toolbar visibility
+  sprintToolbarOpen: boolean;
+
   // Actions
   setToolbarBackground: (toolbar: ToolbarId, className: string) => void;
   setAllToolbarBackgrounds: (className: string) => void;
@@ -47,6 +50,8 @@ interface UIState {
   setToolbarConfig: (config: ToolbarConfig | null) => void;
   setTabTitle: (tabId: string, title: ReactNode) => void;
   removeTabTitle: (tabId: string) => void;
+  setSprintToolbarOpen: (open: boolean) => void;
+  toggleSprintToolbar: () => void;
 }
 
 const defaultBackgrounds: ToolbarBackgrounds = {
@@ -59,6 +64,7 @@ export const useUIStore = create<UIState>()((set) => ({
   toolbarBackgrounds: { ...defaultBackgrounds },
   toolbarConfig: null,
   tabTitles: {},
+  sprintToolbarOpen: false,
 
   setToolbarBackground: (toolbar, className) =>
     set((state) => ({
@@ -95,4 +101,7 @@ export const useUIStore = create<UIState>()((set) => ({
       const { [tabId]: _removed, ...rest } = state.tabTitles;
       return { tabTitles: rest };
     }),
+
+  setSprintToolbarOpen: (open) => set({ sprintToolbarOpen: open }),
+  toggleSprintToolbar: () => set((s) => ({ sprintToolbarOpen: !s.sprintToolbarOpen })),
 }));

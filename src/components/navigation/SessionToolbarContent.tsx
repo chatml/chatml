@@ -66,6 +66,7 @@ import { TargetBranchSelector } from '@/components/shared/TargetBranchSelector';
 import { useInstalledApps } from '@/hooks/useInstalledApps';
 import type { InstalledApp } from '@/hooks/useInstalledApps';
 import { useSettingsStore } from '@/stores/settingsStore';
+import { useUIStore } from '@/stores/uiStore';
 import { getAppById, getAppName, CATEGORY_LABELS } from '@/lib/openApps';
 import type { AppCategory } from '@/lib/openApps';
 import { getAppIcon } from '@/components/icons/AppIcons';
@@ -130,6 +131,8 @@ export function SessionToolbarContent() {
   const { installedApps } = useInstalledApps();
   const defaultOpenApp = useSettingsStore((s) => s.defaultOpenApp);
   const workspaceColors = useSettingsStore((s) => s.workspaceColors);
+  const toggleSprintToolbar = useUIStore((s) => s.toggleSprintToolbar);
+  const setSprintToolbarOpen = useUIStore((s) => s.setSprintToolbarOpen);
   const { requestArchive, dialogProps: archiveDialogProps } = useArchiveSession({
     onSuccess: () => showSuccess('Session archived'),
     onError: () => showError('Failed to archive session'),
@@ -219,6 +222,11 @@ export function SessionToolbarContent() {
       showError('Failed to send message to agent');
     });
   }, [selectedConversationId, showWarning, showError, addMessage, updateConversation, setStreaming, isAgentWorking]);
+
+  // Close sprint toolbar when session changes
+  useEffect(() => {
+    setSprintToolbarOpen(false);
+  }, [selectedSessionId, setSprintToolbarOpen]);
 
   // Listen for git-create-pr events from menu handler and command palette
   useEffect(() => {
@@ -403,8 +411,17 @@ export function SessionToolbarContent() {
     apiUpdateSession(selectedWorkspaceId, selectedSession.id, apiPayload).catch(() => {
       storeUpdateSession(selectedSession.id, { sprintPhase: prevPhase, taskStatus: prevStatus });
       showError('Failed to update sprint phase');
+      // Reopen toolbar if deactivation failed and sprint reverted to active
+      if (!value && prevPhase) setSprintToolbarOpen(true);
     });
-  }, [selectedSession, selectedWorkspaceId, storeUpdateSession, showError]);
+
+    // Open toolbar when sprint is first activated; close it when deactivated
+    if (!value) {
+      setSprintToolbarOpen(false);
+    } else if (!prevPhase) {
+      setSprintToolbarOpen(true);
+    }
+  }, [selectedSession, selectedWorkspaceId, storeUpdateSession, showError, setSprintToolbarOpen]);
 
   // Listen for toggle-sprint events from slash command
   useAppEventListener('toggle-sprint', () => {
@@ -461,6 +478,7 @@ export function SessionToolbarContent() {
               phase={selectedSession.sprintPhase}
               onChange={handleSprintPhaseChange}
               disabled={isAgentWorking}
+              onOpenToolbar={toggleSprintToolbar}
             />
             {selectedSession.prStatus && selectedSession.prStatus !== 'none' && selectedSession.prNumber && selectedWorkspaceId && (
               <PRHoverCard
