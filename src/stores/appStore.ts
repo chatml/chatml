@@ -187,6 +187,7 @@ const DEFAULT_STREAMING: StreamingState = {
   isThinking: false,
   planModeActive: false,
   pendingPlanApproval: null,
+  pendingToolApproval: null,
   startTime: undefined,
 };
 
@@ -253,6 +254,7 @@ interface StreamingState {
   startTime?: number; // When streaming started (for elapsed time)
   planModeActive: boolean; // Whether plan mode is active for this conversation
   pendingPlanApproval: { requestId: string; planContent?: string } | null; // Pending ExitPlanMode approval request
+  pendingToolApproval: { requestId: string; toolName: string; toolInput: Record<string, unknown>; specifier?: string; timestamp: number } | null; // Pending tool approval request
   approvedPlanContent?: string; // Plan content to persist after approval
   approvedPlanTimestamp?: number; // When the plan was approved (for timeline ordering)
   recovery?: { attempt: number; maxAttempts: number }; // Agent crash recovery in progress
@@ -492,6 +494,8 @@ interface AppState {
   setPlanModeActive: (conversationId: string, active: boolean) => void;
   setPendingPlanApproval: (conversationId: string, requestId: string, planContent?: string) => void;
   clearPendingPlanApproval: (conversationId: string) => void;
+  setPendingToolApproval: (conversationId: string, requestId: string, toolName: string, toolInput: Record<string, unknown>, specifier?: string) => void;
+  clearPendingToolApproval: (conversationId: string) => void;
   setApprovedPlanContent: (conversationId: string, content: string) => void;
   clearApprovedPlanContent: (conversationId: string) => void;
   addActiveTool: (conversationId: string, tool: ActiveTool, opts?: { skipTimeout?: boolean }) => void;
@@ -1674,6 +1678,7 @@ updateFileTabContent: (id, content) => set((state) => ({
       thinking: null,
       isThinking: false,
       pendingPlanApproval: null,
+      pendingToolApproval: null,
       startTime: undefined,
       recovery: undefined,
     }),
@@ -1724,6 +1729,7 @@ updateFileTabContent: (id, content) => set((state) => ({
       thinking: null,
       isThinking: false,
       pendingPlanApproval: null,
+      pendingToolApproval: null,
       startTime: undefined,
       compactBoundary: undefined,
     }),
@@ -1775,6 +1781,16 @@ updateFileTabContent: (id, content) => set((state) => ({
   clearPendingPlanApproval: (conversationId) => set((state) => ({
     streamingState: updateStreamingConv(state.streamingState, conversationId, {
       pendingPlanApproval: null,
+    }),
+  })),
+  setPendingToolApproval: (conversationId: string, requestId: string, toolName: string, toolInput: Record<string, unknown>, specifier?: string) => set((state) => ({
+    streamingState: updateStreamingConv(state.streamingState, conversationId, {
+      pendingToolApproval: { requestId, toolName, toolInput, specifier, timestamp: Date.now() },
+    }),
+  })),
+  clearPendingToolApproval: (conversationId: string) => set((state) => ({
+    streamingState: updateStreamingConv(state.streamingState, conversationId, {
+      pendingToolApproval: null,
     }),
   })),
   setApprovedPlanContent: (conversationId, content) => set((state) => ({
@@ -2080,6 +2096,7 @@ updateFileTabContent: (id, content) => set((state) => ({
         startTime: keepStreaming ? Date.now() : undefined,
         planModeActive: streaming?.planModeActive || false,
         pendingPlanApproval: null,
+        pendingToolApproval: null,
         approvedPlanContent: undefined,
         approvedPlanTimestamp: undefined,
       };

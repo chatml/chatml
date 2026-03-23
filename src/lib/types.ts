@@ -354,6 +354,10 @@ export interface AgentEvent {
   };
   fastModeState?: 'off' | 'cooldown' | 'on';
 
+  // Tool approval fields
+  toolInput?: Record<string, unknown>;
+  specifier?: string;
+
   // Extended result fields
   durationMs?: number;
   durationApiMs?: number;

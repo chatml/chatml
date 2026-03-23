@@ -386,6 +386,14 @@ export const SETTINGS_REGISTRY: SettingMeta[] = [
 
   // ── Advanced: Security ──
   {
+    id: 'defaultPermissionMode',
+    title: 'Default permission mode',
+    description: 'Controls how the agent requests permission to use tools',
+    keywords: ['permission', 'mode', 'security', 'approval', 'tool', 'sandbox', 'bypass', 'default'],
+    category: 'advanced',
+    categoryLabel: 'Advanced',
+  },
+  {
     id: 'neverLoadDotMcp',
     title: 'Block workspace MCP configs',
     description: 'Never auto-load .mcp.json from workspace repositories. Prevents repo-provided MCP servers from running commands.',

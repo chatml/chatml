@@ -496,6 +496,21 @@ export function useWebSocket(enabled: boolean = true) {
         }
         break;
 
+      case 'tool_approval_request':
+        // Non-bypass permission mode: a tool needs user approval
+        if (event?.requestId && event?.toolName) {
+          store.setPendingToolApproval(
+            conversationId,
+            event.requestId as string,
+            event.toolName as string,
+            (event.toolInput as Record<string, unknown>) || {},
+            event.specifier as string | undefined,
+          );
+          notifyBackgroundSession(conversationId);
+          notifyDesktop(conversationId, 'Tool approval needed', `${event.toolName} requires permission`);
+        }
+        break;
+
       case 'plan_mode_auto_exited':
         store.setPlanModeActive(conversationId, false);
         markPlanModeExited(conversationId);

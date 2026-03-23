@@ -191,6 +191,7 @@ type StartConversationOptions struct {
 	FastMode          bool                // Enable fast output mode (Opus 4.6+)
 	Instructions      string              // Additional instructions (e.g., from conversation summaries)
 	Model             string              // Model name override (e.g., "claude-opus-4-6", "claude-sonnet-4-6")
+	PermissionMode    string              // Permission mode: default, acceptEdits, bypassPermissions, dontAsk (empty = bypassPermissions)
 }
 
 // StartConversation creates and starts a new conversation within a session
@@ -310,6 +311,7 @@ func (m *Manager) StartConversation(ctx context.Context, sessionID, conversation
 		procOpts.MaxThinkingTokens = opts.MaxThinkingTokens
 		procOpts.Effort = opts.Effort
 		procOpts.PlanMode = opts.PlanMode
+		procOpts.PermissionMode = opts.PermissionMode
 		procOpts.FastMode = opts.FastMode
 		procOpts.Model = opts.Model
 	}
