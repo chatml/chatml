@@ -15,14 +15,9 @@ use tauri_plugin_decorum::WebviewWindowExt;
 
 use state::AppState;
 
-/// Check if a URL is an OAuth callback for the current build (dev or release).
+/// Check if a URL is an OAuth callback.
 fn is_oauth_callback(scheme: &str, host: Option<&str>) -> bool {
-    let expected_scheme = if cfg!(debug_assertions) {
-        "chatml-dev"
-    } else {
-        "chatml"
-    };
-    scheme == expected_scheme && host == Some("oauth")
+    scheme == "chatml" && host == Some("oauth")
 }
 
 /// Fixed application-specific salt for Stronghold key derivation.
@@ -296,7 +291,7 @@ pub fn run() {
                         }
                     }
                 });
-                let scheme = if cfg!(debug_assertions) { "chatml-dev" } else { "chatml" };
+                let scheme = "chatml";
                 log::info!("Deep link handler registered for {}:// URLs", scheme);
 
                 // On Windows/Linux, check for a deep link URL that cold-launched the app

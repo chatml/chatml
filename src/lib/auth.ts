@@ -15,12 +15,11 @@ import { isTauri, safeListen, safeInvoke } from '@/lib/tauri';
 import { generateRandomString, generateCodeChallenge } from '@/lib/pkce';
 import { LINEAR_STATE_PREFIX, handleLinearOAuthCallback } from '@/lib/linearAuth';
 import type { LinearUser } from '@/lib/linearAuth';
-import { getApiBase } from '@/lib/api';
+import { getApiBase, initBackendPort } from '@/lib/api';
 
 // GitHub OAuth configuration
 const GITHUB_CLIENT_ID = process.env.NEXT_PUBLIC_GITHUB_CLIENT_ID || '';
-const OAUTH_SCHEME = process.env.NODE_ENV === 'production' ? 'chatml' : 'chatml-dev';
-const GITHUB_REDIRECT_URI = `${OAUTH_SCHEME}://oauth/callback`;
+const GITHUB_REDIRECT_URI = 'chatml://oauth/callback';
 const GITHUB_SCOPES = 'repo,read:user';
 
 // Stronghold configuration
@@ -193,6 +192,8 @@ export async function handleOAuthCallback(url: string): Promise<{ token: string;
   }
 
   // Exchange code for token via backend (with PKCE verifier)
+  // Ensure backend port is resolved (login page may not have initialized it yet)
+  await initBackendPort();
   console.log('[OAuth] Exchanging code for token via backend...');
   const res = await fetch(`${getApiBase()}/api/auth/github/callback`, {
     method: 'POST',

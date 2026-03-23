@@ -10,6 +10,7 @@ vi.mock('@/lib/tauri', () => ({
 // Mock @/lib/api to return a fixed API base
 vi.mock('@/lib/api', () => ({
   getApiBase: () => 'http://localhost:9876',
+  initBackendPort: vi.fn(async () => 9876),
 }));
 
 const API_BASE = 'http://localhost:9876';
@@ -29,7 +30,7 @@ beforeEach(async () => {
 
   // Re-apply mocks after resetModules
   vi.doMock('@/lib/tauri', () => ({ isTauri: () => false }));
-  vi.doMock('@/lib/api', () => ({ getApiBase: () => API_BASE }));
+  vi.doMock('@/lib/api', () => ({ getApiBase: () => API_BASE, initBackendPort: vi.fn(async () => 9876) }));
 
   linearAuth = await import('../linearAuth');
 });
@@ -53,7 +54,7 @@ describe('isLinearConfigured', () => {
     vi.stubEnv('NEXT_PUBLIC_LINEAR_CLIENT_ID', '');
     vi.resetModules();
     vi.doMock('@/lib/tauri', () => ({ isTauri: () => false }));
-    vi.doMock('@/lib/api', () => ({ getApiBase: () => API_BASE }));
+    vi.doMock('@/lib/api', () => ({ getApiBase: () => API_BASE, initBackendPort: vi.fn(async () => 9876) }));
     const mod = await import('../linearAuth');
     expect(mod.isLinearConfigured).toBe(false);
   });
@@ -88,7 +89,7 @@ describe('startLinearOAuthFlow', () => {
     vi.stubEnv('NEXT_PUBLIC_LINEAR_CLIENT_ID', '');
     vi.resetModules();
     vi.doMock('@/lib/tauri', () => ({ isTauri: () => false }));
-    vi.doMock('@/lib/api', () => ({ getApiBase: () => API_BASE }));
+    vi.doMock('@/lib/api', () => ({ getApiBase: () => API_BASE, initBackendPort: vi.fn(async () => 9876) }));
     const mod = await import('../linearAuth');
 
     await expect(mod.startLinearOAuthFlow())
@@ -107,7 +108,7 @@ describe('startLinearOAuthFlow', () => {
     expect(url.origin + url.pathname).toBe('https://linear.app/oauth/authorize');
     expect(url.searchParams.get('response_type')).toBe('code');
     expect(url.searchParams.get('code_challenge_method')).toBe('S256');
-    expect(url.searchParams.get('redirect_uri')).toBe('chatml-dev://oauth/callback');
+    expect(url.searchParams.get('redirect_uri')).toBe('chatml://oauth/callback');
     expect(url.searchParams.get('scope')).toBe('read');
     expect(url.searchParams.get('prompt')).toBe('consent');
 
@@ -157,7 +158,7 @@ describe('handleLinearOAuthCallback', () => {
         const body = await request.json() as Record<string, unknown>;
         // Verify the request body
         expect(body.code).toBe('auth-code-123');
-        expect(body.redirect_uri).toBe('chatml-dev://oauth/callback');
+        expect(body.redirect_uri).toBe('chatml://oauth/callback');
         expect(body.code_verifier).toBeTruthy();
         return HttpResponse.json({ user: mockUser });
       }),

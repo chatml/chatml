@@ -100,10 +100,16 @@ func copyGstackSkills(workspacePath string) error {
 	if err != nil {
 		return err
 	}
-	dstDir := filepath.Join(workspacePath, ".claude", "commands", "gstack")
+	commandsDir := filepath.Join(workspacePath, ".claude", "commands")
+	dstDir := filepath.Join(commandsDir, "gstack")
+
+	// Ensure .claude/commands exists (may not exist for new workspaces)
+	if err := os.MkdirAll(commandsDir, 0o755); err != nil {
+		return fmt.Errorf("failed to create commands dir: %w", err)
+	}
 
 	// Write to a temp directory first, then atomically rename to avoid TOCTOU races.
-	tmpDir, err := os.MkdirTemp(filepath.Join(workspacePath, ".claude", "commands"), "gstack-tmp-*")
+	tmpDir, err := os.MkdirTemp(commandsDir, "gstack-tmp-*")
 	if err != nil {
 		return fmt.Errorf("failed to create temp dir: %w", err)
 	}
