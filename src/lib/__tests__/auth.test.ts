@@ -13,6 +13,7 @@ vi.mock('@/lib/tauri', () => ({
 
 vi.mock('@/lib/backend-port', () => ({
   getBackendPortSync: vi.fn(() => 9876),
+  initBackendPort: vi.fn(async () => 9876),
 }));
 
 vi.mock('@/lib/pkce', () => ({
@@ -38,6 +39,7 @@ function applyDoMocks() {
   }));
   vi.doMock('@/lib/backend-port', () => ({
     getBackendPortSync: vi.fn(() => 9876),
+    initBackendPort: vi.fn(async () => 9876),
   }));
   vi.doMock('@/lib/pkce', () => ({
     generateRandomString: vi.fn(() => 'mock-random-string'),
