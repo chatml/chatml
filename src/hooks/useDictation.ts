@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { invoke } from '@tauri-apps/api/core';
 import { safeInvoke, safeListen } from '@/lib/tauri';
 import { isMacOS } from '@/lib/platform';
 
@@ -38,18 +39,22 @@ interface UseDictationReturn {
 }
 
 export function useDictation(options: UseDictationOptions): UseDictationReturn {
-  const [isDictating, setIsDictating] = useState(false);
+  const [isDictating, setIsDictatingState] = useState(false);
   const [isAvailable, setIsAvailable] = useState(false);
   const [audioLevel, setAudioLevel] = useState(0);
   const optionsRef = useRef(options);
   const isDictatingRef = useRef(false);
+  const togglingRef = useRef(false);
 
   useEffect(() => {
     optionsRef.current = options;
   });
-  useEffect(() => {
-    isDictatingRef.current = isDictating;
-  });
+
+  // Synchronously update both ref and state to avoid stale closures
+  const setDictating = useCallback((value: boolean) => {
+    isDictatingRef.current = value;
+    setIsDictatingState(value);
+  }, []);
 
   // Check availability on mount (isAvailable starts as false, so non-macOS needs no setState)
   useEffect(() => {
@@ -77,12 +82,12 @@ export function useDictation(options: UseDictationOptions): UseDictationReturn {
         setAudioLevel(payload.level);
       }),
       safeListen<DictationError>('dictation-error', (payload) => {
-        setIsDictating(false);
+        setDictating(false);
         setAudioLevel(0);
         optionsRef.current.onError?.(payload.message);
       }),
       safeListen<void>('dictation-ended', () => {
-        setIsDictating(false);
+        setDictating(false);
         setAudioLevel(0);
         optionsRef.current.onEnd?.();
       }),
@@ -91,7 +96,7 @@ export function useDictation(options: UseDictationOptions): UseDictationReturn {
     return () => {
       promises.forEach((p) => p.then((unlisten) => unlisten()));
     };
-  }, [isAvailable]);
+  }, [isAvailable, setDictating]);
 
   // Stop dictation on unmount if active
   useEffect(() => {
@@ -103,32 +108,56 @@ export function useDictation(options: UseDictationOptions): UseDictationReturn {
   }, []);
 
   const toggle = useCallback(async () => {
-    if (!isAvailable) return;
+    if (!isAvailable || togglingRef.current) return;
+    togglingRef.current = true;
 
-    if (isDictating) {
-      await safeInvoke('stop_dictation');
-      setIsDictating(false);
-      setAudioLevel(0);
-    } else {
-      const result = await safeInvoke('start_dictation');
-      if (result !== null) {
-        // start_dictation returns Ok(()) on success, error string on failure
-        setIsDictating(true);
+    try {
+      if (isDictatingRef.current) {
+        // Use raw invoke (not safeInvoke) so stop errors are visible and don't silently desync UI
+        try {
+          await invoke('stop_dictation');
+        } catch (e: unknown) {
+          const errMsg = e instanceof Error ? e.message : String(e);
+          optionsRef.current.onError?.(`Failed to stop dictation: ${errMsg}`);
+          return;
+        }
+        setDictating(false);
+        setAudioLevel(0);
       } else {
-        // safeInvoke returns null on error (already logged)
-        // Re-check permissions in case they were denied
-        const status = await safeInvoke<DictationPermissionStatus>(
-          'check_dictation_permissions'
-        );
-        if (status === 'denied' || status === 'restricted') {
-          setIsAvailable(false);
-          optionsRef.current.onError?.(
-            'Speech recognition permission denied. Enable it in System Settings > Privacy & Security.'
-          );
+        try {
+          // Use raw invoke (not safeInvoke) so we can inspect the error for "already active" desync recovery
+          await invoke('start_dictation');
+          setDictating(true);
+        } catch (e: unknown) {
+          const errMsg = e instanceof Error ? e.message : String(e);
+          // Rust backend emits "already active" when dictation is running but frontend state was out of sync
+          if (errMsg.includes('already active')) {
+            // Backend thinks dictation is active but frontend didn't know — stop it (resilient toggle)
+            try {
+              await invoke('stop_dictation');
+            } catch {
+              // Best-effort recovery — if stop also fails, just reset UI state
+            }
+            setDictating(false);
+            setAudioLevel(0);
+          } else {
+            // Permission or other error — re-check permissions
+            const status = await safeInvoke<DictationPermissionStatus>(
+              'check_dictation_permissions'
+            );
+            if (status === 'denied' || status === 'restricted') {
+              setIsAvailable(false);
+              optionsRef.current.onError?.(
+                'Speech recognition permission denied. Enable it in System Settings > Privacy & Security.'
+              );
+            }
+          }
         }
       }
+    } finally {
+      togglingRef.current = false;
     }
-  }, [isAvailable, isDictating]);
+  }, [isAvailable, setDictating]);
 
   return { isDictating, toggle, isAvailable, audioLevel };
 }

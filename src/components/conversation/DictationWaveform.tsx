@@ -3,7 +3,6 @@
 import { useMemo } from 'react';
 import { Mic } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { isMacOS } from '@/lib/platform';
 
 const BAR_COUNT = 24;
 
@@ -25,9 +24,10 @@ function barMultiplier(index: number, level: number): number {
 interface DictationWaveformProps {
   audioLevel: number;
   isActive: boolean;
+  shortcutHint?: string;
 }
 
-export function DictationWaveform({ audioLevel, isActive }: DictationWaveformProps) {
+export function DictationWaveform({ audioLevel, isActive, shortcutHint }: DictationWaveformProps) {
   // Derive multipliers deterministically from audioLevel (no setState needed)
   const barMultipliers = useMemo(
     () => Array.from({ length: BAR_COUNT }, (_, i) => barMultiplier(i, audioLevel)),
@@ -35,8 +35,6 @@ export function DictationWaveform({ audioLevel, isActive }: DictationWaveformPro
   );
 
   if (!isActive) return null;
-
-  const shortcutHint = isMacOS() ? '\u2318+Shift+D' : 'Ctrl+Shift+D';
 
   return (
     <div
@@ -81,9 +79,11 @@ export function DictationWaveform({ audioLevel, isActive }: DictationWaveformPro
         <span className="text-xs font-medium text-orange-600 dark:text-orange-400">
           Listening...
         </span>
-        <span className="text-[10px] text-muted-foreground">
-          {shortcutHint} to stop
-        </span>
+        {shortcutHint && (
+          <span className="text-[10px] text-muted-foreground">
+            {shortcutHint} to stop
+          </span>
+        )}
       </div>
     </div>
   );
