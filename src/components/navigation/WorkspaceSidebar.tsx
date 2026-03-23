@@ -1407,6 +1407,7 @@ function SessionRow({
   const isSessionSelected = contentView.type === 'conversation' && selectedSessionId === session.id;
   const hasPR = session.prStatus && session.prStatus !== 'none';
   const hasStats = session.stats && (session.stats.additions > 0 || session.stats.deletions > 0);
+  const sidebarShowSessionMeta = useSettingsStore((s) => s.sidebarShowSessionMeta);
 
   // Derive activity state from streaming, pending questions, and plan approvals
   const sessionId = session.id;
@@ -1540,50 +1541,46 @@ function SessionRow({
                     </div>
                   </div>
                 </div>
-                {/* Second line: project indicator · priority · session name · PR info · status */}
-                <div className="flex items-center gap-1 mt-0.5 pl-1 text-sm text-muted-foreground">
-                  {/* Project indicator for non-project grouping modes */}
-                  {showProjectIndicator && workspaceColor && (
-                    <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: workspaceColor }} />
-                  )}
-                  {showProjectIndicator && workspaceName && (
-                    <span className="shrink-0 text-muted-foreground/70">{workspaceName}</span>
-                  )}
-                  {/* PR badge if applicable */}
-                  {hasPR && session.prNumber && (
-                    <>
-                      {showProjectIndicator && workspaceName && <span className="text-muted-foreground/50">·</span>}
-                      <PRNumberBadge
-                        prNumber={session.prNumber}
-                        prStatus={session.prStatus as 'open' | 'merged' | 'closed'}
-                        checkStatus={session.checkStatus}
-                        hasMergeConflict={session.hasMergeConflict}
-                        prUrl={session.prUrl}
-                        size="sm"
-                      />
-                    </>
-                  )}
-                  {hasPR && !session.prNumber && (
-                    <>
-                      {showProjectIndicator && workspaceName && <span className="text-muted-foreground/50">·</span>}
-                      <GitPullRequest className="h-3 w-3 shrink-0 text-nav-icon-prs" />
-                    </>
-                  )}
-                  {prStatusInfo && (
-                    <>
-                      <span className="text-muted-foreground/50">·</span>
-                      <span className={cn('shrink-0', prStatusInfo.color)}>
-                        {prStatusInfo.text}
-                      </span>
-                    </>
-                  )}
-                  {!hasPR && (
-                    <>
-                      {showProjectIndicator && workspaceName && <span className="text-muted-foreground/50">·</span>}
-                      <span className="shrink-0">{formatTimeAgo(session.updatedAt)}</span>
-                    </>
-                  )}
-                </div>
+                {/* Second line: project indicator · PR info · status (only when there's meaningful content) */}
+                {sidebarShowSessionMeta && (hasPR || (showProjectIndicator && workspaceName)) && (
+                  <div className="flex items-center gap-1 mt-0.5 pl-1 text-sm text-muted-foreground">
+                    {/* Project indicator for non-project grouping modes */}
+                    {showProjectIndicator && workspaceColor && (
+                      <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: workspaceColor }} />
+                    )}
+                    {showProjectIndicator && workspaceName && (
+                      <span className="shrink-0 text-muted-foreground/70">{workspaceName}</span>
+                    )}
+                    {/* PR badge if applicable */}
+                    {hasPR && session.prNumber && (
+                      <>
+                        {showProjectIndicator && workspaceName && <span className="text-muted-foreground/50">·</span>}
+                        <PRNumberBadge
+                          prNumber={session.prNumber}
+                          prStatus={session.prStatus as 'open' | 'merged' | 'closed'}
+                          checkStatus={session.checkStatus}
+                          hasMergeConflict={session.hasMergeConflict}
+                          prUrl={session.prUrl}
+                          size="sm"
+                        />
+                      </>
+                    )}
+                    {hasPR && !session.prNumber && (
+                      <>
+                        {showProjectIndicator && workspaceName && <span className="text-muted-foreground/50">·</span>}
+                        <GitPullRequest className="h-3 w-3 shrink-0 text-nav-icon-prs" />
+                      </>
+                    )}
+                    {prStatusInfo && (
+                      <>
+                        <span className="text-muted-foreground/50">·</span>
+                        <span className={cn('shrink-0', prStatusInfo.color)}>
+                          {prStatusInfo.text}
+                        </span>
+                      </>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
           </HoverCardTrigger>
