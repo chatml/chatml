@@ -402,6 +402,22 @@ export async function approvePlan(convId: string, requestId: string, approved: b
   }
 }
 
+// Set permission mode for a running conversation
+export async function setConversationPermissionMode(
+  convId: string,
+  mode: 'default' | 'acceptEdits' | 'bypassPermissions' | 'dontAsk',
+): Promise<void> {
+  const res = await fetchWithAuth(`${getApiBase()}/api/conversations/${convId}/permission-mode`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ mode }),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new ApiError(text || `HTTP ${res.status}`, res.status, text);
+  }
+}
+
 // Approve or deny a pending tool execution request
 export async function approveTool(
   convId: string,

@@ -233,6 +233,12 @@ func NewProcessWithOptions(opts ProcessOptions) *Process {
 	}
 	if opts.PlanMode {
 		args = append(args, "--permission-mode", "plan")
+		// When the user also specified a non-bypass permission mode, pass it as the
+		// post-plan restore target so the agent knows what to revert to after ExitPlanMode.
+		// Without this, prePlanPermissionMode always falls back to "bypassPermissions".
+		if opts.PermissionMode != "" && opts.PermissionMode != "bypassPermissions" {
+			args = append(args, "--pre-plan-permission-mode", opts.PermissionMode)
+		}
 	} else if opts.PermissionMode != "" && opts.PermissionMode != "bypassPermissions" {
 		// Non-default permission mode (e.g., "default", "acceptEdits", "dontAsk")
 		args = append(args, "--permission-mode", opts.PermissionMode)
@@ -1020,6 +1026,13 @@ func (p *Process) SetOptionsPlanMode(enabled bool) {
 	defer p.mu.Unlock()
 	p.opts.PlanMode = enabled
 	p.planModeActive = enabled
+}
+
+// SetOptionsPermissionMode updates the permission mode in process options so it survives restart.
+func (p *Process) SetOptionsPermissionMode(mode string) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.opts.PermissionMode = mode
 }
 
 // TakePendingUserMessage returns and clears the pending user message.

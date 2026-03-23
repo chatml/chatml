@@ -1971,6 +1971,39 @@ func (m *Manager) SetConversationPlanMode(convID string, enabled bool) error {
 	return proc.SetPermissionMode(mode)
 }
 
+// SetConversationPermissionMode sets the permission mode for a running conversation.
+// Valid modes: "default", "acceptEdits", "bypassPermissions", "dontAsk".
+func (m *Manager) SetConversationPermissionMode(convID string, mode string) error {
+	validModes := map[string]bool{
+		"default": true, "acceptEdits": true,
+		"bypassPermissions": true, "dontAsk": true,
+	}
+	if !validModes[mode] {
+		return fmt.Errorf("invalid permission mode: %q", mode)
+	}
+
+	m.mu.RLock()
+	proc, ok := m.convProcesses[convID]
+	m.mu.RUnlock()
+
+	if !ok {
+		// Process fully cleaned up — mode will be applied on next start.
+		return nil
+	}
+
+	if proc.IsPlanModeActive() {
+		return fmt.Errorf("cannot change permission mode while in plan mode")
+	}
+
+	if proc.IsStopped() || !proc.IsRunning() {
+		// Process idle — persist in options so restart picks it up.
+		proc.SetOptionsPermissionMode(mode)
+		return nil
+	}
+
+	return proc.SetPermissionMode(mode)
+}
+
 // SetConversationFastMode toggles fast output mode for a running conversation
 func (m *Manager) SetConversationFastMode(convID string, enabled bool) error {
 	m.mu.RLock()
