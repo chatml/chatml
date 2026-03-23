@@ -83,11 +83,11 @@ export const SETTINGS_DEFAULTS = {
   autoExpandEditDiffs: true,
   zenMode: false,
   // AI & Models
-  defaultModel: 'auto',
+  defaultModel: 'claude-sonnet-4-6',
   defaultThinkingLevel: 'high' as ThinkingLevel,
   maxThinkingTokens: 16000,
   showThinkingBlocks: true,
-  reviewModel: 'auto',
+  reviewModel: 'claude-haiku-4-5-20251001',
   reviewActionableOnly: false,
   defaultPlanMode: false,
   defaultFastMode: false,
@@ -504,6 +504,14 @@ export const useSettingsStore = create<SettingsState>()(
         if (merged.layoutVertical && 'bottom-terminal' in merged.layoutVertical) {
           const { 'bottom-terminal': _, ...rest } = merged.layoutVertical;
           merged.layoutVertical = Object.keys(rest).length > 0 ? rest : undefined;
+        }
+
+        // Migrate legacy 'auto' model to concrete model ID
+        if (merged.defaultModel === 'auto') {
+          merged.defaultModel = 'claude-sonnet-4-6';
+        }
+        if (merged.reviewModel === 'auto') {
+          merged.reviewModel = 'claude-haiku-4-5-20251001';
         }
 
         return merged;

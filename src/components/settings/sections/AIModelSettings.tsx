@@ -13,7 +13,7 @@ import {
 import { Eye, EyeOff } from 'lucide-react';
 import { useSettingsStore, SETTINGS_DEFAULTS } from '@/stores/settingsStore';
 import { useAppStore } from '@/stores/appStore';
-import { MODELS as SHARED_MODELS, AUTO_MODEL_ID, resolveModelName, normalizeModelId, deduplicateById } from '@/lib/models';
+import { MODELS as SHARED_MODELS, toShortDisplayName, isDefaultRecommended, deduplicateById, deduplicateByName } from '@/lib/models';
 import type { ThinkingLevel } from '@/lib/thinkingLevels';
 import { getAnthropicApiKey, setAnthropicApiKey } from '@/lib/api';
 import { useToast } from '@/components/ui/toast';
@@ -35,21 +35,15 @@ export function AIModelSettings() {
   const setMaxThinkingTokens = useSettingsStore((s) => s.setMaxThinkingTokens);
 
   // Build model options from SDK-reported models, with static fallback.
-  // Always include "Auto" so the setting is selectable even before SDK connects.
   const dynamicModels = useAppStore((s) => s.supportedModels);
   const modelOptions = useMemo(() => {
-    const autoOption = { id: AUTO_MODEL_ID, name: 'Auto' };
     if (dynamicModels.length === 0) {
-      return [autoOption, ...SHARED_MODELS.map((m) => ({ id: m.id, name: m.name }))];
+      return SHARED_MODELS.map((m) => ({ id: m.id, name: m.name }));
     }
-    const deduped = deduplicateById(
-      dynamicModels.map((m) => ({ id: normalizeModelId(m), name: resolveModelName(m.value, m.displayName) }))
-    );
-    // Ensure Auto is present (SDK may not always include a "Default" entry)
-    if (!deduped.some((m) => m.id === AUTO_MODEL_ID)) {
-      return [autoOption, ...deduped];
-    }
-    return deduped;
+    const entries = dynamicModels
+      .filter((m) => !isDefaultRecommended(m.displayName))
+      .map((m) => ({ id: m.value, name: toShortDisplayName(m.value, m.displayName) }));
+    return deduplicateByName(deduplicateById(entries));
   }, [dynamicModels]);
 
   return (

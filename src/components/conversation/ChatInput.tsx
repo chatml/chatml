@@ -6,7 +6,7 @@ import { createConversation, sendConversationMessage, stopConversation, setConve
 import { markPlanModeExited } from '@/hooks/useWebSocket';
 import { dispatchAppEvent, useAppEventListener } from '@/lib/custom-events';
 import { useShortcut } from '@/hooks/useShortcut';
-import { Bot, Upload, Link, FolderSymlink } from 'lucide-react';
+import { Sparkles, Upload, Link, FolderSymlink } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useClaudeAuthStatus, refreshClaudeAuthStatus } from '@/hooks/useClaudeAuthStatus';
 import { useToast } from '@/components/ui/toast';
@@ -25,7 +25,7 @@ import { LinearIssuePicker } from './LinearIssuePicker';
 import { WorkspacePicker } from './WorkspacePicker';
 import type { LinearIssueDTO } from '@/lib/api';
 import { PlateInput, type PlateInputHandle } from './PlateInput';
-import { MODELS as SHARED_MODELS, type ModelEntry, AUTO_MODEL_ID, resolveModelName, isAutoModel, normalizeModelId, deduplicateById } from '@/lib/models';
+import { MODELS as SHARED_MODELS, type ModelEntry, toShortDisplayName, isNewModel, isDefaultRecommended, deduplicateById, deduplicateByName } from '@/lib/models';
 import type { MentionItem } from '@/components/ui/mention-node';
 import { trackEvent } from '@/lib/telemetry';
 import { listSessionFiles, type FileNodeDTO } from '@/lib/api';
@@ -65,34 +65,37 @@ function flattenFileTree(nodes: FileNodeDTO[], parentPath: string = ''): FlatFil
 }
 
 /** Static fallback model list (used when no SDK models are available). */
-const STATIC_MODELS: ModelEntry[] = [
-  { id: AUTO_MODEL_ID, name: 'Auto', icon: Bot, supportsThinking: true, supportsEffort: true, supportsFastMode: true },
-  ...SHARED_MODELS.map((m) => ({
-    id: m.id,
-    name: m.name,
-    icon: Bot,
-    supportsThinking: m.supportsThinking,
-    supportsEffort: m.supportsEffort,
-    supportsFastMode: m.supportsFastMode,
-  })),
-];
+const STATIC_MODELS: ModelEntry[] = SHARED_MODELS.map((m) => ({
+  id: m.id,
+  name: m.name,
+  icon: Sparkles,
+  supportsThinking: m.supportsThinking,
+  supportsEffort: m.supportsEffort,
+  supportsFastMode: m.supportsFastMode,
+}));
 
 /** Build the model list from SDK-reported dynamic models, with static fallback. */
 function buildModelList(dynamic: ReturnType<typeof useAppStore.getState>['supportedModels']): ModelEntry[] {
   if (dynamic.length === 0) return STATIC_MODELS;
-  // Dedup keeps first occurrence. Auto entries from the SDK always carry the same
-  // capability flags, so first-wins is safe.
-  return deduplicateById(
-    dynamic.map((m) => ({
-      id: normalizeModelId(m),
-      name: resolveModelName(m.value, m.displayName),
-      icon: Bot,
-      supportsThinking: m.supportsAdaptiveThinking ?? true,
-      supportsEffort: m.supportsEffort ?? false,
-      supportedEffortLevels: m.supportedEffortLevels,
-      supportsFastMode: m.supportsFastMode,
-    }))
+  // Filter out SDK "Default (recommended)" pseudo-model and deduplicate.
+  const entries = deduplicateById(
+    dynamic
+      .filter((m) => !isDefaultRecommended(m.displayName))
+      .map((m) => ({
+        id: m.value,
+        name: toShortDisplayName(m.value, m.displayName),
+        icon: Sparkles,
+        supportsThinking: m.supportsAdaptiveThinking ?? true,
+        supportsEffort: m.supportsEffort ?? false,
+        supportedEffortLevels: m.supportedEffortLevels,
+        supportsFastMode: m.supportsFastMode,
+        isNew: isNewModel(m.value),
+      }))
   );
+  // Also deduplicate by display name — SDK may report dated variants
+  // (e.g. claude-sonnet-4-6 and claude-sonnet-4-6-20260301) that resolve
+  // to the same friendly name.
+  return deduplicateByName(entries);
 }
 
 
@@ -548,7 +551,7 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
       const conv = await createConversation(selectedWorkspaceId, selectedSessionId, {
         type: 'task',
         message: pendingPlanApproval.planContent,
-        model: selectedModel.id === AUTO_MODEL_ID ? undefined : selectedModel.id,
+        model: selectedModel.id,
       });
 
       addConversation({
@@ -557,7 +560,7 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
         type: conv.type,
         name: conv.name,
         status: conv.status,
-        model: selectedModel.id === AUTO_MODEL_ID ? AUTO_MODEL_ID : (conv.model || selectedModel.id),
+        model: conv.model || selectedModel.id,
         messages: [],
         toolSummary: [],
         createdAt: conv.createdAt,
@@ -723,7 +726,7 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
         const conv = await createConversation(selectedWorkspaceId, selectedSessionId, {
           type: convType,
           message: trimmedContent,
-          model: selectedModel.id === AUTO_MODEL_ID ? undefined : selectedModel.id,
+          model: selectedModel.id,
           planMode: planModeEnabled ? true : undefined,
           fastMode: fastModeEnabled ? true : undefined,
           maxThinkingTokens: thinkingParams.maxThinkingTokens,
@@ -752,7 +755,7 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
           type: conv.type,
           name: conv.name,
           status: conv.status,
-          model: selectedModel.id === AUTO_MODEL_ID ? AUTO_MODEL_ID : (conv.model || selectedModel.id),
+          model: conv.model || selectedModel.id,
           messages: [],
           toolSummary: [],
           createdAt: conv.createdAt,
@@ -821,7 +824,6 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
 
         // Always send to backend (it queues in agent-runner if busy)
         const modelChanged = selectedModel.id !== currentConversation?.model;
-        // AUTO_MODEL_ID ("auto") signals the backend to clear the model override.
         // Omitting the field (undefined) leaves the current model unchanged.
         const modelToSend = selectedModel.id;
         await sendConversationMessage(
