@@ -4,6 +4,7 @@ import { GitBranch, GitPullRequest } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { TaskStatusIcon } from '@/components/icons/TaskStatusIcon';
 import { getTaskStatusOption } from '@/lib/session-fields';
+import { PRNumberBadge } from '@/components/shared/PRNumberBadge';
 import type { WorktreeSession } from '@/lib/types';
 
 interface SessionHoverCardBodyProps {
@@ -38,6 +39,20 @@ export function SessionHoverCardBody({
         <span className="text-muted-foreground/50">&middot;</span>
         <span className="shrink-0">{formatTimeAgo(session.updatedAt)}</span>
       </div>
+
+      {/* PR row */}
+      {hasPR && session.prNumber && session.prTitle && (
+        <div className="border-t border-border/50 px-3 py-2 flex items-center gap-2 min-w-0">
+          <PRNumberBadge
+            prNumber={session.prNumber}
+            prStatus={session.prStatus as 'open' | 'merged' | 'closed'}
+            checkStatus={session.checkStatus}
+            hasMergeConflict={session.hasMergeConflict}
+            prUrl={session.prUrl}
+          />
+          <span className="text-xs text-muted-foreground truncate">{session.prTitle}</span>
+        </div>
+      )}
 
       {/* Description */}
       {session.task && (
