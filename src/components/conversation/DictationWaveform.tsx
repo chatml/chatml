@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useMemo } from 'react';
 import { Mic } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { isMacOS } from '@/lib/platform';
@@ -15,23 +15,24 @@ const BAR_OFFSETS = Array.from({ length: BAR_COUNT }, (_, i) => {
   return t * 0.3 + 0.05;
 });
 
+// Simple deterministic hash to produce pseudo-random multipliers per bar + audioLevel
+function barMultiplier(index: number, level: number): number {
+  const seed = index * 2654435761 + Math.round(level * 1000) * 2246822519;
+  const hash = ((seed >>> 0) ^ (seed >>> 16)) >>> 0;
+  return 0.6 + (hash % 1000) / 2500; // range [0.6, 1.0]
+}
+
 interface DictationWaveformProps {
   audioLevel: number;
   isActive: boolean;
 }
 
 export function DictationWaveform({ audioLevel, isActive }: DictationWaveformProps) {
-  // Multipliers stored in state so they can be read during render
-  const [barMultipliers, setBarMultipliers] = useState<number[]>(
-    () => Array.from({ length: BAR_COUNT }, () => 1)
+  // Derive multipliers deterministically from audioLevel (no setState needed)
+  const barMultipliers = useMemo(
+    () => Array.from({ length: BAR_COUNT }, (_, i) => barMultiplier(i, audioLevel)),
+    [audioLevel]
   );
-
-  // Refresh random multipliers on each audio level change for organic movement
-  useEffect(() => {
-    setBarMultipliers(
-      Array.from({ length: BAR_COUNT }, () => 0.6 + Math.random() * 0.4)
-    );
-  }, [audioLevel]);
 
   if (!isActive) return null;
 
