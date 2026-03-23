@@ -365,6 +365,11 @@ const InlineComboboxItem = ({
   onClick,
   ...props
 }: {
+  /**
+   * Whether to refocus the editor after item selection.
+   * Ignored (treated as false) when an onClick handler is provided,
+   * since the handler is expected to manage focus itself.
+   */
   focusEditor?: boolean;
   group?: string;
   keywords?: string[];
@@ -392,7 +397,7 @@ const InlineComboboxItem = ({
     <ComboboxItem
       className={cn(comboboxItemVariants(), className)}
       onClick={(event) => {
-        removeInput(focusEditor);
+        removeInput(onClick ? false : focusEditor);
         onClick?.(event);
       }}
       {...props}
