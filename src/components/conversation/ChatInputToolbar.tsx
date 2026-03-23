@@ -313,8 +313,7 @@ export function ChatInputToolbar({
       </Button>
 
       {/* Permission Mode Dropdown */}
-      {permissionMode.mode !== 'bypassPermissions' && (
-        <DropdownMenu>
+      <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button
               variant="ghost"
@@ -385,7 +384,6 @@ export function ChatInputToolbar({
             })}
           </DropdownMenuContent>
         </DropdownMenu>
-      )}
 
       {/* Spacer */}
       <div className="flex-1" />

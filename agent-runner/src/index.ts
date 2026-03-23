@@ -1870,6 +1870,11 @@ const canUseTool: CanUseTool = async (toolName, toolInput, _options) => {
     return { behavior: "allow", updatedInput: toolInput };
   }
 
+  // First-party ChatML MCP tools are always auto-approved
+  if (toolName.startsWith("mcp__chatml__")) {
+    return { behavior: "allow", updatedInput: toolInput };
+  }
+
   // Network tools (e.g., WebSearch) are auto-allowed except in dontAsk mode
   // where they could exfiltrate codebase context via search queries.
   if (NETWORK_TOOLS.has(toolName) && currentPermissionMode !== "dontAsk") {
