@@ -43,6 +43,7 @@ import { AdvancedSettings } from './sections/AdvancedSettings';
 import { AboutSettings } from './sections/AboutSettings';
 import { InstructionsSettings } from './sections/InstructionsSettings';
 import { ActionSettings } from './sections/ActionSettings';
+import { PairMobileSettings } from './sections/PairMobileSettings';
 import { SettingsSearchResults } from './SettingsSearchResults';
 import { WorkspaceSettingsContent } from './WorkspaceSettings';
 import {
@@ -549,7 +550,12 @@ export function SettingsPage({
                 {selectedView.category === 'git' && <GitSettings />}
                 {selectedView.category === 'review' && <ReviewSettings />}
                 {selectedView.category === 'actions' && <ActionSettings />}
-                {selectedView.category === 'account' && <AccountSettings />}
+                {selectedView.category === 'account' && (
+                  <>
+                    <AccountSettings />
+                    <PairMobileSettings />
+                  </>
+                )}
                 {selectedView.category === 'advanced' && <AdvancedSettings />}
                 {selectedView.category === 'about' && <AboutSettings />}
               </>

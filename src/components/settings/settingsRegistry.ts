@@ -344,6 +344,16 @@ export const SETTINGS_REGISTRY: SettingMeta[] = [
     categoryLabel: 'Account',
   },
 
+  // ── Account: Mobile (hidden until cloud relay is deployed) ──
+  // {
+  //   id: 'pairMobile',
+  //   title: 'Pair mobile device',
+  //   description: 'Connect a mobile app to remotely control ChatML sessions',
+  //   keywords: ['mobile', 'pair', 'remote', 'phone', 'qr', 'relay', 'control'],
+  //   category: 'account',
+  //   categoryLabel: 'Account',
+  // },
+
   // ── Account: Onboarding ──
   {
     id: 'welcomeTour',
