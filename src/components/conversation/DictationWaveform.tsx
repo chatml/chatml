@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useRef, useEffect } from 'react';
+import { useRef, useEffect } from 'react';
 import { Mic } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { isMacOS } from '@/lib/platform';
@@ -13,16 +13,15 @@ interface DictationWaveformProps {
 }
 
 export function DictationWaveform({ audioLevel, isActive }: DictationWaveformProps) {
-  // Random base offsets for organic bar movement (stable across renders)
-  const barOffsets = useMemo(
-    () => Array.from({ length: BAR_COUNT }, () => Math.random() * 0.3 + 0.05),
-    []
-  );
+  // Stable per-bar offsets and multipliers stored in refs (initialized lazily in effect)
+  const barOffsetsRef = useRef<number[]>([]);
+  const barMultipliersRef = useRef<number[]>([]);
 
-  // Use a ref to store per-bar random multipliers that change each frame
-  const barMultipliersRef = useRef<number[]>(
-    Array.from({ length: BAR_COUNT }, () => Math.random())
-  );
+  // Initialize offsets once on mount
+  useEffect(() => {
+    barOffsetsRef.current = Array.from({ length: BAR_COUNT }, () => Math.random() * 0.3 + 0.05);
+    barMultipliersRef.current = Array.from({ length: BAR_COUNT }, () => Math.random());
+  }, []);
 
   // Refresh random multipliers on each audio level change for organic movement
   useEffect(() => {
@@ -52,7 +51,7 @@ export function DictationWaveform({ audioLevel, isActive }: DictationWaveformPro
 
       {/* Waveform bars */}
       <div className="flex items-center gap-[2px] h-6 flex-1 min-w-0">
-        {barOffsets.map((baseOffset, i) => {
+        {barOffsetsRef.current.map((baseOffset, i) => {
           const multiplier = barMultipliersRef.current[i] ?? 1;
           const height = Math.min(
             1,

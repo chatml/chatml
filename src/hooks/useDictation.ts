@@ -42,9 +42,14 @@ export function useDictation(options: UseDictationOptions): UseDictationReturn {
   const [isAvailable, setIsAvailable] = useState(false);
   const [audioLevel, setAudioLevel] = useState(0);
   const optionsRef = useRef(options);
-  optionsRef.current = options;
   const isDictatingRef = useRef(false);
-  isDictatingRef.current = isDictating;
+
+  useEffect(() => {
+    optionsRef.current = options;
+  });
+  useEffect(() => {
+    isDictatingRef.current = isDictating;
+  });
 
   // Check availability on mount
   useEffect(() => {

@@ -8,6 +8,7 @@ use serde::Serialize;
 
 /// Transcript event payload
 #[derive(Clone, Serialize)]
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 pub struct DictationTranscript {
     pub text: String,
     pub is_final: bool,
@@ -15,12 +16,14 @@ pub struct DictationTranscript {
 
 /// Audio level event payload (for waveform visualization)
 #[derive(Clone, Serialize)]
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 pub struct DictationAudioLevel {
     pub level: f32,
 }
 
 /// Error event payload
 #[derive(Clone, Serialize)]
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 pub struct DictationError {
     pub message: String,
 }
@@ -29,9 +32,13 @@ pub struct DictationError {
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub enum DictationPermissionStatus {
+    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
     Granted,
+    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
     Denied,
+    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
     Restricted,
+    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
     NotDetermined,
     Unavailable,
 }
@@ -81,8 +88,7 @@ mod platform {
     /// Equivalent to `[[cls alloc] init]`.
     unsafe fn objc_new(cls: &AnyClass) -> Retained<AnyObject> {
         let alloc: *mut AnyObject = msg_send![cls, alloc];
-        Retained::retain(msg_send![alloc, init])
-            .expect("Failed to allocate ObjC object")
+        Retained::retain(msg_send![alloc, init]).expect("Failed to allocate ObjC object")
     }
 
     /// Get a retained ObjC object from a message send.
@@ -134,15 +140,13 @@ mod platform {
 
         // Spawn a thread to issue the request so we don't block the current
         // (potentially main) thread while the system permission dialog is shown.
-        std::thread::spawn(move || {
-            unsafe {
-                let block = block2::RcBlock::new(move |status: isize| {
-                    let _ = tx.send(status);
-                });
+        std::thread::spawn(move || unsafe {
+            let block = block2::RcBlock::new(move |status: isize| {
+                let _ = tx.send(status);
+            });
 
-                let cls = class!(SFSpeechRecognizer);
-                let _: () = msg_send![cls, requestAuthorization: &*block];
-            }
+            let cls = class!(SFSpeechRecognizer);
+            let _: () = msg_send![cls, requestAuthorization: &*block];
         });
 
         // Wait for the callback (with timeout to avoid indefinite blocking)
@@ -219,8 +223,8 @@ mod platform {
             let request_ptr = Retained::as_ptr(&request) as usize;
 
             // Install tap on input node for audio capture
-            let tap_block = block2::RcBlock::new(
-                move |buffer: *mut AnyObject, _when: *mut AnyObject| {
+            let tap_block =
+                block2::RcBlock::new(move |buffer: *mut AnyObject, _when: *mut AnyObject| {
                     if buffer.is_null() || stopped_for_tap.load(Ordering::Acquire) {
                         return;
                     }
@@ -231,12 +235,9 @@ mod platform {
 
                     // Compute and emit audio level
                     let level = compute_audio_level(buffer);
-                    let _ = app_for_level.emit(
-                        "dictation-audio-level",
-                        DictationAudioLevel { level },
-                    );
-                },
-            );
+                    let _ =
+                        app_for_level.emit("dictation-audio-level", DictationAudioLevel { level });
+                });
 
             let buffer_size: u32 = 1024;
             let _: () = msg_send![
@@ -248,14 +249,12 @@ mod platform {
             ];
 
             // Create recognition task with result handler
-            let result_block = block2::RcBlock::new(
-                move |result: *mut AnyObject, error: *mut AnyObject| {
+            let result_block =
+                block2::RcBlock::new(move |result: *mut AnyObject, error: *mut AnyObject| {
                     if !result.is_null() {
-                        let transcription: *mut AnyObject =
-                            msg_send![result, bestTranscription];
+                        let transcription: *mut AnyObject = msg_send![result, bestTranscription];
                         if !transcription.is_null() {
-                            let ns_text: *mut AnyObject =
-                                msg_send![transcription, formattedString];
+                            let ns_text: *mut AnyObject = msg_send![transcription, formattedString];
                             if !ns_text.is_null() {
                                 let text = nsstring_to_string(ns_text);
                                 let is_final: Bool = msg_send![result, isFinal];
@@ -272,8 +271,7 @@ mod platform {
                     }
 
                     if !error.is_null() {
-                        let desc: *mut AnyObject =
-                            msg_send![error, localizedDescription];
+                        let desc: *mut AnyObject = msg_send![error, localizedDescription];
                         let msg = if !desc.is_null() {
                             nsstring_to_string(desc)
                         } else {
@@ -281,25 +279,21 @@ mod platform {
                         };
                         log::warn!("Dictation error: {}", msg);
 
-                        let _ = app_for_transcript.emit(
-                            "dictation-error",
-                            DictationError { message: msg },
-                        );
+                        let _ = app_for_transcript
+                            .emit("dictation-error", DictationError { message: msg });
 
                         // Auto-stop on error — use non-blocking variant to avoid
                         // deadlock if this callback fires while start() holds the Mutex.
                         stop_internal_nonblocking();
                     }
-                },
-            );
+                });
 
             let task_ptr: *mut AnyObject = msg_send![
                 &recognizer,
                 recognitionTaskWithRequest: &*request,
                 resultHandler: &*result_block
             ];
-            let task = objc_retain(task_ptr)
-                .ok_or("Failed to create recognition task")?;
+            let task = objc_retain(task_ptr).ok_or("Failed to create recognition task")?;
 
             // Prepare and start the audio engine
             let _: () = msg_send![&engine, prepare];
