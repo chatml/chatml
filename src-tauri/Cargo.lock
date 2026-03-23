@@ -798,9 +798,7 @@ dependencies = [
  "notify-debouncer-mini",
  "objc2 0.6.4",
  "objc2-app-kit 0.3.2",
- "objc2-avf-audio",
  "objc2-foundation 0.3.2",
- "objc2-speech",
  "rand 0.8.5",
  "sentry",
  "serde",
@@ -3666,16 +3664,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "objc2-avf-audio"
-version = "0.3.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "13a380031deed8e99db00065c45937da434ca987c034e13b87e4441f9e4090be"
-dependencies = [
- "objc2 0.6.4",
- "objc2-foundation 0.3.2",
-]
-
-[[package]]
 name = "objc2-cloud-kit"
 version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3935,17 +3923,6 @@ dependencies = [
  "bitflags 2.11.0",
  "objc2 0.6.4",
  "objc2-core-foundation",
- "objc2-foundation 0.3.2",
-]
-
-[[package]]
-name = "objc2-speech"
-version = "0.3.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f9eb609f9d2a25e0f8b76954f3acaa58348ce2a91285fe867643b2224ac4d263"
-dependencies = [
- "block2 0.6.2",
- "objc2 0.6.4",
  "objc2-foundation 0.3.2",
 ]
 

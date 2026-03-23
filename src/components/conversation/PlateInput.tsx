@@ -133,7 +133,7 @@ export const PlateInput = forwardRef<PlateInputHandle, PlateInputProps>(
         editor.tf.reset();
         // Defer to allow synchronous Slate DOM updates to complete
         queueMicrotask(() => {
-          editor.tf.focus();
+          try { editor.tf.focus(); } catch { /* editor may be unmounted */ }
         });
       },
       getText: () => {
@@ -146,8 +146,10 @@ export const PlateInput = forwardRef<PlateInputHandle, PlateInputProps>(
         editor.tf.reset();
         // Defer to allow synchronous Slate DOM updates to complete
         queueMicrotask(() => {
-          editor.tf.focus();
-          editor.tf.insertText(text);
+          try {
+            editor.tf.focus();
+            editor.tf.insertText(text);
+          } catch { /* editor may be unmounted */ }
         });
       },
     }));

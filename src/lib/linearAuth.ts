@@ -8,13 +8,12 @@
  */
 
 import { isTauri } from '@/lib/tauri';
-import { getApiBase } from '@/lib/api';
+import { getApiBase, initBackendPort } from '@/lib/api';
 import { generateRandomString, generateCodeChallenge } from '@/lib/pkce';
 
 // Linear OAuth configuration
 const LINEAR_CLIENT_ID = process.env.NEXT_PUBLIC_LINEAR_CLIENT_ID || '';
-const OAUTH_SCHEME = process.env.NODE_ENV === 'production' ? 'chatml' : 'chatml-dev';
-const LINEAR_REDIRECT_URI = `${OAUTH_SCHEME}://oauth/callback`;
+const LINEAR_REDIRECT_URI = 'chatml://oauth/callback';
 const LINEAR_SCOPES = 'read';
 
 /** Whether Linear OAuth is configured (client ID available at build time). */
@@ -146,6 +145,8 @@ export async function handleLinearOAuthCallback(url: string): Promise<{ user: Li
   }
 
   // Exchange code for tokens via backend
+  // Ensure backend port is resolved (login page may not have initialized it yet)
+  await initBackendPort();
   const res = await fetch(`${getApiBase()}/api/auth/linear/callback`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

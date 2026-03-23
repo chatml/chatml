@@ -237,7 +237,7 @@ describe('auth', () => {
       const url = new URL(openSpy.mock.calls[0][0] as string);
 
       expect(url.origin + url.pathname).toBe('https://github.com/login/oauth/authorize');
-      expect(url.searchParams.get('redirect_uri')).toBe('chatml-dev://oauth/callback');
+      expect(url.searchParams.get('redirect_uri')).toBe('chatml://oauth/callback');
       expect(url.searchParams.get('scope')).toBe('repo,read:user');
       expect(url.searchParams.get('state')).toBe('mock-random-string');
       expect(url.searchParams.get('code_challenge')).toBe('mock-challenge');
