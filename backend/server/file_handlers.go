@@ -415,6 +415,17 @@ func (h *Handlers) GetSessionFileContent(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	// If an absolute path was sent, strip the worktree prefix to make it relative
+	if filepath.IsAbs(filePath) {
+		prefix := session.WorktreePath
+		if !strings.HasSuffix(prefix, "/") {
+			prefix += "/"
+		}
+		if strings.HasPrefix(filePath, prefix) {
+			filePath = filePath[len(prefix):]
+		}
+	}
+
 	// Validate and clean the path to prevent directory traversal attacks
 	cleanPath, err := validatePath(session.WorktreePath, filePath)
 	if err != nil {
