@@ -107,7 +107,7 @@ describe('startLinearOAuthFlow', () => {
     expect(url.origin + url.pathname).toBe('https://linear.app/oauth/authorize');
     expect(url.searchParams.get('response_type')).toBe('code');
     expect(url.searchParams.get('code_challenge_method')).toBe('S256');
-    expect(url.searchParams.get('redirect_uri')).toBe('chatml://oauth/callback');
+    expect(url.searchParams.get('redirect_uri')).toBe('chatml-dev://oauth/callback');
     expect(url.searchParams.get('scope')).toBe('read');
     expect(url.searchParams.get('prompt')).toBe('consent');
 
@@ -157,7 +157,7 @@ describe('handleLinearOAuthCallback', () => {
         const body = await request.json() as Record<string, unknown>;
         // Verify the request body
         expect(body.code).toBe('auth-code-123');
-        expect(body.redirect_uri).toBe('chatml://oauth/callback');
+        expect(body.redirect_uri).toBe('chatml-dev://oauth/callback');
         expect(body.code_verifier).toBeTruthy();
         return HttpResponse.json({ user: mockUser });
       }),

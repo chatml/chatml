@@ -13,7 +13,8 @@ import { generateRandomString, generateCodeChallenge } from '@/lib/pkce';
 
 // Linear OAuth configuration
 const LINEAR_CLIENT_ID = process.env.NEXT_PUBLIC_LINEAR_CLIENT_ID || '';
-const LINEAR_REDIRECT_URI = 'chatml://oauth/callback';
+const OAUTH_SCHEME = process.env.NODE_ENV === 'production' ? 'chatml' : 'chatml-dev';
+const LINEAR_REDIRECT_URI = `${OAUTH_SCHEME}://oauth/callback`;
 const LINEAR_SCOPES = 'read';
 
 /** Whether Linear OAuth is configured (client ID available at build time). */
