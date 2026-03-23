@@ -32,6 +32,9 @@ export type FontSize = 'small' | 'medium' | 'large';
 // Re-export ThinkingLevel for convenience
 export type { ThinkingLevel } from '@/lib/thinkingLevels';
 
+// Dictation shortcut presets
+export type DictationShortcutPreset = 'capslock' | 'cmd-shift-d' | 'custom';
+
 // Branch prefix options
 export type BranchPrefixType = 'github' | 'custom' | 'none';
 
@@ -105,6 +108,9 @@ export const SETTINGS_DEFAULTS = {
   // Sidebar
   sidebarGroupBy: 'project' as SidebarGroupBy,
   sidebarSortBy: 'recent' as SidebarSortBy,
+  // Dictation
+  dictationShortcut: 'cmd-shift-d' as DictationShortcutPreset,
+  dictationCustomShortcut: '',
 };
 
 interface SettingsState {
@@ -144,6 +150,9 @@ interface SettingsState {
   defaultPermissionMode: 'default' | 'acceptEdits' | 'bypassPermissions' | 'dontAsk';
   // Account settings
   strictPrivacy: boolean;
+  // Dictation
+  dictationShortcut: DictationShortcutPreset;
+  dictationCustomShortcut: string;
   // UI state
   collapsedWorkspaces: string[]; // Workspace IDs that are collapsed (all others are expanded)
   unreadWorkspaces: string[]; // Workspace IDs marked as unread
@@ -243,6 +252,8 @@ interface SettingsState {
   setWorkspaceColor: (workspaceId: string, color: string) => void;
   clearWorkspaceColor: (workspaceId: string) => void;
   setDefaultOpenApp: (appId: string) => void;
+  setDictationShortcut: (value: DictationShortcutPreset) => void;
+  setDictationCustomShortcut: (value: string) => void;
   setHasCompletedOnboarding: (value: boolean) => void;
   setHasCompletedGuidedTour: (value: boolean) => void;
   resetOnboarding: () => void;
@@ -419,6 +430,8 @@ export const useSettingsStore = create<SettingsState>()(
           return { workspaceColors: rest };
         }),
       setDefaultOpenApp: (appId) => set({ defaultOpenApp: appId }),
+      setDictationShortcut: (value) => set({ dictationShortcut: value }),
+      setDictationCustomShortcut: (value) => set({ dictationCustomShortcut: value }),
       setHasCompletedOnboarding: (value) => set({ hasCompletedOnboarding: value }),
       setHasCompletedGuidedTour: (value) => set({ hasCompletedGuidedTour: value }),
       resetOnboarding: () => set({ hasCompletedOnboarding: false, hasCompletedGuidedTour: false }),

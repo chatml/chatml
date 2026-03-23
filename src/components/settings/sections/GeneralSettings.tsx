@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback } from 'react';
+import { useCallback, useState, useRef } from 'react';
 import Image from 'next/image';
 import { Switch } from '@/components/ui/switch';
 import {
@@ -11,12 +11,14 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
-import { useSettingsStore, SETTINGS_DEFAULTS } from '@/stores/settingsStore';
+import { useSettingsStore, SETTINGS_DEFAULTS, type DictationShortcutPreset } from '@/stores/settingsStore';
 import { requestNotificationPermission } from '@/lib/tauri';
 import { playSound } from '@/lib/sounds';
 import { useInstalledApps } from '@/hooks/useInstalledApps';
 import { APP_REGISTRY } from '@/lib/openApps';
 import { getAppIcon } from '@/components/icons/AppIcons';
+import { Input } from '@/components/ui/input';
+import { isMacOS } from '@/lib/platform';
 import { SettingsRow } from '../shared/SettingsRow';
 import { SettingsGroup } from '../shared/SettingsGroup';
 
@@ -41,6 +43,10 @@ export function GeneralSettings() {
   const setAutoSubmitPillSuggestion = useSettingsStore((s) => s.setAutoSubmitPillSuggestion);
   const defaultOpenApp = useSettingsStore((s) => s.defaultOpenApp);
   const setDefaultOpenApp = useSettingsStore((s) => s.setDefaultOpenApp);
+  const dictationShortcut = useSettingsStore((s) => s.dictationShortcut);
+  const setDictationShortcut = useSettingsStore((s) => s.setDictationShortcut);
+  const dictationCustomShortcut = useSettingsStore((s) => s.dictationCustomShortcut);
+  const setDictationCustomShortcut = useSettingsStore((s) => s.setDictationCustomShortcut);
   const { installedApps } = useInstalledApps();
 
   const handleNotificationToggle = useCallback(async (enabled: boolean) => {
@@ -106,6 +112,38 @@ export function GeneralSettings() {
         >
           <Switch checked={autoConvertLongText} onCheckedChange={setAutoConvertLongText} aria-label="Auto-convert long text" />
         </SettingsRow>
+
+        {isMacOS() && (
+          <SettingsRow
+            settingId="dictationShortcut"
+            title="Dictation shortcut"
+            description="Keyboard shortcut to start/stop speech-to-text dictation"
+            isModified={dictationShortcut !== SETTINGS_DEFAULTS.dictationShortcut || dictationCustomShortcut !== SETTINGS_DEFAULTS.dictationCustomShortcut}
+            onReset={() => { setDictationShortcut(SETTINGS_DEFAULTS.dictationShortcut as DictationShortcutPreset); setDictationCustomShortcut(SETTINGS_DEFAULTS.dictationCustomShortcut); }}
+          >
+            <div className="flex items-center gap-2">
+              <Select
+                value={dictationShortcut}
+                onValueChange={(v) => setDictationShortcut(v as DictationShortcutPreset)}
+              >
+                <SelectTrigger className="w-36" aria-label="Dictation shortcut">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="capslock">CapsLock</SelectItem>
+                  <SelectItem value="cmd-shift-d">Cmd+Shift+D</SelectItem>
+                  <SelectItem value="custom">Custom</SelectItem>
+                </SelectContent>
+              </Select>
+              {dictationShortcut === 'custom' && (
+                <ShortcutRecorder
+                  value={dictationCustomShortcut}
+                  onChange={setDictationCustomShortcut}
+                />
+              )}
+            </div>
+          </SettingsRow>
+        )}
       </SettingsGroup>
 
       <SettingsGroup label="Editor">
@@ -215,5 +253,62 @@ export function GeneralSettings() {
         </SettingsRow>
       </SettingsGroup>
     </div>
+  );
+}
+
+/** Inline component that captures a key combination when focused. */
+function ShortcutRecorder({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const [recording, setRecording] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const formatShortcut = (s: string) => {
+    if (!s) return '';
+    return s
+      .split('+')
+      .map((p) => {
+        switch (p) {
+          case 'meta': return '\u2318';
+          case 'ctrl': return 'Ctrl';
+          case 'alt': return '\u2325';
+          case 'shift': return '\u21E7';
+          default: return p.length === 1 ? p.toUpperCase() : p;
+        }
+      })
+      .join('');
+  };
+
+  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    // Ignore lone modifiers
+    if (['Meta', 'Control', 'Alt', 'Shift'].includes(e.key)) return;
+
+    const modifiers: string[] = [];
+    if (e.metaKey) modifiers.push('meta');
+    if (e.ctrlKey) modifiers.push('ctrl');
+    if (e.altKey) modifiers.push('alt');
+    if (e.shiftKey) modifiers.push('shift');
+
+    // Require at least one modifier to prevent capturing normal typing
+    if (modifiers.length === 0) return;
+
+    const parts = [...modifiers, e.key.length === 1 ? e.key.toLowerCase() : e.key];
+    onChange(parts.join('+'));
+    setRecording(false);
+    inputRef.current?.blur();
+  }, [onChange]);
+
+  return (
+    <Input
+      ref={inputRef}
+      className="w-28 h-7 text-xs text-center cursor-pointer"
+      readOnly
+      value={recording ? 'Press keys...' : formatShortcut(value) || 'Click to set'}
+      onFocus={() => setRecording(true)}
+      onBlur={() => setRecording(false)}
+      onKeyDown={handleKeyDown}
+      aria-label="Record custom shortcut"
+    />
   );
 }

@@ -11,6 +11,7 @@ use tauri::State;
 
 use crate::error::AppResult;
 use crate::sidecar;
+use crate::speech;
 use crate::state::AppState;
 use crate::watcher;
 
@@ -570,6 +571,31 @@ pub fn count_file_lines(path: String) -> Result<usize, String> {
     let count = reader.lines().count();
 
     Ok(count)
+}
+
+// ============================================================================
+// Speech-to-text dictation commands
+// ============================================================================
+
+/// Check if dictation is available and what the permission status is
+#[tauri::command]
+pub fn check_dictation_permissions() -> speech::DictationPermissionStatus {
+    if !speech::check_available() {
+        return speech::DictationPermissionStatus::Unavailable;
+    }
+    speech::check_permissions()
+}
+
+/// Start speech-to-text dictation (streams events to frontend)
+#[tauri::command]
+pub fn start_dictation(app: tauri::AppHandle) -> Result<(), String> {
+    speech::start_dictation(&app)
+}
+
+/// Stop speech-to-text dictation
+#[tauri::command]
+pub fn stop_dictation(app: tauri::AppHandle) -> Result<(), String> {
+    speech::stop_dictation(&app)
 }
 
 #[cfg(test)]

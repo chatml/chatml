@@ -60,6 +60,16 @@ export const SETTINGS_REGISTRY: SettingMeta[] = [
     categoryLabel: 'General',
   },
 
+  // ── General: Dictation ──
+  {
+    id: 'dictationShortcut',
+    title: 'Dictation shortcut',
+    description: 'Keyboard shortcut to start and stop speech-to-text dictation (macOS only)',
+    keywords: ['dictation', 'speech', 'voice', 'microphone', 'shortcut', 'capslock', 'stt'],
+    category: 'general',
+    categoryLabel: 'General',
+  },
+
   // ── General: Editor ──
   {
     id: 'defaultOpenApp',

@@ -23,6 +23,8 @@ import {
   Star,
   Sparkles,
   Shield,
+  Mic,
+  MicOff,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
@@ -80,6 +82,12 @@ const PERMISSION_MODE_OPTIONS: { id: PermissionMode; label: string; description:
   { id: 'dontAsk', label: 'Read-only', description: 'Only read tools, all others denied', color: 'text-orange-500' },
 ];
 
+export interface DictationProps {
+  isDictating: boolean;
+  isAvailable: boolean;
+  onToggle: () => void;
+  shortcutHint: string;
+}
 interface ChatInputToolbarProps {
   model: ModelProps;
   thinking: ThinkingProps;
@@ -94,6 +102,7 @@ interface ChatInputToolbarProps {
   attachments: AttachmentMenuProps;
   action: ActionButtonProps;
   showInfo: (msg: string) => void;
+  dictation?: DictationProps;
 }
 
 export function ChatInputToolbar({
@@ -110,6 +119,7 @@ export function ChatInputToolbar({
   attachments,
   action,
   showInfo,
+  dictation,
 }: ChatInputToolbarProps) {
   const currentPermOption = PERMISSION_MODE_OPTIONS.find((o) => o.id === permissionMode.mode) ?? PERMISSION_MODE_OPTIONS[0];
   const isPermModified = permissionMode.mode !== permissionMode.defaultMode;
@@ -418,6 +428,33 @@ export function ChatInputToolbar({
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
+
+      {/* Dictation toggle */}
+      {dictation?.isAvailable && (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              className={cn(
+                'h-7 w-7 rounded-md',
+                dictation.isDictating && 'dictation-active text-orange-500'
+              )}
+              onClick={dictation.onToggle}
+              aria-label={dictation.isDictating ? 'Stop dictation' : 'Start dictation'}
+            >
+              {dictation.isDictating ? (
+                <MicOff className="size-4" />
+              ) : (
+                <Mic className="size-4" />
+              )}
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="top">
+            {dictation.isDictating ? 'Stop dictation' : 'Start dictation'} ({dictation.shortcutHint})
+          </TooltipContent>
+        </Tooltip>
+      )}
 
       {/* Single Contextual Action Button — changes between Stop/Queue/Send based on state */}
       {action.buttonMode === 'stop' ? (
