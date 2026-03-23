@@ -49,8 +49,10 @@ import {
   type ElicitationResultHookInput,
 } from "@anthropic-ai/claude-agent-sdk";
 import * as readline from "readline";
+import * as fs from "fs";
 import { WorkspaceContext } from "./mcp/context.js";
 import { createChatMLMcpServer } from "./mcp/server.js";
+import { buildSpecifier, evaluateRules, type PermissionRule } from "./rules.js";
 
 function resolveToolPreset(preset: string): { allowedTools?: string[]; disallowedTools?: string[] } {
   switch (preset) {
@@ -173,7 +175,8 @@ let prePlanPermissionMode: PermissionMode = "bypassPermissions";
     if ((validPermissionModes as readonly string[]).includes(value)) {
       initialPermissionMode = value as PermissionMode;
     } else {
-      console.error(`Invalid --permission-mode value: "${value}". Using default "bypassPermissions".`);
+      console.error(`Invalid --permission-mode value: "${value}". Falling back to "default" (fail-closed).`);
+      initialPermissionMode = "default";
     }
   }
   currentPermissionMode = initialPermissionMode;
@@ -251,7 +254,7 @@ interface Attachment {
 
 // Input message types from Go backend
 interface InputMessage {
-  type: "message" | "stop" | "interrupt" | "set_model" | "set_permission_mode" | "set_max_thinking_tokens" | "set_fast_mode" | "get_supported_models" | "get_supported_commands" | "get_mcp_status" | "get_account_info" | "rewind_files" | "user_question_response" | "plan_approval_response" | "sprint_phase_response" | "reconnect_mcp_server" | "toggle_mcp_server" | "stop_task" | "get_supported_agents" | "set_mcp_servers" | "get_initialization_result" | "fork_session" | "cancel_message";
+  type: "message" | "stop" | "interrupt" | "set_model" | "set_permission_mode" | "set_max_thinking_tokens" | "set_fast_mode" | "get_supported_models" | "get_supported_commands" | "get_mcp_status" | "get_account_info" | "rewind_files" | "user_question_response" | "plan_approval_response" | "sprint_phase_response" | "tool_approval_response" | "reconnect_mcp_server" | "toggle_mcp_server" | "stop_task" | "get_supported_agents" | "set_mcp_servers" | "get_initialization_result" | "fork_session" | "cancel_message";
   content?: string;
   model?: string;
   permissionMode?: string;
@@ -264,6 +267,10 @@ interface InputMessage {
   planApprovalRequestId?: string;
   planApproved?: boolean;
   planApprovalReason?: string;
+  // Tool approval response fields
+  toolApprovalRequestId?: string;
+  toolApprovalAction?: string;
+  toolApprovalSpecifier?: string;
   // Max thinking tokens override
   maxThinkingTokens?: number;
   // MCP server management fields (SDK v0.2.21+)
@@ -422,6 +429,50 @@ let sprintPhaseRequestCounter = 0;
 let lastSprintPhaseApprovalTime = 0;
 let lastApprovedSprintPhase: string | null = null;
 const SPRINT_PHASE_COOLDOWN_MS = 5_000; // 5 seconds — tight window for SDK retries only
+
+// Pending tool approval requests (for non-bypass permission modes)
+const TOOL_APPROVAL_TIMEOUT_MS = 60_000; // 60 seconds — matches SDK's canUseTool timeout
+
+interface ToolApprovalResult {
+  action: "allow_once" | "allow_session" | "allow_always" | "deny_once" | "deny_always";
+  specifier?: string;
+}
+interface PendingToolApprovalRequest {
+  resolve: (result: ToolApprovalResult) => void;
+  reject: (error: Error) => void;
+}
+const pendingToolApprovalRequests = new Map<string, PendingToolApprovalRequest>();
+let toolApprovalRequestCounter = 0;
+
+// Session-scoped approvals: populated when user chooses "allow_session" or "deny_session".
+// Key format: "ToolName" or "ToolName:specifier" — value is the decision.
+const sessionApprovals = new Map<string, "allow" | "deny">();
+
+// Persistent permission rules loaded at startup from --permission-rules-file.
+let persistentRules: PermissionRule[] = [];
+{
+  const rulesFilePath = getArg("--permission-rules-file");
+  if (rulesFilePath) {
+    try {
+      const raw = fs.readFileSync(rulesFilePath, "utf-8");
+      persistentRules = JSON.parse(raw) as PermissionRule[];
+    } catch (err) {
+      console.error(`Failed to load permission rules from ${rulesFilePath}:`, err);
+    }
+  }
+}
+
+// Read-only and meta tools that never need approval in interactive modes.
+// NOTE: These bypass ALL permission rules (including deny rules). Users cannot
+// configure deny rules for these tools — they are always auto-allowed.
+const READ_ONLY_TOOLS = new Set([
+  "Read", "Glob", "Grep", "TodoWrite",
+  "AskUserQuestion", "ExitPlanMode", "EnterPlanMode",
+]);
+
+// Tools that make external network calls — auto-allowed in most modes but
+// blocked in dontAsk mode to prevent data exfiltration.
+const NETWORK_TOOLS = new Set(["WebSearch"]);
 
 // Track the last file written during plan mode so we can include plan content
 // in the plan_approval_request event when ExitPlanMode fires.
@@ -789,6 +840,24 @@ function setupInputQueue(): void {
           emit({
             type: "warning",
             message: `Received response for unknown sprint phase request: ${input.questionRequestId}`,
+          });
+        }
+        return;
+      }
+
+      // Handle tool approval responses from the Go backend
+      if (input.type === "tool_approval_response" && input.toolApprovalRequestId) {
+        const pending = pendingToolApprovalRequests.get(input.toolApprovalRequestId);
+        if (pending) {
+          pendingToolApprovalRequests.delete(input.toolApprovalRequestId);
+          pending.resolve({
+            action: (input.toolApprovalAction || "deny_once") as ToolApprovalResult["action"],
+            specifier: input.toolApprovalSpecifier,
+          });
+        } else {
+          emit({
+            type: "warning",
+            message: `Received response for unknown tool approval request: ${input.toolApprovalRequestId}`,
           });
         }
         return;
@@ -1771,9 +1840,10 @@ const PLAN_MODE_DENIED_TOOLS = new Set([
   "Write", "Edit", "Bash", "NotebookEdit",
 ]);
 
-// Permission callback — enforces plan mode restrictions as defense-in-depth.
-// In bypassPermissions mode the SDK auto-allows all tools before reaching this.
-// In plan mode the SDK should enforce restrictions natively, but we double-check here.
+// Permission callback — enforces plan mode restrictions and tool approval flow.
+// In bypassPermissions mode all tools are auto-allowed (existing behavior).
+// In other modes, tools are checked against session approvals, persistent rules,
+// and if no rule matches, the user is prompted via tool_approval_request events.
 const canUseTool: CanUseTool = async (toolName, toolInput, _options) => {
   // Defense-in-depth: if AskUserQuestion reaches canUseTool with cached answers,
   // provide them via updatedInput. In bypassPermissions mode (the default), the SDK
@@ -1784,11 +1854,102 @@ const canUseTool: CanUseTool = async (toolName, toolInput, _options) => {
     lastQuestionAnswers = null; // Consume once
     return { behavior: "allow", updatedInput: { ...toolInput, answers } };
   }
+
+  // Plan mode: block write/execute tools
   if (currentPermissionMode === "plan" && PLAN_MODE_DENIED_TOOLS.has(toolName)) {
     return { behavior: "deny", message: "This tool is not available in plan mode. Present your plan using ExitPlanMode first." };
   }
-  // SDK 0.2.72: updatedInput is still required in PermissionResult — pass through toolInput
-  return { behavior: "allow", updatedInput: toolInput };
+
+  // Bypass mode: allow everything (existing behavior, unchanged)
+  if (currentPermissionMode === "bypassPermissions") {
+    return { behavior: "allow", updatedInput: toolInput };
+  }
+
+  // Read-only and meta tools never need approval
+  if (READ_ONLY_TOOLS.has(toolName)) {
+    return { behavior: "allow", updatedInput: toolInput };
+  }
+
+  // Network tools (e.g., WebSearch) are auto-allowed except in dontAsk mode
+  // where they could exfiltrate codebase context via search queries.
+  if (NETWORK_TOOLS.has(toolName) && currentPermissionMode !== "dontAsk") {
+    return { behavior: "allow", updatedInput: toolInput };
+  }
+
+  // Build specifier for rule matching
+  const specifier = buildSpecifier(toolName, toolInput);
+  const ruleKey = specifier ? `${toolName}:${specifier}` : toolName;
+
+  // Check session-scoped approvals (populated by allow_session/deny_session responses)
+  const sessionResult = sessionApprovals.get(ruleKey);
+  if (sessionResult === "allow") {
+    return { behavior: "allow", updatedInput: toolInput };
+  }
+  if (sessionResult === "deny") {
+    return { behavior: "deny", message: `Denied by session rule: ${ruleKey}` };
+  }
+
+  // Check persistent rules (deny → ask → allow, per Claude Code convention)
+  const ruleResult = evaluateRules(persistentRules, toolName, specifier);
+  if (ruleResult === "deny") {
+    return { behavior: "deny", message: `Denied by permission rule` };
+  }
+  if (ruleResult === "allow") {
+    return { behavior: "allow", updatedInput: toolInput };
+  }
+
+  // acceptEdits mode: auto-allow file modifications, prompt for Bash/MCP/other
+  if (currentPermissionMode === "acceptEdits") {
+    if (["Write", "Edit", "NotebookEdit"].includes(toolName)) {
+      return { behavior: "allow", updatedInput: toolInput };
+    }
+  }
+
+  // dontAsk mode: deny anything not pre-approved by rules above
+  if (currentPermissionMode === "dontAsk") {
+    return { behavior: "deny", message: "Tool not pre-approved in dontAsk mode" };
+  }
+
+  // default mode (or acceptEdits for non-edit tools): prompt the user
+  const requestId = `tar-${++toolApprovalRequestCounter}-${Date.now()}`;
+  emit({
+    type: "tool_approval_request",
+    requestId,
+    toolName,
+    toolInput,
+    specifier: specifier || undefined,
+  });
+
+  try {
+    const result = await new Promise<ToolApprovalResult>((resolve, reject) => {
+      pendingToolApprovalRequests.set(requestId, { resolve, reject });
+      setTimeout(() => {
+        if (pendingToolApprovalRequests.has(requestId)) {
+          pendingToolApprovalRequests.delete(requestId);
+          reject(new Error("Tool approval timed out after 60 seconds"));
+        }
+      }, TOOL_APPROVAL_TIMEOUT_MS);
+    });
+
+    // Process the user's decision
+    if (result.action === "allow_session" || result.action === "allow_always") {
+      // Cache in session so subsequent calls don't re-prompt.
+      // TODO: allow_always should also be persisted to the permission rules file by the Go backend.
+      sessionApprovals.set(ruleKey, "allow");
+    } else if (result.action === "deny_always" || result.action === "deny_once") {
+      if (result.action === "deny_always") {
+        // TODO: deny_always should also be persisted to the permission rules file by the Go backend.
+        sessionApprovals.set(ruleKey, "deny");
+      }
+      return { behavior: "deny", message: "User denied tool execution" };
+    }
+
+    // allow_once, allow_session, allow_always all result in allow
+    return { behavior: "allow", updatedInput: toolInput };
+  } catch {
+    // Timeout or cancellation — deny
+    return { behavior: "deny", message: "Tool approval timed out or was cancelled" };
+  }
 };
 
 // Hooks configuration - all always enabled

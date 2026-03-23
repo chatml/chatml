@@ -205,6 +205,7 @@ export async function createConversation(
     message?: string;
     model?: string;
     planMode?: boolean;
+    permissionMode?: string;
     fastMode?: boolean;
     maxThinkingTokens?: number;
     effort?: string;
@@ -394,6 +395,24 @@ export async function approvePlan(convId: string, requestId: string, approved: b
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ requestId, approved, ...(reason && { reason }) }),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new ApiError(text || `HTTP ${res.status}`, res.status, text);
+  }
+}
+
+// Approve or deny a pending tool execution request
+export async function approveTool(
+  convId: string,
+  requestId: string,
+  action: 'allow_once' | 'allow_session' | 'allow_always' | 'deny_once' | 'deny_always',
+  specifier?: string,
+): Promise<void> {
+  const res = await fetchWithAuth(`${getApiBase()}/api/conversations/${convId}/approve-tool`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ requestId, action, ...(specifier && { specifier }) }),
   });
   if (!res.ok) {
     const text = await res.text();

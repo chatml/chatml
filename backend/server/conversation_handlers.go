@@ -48,6 +48,7 @@ type CreateConversationRequest struct {
 	Message           string              `json:"message"`           // Initial message (optional)
 	Model             string              `json:"model"`             // Model name override (optional)
 	PlanMode          bool                `json:"planMode"`          // Start in plan mode (optional)
+	PermissionMode    string              `json:"permissionMode"`    // Permission mode: default, acceptEdits, bypassPermissions, dontAsk (optional)
 	FastMode          bool                `json:"fastMode"`          // Enable fast output mode (optional)
 	MaxThinkingTokens int                 `json:"maxThinkingTokens"` // Enable extended thinking (optional)
 	Effort            string              `json:"effort"`            // Reasoning effort: low, medium, high, max (optional)
@@ -189,14 +190,27 @@ func (h *Handlers) CreateConversation(w http.ResponseWriter, r *http.Request) {
 		req.Effort = ""
 	}
 
+	// Validate permissionMode if provided
+	if req.PermissionMode != "" {
+		validPermissionModes := map[string]bool{
+			"default": true, "acceptEdits": true,
+			"bypassPermissions": true, "dontAsk": true,
+		}
+		if !validPermissionModes[req.PermissionMode] {
+			writeValidationError(w, "permissionMode must be one of: default, acceptEdits, bypassPermissions, dontAsk")
+			return
+		}
+	}
+
 	// Build options for starting the conversation
 	var opts *agent.StartConversationOptions
-	if req.MaxThinkingTokens > 0 || len(req.Attachments) > 0 || req.PlanMode || req.FastMode || instructions != "" || req.Model != "" || req.Effort != "" {
+	if req.MaxThinkingTokens > 0 || len(req.Attachments) > 0 || req.PlanMode || req.FastMode || instructions != "" || req.Model != "" || req.Effort != "" || req.PermissionMode != "" {
 		opts = &agent.StartConversationOptions{
 			MaxThinkingTokens: req.MaxThinkingTokens,
 			Effort:            req.Effort,
 			Attachments:       req.Attachments,
 			PlanMode:          req.PlanMode,
+			PermissionMode:    req.PermissionMode,
 			FastMode:          req.FastMode,
 			Instructions:      instructions,
 			Model:             req.Model,
@@ -751,6 +765,52 @@ func (h *Handlers) ApprovePlan(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, map[string]bool{"approved": req.Approved})
+}
+
+// ToolApprovalRequest represents user approval/denial of a tool execution request
+type ToolApprovalRequest struct {
+	RequestID string `json:"requestId"`
+	Action    string `json:"action"`              // allow_once, allow_session, allow_always, deny_once, deny_always
+	Specifier string `json:"specifier,omitempty"` // Tool-specific specifier (e.g., "npm run *")
+}
+
+func (h *Handlers) ApproveTool(w http.ResponseWriter, r *http.Request) {
+	convID := chi.URLParam(r, "convId")
+
+	var req ToolApprovalRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeValidationError(w, "invalid request body")
+		return
+	}
+
+	if req.RequestID == "" {
+		writeValidationError(w, "requestId is required")
+		return
+	}
+
+	validActions := map[string]bool{
+		"allow_once": true, "allow_session": true, "allow_always": true,
+		"deny_once": true, "deny_always": true,
+	}
+	if !validActions[req.Action] {
+		writeValidationError(w, "action must be one of: allow_once, allow_session, allow_always, deny_once, deny_always")
+		return
+	}
+
+	// Get the process for this conversation
+	proc := h.agentManager.GetConversationProcess(convID)
+	if proc == nil {
+		writeNotFound(w, "no active process for conversation")
+		return
+	}
+
+	// Send the approval/denial to the agent process
+	if err := proc.SendToolApprovalResponse(req.RequestID, req.Action, req.Specifier); err != nil {
+		writeInternalError(w, "failed to send tool approval", err)
+		return
+	}
+
+	writeJSON(w, map[string]string{"action": req.Action})
 }
 
 // Summary handlers

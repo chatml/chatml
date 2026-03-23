@@ -142,6 +142,10 @@ type AgentEvent struct {
 	// Sprint phase proposal fields (update_sprint_phase tool)
 	Phase string `json:"phase,omitempty"`
 
+	// Tool approval fields (non-bypass permission modes)
+	ToolInput interface{} `json:"toolInput,omitempty"`
+	Specifier string     `json:"specifier,omitempty"`
+
 	// Input suggestion fields (Haiku-generated prompt suggestions)
 	GhostText string              `json:"ghostText,omitempty"`
 	Pills     []ai.SuggestionPill `json:"pills,omitempty"`
@@ -355,6 +359,9 @@ const (
 	// Plan approval events (ExitPlanMode tool)
 	EventTypePlanApprovalRequest  = "plan_approval_request"
 	EventTypeSprintPhaseProposal = "sprint_phase_proposal"
+
+	// Tool approval events (non-bypass permission modes)
+	EventTypeToolApprovalRequest = "tool_approval_request"
 
 	// Command error (SDK runtime command failed)
 	EventTypeCommandError = "command_error"

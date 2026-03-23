@@ -36,6 +36,7 @@ import { useChatInputAttachments } from './useChatInputAttachments';
 import { useChatInputKeyboardShortcuts } from './useChatInputKeyboardShortcuts';
 import { ChatInputPillSuggestions } from './ChatInputPillSuggestions';
 import { ChatInputPlanApproval } from './ChatInputPlanApproval';
+import { ToolApprovalBanner } from './ToolApprovalBanner';
 import { ChatInputToolbar } from './ChatInputToolbar';
 
 // Flat file type for mention items
@@ -143,6 +144,9 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
   const [planModeEnabled, setPlanModeEnabled] = useState(defaultPlanMode);
   const defaultFastMode = useSettingsStore((s) => s.defaultFastMode);
   const [fastModeEnabled, setFastModeEnabled] = useState(defaultFastMode);
+  const defaultPermissionMode = useSettingsStore((s) => s.defaultPermissionMode);
+  const setDefaultPermissionMode = useSettingsStore((s) => s.setDefaultPermissionMode);
+  const [permissionMode, setPermissionMode] = useState(defaultPermissionMode);
   const sendWithEnter = useSettingsStore((s) => s.sendWithEnter);
   const suggestionsEnabled = useSettingsStore((s) => s.suggestionsEnabled);
   const autoSubmitPill = useSettingsStore((s) => s.autoSubmitPillSuggestion);
@@ -360,6 +364,9 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
 
   // Check if there's a pending plan approval request
   const pendingPlanApproval = streamingInput.pendingPlanApproval;
+
+  // Check if there's a pending tool approval request
+  const pendingToolApproval = streamingInput.pendingToolApproval;
 
   // Derive compose button mode from streaming + text + queue state
   const hasText = message.trim().length > 0;
@@ -728,6 +735,9 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
           message: trimmedContent,
           model: selectedModel.id,
           planMode: planModeEnabled ? true : undefined,
+          // TODO: permissionMode is only set on creation — changing the setting mid-session
+          // won't affect existing conversations (unlike model/fastMode which have set_* messages).
+          permissionMode: permissionMode !== 'bypassPermissions' ? permissionMode : undefined,
           fastMode: fastModeEnabled ? true : undefined,
           maxThinkingTokens: thinkingParams.maxThinkingTokens,
           effort: thinkingParams.effort,
@@ -935,6 +945,11 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
         />
       )}
 
+      {/* Tool Approval Banner */}
+      {pendingToolApproval && selectedConversationId && !pendingPlanApproval && (
+        <ToolApprovalBanner conversationId={selectedConversationId} />
+      )}
+
       <div className={cn(
         'relative',
         pendingPlanApproval && 'plan-approval-border'
@@ -1084,6 +1099,12 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
             defaultLevel: defaultThinkingLevel,
             setLevel: setThinkingLevel,
             setDefault: setDefaultThinkingLevel,
+          }}
+          permissionMode={{
+            mode: permissionMode,
+            defaultMode: defaultPermissionMode,
+            setMode: setPermissionMode,
+            setDefault: setDefaultPermissionMode,
           }}
           planModeEnabled={planModeEnabled}
           onPlanModeToggle={handlePlanModeToggle}

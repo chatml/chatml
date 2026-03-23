@@ -153,7 +153,7 @@ export const useSessionActivityState = (sessionId: string): SessionActivityState
 
           const convId = c.id;
           if (state.pendingUserQuestion[convId]) return 'awaiting_input';
-          if (state.streamingState[convId]?.pendingPlanApproval) {
+          if (state.streamingState[convId]?.pendingPlanApproval || state.streamingState[convId]?.pendingToolApproval) {
             highestState = 'awaiting_approval';
           } else if (state.streamingState[convId]?.isStreaming && highestState === 'idle') {
             highestState = 'working';
@@ -186,7 +186,7 @@ export const useActiveSessions = <T extends { id: string }>(sessions: T[]): T[] 
               if (c.status !== 'active') continue;
               const convId = c.id;
               if (state.pendingUserQuestion[convId]) { activity = 'awaiting_input'; break; }
-              if (state.streamingState[convId]?.pendingPlanApproval) {
+              if (state.streamingState[convId]?.pendingPlanApproval || state.streamingState[convId]?.pendingToolApproval) {
                 activity = 'awaiting_approval';
               } else if (state.streamingState[convId]?.isStreaming && activity === 'idle') {
                 activity = 'working';
@@ -344,6 +344,7 @@ export const useStreamingChatInput = (conversationId: string | null) =>
       return {
         isStreaming: st?.isStreaming ?? false,
         pendingPlanApproval: st?.pendingPlanApproval ?? null,
+        pendingToolApproval: st?.pendingToolApproval ?? null,
         planModeActive: st?.planModeActive ?? false,
       };
     })

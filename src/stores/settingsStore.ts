@@ -99,6 +99,7 @@ export const SETTINGS_DEFAULTS = {
   archiveOnMerge: false,
   // Security
   neverLoadDotMcp: false,
+  defaultPermissionMode: 'bypassPermissions' as const,
   // Account
   strictPrivacy: false,
   // Sidebar
@@ -140,6 +141,7 @@ interface SettingsState {
   archiveOnMerge: boolean;
   // Security settings
   neverLoadDotMcp: boolean;
+  defaultPermissionMode: 'default' | 'acceptEdits' | 'bypassPermissions' | 'dontAsk';
   // Account settings
   strictPrivacy: boolean;
   // UI state
@@ -215,6 +217,7 @@ interface SettingsState {
   setDeleteBranchOnArchive: (value: boolean) => void;
   setArchiveOnMerge: (value: boolean) => void;
   setNeverLoadDotMcp: (value: boolean) => void;
+  setDefaultPermissionMode: (value: 'default' | 'acceptEdits' | 'bypassPermissions' | 'dontAsk') => void;
   setStrictPrivacy: (value: boolean) => void;
   setZenMode: (value: boolean) => void;
   setSidebarBottomPanelMinimized: (value: boolean) => void;
@@ -313,6 +316,8 @@ export const useSettingsStore = create<SettingsState>()(
       setBranchPrefixCustom: (value) => set({ branchPrefixCustom: value }),
       setDeleteBranchOnArchive: (value) => set({ deleteBranchOnArchive: value }),
       setArchiveOnMerge: (value) => set({ archiveOnMerge: value }),
+      setDefaultPermissionMode: (value: 'default' | 'acceptEdits' | 'bypassPermissions' | 'dontAsk') =>
+        set({ defaultPermissionMode: value }),
       setNeverLoadDotMcp: (value) => {
         set({ neverLoadDotMcp: value });
         // Sync to backend so agent manager respects the global kill switch

@@ -50,6 +50,7 @@ type ProcessOptions struct {
 	MaxThinkingTokens   int
 	Effort              string // Reasoning effort: low, medium, high, max
 	PlanMode            bool   // Start agent in plan mode
+	PermissionMode      string // Permission mode: default, acceptEdits, bypassPermissions, dontAsk (empty = bypassPermissions)
 	FastMode            bool   // Enable fast output mode (Opus 4.6+)
 	Instructions        string // Additional instructions for the agent (e.g., conversation summaries)
 	StructuredOutput    string
@@ -62,6 +63,7 @@ type ProcessOptions struct {
 	EnvVars             map[string]string // Custom environment variables to inject
 	McpServersJSON      string            // JSON array of MCP server configs
 	AgentsJSON          string            // JSON object of programmatic agent definitions (SDK 0.2.62+)
+	PermissionRulesFile string            // Path to JSON file with persistent permission rules
 }
 
 type Process struct {
@@ -117,6 +119,10 @@ type InputMessage struct {
 	FastMode *bool `json:"fastMode,omitempty"`
 	// Sprint phase response fields (for update_sprint_phase tool)
 	Approved *bool `json:"approved,omitempty"`
+	// Tool approval response fields (for non-bypass permission modes)
+	ToolApprovalRequestID string `json:"toolApprovalRequestId,omitempty"`
+	ToolApprovalAction    string `json:"toolApprovalAction,omitempty"`
+	ToolApprovalSpecifier string `json:"toolApprovalSpecifier,omitempty"`
 }
 
 // findAgentRunner locates the agent-runner executable
@@ -227,6 +233,21 @@ func NewProcessWithOptions(opts ProcessOptions) *Process {
 	}
 	if opts.PlanMode {
 		args = append(args, "--permission-mode", "plan")
+	} else if opts.PermissionMode != "" && opts.PermissionMode != "bypassPermissions" {
+		// Non-default permission mode (e.g., "default", "acceptEdits", "dontAsk")
+		args = append(args, "--permission-mode", opts.PermissionMode)
+	}
+	// Pass permission rules file if provided.
+	// SECURITY: Validate the path is absolute and doesn't escape via symlinks.
+	// Currently unused (no caller sets PermissionRulesFile) — validation is
+	// defense-in-depth for when persistence is wired up.
+	if opts.PermissionRulesFile != "" {
+		cleanPath := filepath.Clean(opts.PermissionRulesFile)
+		if !filepath.IsAbs(cleanPath) {
+			fmt.Printf("WARNING: PermissionRulesFile must be an absolute path, got %q — skipping\n", opts.PermissionRulesFile)
+		} else {
+			args = append(args, "--permission-rules-file", cleanPath)
+		}
 	}
 	if opts.FastMode {
 		args = append(args, "--fast-mode")
@@ -687,6 +708,17 @@ func (p *Process) SendSprintPhaseResponse(requestId string, approved bool) error
 		Type:              "sprint_phase_response",
 		QuestionRequestID: requestId,
 		Approved:          &approved,
+	})
+}
+
+// SendToolApprovalResponse sends the user's approval/denial decision for a tool execution request.
+// Used in non-bypass permission modes (default, acceptEdits) when a tool needs user approval.
+func (p *Process) SendToolApprovalResponse(requestId, action, specifier string) error {
+	return p.sendInput(InputMessage{
+		Type:                  "tool_approval_response",
+		ToolApprovalRequestID: requestId,
+		ToolApprovalAction:    action,
+		ToolApprovalSpecifier: specifier,
 	})
 }
 

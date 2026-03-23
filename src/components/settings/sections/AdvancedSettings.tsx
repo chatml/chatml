@@ -17,6 +17,13 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Switch } from '@/components/ui/switch';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { SettingsRow } from '../shared/SettingsRow';
 import { SettingsGroup } from '../shared/SettingsGroup';
 
@@ -149,6 +156,19 @@ export function AdvancedSettings() {
       </SettingsGroup>
 
       <SettingsGroup label="Security">
+        <SettingsRow
+          settingId="defaultPermissionMode"
+          title="Default permission mode"
+          description="Controls how the agent requests permission to use tools. Applies to new conversations."
+          isModified={useSettingsStore((s) => s.defaultPermissionMode) !== SETTINGS_DEFAULTS.defaultPermissionMode}
+          onReset={() => useSettingsStore.getState().setDefaultPermissionMode(SETTINGS_DEFAULTS.defaultPermissionMode)}
+        >
+          <PermissionModeSelect
+            value={useSettingsStore((s) => s.defaultPermissionMode)}
+            onChange={useSettingsStore.getState().setDefaultPermissionMode}
+          />
+        </SettingsRow>
+
         <SettingsRow
           settingId="neverLoadDotMcp"
           title="Block workspace MCP configs"
@@ -490,5 +510,37 @@ function EnvSection() {
         </Button>
       </div>
     </SettingsRow>
+  );
+}
+
+const PERMISSION_MODES = [
+  { id: 'bypassPermissions' as const, label: 'Full access', description: 'All tools auto-approved' },
+  { id: 'acceptEdits' as const, label: 'Accept edits', description: 'File edits auto-approved, Bash requires approval' },
+  { id: 'default' as const, label: 'Ask for approval', description: 'Approve each tool call individually' },
+  { id: 'dontAsk' as const, label: 'Read-only', description: 'Only read tools allowed, all others denied' },
+];
+
+function PermissionModeSelect({
+  value,
+  onChange,
+}: {
+  value: 'default' | 'acceptEdits' | 'bypassPermissions' | 'dontAsk';
+  onChange: (value: 'default' | 'acceptEdits' | 'bypassPermissions' | 'dontAsk') => void;
+}) {
+  return (
+    <Select value={value} onValueChange={onChange}>
+      <SelectTrigger className="w-[180px]">
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        {PERMISSION_MODES.map((mode) => (
+          <SelectItem key={mode.id} value={mode.id}>
+            <div className="flex flex-col">
+              <span>{mode.label}</span>
+            </div>
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
   );
 }
