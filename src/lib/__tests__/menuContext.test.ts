@@ -99,7 +99,8 @@ describe('session in conversation view items', () => {
 
   it('disables conversation-view items in non-conversation views', () => {
     const result = computeMenuState(makeInputs({
-      contentView: { type: 'settings' } as any,
+      // @ts-expect-error -- intentionally testing non-union type
+      contentView: { type: 'settings' },
     }));
     expect(result.toggle_right_sidebar).toBe(false);
     expect(result.toggle_terminal).toBe(false);

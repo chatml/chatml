@@ -28,7 +28,7 @@ let mockApi: {
 };
 
 beforeEach(async () => {
-  mockApi = (await import('@/lib/api')) as any;
+  mockApi = (await import('@/lib/api')) as unknown as typeof mockApi;
   vi.mocked(mockApi.listSkills).mockReset();
   vi.mocked(mockApi.installSkill).mockReset();
   vi.mocked(mockApi.uninstallSkill).mockReset();
@@ -115,7 +115,8 @@ describe('installSkill', () => {
 
   it('syncs installed skills to slash command store', async () => {
     const setInstalledSkills = vi.fn();
-    useSlashCommandStore.setState({ setInstalledSkills } as any);
+    // @ts-expect-error -- partial state stub for test
+    useSlashCommandStore.setState({ setInstalledSkills });
     vi.mocked(mockApi.installSkill).mockResolvedValue(undefined);
     useSkillsStore.setState({
       skills: [makeSkill({ id: 's1', installed: false })],
@@ -143,7 +144,7 @@ describe('uninstallSkill', () => {
   it('calls API and updates local state', async () => {
     vi.mocked(mockApi.uninstallSkill).mockResolvedValue(undefined);
     useSkillsStore.setState({
-      skills: [makeSkill({ id: 's1', installed: true, installedAt: '2025-01-01' } as any)],
+      skills: [makeSkill({ id: 's1', installed: true, installedAt: '2025-01-01' } as Partial<SkillDTO>)],
     });
 
     await useSkillsStore.getState().uninstallSkill('s1');

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { useUIStore, DEFAULT_TOOLBAR_BG } from '../uiStore';
+import { useUIStore, DEFAULT_TOOLBAR_BG, type ToolbarConfig } from '../uiStore';
 
 beforeEach(() => {
   useUIStore.setState({
@@ -54,13 +54,13 @@ describe('toolbar config', () => {
   });
 
   it('sets toolbar config', () => {
-    const config = { leading: 'back', title: 'Settings' };
-    useUIStore.getState().setToolbarConfig(config as any);
+    const config: ToolbarConfig = { leading: 'back', title: 'Settings' };
+    useUIStore.getState().setToolbarConfig(config);
     expect(useUIStore.getState().toolbarConfig).toEqual(config);
   });
 
   it('clears toolbar config by setting null', () => {
-    useUIStore.getState().setToolbarConfig({ title: 'Test' } as any);
+    useUIStore.getState().setToolbarConfig({ title: 'Test' });
     useUIStore.getState().setToolbarConfig(null);
     expect(useUIStore.getState().toolbarConfig).toBeNull();
   });
