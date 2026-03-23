@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 
@@ -19,6 +20,11 @@ pub struct AppState {
     pub restart_attempts: Mutex<u32>,
     /// Whether an auto-restart is currently in progress
     pub restart_in_progress: AtomicBool,
+    /// In-memory cache of app icon base64 strings keyed by app path.
+    /// Only successful extractions are stored (empty strings are never cached).
+    /// No eviction policy — bounded in practice by the number of installed apps
+    /// (~50–150 KB per icon; acceptable for a desktop app lifetime).
+    pub icon_cache: Mutex<HashMap<String, String>>,
 }
 
 impl Default for AppState {
@@ -38,6 +44,7 @@ impl AppState {
             resolved_user_path: Mutex::new(None),
             restart_attempts: Mutex::new(0),
             restart_in_progress: AtomicBool::new(false),
+            icon_cache: Mutex::new(HashMap::new()),
         }
     }
 
@@ -147,6 +154,27 @@ impl AppState {
                 log::warn!("resolved_user_path mutex poisoned: {}", e);
                 None
             }
+        }
+    }
+
+    /// Get a cached app icon (base64 PNG) by app path
+    pub fn get_cached_icon(&self, path: &str) -> Option<String> {
+        match self.icon_cache.lock() {
+            Ok(cache) => cache.get(path).cloned(),
+            Err(e) => {
+                log::warn!("icon_cache mutex poisoned: {}", e);
+                None
+            }
+        }
+    }
+
+    /// Store an app icon (base64 PNG) in the cache
+    pub fn cache_icon(&self, path: String, icon: String) {
+        match self.icon_cache.lock() {
+            Ok(mut cache) => {
+                cache.insert(path, icon);
+            }
+            Err(e) => log::warn!("icon_cache mutex poisoned: {}", e),
         }
     }
 
@@ -302,6 +330,60 @@ mod tests {
         assert_eq!(state1.get_auth_token(), state2.get_auth_token());
         assert_eq!(state1.get_sidecar_port(), state2.get_sidecar_port());
         assert_eq!(state1.is_ready(), state2.is_ready());
+    }
+
+    #[test]
+    fn test_icon_cache_miss_returns_none() {
+        let state = AppState::new();
+        assert!(state.get_cached_icon("/Applications/Missing.app").is_none());
+    }
+
+    #[test]
+    fn test_icon_cache_hit_returns_stored_value() {
+        let state = AppState::new();
+        state.cache_icon(
+            "/Applications/Foo.app".to_string(),
+            "base64data".to_string(),
+        );
+        assert_eq!(
+            state.get_cached_icon("/Applications/Foo.app"),
+            Some("base64data".to_string())
+        );
+    }
+
+    #[test]
+    fn test_icon_cache_overwrite() {
+        let state = AppState::new();
+        state.cache_icon("/Applications/Foo.app".to_string(), "first".to_string());
+        state.cache_icon("/Applications/Foo.app".to_string(), "second".to_string());
+        assert_eq!(
+            state.get_cached_icon("/Applications/Foo.app"),
+            Some("second".to_string())
+        );
+    }
+
+    #[test]
+    fn test_icon_cache_thread_safety() {
+        use std::sync::Arc;
+        use std::thread;
+
+        let state = Arc::new(AppState::new());
+        let mut handles = vec![];
+
+        for i in 0..10 {
+            let state_clone = Arc::clone(&state);
+            let handle = thread::spawn(move || {
+                let path = format!("/Applications/App{}.app", i);
+                let icon = format!("icon{}", i);
+                state_clone.cache_icon(path.clone(), icon);
+                assert!(state_clone.get_cached_icon(&path).is_some());
+            });
+            handles.push(handle);
+        }
+
+        for handle in handles {
+            handle.join().unwrap();
+        }
     }
 
     #[test]

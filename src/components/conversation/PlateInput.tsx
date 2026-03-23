@@ -77,6 +77,27 @@ function extractContent(value: Value): { text: string; mentionedFiles: string[] 
 
 const emptyValue: Value = [{ type: 'p', children: [{ text: '' }] }];
 
+const MENTION_TRIGGER_PATTERN = /^$|^[\s"']$/;
+const SLASH_TRIGGER_PATTERN = /^$/;
+
+const PLATE_PLUGINS = [
+  MentionPlugin.configure({
+    options: {
+      trigger: '@',
+      triggerPreviousCharPattern: MENTION_TRIGGER_PATTERN,
+      insertSpaceAfterMention: true,
+    },
+  }).withComponent(MentionElement),
+  MentionInputPlugin.withComponent(MentionInputElement),
+  SlashPlugin.configure({
+    options: {
+      trigger: '/',
+      triggerPreviousCharPattern: SLASH_TRIGGER_PATTERN,
+    },
+  }),
+  SlashInputPlugin.withComponent(SlashCommandInputElement),
+];
+
 export const PlateInput = forwardRef<PlateInputHandle, PlateInputProps>(
   function PlateInput(
     {
@@ -95,23 +116,7 @@ export const PlateInput = forwardRef<PlateInputHandle, PlateInputProps>(
     ref
   ) {
     const editor = usePlateEditor({
-      plugins: [
-        MentionPlugin.configure({
-          options: {
-            trigger: '@',
-            triggerPreviousCharPattern: /^$|^[\s"']$/,
-            insertSpaceAfterMention: true,
-          },
-        }).withComponent(MentionElement),
-        MentionInputPlugin.withComponent(MentionInputElement),
-        SlashPlugin.configure({
-          options: {
-            trigger: '/',
-            triggerPreviousCharPattern: /^$/,
-          },
-        }),
-        SlashInputPlugin.withComponent(SlashCommandInputElement),
-      ],
+      plugins: PLATE_PLUGINS,
       value: emptyValue,
     });
 

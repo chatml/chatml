@@ -255,13 +255,26 @@ pub fn get_image_dimensions(path: String) -> Result<ImageDimensions, String> {
 
 /// Detect which apps are installed by checking if their bundle paths exist.
 /// Receives a list of (app_id, [paths]) pairs and returns (id, icon_base64) for installed apps.
+/// Icons are cached in AppState to avoid redundant NSWorkspace API calls on subsequent invocations.
 #[tauri::command]
-pub fn detect_installed_apps(app_paths: Vec<(String, Vec<String>)>) -> Vec<(String, String)> {
+pub fn detect_installed_apps(
+    state: State<'_, Arc<AppState>>,
+    app_paths: Vec<(String, Vec<String>)>,
+) -> Vec<(String, String)> {
     app_paths
         .into_iter()
         .filter_map(|(id, paths)| {
             let found_path = paths.iter().find(|p| Path::new(p).exists())?;
-            let icon = crate::icons::get_icon_base64(found_path);
+            let icon = state.get_cached_icon(found_path).unwrap_or_else(|| {
+                let extracted = crate::icons::get_icon_base64(found_path);
+                // Only cache successful extractions; an empty string means the
+                // NSWorkspace TIFF→PNG conversion failed and we should retry on
+                // the next call rather than permanently hiding the icon.
+                if !extracted.is_empty() {
+                    state.cache_icon(found_path.clone(), extracted.clone());
+                }
+                extracted
+            });
             Some((id, icon))
         })
         .collect()
@@ -430,10 +443,12 @@ fn check_tool(
 }
 
 /// Check system prerequisites (Node.js, git, gh).
-/// Uses the user's login shell PATH to find tools.
+/// Uses the cached login shell PATH from AppState, falling back to resolving it fresh.
 #[tauri::command]
-pub fn check_prerequisites() -> PrerequisitesResult {
-    let user_path = sidecar::resolve_user_path();
+pub fn check_prerequisites(state: State<'_, Arc<AppState>>) -> PrerequisitesResult {
+    let user_path = state
+        .get_resolved_user_path()
+        .unwrap_or_else(sidecar::resolve_user_path);
 
     let tools = vec![
         check_tool(
@@ -487,10 +502,12 @@ pub struct GhCliStatus {
 }
 
 /// Check GitHub CLI installation and authentication status.
-/// Uses the user's login shell PATH to find `gh`.
+/// Uses the cached login shell PATH from AppState, falling back to resolving it fresh.
 #[tauri::command]
-pub fn check_gh_auth_status() -> GhCliStatus {
-    let user_path = sidecar::resolve_user_path();
+pub fn check_gh_auth_status(state: State<'_, Arc<AppState>>) -> GhCliStatus {
+    let user_path = state
+        .get_resolved_user_path()
+        .unwrap_or_else(sidecar::resolve_user_path);
 
     // Check if gh is installed
     let version_output = Command::new("gh")
