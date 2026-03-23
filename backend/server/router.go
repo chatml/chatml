@@ -230,6 +230,7 @@ func NewRouter(ctx context.Context, s *store.SQLiteStore, hub *Hub, agentMgr *ag
 		r.Get("/{convId}/drop-stats", h.GetConversationDropStats)
 		r.Post("/{convId}/rewind", h.RewindConversation)
 		r.Post("/{convId}/plan-mode", h.SetConversationPlanMode)
+		r.Post("/{convId}/permission-mode", h.SetConversationPermissionMode)
 		r.Post("/{convId}/fast-mode", h.SetConversationFastMode)
 		r.Post("/{convId}/max-thinking-tokens", h.SetConversationMaxThinkingTokens)
 		r.Post("/{convId}/approve-plan", h.ApprovePlan)

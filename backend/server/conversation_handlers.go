@@ -21,6 +21,15 @@ import (
 
 // Conversation handlers
 
+// isValidPermissionMode reports whether mode is one of the allowed non-plan permission modes.
+func isValidPermissionMode(mode string) bool {
+	switch mode {
+	case "default", "acceptEdits", "bypassPermissions", "dontAsk":
+		return true
+	}
+	return false
+}
+
 func (h *Handlers) ListConversations(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	sessionID := chi.URLParam(r, "sessionId")
@@ -191,15 +200,9 @@ func (h *Handlers) CreateConversation(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Validate permissionMode if provided
-	if req.PermissionMode != "" {
-		validPermissionModes := map[string]bool{
-			"default": true, "acceptEdits": true,
-			"bypassPermissions": true, "dontAsk": true,
-		}
-		if !validPermissionModes[req.PermissionMode] {
-			writeValidationError(w, "permissionMode must be one of: default, acceptEdits, bypassPermissions, dontAsk")
-			return
-		}
+	if req.PermissionMode != "" && !isValidPermissionMode(req.PermissionMode) {
+		writeValidationError(w, "permissionMode must be one of: default, acceptEdits, bypassPermissions, dontAsk")
+		return
 	}
 
 	// Build options for starting the conversation
@@ -661,6 +664,42 @@ func (h *Handlers) SetConversationPlanMode(w http.ResponseWriter, r *http.Reques
 	}
 
 	writeJSON(w, map[string]bool{"enabled": req.Enabled})
+}
+
+type SetPermissionModeRequest struct {
+	Mode string `json:"mode"`
+}
+
+func (h *Handlers) SetConversationPermissionMode(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	convID := chi.URLParam(r, "convId")
+	conv, err := h.store.GetConversationMeta(ctx, convID)
+	if err != nil {
+		writeDBError(w, err)
+		return
+	}
+	if conv == nil {
+		writeNotFound(w, "conversation")
+		return
+	}
+
+	var req SetPermissionModeRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeValidationError(w, "invalid request body")
+		return
+	}
+
+	if !isValidPermissionMode(req.Mode) {
+		writeValidationError(w, "mode must be one of: default, acceptEdits, bypassPermissions, dontAsk")
+		return
+	}
+
+	if err := h.agentManager.SetConversationPermissionMode(convID, req.Mode); err != nil {
+		writeInternalError(w, "failed to set permission mode", err)
+		return
+	}
+
+	writeJSON(w, map[string]string{"mode": req.Mode})
 }
 
 type SetFastModeRequest struct {

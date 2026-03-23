@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { useAppStore } from '@/stores/appStore';
-import { createConversation, sendConversationMessage, stopConversation, setConversationPlanMode, setConversationFastMode, approvePlan } from '@/lib/api';
+import { createConversation, sendConversationMessage, stopConversation, setConversationPlanMode, setConversationFastMode, setConversationPermissionMode, approvePlan } from '@/lib/api';
 import { markPlanModeExited } from '@/hooks/useWebSocket';
 import { dispatchAppEvent, useAppEventListener } from '@/lib/custom-events';
 import { useShortcut, useCustomShortcut } from '@/hooks/useShortcut';
@@ -37,7 +37,7 @@ import { useChatInputKeyboardShortcuts } from './useChatInputKeyboardShortcuts';
 import { ChatInputPillSuggestions } from './ChatInputPillSuggestions';
 import { ChatInputPlanApproval } from './ChatInputPlanApproval';
 import { ToolApprovalBanner } from './ToolApprovalBanner';
-import { ChatInputToolbar } from './ChatInputToolbar';
+import { ChatInputToolbar, type PermissionMode } from './ChatInputToolbar';
 import { DictationWaveform } from './DictationWaveform';
 import { useDictation } from '@/hooks/useDictation';
 
@@ -586,6 +586,21 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
     }
   }, [fastModeEnabled, selectedConversationId]);
 
+  const handlePermissionModeChange = useCallback(async (mode: PermissionMode) => {
+    const previousMode = permissionMode;
+    setPermissionMode(mode);
+
+    if (selectedConversationId) {
+      try {
+        await setConversationPermissionMode(selectedConversationId, mode);
+      } catch (err) {
+        // Rollback optimistic update — the live process rejected the change (e.g. plan mode active).
+        setPermissionMode(previousMode);
+        console.debug('setConversationPermissionMode failed (will apply on next message):', err);
+      }
+    }
+  }, [permissionMode, selectedConversationId]);
+
   // Handle plan approval
   const handleApprovePlan = useCallback(async () => {
     if (!selectedConversationId || !pendingPlanApproval) return;
@@ -807,8 +822,6 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
           message: trimmedContent,
           model: selectedModel.id,
           planMode: planModeEnabled ? true : undefined,
-          // TODO: permissionMode is only set on creation — changing the setting mid-session
-          // won't affect existing conversations (unlike model/fastMode which have set_* messages).
           permissionMode: permissionMode !== 'bypassPermissions' ? permissionMode : undefined,
           fastMode: fastModeEnabled ? true : undefined,
           maxThinkingTokens: thinkingParams.maxThinkingTokens,
@@ -1178,7 +1191,7 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
           permissionMode={{
             mode: permissionMode,
             defaultMode: defaultPermissionMode,
-            setMode: setPermissionMode,
+            setMode: handlePermissionModeChange,
             setDefault: setDefaultPermissionMode,
           }}
           planModeEnabled={planModeEnabled}

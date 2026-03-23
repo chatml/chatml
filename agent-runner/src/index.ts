@@ -180,9 +180,23 @@ let prePlanPermissionMode: PermissionMode = "bypassPermissions";
     }
   }
   currentPermissionMode = initialPermissionMode;
-  // If the agent starts in plan mode, the pre-plan fallback should be
-  // bypassPermissions so that ExitPlanMode restores to the correct non-plan mode.
-  prePlanPermissionMode = initialPermissionMode === "plan" ? "bypassPermissions" : initialPermissionMode;
+  // If the agent starts in plan mode, determine what permission mode to restore to
+  // after ExitPlanMode. The --pre-plan-permission-mode arg lets the caller specify
+  // the intended post-plan mode (e.g., "default" when the user has Ask for Approval
+  // enabled alongside Plan mode). Without this arg, fall back to "bypassPermissions".
+  if (initialPermissionMode === "plan") {
+    const prePlanArg = getArg("--pre-plan-permission-mode");
+    if (prePlanArg && (validPermissionModes as readonly string[]).includes(prePlanArg) && prePlanArg !== "plan") {
+      prePlanPermissionMode = prePlanArg as PermissionMode;
+    } else {
+      if (prePlanArg) {
+        console.error(`Invalid --pre-plan-permission-mode value: "${prePlanArg}". Falling back to "bypassPermissions".`);
+      }
+      prePlanPermissionMode = "bypassPermissions";
+    }
+  } else {
+    prePlanPermissionMode = initialPermissionMode;
+  }
 }
 
 // Task 6: Settings Sources Configuration

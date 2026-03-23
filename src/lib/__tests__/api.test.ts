@@ -8,6 +8,7 @@ import {
   setWorkspacesBasePath,
   createConversation,
   setConversationPlanMode,
+  setConversationPermissionMode,
   approvePlan,
   resolvePR,
 } from '../api';
@@ -316,6 +317,57 @@ describe('Plan Mode API', () => {
       );
 
       await expect(setConversationPlanMode('conv-1', true)).rejects.toThrow();
+    });
+  });
+
+  describe('setConversationPermissionMode', () => {
+    it('sets a valid permission mode', async () => {
+      let receivedBody: Record<string, unknown> = {};
+      server.use(
+        http.post(`${API_BASE}/api/conversations/:convId/permission-mode`, async ({ request }) => {
+          receivedBody = await request.json() as Record<string, unknown>;
+          return HttpResponse.json({ mode: receivedBody.mode });
+        })
+      );
+
+      await expect(setConversationPermissionMode('conv-1', 'default')).resolves.toBeUndefined();
+      expect(receivedBody).toEqual({ mode: 'default' });
+    });
+
+    it('sends the mode in request body', async () => {
+      let receivedBody: Record<string, unknown> = {};
+      server.use(
+        http.post(`${API_BASE}/api/conversations/:convId/permission-mode`, async ({ request }) => {
+          receivedBody = await request.json() as Record<string, unknown>;
+          return HttpResponse.json({ mode: receivedBody.mode });
+        })
+      );
+
+      await setConversationPermissionMode('conv-1', 'acceptEdits');
+      expect(receivedBody.mode).toBe('acceptEdits');
+    });
+
+    it('rejects when conversation not found (404)', async () => {
+      server.use(
+        http.post(`${API_BASE}/api/conversations/:convId/permission-mode`, () => {
+          return HttpResponse.json({ error: 'conversation not found' }, { status: 404 });
+        })
+      );
+
+      await expect(setConversationPermissionMode('nonexistent', 'default')).rejects.toThrow();
+    });
+
+    it('rejects on server error (500)', async () => {
+      server.use(
+        http.post(`${API_BASE}/api/conversations/:convId/permission-mode`, () => {
+          return HttpResponse.json(
+            { error: 'failed to set permission mode' },
+            { status: 500 }
+          );
+        })
+      );
+
+      await expect(setConversationPermissionMode('conv-1', 'default')).rejects.toThrow();
     });
   });
 
