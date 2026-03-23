@@ -274,6 +274,10 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
   const dictationShortcutDef = useMemo(() => {
     return parseDictationShortcut(dictationShortcutPref, dictationCustomShortcut);
   }, [dictationShortcutPref, dictationCustomShortcut]);
+  const dictationShortcutHint = useMemo(
+    () => formatShortcutHint(dictationShortcutDef),
+    [dictationShortcutDef]
+  );
   useCustomShortcut(dictationShortcutDef, toggleDictation, { enabled: dictationAvailable });
 
   // Session-scoped streaming state — prevents cross-session plan/state leakage
@@ -1019,7 +1023,7 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
       )}
 
       {/* Dictation waveform visualizer */}
-      <DictationWaveform audioLevel={audioLevel} isActive={isDictating} />
+      <DictationWaveform audioLevel={audioLevel} isActive={isDictating} shortcutHint={dictationShortcutHint} />
 
       <div className={cn(
         'relative',
@@ -1205,7 +1209,7 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
             isDictating,
             isAvailable: dictationAvailable,
             onToggle: toggleDictation,
-            shortcutHint: formatShortcutHint(dictationShortcutDef),
+            shortcutHint: dictationShortcutHint,
           }}
         />
       </div>
