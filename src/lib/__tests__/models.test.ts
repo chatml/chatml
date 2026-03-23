@@ -9,13 +9,13 @@ vi.mock('@/stores/appStore', () => ({
   },
 }));
 
-const { getModelDisplayName, getModelInfo, buildTurnConfigLabel, MODELS, AUTO_MODEL_ID, resolveModelName, isAutoModel } = await import('../models');
+const { getModelDisplayName, getModelInfo, buildTurnConfigLabel, MODELS, toShortDisplayName, isNewModel, isDefaultRecommended } = await import('../models');
 
 describe('getModelDisplayName', () => {
-  it('returns display name for known static models', () => {
-    expect(getModelDisplayName('claude-opus-4-6')).toBe('Claude Opus 4.6');
-    expect(getModelDisplayName('claude-sonnet-4-6')).toBe('Claude Sonnet 4.6');
-    expect(getModelDisplayName('claude-haiku-4-5-20251001')).toBe('Claude Haiku 4.5');
+  it('returns short display name for known static models', () => {
+    expect(getModelDisplayName('claude-opus-4-6')).toBe('Opus 4.6');
+    expect(getModelDisplayName('claude-sonnet-4-6')).toBe('Sonnet 4.6');
+    expect(getModelDisplayName('claude-haiku-4-5-20251001')).toBe('Haiku 4.5');
   });
 
   it('returns raw model ID for unknown models', () => {
@@ -54,12 +54,70 @@ describe('getModelDisplayName', () => {
   });
 });
 
+describe('toShortDisplayName', () => {
+  it('returns short name for known models', () => {
+    expect(toShortDisplayName('claude-opus-4-6', 'Claude Opus 4.6')).toBe('Opus 4.6');
+    expect(toShortDisplayName('claude-sonnet-4-6', 'Claude Sonnet 4.6')).toBe('Sonnet 4.6');
+    expect(toShortDisplayName('claude-haiku-4-5-20251001', 'Claude Haiku 4.5')).toBe('Haiku 4.5');
+  });
+
+  it('appends 1M for extended context models', () => {
+    expect(toShortDisplayName('claude-opus-4-6[1m]', 'Claude Opus 4.6 1M')).toBe('Opus 4.6 1M');
+  });
+
+  it('handles dated model variants', () => {
+    expect(toShortDisplayName('claude-sonnet-4-6-20260301', 'Claude Sonnet 4.6')).toBe('Sonnet 4.6');
+  });
+
+  it('strips Claude prefix for unknown models', () => {
+    expect(toShortDisplayName('claude-future-model', 'Claude Future Model')).toBe('Future Model');
+  });
+
+  it('returns SDK displayName for non-Claude models', () => {
+    expect(toShortDisplayName('custom-model', 'My Custom Model')).toBe('My Custom Model');
+  });
+});
+
+describe('isNewModel', () => {
+  it('returns true for models in NEW_MODEL_IDS', () => {
+    expect(isNewModel('claude-opus-4-6[1m]')).toBe(true);
+  });
+
+  it('returns false for regular models', () => {
+    expect(isNewModel('claude-opus-4-6')).toBe(false);
+    expect(isNewModel('claude-sonnet-4-6')).toBe(false);
+  });
+});
+
+describe('isDefaultRecommended', () => {
+  it('returns true for "Default (recommended)"', () => {
+    expect(isDefaultRecommended('Default (recommended)')).toBe(true);
+  });
+
+  it('returns true for display names containing "default"', () => {
+    expect(isDefaultRecommended('The default model')).toBe(true);
+  });
+
+  it('returns true for display names containing "recommended"', () => {
+    expect(isDefaultRecommended('Recommended model')).toBe(true);
+  });
+
+  it('returns false for regular model names', () => {
+    expect(isDefaultRecommended('Claude Opus 4.6')).toBe(false);
+    expect(isDefaultRecommended('Claude Sonnet 4.6')).toBe(false);
+  });
+
+  it('is case-insensitive', () => {
+    expect(isDefaultRecommended('DEFAULT (RECOMMENDED)')).toBe(true);
+  });
+});
+
 describe('getModelInfo', () => {
   it('returns info for known static models', () => {
     const opus = getModelInfo('claude-opus-4-6');
     expect(opus).toBeDefined();
     expect(opus!.id).toBe('claude-opus-4-6');
-    expect(opus!.name).toBe('Claude Opus 4.6');
+    expect(opus!.name).toBe('Opus 4.6');
     expect(opus!.supportsThinking).toBe(true);
     expect(opus!.supportsEffort).toBe(true);
   });
@@ -124,104 +182,13 @@ describe('getModelInfo', () => {
   });
 });
 
-describe('isAutoModel', () => {
-  it('returns true for "Default (recommended)"', () => {
-    expect(isAutoModel('Default (recommended)')).toBe(true);
-  });
-
-  it('returns true for display names containing "default"', () => {
-    expect(isAutoModel('The default model')).toBe(true);
-  });
-
-  it('returns true for display names containing "recommended"', () => {
-    expect(isAutoModel('Recommended model')).toBe(true);
-  });
-
-  it('returns false for regular model names', () => {
-    expect(isAutoModel('Claude Opus 4.6')).toBe(false);
-    expect(isAutoModel('Claude Sonnet 4.6')).toBe(false);
-  });
-
-  it('is case-insensitive', () => {
-    expect(isAutoModel('DEFAULT (RECOMMENDED)')).toBe(true);
-  });
-});
-
-describe('resolveModelName', () => {
-  it('returns "Auto" for SDK default/recommended model', () => {
-    expect(resolveModelName('claude-opus-4-6', 'Default (recommended)')).toBe('Auto');
-  });
-
-  it('returns clean name for known static models', () => {
-    expect(resolveModelName('claude-opus-4-6', 'Claude Opus 4.6')).toBe('Claude Opus 4.6');
-    expect(resolveModelName('claude-sonnet-4-6', 'Claude Sonnet 4.6')).toBe('Claude Sonnet 4.6');
-  });
-
-  it('returns SDK displayName for unknown models', () => {
-    expect(resolveModelName('custom-model', 'My Custom Model')).toBe('My Custom Model');
-  });
-});
-
-describe('AUTO_MODEL_ID', () => {
-  it('getModelDisplayName returns "Auto"', () => {
-    expect(getModelDisplayName(AUTO_MODEL_ID)).toBe('Auto');
-  });
-
-  it('getModelInfo returns fallback capabilities when no SDK models', () => {
-    const info = getModelInfo(AUTO_MODEL_ID);
-    expect(info).toBeDefined();
-    expect(info!.id).toBe(AUTO_MODEL_ID);
-    expect(info!.name).toBe('Auto');
-    expect(info!.supportsThinking).toBe(true);
-    expect(info!.supportsEffort).toBe(true);
-    expect(info!.supportsFastMode).toBe(true);
-  });
-
-  it('getModelInfo resolves from SDK default model when available', async () => {
-    const { useAppStore } = await import('@/stores/appStore');
-
-    const spy = vi.spyOn(useAppStore, 'getState').mockReturnValue({
-      ...useAppStore.getState(),
-      supportedModels: [
-        {
-          value: 'claude-opus-4-6',
-          displayName: 'Default (recommended)',
-          description: 'Most capable',
-          supportsAdaptiveThinking: true,
-          supportsEffort: true,
-          supportedEffortLevels: ['low', 'medium', 'high', 'max'],
-          supportsFastMode: true,
-        },
-        {
-          value: 'claude-sonnet-4-6',
-          displayName: 'Claude Sonnet 4.6',
-          description: 'Fast',
-          supportsAdaptiveThinking: true,
-          supportsEffort: true,
-          supportsFastMode: true,
-        },
-      ],
-    } as ReturnType<typeof useAppStore.getState>);
-
-    try {
-      const info = getModelInfo(AUTO_MODEL_ID);
-      expect(info).toBeDefined();
-      expect(info!.id).toBe(AUTO_MODEL_ID);
-      expect(info!.name).toBe('Auto');
-      expect(info!.supportsThinking).toBe(true);
-    } finally {
-      spy.mockRestore();
-    }
-  });
-});
-
 describe('buildTurnConfigLabel', () => {
   it('returns null for empty metadata', () => {
     expect(buildTurnConfigLabel({})).toBeNull();
   });
 
   it('returns model display name only', () => {
-    expect(buildTurnConfigLabel({ model: 'claude-opus-4-6' })).toBe('Claude Opus 4.6');
+    expect(buildTurnConfigLabel({ model: 'claude-opus-4-6' })).toBe('Opus 4.6');
   });
 
   it('returns effort only', () => {
@@ -234,12 +201,12 @@ describe('buildTurnConfigLabel', () => {
 
   it('combines model and effort with separator', () => {
     const label = buildTurnConfigLabel({ model: 'claude-sonnet-4-6', effort: 'max' });
-    expect(label).toBe('Claude Sonnet 4.6 \u00b7 max effort');
+    expect(label).toBe('Sonnet 4.6 \u00b7 max effort');
   });
 
   it('combines all three parts', () => {
     const label = buildTurnConfigLabel({ model: 'claude-opus-4-6', effort: 'high', permissionMode: 'plan' });
-    expect(label).toBe('Claude Opus 4.6 \u00b7 high effort \u00b7 plan mode');
+    expect(label).toBe('Opus 4.6 \u00b7 high effort \u00b7 plan mode');
   });
 
   it('handles Bedrock ARN in label', () => {
@@ -260,7 +227,7 @@ describe('buildTurnConfigLabel', () => {
 
   it('shows fast label when fastModeState is on', () => {
     const label = buildTurnConfigLabel({ model: 'claude-opus-4-6', fastModeState: 'on' });
-    expect(label).toBe('Claude Opus 4.6 \u00b7 fast');
+    expect(label).toBe('Opus 4.6 \u00b7 fast');
   });
 
   it('shows cooldown label when fastModeState is cooldown', () => {
@@ -270,6 +237,6 @@ describe('buildTurnConfigLabel', () => {
 
   it('omits fast label when fastModeState is off', () => {
     const label = buildTurnConfigLabel({ model: 'claude-opus-4-6', fastModeState: 'off' });
-    expect(label).toBe('Claude Opus 4.6');
+    expect(label).toBe('Opus 4.6');
   });
 });

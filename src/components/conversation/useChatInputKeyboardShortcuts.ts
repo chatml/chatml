@@ -41,13 +41,16 @@ export function useChatInputKeyboardShortcuts({
         e.preventDefault();
         plateInputRef.current?.focus();
       }
-      // Alt+M to cycle models
-      if (e.code === 'KeyM' && e.altKey && !e.metaKey && !e.ctrlKey && !e.shiftKey) {
-        e.preventDefault();
-        setSelectedModel(prev => {
-          const idx = MODELS.findIndex(m => m.id === prev.id);
-          return MODELS[(idx + 1) % MODELS.length];
-        });
+      // Alt+1..9 to select model by index
+      if (e.altKey && !e.metaKey && !e.ctrlKey && !e.shiftKey) {
+        const digit = e.code.match(/^Digit([1-9])$/)?.[1];
+        if (digit) {
+          const idx = parseInt(digit, 10) - 1;
+          if (idx >= 0 && idx < MODELS.length) {
+            e.preventDefault();
+            setSelectedModel(MODELS[idx]);
+          }
+        }
       }
       // Alt+T to cycle thinking levels
       if (e.code === 'KeyT' && e.altKey && !e.metaKey && !e.ctrlKey && !e.shiftKey) {

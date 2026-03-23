@@ -10,7 +10,6 @@ import { useSelectedIds } from '@/stores/selectors';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { trackEvent } from '@/lib/telemetry';
 import { toBase64 } from '@/lib/utils';
-import { AUTO_MODEL_ID } from '@/lib/models';
 
 const MARKDOWN_INSTRUCTION =
   '\nWhen writing comment content, use Markdown formatting for detailed comments that include code examples, lists, or structured explanations (use fenced code blocks for code, bullet lists for multiple points, **bold** for emphasis). Keep simple one-sentence comments as plain text.';
@@ -258,7 +257,7 @@ export function useReviewTrigger() {
         const conv = await createConversation(selectedWorkspaceId, selectedSessionId, {
           type: 'review',
           message: shortContent,
-          model: reviewModel === AUTO_MODEL_ID ? undefined : reviewModel,
+          model: reviewModel,
           attachments: [templateAttachment],
         });
         trackEvent('review_started', { type: reviewType });

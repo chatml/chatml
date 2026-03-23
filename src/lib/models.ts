@@ -1,57 +1,74 @@
 import React from 'react';
 import { useAppStore } from '@/stores/appStore';
 
-/** Sentinel model ID meaning "let the SDK choose the best model". */
-export const AUTO_MODEL_ID = 'auto';
+// ---------------------------------------------------------------------------
+// Short name mapping
+// ---------------------------------------------------------------------------
 
-/** Static fallback model definitions used when no agent is connected. */
+/** Map known base model IDs → short display names (no "Claude" prefix). */
+const SHORT_NAME_MAP: Record<string, string> = {
+  'claude-opus-4-6': 'Opus 4.6',
+  'claude-sonnet-4-6': 'Sonnet 4.6',
+  'claude-haiku-4-5-20251001': 'Haiku 4.5',
+  'claude-haiku-4-5': 'Haiku 4.5',
+};
+
+/** Models that should show a "NEW" badge in the selector. */
+const NEW_MODEL_IDS = new Set(['claude-opus-4-6[1m]']);
+
+/**
+ * Convert an SDK model value + displayName to a short display name.
+ *
+ * Examples:
+ *   ("claude-opus-4-6", "Claude Opus 4.6")        → "Opus 4.6"
+ *   ("claude-opus-4-6[1m]", "Claude Opus 4.6 1M") → "Opus 4.6 1M"
+ *   ("claude-sonnet-4-6-20260301", "Sonnet 4.6")   → "Sonnet 4.6"
+ *   ("custom-model", "My Custom Model")             → "My Custom Model"
+ */
+export function toShortDisplayName(sdkValue: string, sdkDisplayName: string): string {
+  const has1M = sdkValue.includes('[1m]');
+  // Strip [1m] suffix and any trailing date (e.g. -20260301) to find the base ID
+  const baseId = sdkValue.replace(/\[1m\]$/, '').replace(/-20\d{6}$/, '');
+
+  let name = SHORT_NAME_MAP[baseId];
+  if (!name) {
+    // Fallback: strip "Claude " prefix from SDK display name
+    name = sdkDisplayName.replace(/^Claude\s+/i, '');
+  }
+  if (has1M && !name.includes('1M')) {
+    name += ' 1M';
+  }
+  return name;
+}
+
+/** Check whether a model should show the "NEW" badge. */
+export function isNewModel(sdkValue: string): boolean {
+  return NEW_MODEL_IDS.has(sdkValue);
+}
+
+/** Check whether an SDK entry is the "Default (recommended)" pseudo-model. */
+export function isDefaultRecommended(sdkDisplayName: string): boolean {
+  return /\bdefault\b/i.test(sdkDisplayName) || /\brecommended\b/i.test(sdkDisplayName);
+}
+
+// ---------------------------------------------------------------------------
+// Static fallback models (used before SDK connects)
+// ---------------------------------------------------------------------------
+
 export const MODELS = [
-  { id: 'claude-opus-4-6', name: 'Claude Opus 4.6', provider: 'claude', supportsThinking: true, supportsEffort: true, supportsFastMode: true },
-  { id: 'claude-sonnet-4-6', name: 'Claude Sonnet 4.6', provider: 'claude', supportsThinking: true, supportsEffort: true, supportsFastMode: true },
-  { id: 'claude-haiku-4-5-20251001', name: 'Claude Haiku 4.5', provider: 'claude', supportsThinking: true, supportsEffort: false, supportsFastMode: false },
+  { id: 'claude-opus-4-6', name: 'Opus 4.6', provider: 'claude', supportsThinking: true, supportsEffort: true, supportsFastMode: true },
+  { id: 'claude-sonnet-4-6', name: 'Sonnet 4.6', provider: 'claude', supportsThinking: true, supportsEffort: true, supportsFastMode: true },
+  { id: 'claude-haiku-4-5-20251001', name: 'Haiku 4.5', provider: 'claude', supportsThinking: true, supportsEffort: false, supportsFastMode: false },
 ] as const;
 
 export type ModelId = (typeof MODELS)[number]['id'];
 
-/** Check whether an SDK display name represents the auto/default model. */
-export function isAutoModel(sdkDisplayName: string): boolean {
-  return /\bdefault\b/i.test(sdkDisplayName) || /\brecommended\b/i.test(sdkDisplayName);
-}
+// ---------------------------------------------------------------------------
+// Deduplication
+// ---------------------------------------------------------------------------
 
 /**
- * Resolve a clean display name for an SDK-reported model.
- * - SDK "Default (recommended)" → "Auto"
- * - Known static models → our clean name (e.g. "Claude Opus 4.6")
- * - Unknown models → SDK displayName as-is
- */
-export function resolveModelName(sdkValue: string, sdkDisplayName: string): string {
-  if (isAutoModel(sdkDisplayName) || sdkValue === AUTO_MODEL_ID) {
-    return 'Auto';
-  }
-  const staticMatch = MODELS.find((m) => m.id === sdkValue);
-  if (staticMatch) return staticMatch.name;
-
-  // Pattern-based fallback for unknown SDK model IDs (e.g. future versions)
-  const val = sdkValue.toLowerCase();
-  if (val.includes('opus')) return 'Claude Opus 4.6';
-  if (val.includes('sonnet')) return 'Claude Sonnet 4.6';
-  if (val.includes('haiku')) return 'Claude Haiku 4.5';
-
-  return sdkDisplayName;
-}
-
-/**
- * Normalize an SDK-reported model value to the canonical ID used in the UI.
- * Models matching the "auto/default/recommended" heuristic map to AUTO_MODEL_ID.
- */
-export function normalizeModelId(m: { value: string; displayName: string }): string {
-  return isAutoModel(m.displayName) || m.value === AUTO_MODEL_ID ? AUTO_MODEL_ID : m.value;
-}
-
-/**
- * Deduplicate an array of objects by their `id` field, keeping the first occurrence.
- * The SDK may report the same logical model under multiple entries (e.g. both
- * "Default (recommended)" and the explicit auto sentinel).
+ * Deduplicate an array of objects by a given field, keeping the first occurrence.
  */
 export function deduplicateById<T extends { id: string }>(entries: T[]): T[] {
   const seen = new Set<string>();
@@ -62,6 +79,46 @@ export function deduplicateById<T extends { id: string }>(entries: T[]): T[] {
   });
 }
 
+/** Deduplicate by name, keeping the first occurrence. */
+export function deduplicateByName<T extends { name: string }>(entries: T[]): T[] {
+  const seen = new Set<string>();
+  return entries.filter((entry) => {
+    if (seen.has(entry.name)) return false;
+    seen.add(entry.name);
+    return true;
+  });
+}
+
+/** SDK model entry as reported by the agent. */
+interface SdkModelEntry {
+  value: string;
+  displayName: string;
+  supportsAdaptiveThinking?: boolean;
+  supportsEffort?: boolean;
+  supportedEffortLevels?: ('low' | 'medium' | 'high' | 'max')[];
+  supportsFastMode?: boolean;
+}
+
+/**
+ * Build a deduplicated model ID list from SDK-reported models.
+ * Filters out the "Default (recommended)" pseudo-model, deduplicates by ID,
+ * then deduplicates by resolved display name (dated variants collapse).
+ * Falls back to static MODELS when no SDK models are available.
+ */
+export function buildDeduplicatedModelIds(dynamic: SdkModelEntry[]): string[] {
+  if (dynamic.length === 0) return MODELS.map((m) => m.id);
+  const entries = deduplicateById(
+    dynamic
+      .filter((m) => !isDefaultRecommended(m.displayName))
+      .map((m) => ({ id: m.value, name: toShortDisplayName(m.value, m.displayName) }))
+  );
+  return deduplicateByName(entries).map((e) => e.id);
+}
+
+// ---------------------------------------------------------------------------
+// Model entry types
+// ---------------------------------------------------------------------------
+
 /** Model entry used for UI model selectors and keyboard shortcut cycling. */
 export interface ModelEntry {
   id: string;
@@ -71,6 +128,7 @@ export interface ModelEntry {
   supportsEffort: boolean;
   supportedEffortLevels?: ('low' | 'medium' | 'high' | 'max')[];
   supportsFastMode?: boolean;
+  isNew?: boolean;
 }
 
 export interface DynamicModelInfo {
@@ -83,38 +141,26 @@ export interface DynamicModelInfo {
   supportsFastMode?: boolean;
 }
 
+// ---------------------------------------------------------------------------
+// Model info lookups
+// ---------------------------------------------------------------------------
+
 /**
  * Get model info by ID. Checks SDK-reported dynamic models first,
  * falls back to hardcoded MODELS for offline/pre-connection state.
  */
 export function getModelInfo(modelId: string): DynamicModelInfo | undefined {
-  // Check dynamic models from SDK
   const dynamic = useAppStore.getState().supportedModels;
-  // For 'auto', find the SDK's default/recommended model
-  const sdkModel = modelId === AUTO_MODEL_ID
-    ? dynamic.find((m) => isAutoModel(m.displayName))
-    : dynamic.find((m) => m.value === modelId);
+  const sdkModel = dynamic.find((m) => m.value === modelId);
   if (sdkModel) {
     return {
-      id: modelId === AUTO_MODEL_ID ? AUTO_MODEL_ID : sdkModel.value,
-      name: resolveModelName(sdkModel.value, sdkModel.displayName),
+      id: sdkModel.value,
+      name: toShortDisplayName(sdkModel.value, sdkModel.displayName),
       provider: 'claude',
       supportsThinking: sdkModel.supportsAdaptiveThinking ?? true,
       supportsEffort: sdkModel.supportsEffort ?? false,
       supportedEffortLevels: sdkModel.supportedEffortLevels,
       supportsFastMode: sdkModel.supportsFastMode,
-    };
-  }
-
-  // Auto fallback when SDK hasn't connected yet
-  if (modelId === AUTO_MODEL_ID) {
-    return {
-      id: AUTO_MODEL_ID,
-      name: 'Auto',
-      provider: 'claude',
-      supportsThinking: true,
-      supportsEffort: true,
-      supportsFastMode: true,
     };
   }
 
@@ -135,7 +181,6 @@ export function getModelInfo(modelId: string): DynamicModelInfo | undefined {
 }
 
 export function getModelDisplayName(modelId: string): string {
-  if (modelId === AUTO_MODEL_ID) return 'Auto';
   const info = getModelInfo(modelId);
   if (info) return info.name;
 

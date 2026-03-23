@@ -21,6 +21,7 @@ import {
   FolderSymlink,
   Check,
   Star,
+  Sparkles,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
@@ -96,14 +97,17 @@ export function ChatInputToolbar({
       {/* Model Selector */}
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button variant="ghost" size="sm" className="h-7 gap-1.5 text-xs" title={`Model: ${model.selected.name}${model.selected.id === model.defaultId ? ' (default)' : ''} (⌥M to cycle)`}>
-            <model.selected.icon className="h-3.5 w-3.5" />
+          <Button variant="ghost" size="sm" className="h-7 gap-1.5 text-xs" title={`Model: ${model.selected.name}${model.selected.id === model.defaultId ? ' (default)' : ''}`}>
+            <Sparkles className="h-3.5 w-3.5" />
             {model.selected.name}
             <ChevronDown className="h-3 w-3" />
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start" className="w-64">
-          {model.models.map((m) => {
+          <DropdownMenuLabel className="text-2xs font-normal text-muted-foreground uppercase tracking-wider">
+            Claude Code
+          </DropdownMenuLabel>
+          {model.models.map((m, index) => {
             const isDefault = m.id === model.defaultId;
             const isSelected = m.id === model.selected.id;
             return (
@@ -113,7 +117,13 @@ export function ChatInputToolbar({
                 onClick={() => model.setSelected(m)}
               >
                 <span className="flex flex-1 items-center gap-1.5 min-w-0">
+                  <Sparkles className="h-3.5 w-3.5 shrink-0 text-muted-foreground/70" />
                   <span className="truncate">{m.name}</span>
+                  {m.isNew && (
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted font-medium leading-none">
+                      NEW
+                    </span>
+                  )}
                 </span>
                 <span className="ml-auto flex shrink-0 items-center gap-1">
                   {isSelected && <Check className="h-3.5 w-3.5" />}
@@ -141,6 +151,9 @@ export function ChatInputToolbar({
                       </TooltipTrigger>
                       <TooltipContent side="right" sideOffset={8}>Set as default</TooltipContent>
                     </Tooltip>
+                  )}
+                  {index < 9 && (
+                    <kbd className="text-[10px] text-muted-foreground/50 min-w-[1ch] text-right ml-1">{index + 1}</kbd>
                   )}
                 </span>
               </DropdownMenuItem>
