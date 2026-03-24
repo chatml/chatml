@@ -495,6 +495,9 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onGitHubRepos,
     ? workspaces.find((ws) => ws.id === sidebarProjectFilter)?.name
     : undefined;
   const sectionHeaderLabel = filteredWorkspaceName ?? 'All Projects';
+  const filteredWorkspaceColor = sidebarProjectFilter
+    ? workspaceColors[sidebarProjectFilter] || getWorkspaceColor(sidebarProjectFilter)
+    : undefined;
 
   // View options — single selector replacing Group by + Sort by
   const VIEW_OPTIONS: { value: SidebarGroupBy; label: string; projectOnly?: boolean; singleProjectOnly?: boolean }[] = [
@@ -653,7 +656,15 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onGitHubRepos,
               <div className="group/header px-2 pt-1 pb-2 flex items-center justify-between">
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <button className="flex items-center gap-1 text-xs font-medium text-muted-foreground/60 uppercase tracking-wider hover:text-foreground transition-colors rounded px-1 -ml-1 py-0.5 hover:bg-surface-1">
+                    <button className={cn(
+                      "flex items-center gap-1 transition-colors rounded px-1 -ml-1 py-0.5 hover:bg-surface-1",
+                      filteredWorkspaceColor
+                        ? "gap-1.5 text-sm font-semibold text-foreground hover:text-foreground"
+                        : "text-xs font-medium text-muted-foreground/60 uppercase tracking-wider hover:text-foreground"
+                    )}>
+                      {filteredWorkspaceColor && (
+                        <div className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: filteredWorkspaceColor }} />
+                      )}
                       <span className="truncate max-w-[140px]">{sectionHeaderLabel}</span>
                       <ChevronDown className="h-3 w-3 shrink-0" />
                     </button>
@@ -679,7 +690,9 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onGitHubRepos,
                             className="flex items-center justify-between"
                           >
                             <div className="flex items-center gap-2 min-w-0">
-                              <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: workspaceColors[ws.id] || getWorkspaceColor(ws.id) }} />
+                              <div className="size-4 flex items-center justify-center shrink-0">
+                                <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: workspaceColors[ws.id] || getWorkspaceColor(ws.id) }} />
+                              </div>
                               <span className="truncate">{ws.name}</span>
                             </div>
                             {sidebarProjectFilter === ws.id && <Check className="h-4 w-4 shrink-0" />}
