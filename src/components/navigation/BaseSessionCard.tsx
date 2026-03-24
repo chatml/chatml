@@ -125,13 +125,14 @@ export function BaseSessionCard({
         </HoverCard>
       </ContextMenuTrigger>
       <ContextMenuContent>
-        {onOpenBranches && (
+        {/* Hidden for shipping — Branches & PR context menu items */}
+        {false && onOpenBranches && (
           <ContextMenuItem onClick={() => onOpenBranches()}>
             <GitBranch className="h-4 w-4" />
             Branches
           </ContextMenuItem>
         )}
-        {onOpenPRs && (
+        {false && onOpenPRs && (
           <ContextMenuItem onClick={() => onOpenPRs()}>
             <GitPullRequest className="h-4 w-4" />
             Pull Requests

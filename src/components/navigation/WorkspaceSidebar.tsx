@@ -477,7 +477,8 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onGitHubRepos,
             Sessions
           </span>
         </div>
-        <div
+        {/* Hidden for shipping — PR Dashboard nav */}
+        {false && (<div
           className={cn(
             "group flex items-center gap-2 px-2 py-1.5 rounded-md cursor-pointer",
             contentView.type === 'pr-dashboard'
@@ -508,8 +509,9 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onGitHubRepos,
           )}>
             Pull Requests
           </span>
-        </div>
-        <div
+        </div>)}
+        {/* Hidden for shipping — Branches nav */}
+        {false && (<div
           className={cn(
             "group flex items-center gap-2 px-2 py-1.5 rounded-md cursor-pointer",
             contentView.type === 'branches'
@@ -540,7 +542,7 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onGitHubRepos,
           )}>
             Branches
           </span>
-        </div>
+        </div>)}
         <div
           className={cn(
             "group flex items-center gap-2 px-2 py-1.5 rounded-md cursor-pointer",
@@ -1302,7 +1304,8 @@ function SortableWorkspaceItem({
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-48" onClick={(e) => e.stopPropagation()}>
-                  <DropdownMenuItem onClick={() => onOpenBranches()}>
+                  {/* Hidden for shipping — Branches & PR items */}
+                  {false && (<><DropdownMenuItem onClick={() => onOpenBranches()}>
                     <GitBranch className="size-4" />
                     Branches
                   </DropdownMenuItem>
@@ -1310,7 +1313,7 @@ function SortableWorkspaceItem({
                     <GitPullRequest className="size-4" />
                     Pull Requests
                   </DropdownMenuItem>
-                  <DropdownMenuSeparator />
+                  <DropdownMenuSeparator /></>)}
                   <DropdownMenuItem onClick={onOpenWorkspaceSettings}>
                     <Settings2 className="size-4" />
                     Workspace Settings
@@ -1404,7 +1407,8 @@ function SortableWorkspaceItem({
           <Plus className="size-4" />
           New Session
         </ContextMenuItem>
-        <ContextMenuSeparator />
+        {/* Hidden for shipping — Branches & PR context items */}
+        {false && (<><ContextMenuSeparator />
         <ContextMenuItem onClick={() => onOpenBranches()}>
           <GitBranch className="size-4" />
           Branches
@@ -1412,7 +1416,7 @@ function SortableWorkspaceItem({
         <ContextMenuItem onClick={() => onOpenPRs()}>
           <GitPullRequest className="size-4" />
           Pull Requests
-        </ContextMenuItem>
+        </ContextMenuItem></>)}
         <ContextMenuSeparator />
         <ContextMenuItem onClick={onOpenWorkspaceSettings}>
           <Settings2 className="size-4" />
@@ -1663,13 +1667,14 @@ function SessionRow({
             <ContextMenuSeparator />
           </>
         )}
-        {onOpenBranches && (
+        {/* Hidden for shipping — Branches & PR context items */}
+        {false && onOpenBranches && (
           <ContextMenuItem onClick={() => onOpenBranches()}>
             <GitBranch className="h-4 w-4" />
             Branches
           </ContextMenuItem>
         )}
-        {onOpenPRs && (
+        {false && onOpenPRs && (
           <ContextMenuItem onClick={() => onOpenPRs()}>
             <GitPullRequest className="h-4 w-4" />
             Pull Requests
@@ -1688,7 +1693,8 @@ function SessionRow({
             Unlink Pull Request
           </ContextMenuItem>
         )}
-        {(onOpenBranches || onOpenPRs) && session.sessionType !== 'base' && <ContextMenuSeparator />}
+        {/* Hidden for shipping — separator for Branches & PR items */}
+        {false && (onOpenBranches || onOpenPRs) && session.sessionType !== 'base' && <ContextMenuSeparator />}
         {session.sessionType !== 'base' && (
           <ContextMenuItem onClick={() => onArchiveSession(session.id)} variant="destructive">
             <Archive className="h-4 w-4" />
@@ -1941,7 +1947,8 @@ function SortableProjectStatusItem({
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end" className="w-48" onClick={(e) => e.stopPropagation()}>
-                      <DropdownMenuItem onClick={() => onOpenBranches()}>
+                      {/* Hidden for shipping — Branches & PR items */}
+                      {false && (<><DropdownMenuItem onClick={() => onOpenBranches()}>
                         <GitBranch className="size-4" />
                         Branches
                       </DropdownMenuItem>
@@ -1949,7 +1956,7 @@ function SortableProjectStatusItem({
                         <GitPullRequest className="size-4" />
                         Pull Requests
                       </DropdownMenuItem>
-                      <DropdownMenuSeparator />
+                      <DropdownMenuSeparator /></>)}
                       <DropdownMenuItem onClick={onOpenWorkspaceSettings}>
                         <Settings2 className="size-4" />
                         Workspace Settings
@@ -2055,7 +2062,8 @@ function SortableProjectStatusItem({
           <Plus className="size-4" />
           New Session
         </ContextMenuItem>
-        <ContextMenuSeparator />
+        {/* Hidden for shipping — Branches & PR context items */}
+        {false && (<><ContextMenuSeparator />
         <ContextMenuItem onClick={() => onOpenBranches()}>
           <GitBranch className="size-4" />
           Branches
@@ -2063,7 +2071,7 @@ function SortableProjectStatusItem({
         <ContextMenuItem onClick={() => onOpenPRs()}>
           <GitPullRequest className="size-4" />
           Pull Requests
-        </ContextMenuItem>
+        </ContextMenuItem></>)}
         <ContextMenuSeparator />
         <ContextMenuItem onClick={onOpenWorkspaceSettings}>
           <Settings2 className="size-4" />

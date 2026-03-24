@@ -180,14 +180,15 @@ const COMMANDS: Command[] = [
     keywords: ['sessions', 'worktrees', 'branches', 'overview'],
     action: () => useSettingsStore.getState().setContentView({ type: 'session-manager' }),
   },
-  {
-    id: 'open-pr-dashboard',
-    category: 'Navigation',
-    label: 'Open PR Dashboard',
-    icon: GitPullRequest,
-    keywords: ['pull requests', 'prs', 'reviews', 'merge'],
-    action: () => useSettingsStore.getState().setContentView({ type: 'pr-dashboard' }),
-  },
+  // Hidden for shipping — PR Dashboard command
+  // {
+  //   id: 'open-pr-dashboard',
+  //   category: 'Navigation',
+  //   label: 'Open PR Dashboard',
+  //   icon: GitPullRequest,
+  //   keywords: ['pull requests', 'prs', 'reviews', 'merge'],
+  //   action: () => useSettingsStore.getState().setContentView({ type: 'pr-dashboard' }),
+  // },
   {
     id: 'open-repositories',
     category: 'Navigation',
@@ -204,18 +205,19 @@ const COMMANDS: Command[] = [
     keywords: ['skills', 'marketplace', 'plugins', 'extensions', 'install'],
     action: () => useSettingsStore.getState().setContentView({ type: 'skills-store' }),
   },
-  {
-    id: 'open-branches',
-    category: 'Navigation',
-    label: 'Open Branches Dashboard',
-    icon: GitBranch,
-    keywords: ['branches', 'git', 'worktrees'],
-    available: () => useAppStore.getState().selectedWorkspaceId !== null,
-    action: () => {
-      const workspaceId = useAppStore.getState().selectedWorkspaceId;
-      if (workspaceId) useSettingsStore.getState().setContentView({ type: 'branches', workspaceId });
-    },
-  },
+  // Hidden for shipping — Branches Dashboard command
+  // {
+  //   id: 'open-branches',
+  //   category: 'Navigation',
+  //   label: 'Open Branches Dashboard',
+  //   icon: GitBranch,
+  //   keywords: ['branches', 'git', 'worktrees'],
+  //   available: () => useAppStore.getState().selectedWorkspaceId !== null,
+  //   action: () => {
+  //     const workspaceId = useAppStore.getState().selectedWorkspaceId;
+  //     if (workspaceId) useSettingsStore.getState().setContentView({ type: 'branches', workspaceId });
+  //   },
+  // },
   {
     id: 'navigate-back',
     category: 'Navigation',
