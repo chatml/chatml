@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import type { Workspace } from '@/lib/types';
+import type { Workspace, SessionTaskStatus } from '@/lib/types';
 import { useAuthStore } from '@/stores/authStore';
 import type { ThinkingLevel } from '@/lib/thinkingLevels';
 
@@ -196,6 +196,7 @@ interface SettingsState {
   sidebarProjectFilter: string | null; // null = all projects, or a workspaceId to filter
   collapsedSidebarGroups: string[]; // composite keys toggled from default, e.g. "status:done"
   workspaceOrder: string[]; // Persisted workspace display order (array of workspace IDs)
+  statusGroupOrder: SessionTaskStatus[]; // Persisted status group display order
 
   // Last selected workspace for PR/Branches dashboard views (shared between both)
   lastRepoDashboardWorkspaceId: string | null;
@@ -271,6 +272,7 @@ interface SettingsState {
   ensureSidebarGroupExpanded: (key: string, defaultCollapsed: boolean) => void;
   setLastRepoDashboardWorkspaceId: (id: string | null) => void;
   setWorkspaceOrder: (order: string[]) => void;
+  setStatusGroupOrder: (order: SessionTaskStatus[]) => void;
 }
 
 export const useSettingsStore = create<SettingsState>()(
@@ -303,6 +305,7 @@ export const useSettingsStore = create<SettingsState>()(
       sidebarProjectFilter: null, // null = all projects
       collapsedSidebarGroups: [], // Keys toggled from default state
       workspaceOrder: [], // Empty = use natural backend order until user first reorders
+      statusGroupOrder: [], // Empty = use default STATUS_ORDER
       lastRepoDashboardWorkspaceId: null, // Last workspace selected in PR/Branches views
 
       // Actions
@@ -443,13 +446,14 @@ export const useSettingsStore = create<SettingsState>()(
       setHasCompletedOnboarding: (value) => set({ hasCompletedOnboarding: value }),
       setHasCompletedGuidedTour: (value) => set({ hasCompletedGuidedTour: value }),
       resetOnboarding: () => set({ hasCompletedOnboarding: false, hasCompletedGuidedTour: false }),
-      resetAllSettings: () => set({ ...SETTINGS_DEFAULTS }),
+      resetAllSettings: () => set({ ...SETTINGS_DEFAULTS, statusGroupOrder: [], workspaceOrder: [] }),
       setSidebarGroupBy: (value) => set({ sidebarGroupBy: value }),
       setSidebarSortBy: (value) => set({ sidebarSortBy: value }),
       setSidebarShowSessionMeta: (value) => set({ sidebarShowSessionMeta: value }),
       setSidebarProjectFilter: (id) => set({ sidebarProjectFilter: id }),
       setLastRepoDashboardWorkspaceId: (id) => set({ lastRepoDashboardWorkspaceId: id }),
       setWorkspaceOrder: (order) => set({ workspaceOrder: order }),
+      setStatusGroupOrder: (order) => set({ statusGroupOrder: order }),
       toggleSidebarGroupCollapsed: (key) =>
         set((state) => {
           const has = state.collapsedSidebarGroups.includes(key);
@@ -612,6 +616,38 @@ export function applyWorkspaceOrder<T extends { id: string }>(
   for (const ws of workspaces) {
     if (wsMap.has(ws.id)) {
       ordered.push(ws);
+    }
+  }
+  return ordered;
+}
+
+/**
+ * Apply persisted status group order to a list of sidebar groups.
+ * Groups whose statusValue is in `order` appear first (in that order),
+ * followed by any new status groups not yet in the persisted order.
+ * Returns the original array if no custom order has been set (empty order).
+ *
+ * Note: Unlike `applyWorkspaceOrder` which returns `null` for empty order,
+ * this returns the original array — callers always get a usable result.
+ */
+export function applyStatusGroupOrder<T extends { statusValue?: SessionTaskStatus }>(
+  groups: T[],
+  order: SessionTaskStatus[],
+): T[] {
+  if (order.length === 0) return groups;
+  const groupMap = new Map(groups.map((g) => [g.statusValue, g]));
+  const ordered: T[] = [];
+  for (const status of order) {
+    const g = groupMap.get(status);
+    if (g) {
+      ordered.push(g);
+      groupMap.delete(status);
+    }
+  }
+  // Append any new statuses not in the persisted order
+  for (const g of groups) {
+    if (g.statusValue && groupMap.has(g.statusValue)) {
+      ordered.push(g);
     }
   }
   return ordered;

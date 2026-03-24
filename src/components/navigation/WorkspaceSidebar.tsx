@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { SidebarUpdateBanner } from '@/components/shared/SidebarUpdateBanner';
 import {
   DndContext,
@@ -10,6 +10,8 @@ import {
   useSensor,
   useSensors,
   DragEndEvent,
+  DragStartEvent,
+  DragOverlay,
 } from '@dnd-kit/core';
 import {
   SortableContext,
@@ -85,6 +87,7 @@ import {
   Link,
   FolderGit2,
   Unlink,
+  GripVertical,
 } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
@@ -166,15 +169,23 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onGitHubRepos,
     })
   );
 
-  const handleDragEnd = (event: DragEndEvent) => {
+  const [isReorderMode, setIsReorderMode] = useState(false);
+  const [activeDragId, setActiveDragId] = useState<string | null>(null);
+
+  const handleDragEnd = useCallback((event: DragEndEvent) => {
     const { active, over } = event;
+    setActiveDragId(null);
     if (over && active.id !== over.id) {
       reorderWorkspaces(active.id as string, over.id as string);
     }
-  };
+  }, [reorderWorkspaces]);
+
+  const handleDragStart = useCallback((event: DragStartEvent) => {
+    setActiveDragId(event.active.id as string);
+  }, []);
 
   // Track which workspaces are collapsed (persisted)
-  const { collapsedWorkspaces, toggleWorkspaceCollapsed, expandWorkspace, contentView, recentlyRemovedWorkspaces, addRecentlyRemovedWorkspace, removeRecentlyRemovedWorkspace, unreadWorkspaces, markWorkspaceUnread, markWorkspaceRead, workspaceColors, sidebarGroupBy, setSidebarGroupBy, collapsedSidebarGroups, toggleSidebarGroupCollapsed, lastRepoDashboardWorkspaceId, setLastRepoDashboardWorkspaceId, sidebarProjectFilter, setSidebarProjectFilter } = useSettingsStore();
+  const { collapsedWorkspaces, toggleWorkspaceCollapsed, expandWorkspace, contentView, recentlyRemovedWorkspaces, addRecentlyRemovedWorkspace, removeRecentlyRemovedWorkspace, unreadWorkspaces, markWorkspaceUnread, markWorkspaceRead, workspaceColors, sidebarGroupBy, setSidebarGroupBy, collapsedSidebarGroups, toggleSidebarGroupCollapsed, lastRepoDashboardWorkspaceId, setLastRepoDashboardWorkspaceId, sidebarProjectFilter, setSidebarProjectFilter, statusGroupOrder, setStatusGroupOrder } = useSettingsStore();
 
   const isWorkspaceExpanded = (workspaceId: string) => {
     return !collapsedWorkspaces.includes(workspaceId);
@@ -236,7 +247,47 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onGitHubRepos,
     projectFilter: sidebarProjectFilter,
     workspaceColors,
     getWorkspaceColor,
+    statusGroupOrder,
   });
+
+  // Auto-exit reorder mode when group-by changes to 'none' (nothing to reorder)
+  useEffect(() => {
+    if (effectiveGroupBy === 'none') setIsReorderMode(false);
+  }, [effectiveGroupBy]);
+
+  const handleStatusDragEnd = useCallback((event: DragEndEvent) => {
+    const { active, over } = event;
+    setActiveDragId(null);
+    if (!over || active.id === over.id) return;
+
+    const currentOrder = sidebarGroups
+      .filter((g): g is SidebarGroup & { statusValue: SessionTaskStatus } => g.statusValue != null)
+      .map((g) => g.statusValue);
+    const oldIndex = currentOrder.indexOf(active.id as SessionTaskStatus);
+    const newIndex = currentOrder.indexOf(over.id as SessionTaskStatus);
+    if (oldIndex === -1 || newIndex === -1) return;
+
+    const newOrder = [...currentOrder];
+    const [removed] = newOrder.splice(oldIndex, 1);
+    newOrder.splice(newIndex, 0, removed);
+    setStatusGroupOrder(newOrder);
+  }, [sidebarGroups, setStatusGroupOrder]);
+
+  // Derived drag overlay targets — avoids IIFEs in JSX
+  const activeStatusGroup = activeDragId
+    ? sidebarGroups.find((g) => g.statusValue === activeDragId)
+    : undefined;
+  const activeWorkspaceGroup = activeDragId
+    ? sidebarGroups.find((g) => g.workspaceId === activeDragId)
+    : undefined;
+
+  // Filtered groups for reorder mode — ensures no undefined IDs reach dnd-kit
+  const statusDragItems = sidebarGroups
+    .filter((g): g is SidebarGroup & { statusValue: SessionTaskStatus } => g.statusValue != null)
+    .map((g) => g.statusValue);
+  const workspaceDragItems = sidebarGroups
+    .filter((g): g is SidebarGroup & { workspaceId: string } => g.workspaceId != null)
+    .map((g) => g.workspaceId);
 
   // Group scheduled sessions by their task for the sidebar "Scheduled" section
   const scheduledGroups = useMemo(() => {
@@ -697,9 +748,12 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onGitHubRepos,
                     </button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end" className="w-44">
-                    <DropdownMenuItem onClick={() => navigate({ contentView: { type: 'session-manager' } })}>
-                      <Layers className="size-4" />
-                      Session History
+                    <DropdownMenuItem
+                      onClick={() => setIsReorderMode(true)}
+                      disabled={effectiveGroupBy === 'none'}
+                    >
+                      <GripVertical className="size-4" />
+                      Change Order...
                     </DropdownMenuItem>
                     <DropdownMenuSeparator />
                     <DropdownMenuLabel>View</DropdownMenuLabel>
@@ -829,8 +883,84 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onGitHubRepos,
                 </div>
               ) : (
                 <>
+                  {/* Reorder mode header */}
+                  {isReorderMode && (
+                    <div className="flex items-center justify-between px-3 py-2 border-b border-border/40">
+                      <span className="text-xs font-medium text-muted-foreground">Drag to reorder</span>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 px-2 text-xs"
+                        onClick={() => setIsReorderMode(false)}
+                      >
+                        Done
+                      </Button>
+                    </div>
+                  )}
+
+                  {/* Reorder mode: Status groups */}
+                  {isReorderMode && effectiveGroupBy === 'status' && (
+                    <DndContext
+                      sensors={sensors}
+                      collisionDetection={closestCenter}
+                      onDragStart={handleDragStart}
+                      onDragEnd={handleStatusDragEnd}
+                      onDragCancel={() => setActiveDragId(null)}
+                    >
+                      <SortableContext
+                        items={statusDragItems}
+                        strategy={verticalListSortingStrategy}
+                      >
+                        {sidebarGroups.filter((g) => g.statusValue != null).map((group) => (
+                          <SortableGroupHeader
+                            key={group.key}
+                            id={group.statusValue!}
+                            label={group.label}
+                            count={group.count}
+                            statusValue={group.statusValue}
+                          />
+                        ))}
+                      </SortableContext>
+                      <DragOverlay>
+                        {activeStatusGroup && <GroupHeaderOverlay label={activeStatusGroup.label} count={activeStatusGroup.count} statusValue={activeStatusGroup.statusValue} />}
+                      </DragOverlay>
+                    </DndContext>
+                  )}
+
+                  {/* Reorder mode: Project / Project > Status groups
+                      Note: statusGroupOrder applies globally to all projects — per-project status
+                      sub-group ordering is intentionally not exposed here. Reorder the top-level
+                      status view to change the global status order. */}
+                  {isReorderMode && (effectiveGroupBy === 'project' || effectiveGroupBy === 'project-status') && (
+                    <DndContext
+                      sensors={sensors}
+                      collisionDetection={closestCenter}
+                      onDragStart={handleDragStart}
+                      onDragEnd={handleDragEnd}
+                      onDragCancel={() => setActiveDragId(null)}
+                    >
+                      <SortableContext
+                        items={workspaceDragItems}
+                        strategy={verticalListSortingStrategy}
+                      >
+                        {sidebarGroups.filter((g) => g.workspaceId != null).map((group) => (
+                          <SortableGroupHeader
+                            key={group.key}
+                            id={group.workspaceId!}
+                            label={group.label}
+                            count={group.count}
+                            color={group.color}
+                          />
+                        ))}
+                      </SortableContext>
+                      <DragOverlay>
+                        {activeWorkspaceGroup && <GroupHeaderOverlay label={activeWorkspaceGroup.label} count={activeWorkspaceGroup.count} color={activeWorkspaceGroup.color} />}
+                      </DragOverlay>
+                    </DndContext>
+                  )}
+
                   {/* Scheduled task runs section */}
-                  {scheduledGroups.length > 0 && (
+                  {!isReorderMode && scheduledGroups.length > 0 && (
                     <>
                       <div className="px-3 pt-2 pb-1">
                         <span className="text-[10px] font-semibold uppercase text-muted-foreground/60 tracking-wider">
@@ -877,7 +1007,7 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onGitHubRepos,
                   )}
 
                   {/* Mode: None — flat session list */}
-                  {effectiveGroupBy === 'none' && (
+                  {!isReorderMode && effectiveGroupBy === 'none' && (
                     <>
                       {baseSessions.map((session) => (
                         <ErrorBoundary
@@ -932,7 +1062,7 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onGitHubRepos,
                   )}
 
                   {/* Mode: Status — status group headers with sessions */}
-                  {effectiveGroupBy === 'status' && (
+                  {!isReorderMode && effectiveGroupBy === 'status' && (
                     <>
                       {baseSessions.map((session) => (
                         <ErrorBoundary
@@ -981,7 +1111,7 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onGitHubRepos,
                   )}
 
                   {/* Mode: Project — workspace headers with sessions (with DnD) */}
-                  {effectiveGroupBy === 'project' && (
+                  {!isReorderMode && effectiveGroupBy === 'project' && (
                     <DndContext
                       sensors={sensors}
                       collisionDetection={closestCenter}
@@ -1030,7 +1160,7 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onGitHubRepos,
                   )}
 
                   {/* Mode: Project > Status — workspace headers with status sub-groups */}
-                  {effectiveGroupBy === 'project-status' && (
+                  {!isReorderMode && effectiveGroupBy === 'project-status' && (
                     <DndContext
                       sensors={sensors}
                       collisionDetection={closestCenter}
@@ -1849,6 +1979,62 @@ function SessionRow({
         )}
       </ContextMenuContent>
     </ContextMenu>
+  );
+}
+
+// --- Sortable group header for reorder mode ---
+
+interface SortableGroupHeaderProps {
+  id: string;
+  label: string;
+  count: number;
+  statusValue?: SessionTaskStatus;
+  color?: string;
+}
+
+function SortableGroupHeader({ id, label, count, statusValue, color }: SortableGroupHeaderProps) {
+  const { setNodeRef, attributes, listeners, transform, transition, isDragging } = useSortable({ id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  };
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={cn(
+        'flex items-center gap-2 px-2 py-2.5 mx-1 rounded-md',
+        'hover:bg-surface-1 transition-colors cursor-grab active:cursor-grabbing',
+        isDragging && 'bg-surface-2 shadow-md'
+      )}
+      {...attributes}
+      {...listeners}
+    >
+      <GripVertical className="h-4 w-4 text-muted-foreground/40 shrink-0" />
+      {statusValue && <TaskStatusIcon status={statusValue} className="w-3.5 h-3.5 shrink-0" />}
+      {color && !statusValue && (
+        <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: color }} />
+      )}
+      <span className="text-sm font-medium truncate">{label}</span>
+      <span className="text-xs text-muted-foreground/50 ml-auto tabular-nums">{count}</span>
+    </div>
+  );
+}
+
+function GroupHeaderOverlay({ label, count, statusValue, color }: { label: string; count: number; statusValue?: SessionTaskStatus; color?: string }) {
+  return (
+    <div className="flex items-center gap-2 px-2 py-2.5 rounded-md bg-surface-2 shadow-lg border border-border/60">
+      <GripVertical className="h-4 w-4 text-muted-foreground/40 shrink-0" />
+      {statusValue && <TaskStatusIcon status={statusValue} className="w-3.5 h-3.5 shrink-0" />}
+      {color && !statusValue && (
+        <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: color }} />
+      )}
+      <span className="text-sm font-medium truncate">{label}</span>
+      <span className="text-xs text-muted-foreground/50 ml-auto tabular-nums">{count}</span>
+    </div>
   );
 }
 
