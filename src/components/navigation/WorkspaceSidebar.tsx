@@ -672,7 +672,7 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onGitHubRepos,
                             className="flex items-center justify-between"
                           >
                             <div className="flex items-center gap-2 min-w-0">
-                              <Folder className="h-4 w-4 shrink-0 text-muted-foreground" />
+                              <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: workspaceColors[ws.id] || getWorkspaceColor(ws.id) }} />
                               <span className="truncate">{ws.name}</span>
                             </div>
                             {sidebarProjectFilter === ws.id && <Check className="h-4 w-4 shrink-0" />}
