@@ -147,7 +147,7 @@ export function useSidebarSessions({
   projectFilter,
   workspaceColors,
   getWorkspaceColor: getDefaultColor,
-}: UseSidebarSessionsOptions): { groups: SidebarGroup[]; flatSessions: WorktreeSession[] } {
+}: UseSidebarSessionsOptions): { groups: SidebarGroup[]; flatSessions: WorktreeSession[]; effectiveGroupBy: SidebarGroupBy } {
   return useMemo(() => {
     // When filtering to a single project, pre-filter sessions and downgrade groupBy
     const effectiveSessions = projectFilter
@@ -163,6 +163,7 @@ export function useSidebarSessions({
       return {
         groups: [],
         flatSessions: sortSessions(filtered, sortBy),
+        effectiveGroupBy,
       };
     }
 
@@ -170,6 +171,7 @@ export function useSidebarSessions({
       return {
         groups: buildStatusGroups(filtered, sortBy),
         flatSessions: [],
+        effectiveGroupBy,
       };
     }
 
@@ -201,7 +203,7 @@ export function useSidebarSessions({
           sessions: sortSessions(regular, sortBy),
         });
       }
-      return { groups, flatSessions: [] };
+      return { groups, flatSessions: [], effectiveGroupBy };
     }
 
     // project-status
@@ -227,10 +229,10 @@ export function useSidebarSessions({
           subGroups,
         });
       }
-      return { groups, flatSessions: [] };
+      return { groups, flatSessions: [], effectiveGroupBy };
     }
 
-    return { groups: [], flatSessions: [] };
+    return { groups: [], flatSessions: [], effectiveGroupBy };
   }, [sessions, workspaces, groupBy, sortBy, filters, projectFilter, workspaceColors, getDefaultColor]);
 }
 
