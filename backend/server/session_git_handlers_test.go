@@ -213,3 +213,190 @@ func TestGetSessionBranchCommits_CommitFilesHaveStats(t *testing.T) {
 	assert.Equal(t, 3, resp.BranchStats.TotalAdditions)
 	assert.Equal(t, 0, resp.BranchStats.TotalDeletions)
 }
+
+// --- GetSessionSnapshot tests ---
+
+func TestGetSessionSnapshot_ReturnsConsolidatedData(t *testing.T) {
+	h, s := setupTestHandlers(t)
+	repoPath, _ := createSessionWithGitWorktree(t, h, s, "ws-1", "sess-1")
+
+	// Add a committed file
+	createAndCommitFile(t, repoPath, "committed.go", "package main\n", "Add committed file")
+
+	// Add an uncommitted file
+	writeFile(t, repoPath, "uncommitted.go", "package main\nfunc Hello() {}\n")
+	runGit(t, repoPath, "add", "uncommitted.go")
+
+	req := httptest.NewRequest("GET", "/api/repos/ws-1/sessions/sess-1/snapshot", nil)
+	req = withChiContext(req, map[string]string{"id": "ws-1", "sessionId": "sess-1"})
+	w := httptest.NewRecorder()
+
+	h.GetSessionSnapshot(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var snap SessionSnapshot
+	err := json.Unmarshal(w.Body.Bytes(), &snap)
+	require.NoError(t, err)
+
+	// GitStatus should be populated
+	require.NotNil(t, snap.GitStatus)
+	assert.True(t, snap.GitStatus.WorkingDirectory.HasChanges)
+
+	// Changes (uncommitted vs HEAD) should include the staged file
+	assert.NotEmpty(t, snap.Changes)
+
+	// AllChanges (vs base) should include both committed and uncommitted
+	assert.NotEmpty(t, snap.AllChanges)
+
+	// BranchCommits should include the committed file
+	assert.NotEmpty(t, snap.BranchCommits)
+	assert.Equal(t, "Add committed file", snap.BranchCommits[0].Message)
+
+	// BranchStats should be present
+	require.NotNil(t, snap.BranchStats)
+	assert.Greater(t, snap.BranchStats.TotalFiles, 0)
+}
+
+func TestGetSessionSnapshot_SessionNotFound(t *testing.T) {
+	h, _ := setupTestHandlers(t)
+
+	req := httptest.NewRequest("GET", "/api/repos/ws-1/sessions/nonexistent/snapshot", nil)
+	req = withChiContext(req, map[string]string{"id": "ws-1", "sessionId": "nonexistent"})
+	w := httptest.NewRecorder()
+
+	h.GetSessionSnapshot(w, req)
+
+	assert.Equal(t, http.StatusNotFound, w.Code)
+}
+
+func TestGetSessionSnapshot_NoChanges(t *testing.T) {
+	h, s := setupTestHandlers(t)
+	createSessionWithGitWorktree(t, h, s, "ws-1", "sess-1")
+
+	req := httptest.NewRequest("GET", "/api/repos/ws-1/sessions/sess-1/snapshot", nil)
+	req = withChiContext(req, map[string]string{"id": "ws-1", "sessionId": "sess-1"})
+	w := httptest.NewRecorder()
+
+	h.GetSessionSnapshot(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var snap SessionSnapshot
+	err := json.Unmarshal(w.Body.Bytes(), &snap)
+	require.NoError(t, err)
+
+	require.NotNil(t, snap.GitStatus)
+	assert.False(t, snap.GitStatus.WorkingDirectory.HasChanges)
+	assert.Empty(t, snap.Changes)
+	assert.Empty(t, snap.AllChanges)
+	assert.Empty(t, snap.BranchCommits)
+	assert.Nil(t, snap.BranchStats)
+}
+
+func TestGetSessionSnapshot_CachesResult(t *testing.T) {
+	h, s := setupTestHandlers(t)
+
+	// Provide snapshot cache to handler (handler.Close() will close it)
+	h.snapshotCache = NewSnapshotCache(5 * time.Second)
+
+	createSessionWithGitWorktree(t, h, s, "ws-1", "sess-1")
+
+	// First request populates cache
+	req := httptest.NewRequest("GET", "/api/repos/ws-1/sessions/sess-1/snapshot", nil)
+	req = withChiContext(req, map[string]string{"id": "ws-1", "sessionId": "sess-1"})
+	w := httptest.NewRecorder()
+
+	h.GetSessionSnapshot(w, req)
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var snap1 SessionSnapshot
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &snap1))
+
+	// Second request should hit cache
+	req2 := httptest.NewRequest("GET", "/api/repos/ws-1/sessions/sess-1/snapshot", nil)
+	req2 = withChiContext(req2, map[string]string{"id": "ws-1", "sessionId": "sess-1"})
+	w2 := httptest.NewRecorder()
+
+	h.GetSessionSnapshot(w2, req2)
+	assert.Equal(t, http.StatusOK, w2.Code)
+
+	var snap2 SessionSnapshot
+	require.NoError(t, json.Unmarshal(w2.Body.Bytes(), &snap2))
+
+	// Both should have the same git status
+	assert.Equal(t, snap1.GitStatus.WorkingDirectory, snap2.GitStatus.WorkingDirectory)
+}
+
+func TestGetSessionSnapshot_CacheInvalidation(t *testing.T) {
+	h, s := setupTestHandlers(t)
+
+	h.snapshotCache = NewSnapshotCache(5 * time.Second)
+
+	repoPath, _ := createSessionWithGitWorktree(t, h, s, "ws-1", "sess-1")
+
+	// First request - no changes
+	req := httptest.NewRequest("GET", "/api/repos/ws-1/sessions/sess-1/snapshot", nil)
+	req = withChiContext(req, map[string]string{"id": "ws-1", "sessionId": "sess-1"})
+	w := httptest.NewRecorder()
+	h.GetSessionSnapshot(w, req)
+
+	var snap1 SessionSnapshot
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &snap1))
+	assert.Empty(t, snap1.Changes)
+
+	// Invalidate cache (simulating what the branch watcher does)
+	h.snapshotCache.Invalidate("sess-1")
+
+	// Add a change
+	writeFile(t, repoPath, "new_file.go", "package main\n")
+	runGit(t, repoPath, "add", "new_file.go")
+
+	// Second request - should see the change (cache was invalidated)
+	req2 := httptest.NewRequest("GET", "/api/repos/ws-1/sessions/sess-1/snapshot", nil)
+	req2 = withChiContext(req2, map[string]string{"id": "ws-1", "sessionId": "sess-1"})
+	w2 := httptest.NewRecorder()
+	h.GetSessionSnapshot(w2, req2)
+
+	var snap2 SessionSnapshot
+	require.NoError(t, json.Unmarshal(w2.Body.Bytes(), &snap2))
+	assert.NotEmpty(t, snap2.Changes, "should see new changes after cache invalidation")
+}
+
+func TestGetSessionSnapshot_WithUntrackedFiles(t *testing.T) {
+	h, s := setupTestHandlers(t)
+	repoPath, _ := createSessionWithGitWorktree(t, h, s, "ws-1", "sess-1")
+
+	// Create an untracked file
+	writeFile(t, repoPath, "untracked.txt", "hello world\n")
+
+	req := httptest.NewRequest("GET", "/api/repos/ws-1/sessions/sess-1/snapshot", nil)
+	req = withChiContext(req, map[string]string{"id": "ws-1", "sessionId": "sess-1"})
+	w := httptest.NewRecorder()
+
+	h.GetSessionSnapshot(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var snap SessionSnapshot
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &snap))
+
+	// Untracked file should appear in both Changes and AllChanges
+	hasUntracked := false
+	for _, c := range snap.Changes {
+		if c.Path == "untracked.txt" {
+			hasUntracked = true
+			break
+		}
+	}
+	assert.True(t, hasUntracked, "untracked file should appear in Changes")
+
+	hasUntrackedAll := false
+	for _, c := range snap.AllChanges {
+		if c.Path == "untracked.txt" {
+			hasUntrackedAll = true
+			break
+		}
+	}
+	assert.True(t, hasUntrackedAll, "untracked file should appear in AllChanges")
+}

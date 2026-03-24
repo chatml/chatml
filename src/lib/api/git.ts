@@ -78,6 +78,20 @@ export async function getGitStatus(workspaceId: string, sessionId: string): Prom
   return handleResponse<GitStatusDTO>(res);
 }
 
+// Consolidated snapshot: replaces separate git-status + changes + branch-commits calls
+export interface SessionSnapshotDTO {
+  gitStatus: GitStatusDTO;
+  changes: FileChangeDTO[];
+  allChanges: FileChangeDTO[];
+  commits: BranchCommitDTO[];
+  branchStats?: BranchStatsDTO;
+}
+
+export async function getSessionSnapshot(workspaceId: string, sessionId: string): Promise<SessionSnapshotDTO> {
+  const res = await fetchWithAuth(`${getApiBase()}/api/repos/${workspaceId}/sessions/${sessionId}/snapshot`);
+  return handleResponse<SessionSnapshotDTO>(res);
+}
+
 // File commit history types
 export interface FileCommitDTO {
   sha: string;

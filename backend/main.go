@@ -175,6 +175,10 @@ func main() {
 	diffCache := server.NewDiffCache(10 * time.Second)
 	defer diffCache.Close()
 
+	// Snapshot cache with 3 second TTL — coalesces concurrent session switch requests
+	snapshotCache := server.NewSnapshotCache(3 * time.Second)
+	defer snapshotCache.Close()
+
 	// Repo manager for stats computation in callbacks
 	repoManager := git.NewRepoManager()
 
@@ -257,6 +261,7 @@ func main() {
 				// Invalidate caches first
 				statsCache.Invalidate(sessionID)
 				diffCache.InvalidateSession(sessionID)
+				snapshotCache.Invalidate(sessionID)
 
 				// Get session and workspace data to recompute stats
 				sess, err := s.GetSession(ctx, sessionID)
@@ -488,7 +493,7 @@ func main() {
 	// AI client: nil at init — handlers.getAIClient() resolves dynamically via
 	// agentMgr.CreateAIClient() on each call, picking up credentials as they
 	// become available (env var, keychain, credentials file, cached SDK token).
-	router, routerCleanup := server.NewRouter(ctx, s, hub, agentMgr, ghClient, linearClient, branchWatcher, prWatcher, prCache, issueCache, statsCache, diffCache, nil, scriptRunner)
+	router, routerCleanup := server.NewRouter(ctx, s, hub, agentMgr, ghClient, linearClient, branchWatcher, prWatcher, prCache, issueCache, statsCache, diffCache, snapshotCache, nil, scriptRunner)
 	defer routerCleanup()
 
 	// Pre-warm session stats cache in background so the first getDashboardData

@@ -3,47 +3,65 @@ import { renderHook, act } from '@testing-library/react';
 import { useGitStatus } from '../useGitStatus';
 import { useAppStore } from '@/stores/appStore';
 
-// Mock getGitStatus from the API module
+// Mock getSessionSnapshot (useGitStatus now delegates to useSessionSnapshot)
 vi.mock('@/lib/api', () => ({
-  getGitStatus: vi.fn(),
+  getSessionSnapshot: vi.fn(),
+  ApiError: class ApiError extends Error {
+    code: string | null;
+    status: number;
+    constructor(message: string, code: string | null = null, status = 500) {
+      super(message);
+      this.code = code;
+      this.status = status;
+    }
+  },
+  ErrorCode: { WORKTREE_NOT_FOUND: 'WORKTREE_NOT_FOUND' },
 }));
 
-// Import after mock so we get the mocked version
-import { getGitStatus } from '@/lib/api';
+// Mock sessionDataCache
+vi.mock('@/lib/sessionDataCache', () => ({
+  getSessionData: vi.fn().mockReturnValue(null),
+  setSessionData: vi.fn(),
+}));
 
-const mockedGetGitStatus = vi.mocked(getGitStatus);
+import { getSessionSnapshot } from '@/lib/api';
 
-function makeGitStatus(overrides = {}) {
+const mockedGetSessionSnapshot = vi.mocked(getSessionSnapshot);
+
+function makeSnapshot(overrides = {}) {
   return {
-    workingDirectory: {
-      stagedCount: 0,
-      unstagedCount: 1,
-      untrackedCount: 0,
-      totalUncommitted: 1,
-      hasChanges: true,
+    gitStatus: {
+      workingDirectory: {
+        stagedCount: 0,
+        unstagedCount: 1,
+        untrackedCount: 0,
+        totalUncommitted: 1,
+        hasChanges: true,
+      },
+      sync: {
+        aheadBy: 0,
+        behindBy: 0,
+        baseBranch: 'main',
+        hasRemote: true,
+        diverged: false,
+        unpushedCommits: 0,
+      },
+      inProgress: { type: 'none' as const },
+      conflicts: { hasConflicts: false, count: 0, files: [] },
+      stash: { count: 0 },
     },
-    sync: {
-      aheadBy: 0,
-      behindBy: 0,
-      needsSync: false,
-    },
-    branch: {
-      name: 'main',
-      upstream: 'origin/main',
-    },
+    changes: [],
+    allChanges: [],
+    commits: [],
+    branchStats: undefined,
     ...overrides,
   };
 }
 
-// Helper: flush microtasks + advance timers so resolved promises and React
-// state updates (including the effect that calls fetchStatus) can complete.
 async function flushAndAdvance(ms = 0) {
   await act(async () => {
-    // Flush already-resolved promises (e.g. mockResolvedValue)
     await Promise.resolve();
-    // Always advance timers to fire deferred callbacks (e.g. setTimeout(fn, 0))
     vi.advanceTimersByTime(ms);
-    // Flush any promises that were created after advancing timers
     await Promise.resolve();
   });
 }
@@ -53,33 +71,40 @@ describe('useGitStatus', () => {
     vi.useFakeTimers();
     vi.clearAllMocks();
     useAppStore.setState({ lastFileChange: null });
-    mockedGetGitStatus.mockResolvedValue(makeGitStatus());
+    mockedGetSessionSnapshot.mockResolvedValue(makeSnapshot());
   });
 
   afterEach(() => {
     vi.useRealTimers();
   });
 
-  it('fetches git status on mount', async () => {
+  it('returns git status from snapshot', async () => {
     const { result } = renderHook(() => useGitStatus('ws-1', 'session-1'));
 
-    // Flush the initial async fetchStatus
     await flushAndAdvance();
 
-    expect(mockedGetGitStatus).toHaveBeenCalledWith('ws-1', 'session-1');
+    expect(mockedGetSessionSnapshot).toHaveBeenCalledWith('ws-1', 'session-1');
     expect(result.current.loading).toBe(false);
     expect(result.current.status).toBeTruthy();
+    expect(result.current.status?.workingDirectory.hasChanges).toBe(true);
     expect(result.current.error).toBeNull();
   });
 
-  it('refetches on matching workspace file change', async () => {
-    const { result } = renderHook(() => useGitStatus('ws-1', 'session-1'));
+  it('returns null status when ids are null', async () => {
+    const { result } = renderHook(() => useGitStatus(null, null));
     await flushAndAdvance();
 
+    expect(mockedGetSessionSnapshot).not.toHaveBeenCalled();
     expect(result.current.loading).toBe(false);
-    expect(mockedGetGitStatus).toHaveBeenCalledTimes(1);
+    expect(result.current.status).toBeNull();
+  });
 
-    // Trigger a file change for the same workspace
+  it('refetches on matching workspace file change', async () => {
+    renderHook(() => useGitStatus('ws-1', 'session-1'));
+    await flushAndAdvance();
+
+    expect(mockedGetSessionSnapshot).toHaveBeenCalledTimes(1);
+
     act(() => {
       useAppStore.getState().setLastFileChange({
         workspaceId: 'ws-1',
@@ -88,19 +113,17 @@ describe('useGitStatus', () => {
       });
     });
 
-    // Advance past the 500ms debounce and flush the resulting fetchStatus
     await flushAndAdvance(600);
 
-    expect(mockedGetGitStatus).toHaveBeenCalledTimes(2);
+    expect(mockedGetSessionSnapshot).toHaveBeenCalledTimes(2);
   });
 
   it('ignores file change for different workspace', async () => {
     renderHook(() => useGitStatus('ws-1', 'session-1'));
     await flushAndAdvance();
 
-    expect(mockedGetGitStatus).toHaveBeenCalledTimes(1);
+    expect(mockedGetSessionSnapshot).toHaveBeenCalledTimes(1);
 
-    // Trigger a file change for a different workspace
     act(() => {
       useAppStore.getState().setLastFileChange({
         workspaceId: 'ws-OTHER',
@@ -111,26 +134,15 @@ describe('useGitStatus', () => {
 
     await flushAndAdvance(600);
 
-    // Should NOT have refetched
-    expect(mockedGetGitStatus).toHaveBeenCalledTimes(1);
-  });
-
-  it('does not fetch when workspaceId is empty', async () => {
-    const { result } = renderHook(() => useGitStatus(null, null));
-    await flushAndAdvance();
-
-    expect(mockedGetGitStatus).not.toHaveBeenCalled();
-    expect(result.current.loading).toBe(false);
-    expect(result.current.status).toBeNull();
+    expect(mockedGetSessionSnapshot).toHaveBeenCalledTimes(1);
   });
 
   it('debounces rapid file changes', async () => {
     renderHook(() => useGitStatus('ws-1', 'session-1'));
     await flushAndAdvance();
 
-    expect(mockedGetGitStatus).toHaveBeenCalledTimes(1);
+    expect(mockedGetSessionSnapshot).toHaveBeenCalledTimes(1);
 
-    // Fire multiple rapid file changes
     for (let i = 0; i < 5; i++) {
       act(() => {
         useAppStore.getState().setLastFileChange({
@@ -139,80 +151,75 @@ describe('useGitStatus', () => {
           fullPath: `/full/path/src/file-${i}.ts`,
         });
       });
-      // Small gap between events (less than debounce window of 500ms)
       await flushAndAdvance(100);
     }
 
-    // Advance past the debounce window after the last change
     await flushAndAdvance(600);
 
-    // Initial fetch + one debounced refetch (not 5)
-    expect(mockedGetGitStatus).toHaveBeenCalledTimes(2);
+    // Initial fetch + one debounced refetch
+    expect(mockedGetSessionSnapshot).toHaveBeenCalledTimes(2);
   });
 
   it('does not update state after unmount', async () => {
-    let resolveDeferred: (value: ReturnType<typeof makeGitStatus>) => void;
-    const deferred = new Promise<ReturnType<typeof makeGitStatus>>((resolve) => {
+    let resolveDeferred: (value: ReturnType<typeof makeSnapshot>) => void;
+    const deferred = new Promise<ReturnType<typeof makeSnapshot>>((resolve) => {
       resolveDeferred = resolve;
     });
-    mockedGetGitStatus.mockReturnValue(deferred);
+    mockedGetSessionSnapshot.mockReturnValue(deferred);
 
     const { result, unmount } = renderHook(() => useGitStatus('ws-1', 'session-1'));
 
-    // Hook should be loading while the fetch is pending
     expect(result.current.loading).toBe(true);
     expect(result.current.status).toBeNull();
 
-    // Unmount before the fetch resolves
     unmount();
 
-    // Now resolve the deferred fetch — state should NOT update
     await act(async () => {
-      resolveDeferred!(makeGitStatus());
+      resolveDeferred!(makeSnapshot());
       await Promise.resolve();
     });
 
-    // After unmount, last captured state should still show loading/null
-    // (no state update occurred because isMountedRef was false)
     expect(result.current.loading).toBe(true);
     expect(result.current.status).toBeNull();
     expect(result.current.error).toBeNull();
   });
 
   it('clears stale data when sessionId changes', async () => {
-    const statusA = makeGitStatus({ branch: { name: 'branch-a', upstream: 'origin/branch-a' } });
-    const statusB = makeGitStatus({ branch: { name: 'branch-b', upstream: 'origin/branch-b' } });
+    const snapA = makeSnapshot();
+    const snapB = makeSnapshot({
+      gitStatus: {
+        ...makeSnapshot().gitStatus,
+        workingDirectory: { ...makeSnapshot().gitStatus.workingDirectory, stagedCount: 5 },
+      },
+    });
 
-    // Start with session A
-    mockedGetGitStatus.mockResolvedValue(statusA);
+    mockedGetSessionSnapshot.mockResolvedValue(snapA);
     const { result, rerender } = renderHook(
       ({ sessionId }) => useGitStatus('ws-1', sessionId),
       { initialProps: { sessionId: 'session-a' } }
     );
     await flushAndAdvance();
-    expect(result.current.status).toEqual(statusA);
+    expect(result.current.status).toEqual(snapA.gitStatus);
     expect(result.current.loading).toBe(false);
 
-    // Switch to session B — API will take time to respond
-    let resolveB!: (value: ReturnType<typeof makeGitStatus>) => void;
-    mockedGetGitStatus.mockReturnValue(
+    // Switch to session B
+    let resolveB!: (value: ReturnType<typeof makeSnapshot>) => void;
+    mockedGetSessionSnapshot.mockReturnValue(
       new Promise((resolve) => { resolveB = resolve; })
     );
     rerender({ sessionId: 'session-b' });
 
-    // Before the API responds, stale data should be cleared
     await flushAndAdvance();
     expect(result.current.status).toBeNull();
     expect(result.current.loading).toBe(true);
 
-    // Now resolve the API call
     await act(async () => {
-      resolveB(statusB);
+      resolveB(snapB);
       await Promise.resolve();
     });
     await flushAndAdvance();
 
-    expect(result.current.status).toEqual(statusB);
+    expect(result.current.status?.workingDirectory.stagedCount).toBe(5);
     expect(result.current.loading).toBe(false);
   });
 
@@ -220,16 +227,12 @@ describe('useGitStatus', () => {
     renderHook(() => useGitStatus('ws-1', 'session-1'));
     await flushAndAdvance();
 
-    expect(mockedGetGitStatus).toHaveBeenCalledTimes(1);
+    expect(mockedGetSessionSnapshot).toHaveBeenCalledTimes(1);
 
-    // Advance past one poll interval (30s)
     await flushAndAdvance(30_000);
+    expect(mockedGetSessionSnapshot).toHaveBeenCalledTimes(2);
 
-    expect(mockedGetGitStatus).toHaveBeenCalledTimes(2);
-
-    // Advance past another poll interval
     await flushAndAdvance(30_000);
-
-    expect(mockedGetGitStatus).toHaveBeenCalledTimes(3);
+    expect(mockedGetSessionSnapshot).toHaveBeenCalledTimes(3);
   });
 });

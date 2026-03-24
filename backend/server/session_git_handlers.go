@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/chatml/chatml-backend/git"
 	"github.com/chatml/chatml-backend/logger"
@@ -447,4 +448,137 @@ func (h *Handlers) SendSessionMessage(w http.ResponseWriter, r *http.Request) {
 
 	w.WriteHeader(http.StatusAccepted)
 	writeJSON(w, map[string]string{"status": "sent"})
+}
+
+// GetSessionSnapshot returns a consolidated snapshot of all git data for a session.
+// This replaces the need for separate /git-status, /changes, and /branch-commits calls
+// on session switch, reducing redundant git operations (untracked files, gitignore filter).
+func (h *Handlers) GetSessionSnapshot(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	sessionID := chi.URLParam(r, "sessionId")
+
+	// Check snapshot cache first
+	if h.snapshotCache != nil {
+		if cached, ok := h.snapshotCache.Get(sessionID); ok {
+			writeJSON(w, cached)
+			return
+		}
+	}
+
+	session, workingPath, baseRef, err := h.getSessionAndWorkspace(ctx, sessionID)
+	if err != nil {
+		writeDBError(w, err)
+		return
+	}
+	if session == nil {
+		writeNotFound(w, "session")
+		return
+	}
+	if checkWorktreePath(w, workingPath) {
+		return
+	}
+
+	// Run all git operations in parallel. Each group is independent.
+	var (
+		gitStatus      *git.GitStatus
+		headChanges    []git.FileChange   // diff vs HEAD (uncommitted)
+		baseChanges    []git.FileChange   // diff vs baseRef (branch total)
+		untracked      []git.FileChange   // untracked files (shared)
+		branchCommits  []git.BranchCommit
+		statusErr, headErr, baseErr, untrackedErr, commitsErr error
+		wg sync.WaitGroup
+	)
+
+	wg.Add(5)
+	go func() {
+		defer wg.Done()
+		gitStatus, statusErr = h.repoManager.GetStatus(ctx, workingPath, baseRef)
+	}()
+	go func() {
+		defer wg.Done()
+		headChanges, headErr = h.repoManager.GetChangedFilesWithStats(ctx, workingPath, "HEAD")
+		if headErr != nil {
+			headChanges = []git.FileChange{}
+		}
+	}()
+	go func() {
+		defer wg.Done()
+		baseChanges, baseErr = h.repoManager.GetChangedFilesWithStats(ctx, workingPath, baseRef)
+		if baseErr != nil {
+			baseChanges = []git.FileChange{}
+		}
+	}()
+	go func() {
+		defer wg.Done()
+		untracked, untrackedErr = h.repoManager.GetUntrackedFiles(ctx, workingPath)
+		if untrackedErr != nil {
+			untracked = []git.FileChange{}
+		}
+	}()
+	go func() {
+		defer wg.Done()
+		branchCommits, commitsErr = h.repoManager.GetCommitsAheadOfBase(ctx, workingPath, baseRef)
+		if commitsErr != nil {
+			branchCommits = []git.BranchCommit{}
+		}
+	}()
+	wg.Wait()
+
+	if statusErr != nil {
+		writeInternalError(w, "failed to get git status", statusErr)
+		return
+	}
+
+	// Restore human-readable branch name for frontend display (same as GetSessionGitStatus)
+	displayBranch := session.EffectiveTargetBranch()
+	displayBranch = strings.TrimPrefix(displayBranch, session.EffectiveRemote()+"/")
+	gitStatus.Sync.BaseBranch = displayBranch
+
+	// Combine untracked with head changes (uncommitted view)
+	changes := append(untracked, headChanges...)
+
+	// Combine untracked with base changes (all changes view), deduplicating
+	seen := make(map[string]bool, len(baseChanges))
+	for _, c := range baseChanges {
+		seen[c.Path] = true
+	}
+	allChanges := make([]git.FileChange, 0, len(baseChanges)+len(untracked))
+	allChanges = append(allChanges, baseChanges...)
+	for _, u := range untracked {
+		if !seen[u.Path] {
+			allChanges = append(allChanges, u)
+		}
+	}
+
+	// Filter gitignored files ONCE for the union of all paths
+	changes = h.repoManager.FilterGitIgnored(ctx, workingPath, changes)
+	allChanges = h.repoManager.FilterGitIgnored(ctx, workingPath, allChanges)
+
+	// Compute branch stats
+	var branchStats *BranchStats
+	if len(allChanges) > 0 {
+		bs := BranchStats{TotalFiles: len(allChanges)}
+		for _, c := range allChanges {
+			bs.TotalAdditions += c.Additions
+			bs.TotalDeletions += c.Deletions
+		}
+		branchStats = &bs
+	}
+
+	snapshot := &SessionSnapshot{
+		GitStatus:     gitStatus,
+		Changes:       changes,
+		AllChanges:    allChanges,
+		BranchCommits: branchCommits,
+		BranchStats:   branchStats,
+	}
+
+	// Cache the result — only if the request context is still valid (not cancelled/disconnected).
+	// A cancelled context means some goroutines may have returned empty slices silently;
+	// caching that partial data would serve a misleading "clean" snapshot to the next client.
+	if h.snapshotCache != nil && ctx.Err() == nil {
+		h.snapshotCache.Set(sessionID, snapshot)
+	}
+
+	writeJSON(w, snapshot)
 }

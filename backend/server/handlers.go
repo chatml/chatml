@@ -549,6 +549,7 @@ type Handlers struct {
 	avatarCache      *github.AvatarCache
 	statsCache       *SessionStatsCache
 	diffCache        *DiffCache
+	snapshotCache    *SnapshotCache
 	aiClient         ai.Provider
 	scriptRunner     *scripts.Runner
 	serverCtx        context.Context
@@ -573,6 +574,9 @@ func (h *Handlers) Close() {
 	h.dirCache.Close()
 	h.branchCache.Close()
 	h.avatarCache.Close()
+	if h.snapshotCache != nil {
+		h.snapshotCache.Close()
+	}
 }
 
 // goBackground launches fn as a tracked background goroutine.
@@ -657,7 +661,7 @@ func (h *Handlers) getWorkspacesBaseDir(ctx context.Context) (string, error) {
 	return git.WorkspacesBaseDirWithOverride(configured)
 }
 
-func NewHandlers(ctx context.Context, s *store.SQLiteStore, am *agent.Manager, dirCacheConfig DirListingCacheConfig, bw *branch.Watcher, prw *branch.PRWatcher, hub *Hub, ghClient *github.Client, prCache *github.PRCache, issueCache *github.IssueCache, statsCache *SessionStatsCache, diffCache *DiffCache, aiClient ai.Provider, scriptRunner *scripts.Runner) *Handlers {
+func NewHandlers(ctx context.Context, s *store.SQLiteStore, am *agent.Manager, dirCacheConfig DirListingCacheConfig, bw *branch.Watcher, prw *branch.PRWatcher, hub *Hub, ghClient *github.Client, prCache *github.PRCache, issueCache *github.IssueCache, statsCache *SessionStatsCache, diffCache *DiffCache, snapshotCache *SnapshotCache, aiClient ai.Provider, scriptRunner *scripts.Runner) *Handlers {
 	serverCtx, serverCancel := context.WithCancel(ctx)
 
 	// Initialize session name cache with workspaces directory
@@ -685,6 +689,7 @@ func NewHandlers(ctx context.Context, s *store.SQLiteStore, am *agent.Manager, d
 		avatarCache:      github.NewAvatarCache(24 * time.Hour), // Cache avatars for 24 hours
 		statsCache:       statsCache,
 		diffCache:        diffCache,
+		snapshotCache:    snapshotCache,
 		aiClient:         aiClient,
 		scriptRunner:     scriptRunner,
 		serverCtx:        serverCtx,
