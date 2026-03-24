@@ -1447,7 +1447,7 @@ function SessionRow({
 
   const prStatusInfo = getPRStatusInfo(session);
   const [hoverOpen, setHoverOpen] = useState(false);
-  const { showSuccess: showRowSuccess, showWarning: showRowWarning } = useToast();
+  const { success: showRowSuccess, warning: showRowWarning } = useToast();
 
   return (
     <ContextMenu onOpenChange={(open) => { if (open) setHoverOpen(false); }}>
