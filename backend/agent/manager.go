@@ -3213,6 +3213,7 @@ Do NOT use `+"`"+`mcp__chatml__start_linear_issue`+"`"+` — it creates git bran
 		session.WorktreePath,
 		session.WorktreePath,
 		session.WorktreePath,
+		session.WorktreePath,
 		targetBranchShort,
 		targetBranchShort,
 	)
