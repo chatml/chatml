@@ -7,15 +7,7 @@ import { createCommentTools } from "./tools/comments.js";
 import { createPRTools } from "./tools/pr.js";
 import { createScriptTools } from "./tools/scripts.js";
 import { createSprintTools } from "./tools/sprint.js";
-
-const BACKEND_URL = process.env.CHATML_BACKEND_URL || "http://127.0.0.1:9876";
-const AUTH_TOKEN = process.env.CHATML_AUTH_TOKEN || "";
-
-function buildHeaders(): Record<string, string> {
-  const headers: Record<string, string> = {};
-  if (AUTH_TOKEN) headers["Authorization"] = `Bearer ${AUTH_TOKEN}`;
-  return headers;
-}
+import { buildHeaders, BACKEND_URL } from "./tools/fetch-utils.js";
 
 function sessionApiUrl(context: WorkspaceContext, path: string): string {
   return `${BACKEND_URL}/api/repos/${context.workspaceId}/sessions/${context.sessionId}${path}`;

@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"runtime/debug"
 	"strconv"
 	"syscall"
@@ -104,6 +105,19 @@ func main() {
 		logger.Main.Fatalf("Failed to initialize store: %v", err)
 	}
 	defer s.Close()
+
+	// Write the actual port to a well-known file so external tools (e.g., Claude Code MCP)
+	// can discover the backend without requiring CHATML_BACKEND_URL to be set.
+	// Written here — after all Fatalf-capable initialization — so the file is only
+	// created when the backend is actually going to start serving requests.
+	// defer os.Remove runs on clean exit (SIGINT/SIGTERM); hard crashes leave the
+	// file behind, but the next successful startup overwrites it.
+	portFile := filepath.Join(appdir.StateDir(), "backend.port")
+	if err := os.WriteFile(portFile, []byte(strconv.Itoa(actualPort)), 0644); err != nil {
+		logger.Main.Warnf("Failed to write port file: %v", err)
+	} else {
+		defer os.Remove(portFile)
+	}
 
 	hub := server.NewHub()
 	wm := git.NewWorktreeManager()
