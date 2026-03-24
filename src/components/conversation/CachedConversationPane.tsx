@@ -1,9 +1,10 @@
 'use client';
 
-import { useEffect, useCallback, useReducer, useMemo } from 'react';
+import { useEffect, useReducer, useMemo } from 'react';
 import { cn } from '@/lib/utils';
-import { GitBranch, Wand2, Bug, TestTube2, Eye, Code2, FileText } from 'lucide-react';
+import { GitBranch } from 'lucide-react';
 import { ConversationMessagePane } from '@/components/conversation/ConversationMessagePane';
+import { WelcomeScreen, SuggestionChips } from '@/components/conversation/WelcomeScreen';
 
 // Maximum number of conversation Virtuoso instances to keep mounted per session.
 // Each cached conversation preserves its scroll position and rendered DOM,
@@ -101,119 +102,55 @@ export function CachedConversationPane({
     return () => window.removeEventListener('conversation-cache-evict', handleEvict);
   }, []);
 
-  // Compute empty state for the active conversation
+  // Empty state for the normal-conversation branch (not used on the welcome screen path).
   const activeEmptyState = useMemo(() => {
-    if (!hasConversations) {
-      return <SessionHomeState sessionName={sessionBranch || sessionName} />;
-    }
     return <ConversationEmptyState sessionName={sessionName} />;
-  }, [hasConversations, sessionName, sessionBranch]);
+  }, [sessionName]);
+
+  // Only show the welcome screen for the active session — inactive cached sessions
+  // with no conversations should not mount WelcomeScreen/SuggestionChips unnecessarily.
+  const isWelcomeScreen = isActive && !conversationId && !hasConversations;
 
   return (
     <div className={cn(
       'flex flex-col absolute inset-0',
       isActive ? 'z-10' : 'invisible pointer-events-none z-0'
     )}>
-      {/* Message panes — one per cached conversation, visibility-toggled */}
-      <div className="relative flex-1 min-h-0 overflow-hidden">
-        {/* Session home state when no conversation is selected and no conversations exist */}
-        {!conversationId && !hasConversations && (
-          <div className="h-full overflow-auto">
-            <SessionHomeState sessionName={sessionBranch || sessionName} />
+      {isWelcomeScreen ? (
+        /* Welcome screen: vertically centered composition with input as hero */
+        <div className="flex-1 flex flex-col items-center justify-center gap-8 px-6 pb-4 relative">
+          <WelcomeScreen sessionName={sessionBranch || sessionName} />
+          <div className="w-full max-w-2xl relative z-10">
+            {children}
           </div>
-        )}
-
-        {/* Cached conversation panes */}
-        {convCache.ids.map((cachedConvId) => (
-          <ConversationMessagePane
-            key={cachedConvId}
-            conversationId={cachedConvId}
-            isActive={cachedConvId === conversationId && isActive}
-            worktreePath={worktreePath}
-            emptyState={cachedConvId === conversationId ? activeEmptyState : undefined}
-          />
-        ))}
-      </div>
-
-      {/* Chat Input */}
-      <div className="shrink-0 relative z-10">
-        {children}
-      </div>
+          <div className="max-w-2xl w-full">
+            <SuggestionChips />
+          </div>
+        </div>
+      ) : (
+        /* Normal conversation layout */
+        <>
+          <div className="relative flex-1 min-h-0 overflow-hidden">
+            {convCache.ids.map((cachedConvId) => (
+              <ConversationMessagePane
+                key={cachedConvId}
+                conversationId={cachedConvId}
+                isActive={cachedConvId === conversationId && isActive}
+                worktreePath={worktreePath}
+                emptyState={cachedConvId === conversationId ? activeEmptyState : undefined}
+              />
+            ))}
+          </div>
+          <div className="shrink-0 relative z-10">
+            {children}
+          </div>
+        </>
+      )}
     </div>
   );
 }
 
 // --- Local sub-components ---
-
-const QUICK_ACTIONS = [
-  { icon: Bug, label: 'Fix a bug', description: 'Diagnose and resolve issues', prompt: 'Fix a bug: ', iconClass: 'text-rose-600 dark:text-rose-400', gradientClass: 'bg-gradient-to-b from-rose-500/15 to-rose-500/5' },
-  { icon: TestTube2, label: 'Write tests', description: 'Improve coverage and confidence', prompt: 'Write tests for ', iconClass: 'text-emerald-600 dark:text-emerald-400', gradientClass: 'bg-gradient-to-b from-emerald-500/15 to-emerald-500/5' },
-  { icon: Wand2, label: 'Add a feature', description: 'Build something new', prompt: 'Add a feature: ', iconClass: 'text-brand', gradientClass: 'bg-gradient-to-b from-brand/15 to-brand/5' },
-  { icon: Eye, label: 'Review code', description: 'Get a fresh perspective', prompt: 'Review the code in ', iconClass: 'text-blue-600 dark:text-blue-400', gradientClass: 'bg-gradient-to-b from-blue-500/15 to-blue-500/5' },
-  { icon: Code2, label: 'Refactor', description: 'Improve structure and clarity', prompt: 'Refactor ', iconClass: 'text-amber-600 dark:text-amber-400', gradientClass: 'bg-gradient-to-b from-amber-500/15 to-amber-500/5' },
-  { icon: FileText, label: 'Documentation', description: 'Explain what the code does', prompt: 'Write documentation for ', iconClass: 'text-purple-600 dark:text-purple-400', gradientClass: 'bg-gradient-to-b from-purple-500/15 to-purple-500/5' },
-];
-
-function SessionHomeState({ sessionName }: { sessionName?: string }) {
-  const handleTemplateClick = useCallback((prompt: string) => {
-    window.dispatchEvent(
-      new CustomEvent('session-home-template-selected', { detail: { text: prompt } }),
-    );
-  }, []);
-
-  return (
-    <div className="pt-3 pl-5 pr-12 pb-10 animate-fade-in">
-      <div className="relative">
-        <div className="absolute inset-x-0 top-0 h-48 bg-[radial-gradient(ellipse_60%_50%_at_50%_-20%,oklch(0.707_0.165_292/0.04),transparent)] dark:bg-[radial-gradient(ellipse_60%_50%_at_50%_-20%,oklch(0.707_0.165_292/0.06),transparent)] pointer-events-none" />
-
-        <div className="relative max-w-lg mx-auto stagger-children">
-          {sessionName && (
-            <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-brand/10 text-brand text-sm font-medium mb-5 animate-scale-in">
-              <GitBranch className="w-4 h-4" />
-              {sessionName}
-            </div>
-          )}
-
-          <div className="mb-6">
-            <h2 className="font-display text-[1.375rem] leading-[1.25] tracking-display">
-              Let&apos;s build something
-            </h2>
-            <p className="text-sm text-muted-foreground mt-1.5">
-              Pick a starting point, or just describe what you need
-            </p>
-          </div>
-
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-            {QUICK_ACTIONS.map(({ icon: Icon, label, description, prompt, iconClass, gradientClass }) => (
-              <button
-                key={label}
-                type="button"
-                onClick={() => handleTemplateClick(prompt)}
-                className="group flex flex-col items-center text-center gap-2.5 rounded-xl border px-3 py-4 transition-all duration-150 border-border/30 bg-card/30 cursor-pointer hover:bg-card/60 hover:border-border/50 hover:shadow-sm active:scale-[0.98]"
-              >
-                <div className={cn(
-                  'size-10 rounded-xl flex items-center justify-center shrink-0 transition-colors',
-                  gradientClass,
-                  'group-hover:brightness-110'
-                )}>
-                  <Icon className={cn('size-5', iconClass)} />
-                </div>
-                <div className="min-w-0">
-                  <div className="text-sm font-medium text-foreground/90 transition-colors group-hover:text-foreground">
-                    {label}
-                  </div>
-                  <div className="text-[11px] text-muted-foreground/70 mt-0.5">
-                    {description}
-                  </div>
-                </div>
-              </button>
-            ))}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 function ConversationEmptyState({ sessionName }: { sessionName?: string }) {
   return (
