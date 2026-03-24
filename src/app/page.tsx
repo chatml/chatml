@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { Loader2 } from 'lucide-react';
 import { useAppStore } from '@/stores/appStore';
 import {
@@ -189,6 +189,30 @@ export default function Home() {
   const selectedSession = selectedSessionId
     ? sessions.find((s) => s.id === selectedSessionId)
     : null;
+
+  // ─── Right Panel Auto-Collapse on Welcome Screen ─────────────────────
+  // Must match CachedConversationPane's `isWelcomeScreen` derivation:
+  // no active conversation AND no conversations exist for the selected session.
+  const rightPanelAutoCollapsedRef = useRef(false);
+  const isWelcomeScreen = selectedSessionId
+    ? !conversations.some((c) => c.sessionId === selectedSessionId)
+    : false;
+
+  useEffect(() => {
+    const panel = layout.rightSidebarPanelRef.current;
+    if (!panel) return;
+
+    if (isWelcomeScreen && !layout.rightSidebarCollapsed) {
+      rightPanelAutoCollapsedRef.current = true;
+      panel.collapse();
+    } else if (!isWelcomeScreen && rightPanelAutoCollapsedRef.current) {
+      rightPanelAutoCollapsedRef.current = false;
+      // Only expand if still collapsed — the user may have manually re-collapsed it
+      if (panel.isCollapsed()) {
+        panel.expand();
+      }
+    }
+  }, [isWelcomeScreen, layout.rightSidebarCollapsed]);
 
   // ─── .mcp.json Trust Check ───────────────────────────────────────────
   useDotMcpTrustCheck(workspaces, selectedWorkspaceId, dialogRef);
