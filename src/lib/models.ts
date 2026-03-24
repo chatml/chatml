@@ -2,48 +2,52 @@ import React from 'react';
 import { useAppStore } from '@/stores/appStore';
 
 // ---------------------------------------------------------------------------
-// Short name mapping
+// Canonical model catalog — single source of truth for display names & descriptions
 // ---------------------------------------------------------------------------
 
-/** Map known base model IDs → short display names (no "Claude" prefix). */
-const SHORT_NAME_MAP: Record<string, string> = {
-  'claude-opus-4-6': 'Opus 4.6',
-  'claude-sonnet-4-6': 'Sonnet 4.6',
-  'claude-haiku-4-5-20251001': 'Haiku 4.5',
-  'claude-haiku-4-5': 'Haiku 4.5',
+interface ModelCatalogEntry {
+  displayName: string;
+  description: string;
+}
+
+/** Canonical display names and descriptions, keyed by base model ID. */
+const MODEL_CATALOG: Record<string, ModelCatalogEntry> = {
+  'claude-opus-4-6':   { displayName: 'Opus 4.6 (1M context)', description: 'Most capable for ambitious work' },
+  'claude-sonnet-4-6': { displayName: 'Sonnet 4.6',            description: 'Most efficient for everyday tasks' },
+  'claude-haiku-4-5':  { displayName: 'Haiku 4.5',             description: 'Fastest for quick answers' },
 };
 
-/** Models that should show a "NEW" badge in the selector. */
-const NEW_MODEL_IDS = new Set(['claude-opus-4-6[1m]']);
+/**
+ * Normalize an SDK model value to a base ID for catalog lookup.
+ * Strips `[1m]` suffix and trailing date `-20YYMMDD`.
+ */
+function toBaseId(sdkValue: string): string {
+  return sdkValue.replace(/\[1m\]$/, '').replace(/-20\d{6}$/, '');
+}
+
+/** Look up the catalog entry for an SDK model value. */
+function catalogLookup(sdkValue: string): ModelCatalogEntry | undefined {
+  return MODEL_CATALOG[toBaseId(sdkValue)];
+}
+
+// ---------------------------------------------------------------------------
+// Display name & description helpers
+// ---------------------------------------------------------------------------
 
 /**
  * Convert an SDK model value + displayName to a short display name.
- *
- * Examples:
- *   ("claude-opus-4-6", "Claude Opus 4.6")        → "Opus 4.6"
- *   ("claude-opus-4-6[1m]", "Claude Opus 4.6 1M") → "Opus 4.6 1M"
- *   ("claude-sonnet-4-6-20260301", "Sonnet 4.6")   → "Sonnet 4.6"
- *   ("custom-model", "My Custom Model")             → "My Custom Model"
+ * Uses the canonical catalog first, falls back to stripping "Claude " prefix.
  */
 export function toShortDisplayName(sdkValue: string, sdkDisplayName: string): string {
-  const has1M = sdkValue.includes('[1m]');
-  // Strip [1m] suffix and any trailing date (e.g. -20260301) to find the base ID
-  const baseId = sdkValue.replace(/\[1m\]$/, '').replace(/-20\d{6}$/, '');
-
-  let name = SHORT_NAME_MAP[baseId];
-  if (!name) {
-    // Fallback: strip "Claude " prefix from SDK display name
-    name = sdkDisplayName.replace(/^Claude\s+/i, '');
-  }
-  if (has1M && !name.includes('1M')) {
-    name += ' 1M';
-  }
-  return name;
+  const entry = catalogLookup(sdkValue);
+  if (entry) return entry.displayName;
+  // Fallback for unknown models: strip "Claude " prefix
+  return sdkDisplayName.replace(/^Claude\s+/i, '');
 }
 
-/** Check whether a model should show the "NEW" badge. */
-export function isNewModel(sdkValue: string): boolean {
-  return NEW_MODEL_IDS.has(sdkValue);
+/** Get the canonical description for a model, or undefined for unknown models. */
+export function getModelDescription(sdkValue: string): string | undefined {
+  return catalogLookup(sdkValue)?.description;
 }
 
 /** Check whether an SDK entry is the "Default (recommended)" pseudo-model. */
@@ -55,10 +59,14 @@ export function isDefaultRecommended(sdkDisplayName: string): boolean {
 // Static fallback models (used before SDK connects)
 // ---------------------------------------------------------------------------
 
+// Note: Haiku uses a dated id ('claude-haiku-4-5-20251001') that differs from
+// its catalog key ('claude-haiku-4-5'). This is intentional — the SDK reports
+// the dated variant and stored user settings reference it. catalogLookup via
+// toBaseId handles the mapping transparently.
 export const MODELS = [
-  { id: 'claude-opus-4-6', name: 'Opus 4.6', provider: 'claude', supportsThinking: true, supportsEffort: true, supportsFastMode: true },
-  { id: 'claude-sonnet-4-6', name: 'Sonnet 4.6', provider: 'claude', supportsThinking: true, supportsEffort: true, supportsFastMode: true },
-  { id: 'claude-haiku-4-5-20251001', name: 'Haiku 4.5', provider: 'claude', supportsThinking: true, supportsEffort: false, supportsFastMode: false },
+  { id: 'claude-opus-4-6', name: MODEL_CATALOG['claude-opus-4-6'].displayName, description: MODEL_CATALOG['claude-opus-4-6'].description, provider: 'claude', supportsThinking: true, supportsEffort: true, supportsFastMode: true },
+  { id: 'claude-sonnet-4-6', name: MODEL_CATALOG['claude-sonnet-4-6'].displayName, description: MODEL_CATALOG['claude-sonnet-4-6'].description, provider: 'claude', supportsThinking: true, supportsEffort: true, supportsFastMode: true },
+  { id: 'claude-haiku-4-5-20251001', name: MODEL_CATALOG['claude-haiku-4-5'].displayName, description: MODEL_CATALOG['claude-haiku-4-5'].description, provider: 'claude', supportsThinking: true, supportsEffort: false, supportsFastMode: false },
 ] as const;
 
 export type ModelId = (typeof MODELS)[number]['id'];
@@ -141,17 +149,18 @@ export function buildDeduplicatedModelIds(dynamic: SdkModelEntry[]): string[] {
 export interface ModelEntry {
   id: string;
   name: string;
+  description?: string;
   icon: React.ComponentType<{ className?: string }>;
   supportsThinking: boolean;
   supportsEffort: boolean;
   supportedEffortLevels?: ('low' | 'medium' | 'high' | 'max')[];
   supportsFastMode?: boolean;
-  isNew?: boolean;
 }
 
 export interface DynamicModelInfo {
   id: string;
   name: string;
+  description?: string;
   provider: string;
   supportsThinking: boolean;
   supportsEffort: boolean;
@@ -174,6 +183,7 @@ export function getModelInfo(modelId: string): DynamicModelInfo | undefined {
     return {
       id: sdkModel.value,
       name: toShortDisplayName(sdkModel.value, sdkModel.displayName),
+      description: getModelDescription(sdkModel.value),
       provider: 'claude',
       supportsThinking: sdkModel.supportsAdaptiveThinking ?? true,
       supportsEffort: sdkModel.supportsEffort ?? false,
@@ -188,6 +198,7 @@ export function getModelInfo(modelId: string): DynamicModelInfo | undefined {
     return {
       id: staticModel.id,
       name: staticModel.name,
+      description: staticModel.description,
       provider: staticModel.provider,
       supportsThinking: staticModel.supportsThinking,
       supportsEffort: staticModel.supportsEffort,

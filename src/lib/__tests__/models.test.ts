@@ -9,11 +9,11 @@ vi.mock('@/stores/appStore', () => ({
   },
 }));
 
-const { getModelDisplayName, getModelInfo, buildTurnConfigLabel, MODELS, toShortDisplayName, isNewModel, isDefaultRecommended } = await import('../models');
+const { getModelDisplayName, getModelInfo, getModelDescription, buildTurnConfigLabel, MODELS, toShortDisplayName, isDefaultRecommended } = await import('../models');
 
 describe('getModelDisplayName', () => {
   it('returns short display name for known static models', () => {
-    expect(getModelDisplayName('claude-opus-4-6')).toBe('Opus 4.6');
+    expect(getModelDisplayName('claude-opus-4-6')).toBe('Opus 4.6 (1M context)');
     expect(getModelDisplayName('claude-sonnet-4-6')).toBe('Sonnet 4.6');
     expect(getModelDisplayName('claude-haiku-4-5-20251001')).toBe('Haiku 4.5');
   });
@@ -55,14 +55,14 @@ describe('getModelDisplayName', () => {
 });
 
 describe('toShortDisplayName', () => {
-  it('returns short name for known models', () => {
-    expect(toShortDisplayName('claude-opus-4-6', 'Claude Opus 4.6')).toBe('Opus 4.6');
+  it('returns canonical name for known models', () => {
+    expect(toShortDisplayName('claude-opus-4-6', 'Claude Opus 4.6')).toBe('Opus 4.6 (1M context)');
     expect(toShortDisplayName('claude-sonnet-4-6', 'Claude Sonnet 4.6')).toBe('Sonnet 4.6');
     expect(toShortDisplayName('claude-haiku-4-5-20251001', 'Claude Haiku 4.5')).toBe('Haiku 4.5');
   });
 
-  it('appends 1M for extended context models', () => {
-    expect(toShortDisplayName('claude-opus-4-6[1m]', 'Claude Opus 4.6 1M')).toBe('Opus 4.6 1M');
+  it('returns same canonical name for extended context variant', () => {
+    expect(toShortDisplayName('claude-opus-4-6[1m]', 'Claude Opus 4.6 1M')).toBe('Opus 4.6 (1M context)');
   });
 
   it('handles dated model variants', () => {
@@ -78,14 +78,19 @@ describe('toShortDisplayName', () => {
   });
 });
 
-describe('isNewModel', () => {
-  it('returns true for models in NEW_MODEL_IDS', () => {
-    expect(isNewModel('claude-opus-4-6[1m]')).toBe(true);
+describe('getModelDescription', () => {
+  it('returns description for known models', () => {
+    expect(getModelDescription('claude-opus-4-6')).toBe('Most capable for ambitious work');
+    expect(getModelDescription('claude-sonnet-4-6')).toBe('Most efficient for everyday tasks');
+    expect(getModelDescription('claude-haiku-4-5-20251001')).toBe('Fastest for quick answers');
   });
 
-  it('returns false for regular models', () => {
-    expect(isNewModel('claude-opus-4-6')).toBe(false);
-    expect(isNewModel('claude-sonnet-4-6')).toBe(false);
+  it('returns same description for extended context variant', () => {
+    expect(getModelDescription('claude-opus-4-6[1m]')).toBe('Most capable for ambitious work');
+  });
+
+  it('returns undefined for unknown models', () => {
+    expect(getModelDescription('custom-model')).toBeUndefined();
   });
 });
 
@@ -117,7 +122,8 @@ describe('getModelInfo', () => {
     const opus = getModelInfo('claude-opus-4-6');
     expect(opus).toBeDefined();
     expect(opus!.id).toBe('claude-opus-4-6');
-    expect(opus!.name).toBe('Opus 4.6');
+    expect(opus!.name).toBe('Opus 4.6 (1M context)');
+    expect(opus!.description).toBe('Most capable for ambitious work');
     expect(opus!.supportsThinking).toBe(true);
     expect(opus!.supportsEffort).toBe(true);
   });
@@ -188,7 +194,7 @@ describe('buildTurnConfigLabel', () => {
   });
 
   it('returns model display name only', () => {
-    expect(buildTurnConfigLabel({ model: 'claude-opus-4-6' })).toBe('Opus 4.6');
+    expect(buildTurnConfigLabel({ model: 'claude-opus-4-6' })).toBe('Opus 4.6 (1M context)');
   });
 
   it('returns effort only', () => {
@@ -206,7 +212,7 @@ describe('buildTurnConfigLabel', () => {
 
   it('combines all three parts', () => {
     const label = buildTurnConfigLabel({ model: 'claude-opus-4-6', effort: 'high', permissionMode: 'plan' });
-    expect(label).toBe('Opus 4.6 \u00b7 high effort \u00b7 plan mode');
+    expect(label).toBe('Opus 4.6 (1M context) \u00b7 high effort \u00b7 plan mode');
   });
 
   it('handles Bedrock ARN in label', () => {
@@ -227,7 +233,7 @@ describe('buildTurnConfigLabel', () => {
 
   it('shows fast label when fastModeState is on', () => {
     const label = buildTurnConfigLabel({ model: 'claude-opus-4-6', fastModeState: 'on' });
-    expect(label).toBe('Opus 4.6 \u00b7 fast');
+    expect(label).toBe('Opus 4.6 (1M context) \u00b7 fast');
   });
 
   it('shows cooldown label when fastModeState is cooldown', () => {
@@ -237,6 +243,6 @@ describe('buildTurnConfigLabel', () => {
 
   it('omits fast label when fastModeState is off', () => {
     const label = buildTurnConfigLabel({ model: 'claude-opus-4-6', fastModeState: 'off' });
-    expect(label).toBe('Opus 4.6');
+    expect(label).toBe('Opus 4.6 (1M context)');
   });
 });
