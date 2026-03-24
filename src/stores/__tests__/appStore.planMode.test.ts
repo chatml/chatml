@@ -149,15 +149,21 @@ describe('appStore - Plan Mode State', () => {
       expect(state?.planModeActive).toBe(true);
     });
 
-    it('clears pendingPlanApproval after message finalization', () => {
+    it('preserves pendingPlanApproval after message finalization', () => {
       initStreamingState(convId);
       useAppStore.getState().setPendingPlanApproval(convId, 'req-fin');
       useAppStore.getState().appendStreamingText(convId, 'Some response text');
 
       useAppStore.getState().finalizeStreamingMessage(convId, {});
 
+      // pendingPlanApproval is preserved through finalization — it's an active
+      // user interaction that should only be cleared by terminal event handlers.
       const state = useAppStore.getState().streamingState[convId];
-      expect(state?.pendingPlanApproval).toBeNull();
+      expect(state?.pendingPlanApproval).toEqual({ requestId: 'req-fin' });
+
+      // Explicit clear still works
+      useAppStore.getState().clearPendingPlanApproval(convId);
+      expect(useAppStore.getState().streamingState[convId]?.pendingPlanApproval).toBeNull();
     });
 
     it('preserves planModeActive=false after finalization', () => {
