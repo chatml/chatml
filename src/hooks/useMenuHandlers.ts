@@ -236,15 +236,6 @@ export function useMenuHandlers(options: MenuHandlersOptions) {
           options.resetLayouts();
           window.location.reload();
           break;
-        case 'enter_full_screen':
-          getCurrentWindow().then(async (win) => {
-            if (win) {
-              const isFullscreen = await win.isFullscreen();
-              await win.setFullscreen(!isFullscreen);
-            }
-          });
-          break;
-
         // Go menu
         case 'navigate_back':
           useNavigationStore.getState().goBack();

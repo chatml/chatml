@@ -88,14 +88,6 @@ export const SHORTCUTS: Shortcut[] = [
     label: 'Toggle zen mode',
     category: 'General',
   },
-  {
-    id: 'enterFullScreen',
-    key: 'f',
-    modifiers: ['ctrl', 'meta'],
-    label: 'Enter full screen',
-    category: 'General',
-  },
-
   // Navigation
   {
     id: 'navigateBack',
