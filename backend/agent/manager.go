@@ -3164,11 +3164,17 @@ This session uses a git worktree — an isolated working directory with a dedica
 
 **NEVER switch branches.** Do not run `+"`"+`git checkout`+"`"+`, `+"`"+`git switch`+"`"+`, or any command that changes the checked-out branch. The worktree is locked to its branch — switching would corrupt the session state. If the user asks you to switch to main, master, or any other branch, explain that this session is locked to its worktree branch and they should create a new session instead.
 
+**NEVER commit on `+"`"+`main`+"`"+` or `+"`"+`master`+"`"+`.** Before any `+"`"+`git commit`+"`"+`, verify your branch with `+"`"+`git branch --show-current`+"`"+`. If the output is `+"`"+`main`+"`"+` or `+"`"+`master`+"`"+`, STOP immediately — do not commit. Explain to the user that something unexpected happened with the worktree state and commits to the main branch are not allowed.
+
 **NEVER use --delete-branch with gh commands.** `+"`"+`gh pr merge --delete-branch`+"`"+` and `+"`"+`gh pr close --delete-branch`+"`"+` delete the local branch and silently switch the worktree to the default branch, corrupting the session. Always omit `+"`"+`--delete-branch`+"`"+`. After merging, the session stays on its branch.
 
 **NEVER use `+"`"+`git stash`+"`"+`.** Stash is shared across ALL worktrees in the repository. A stash created here is visible to every other session. Use commits instead — commit work-in-progress to the session branch.
 
-**Stay in the worktree directory.** Do not `+"`"+`cd`+"`"+` outside of %s. All your file operations should be within this directory.
+**Stay in the worktree directory.** Your worktree is `+"`"+`%s`+"`"+`. This is the ONLY path where you may read, write, create, edit, or delete files.
+- Do NOT `+"`"+`cd`+"`"+` outside this directory
+- Do NOT write, edit, or delete files at any path outside `+"`"+`%s`+"`"+` — including other sessions' worktree directories
+- Do NOT use absolute paths that point outside `+"`"+`%s`+"`"+`
+- If a task requires files outside this path, STOP and tell the user — never reach outside the worktree
 
 **No destructive git operations:**
 - No `+"`"+`git push --force`+"`"+` (rewrites remote history)
@@ -3204,6 +3210,7 @@ Do NOT use `+"`"+`mcp__chatml__start_linear_issue`+"`"+` — it creates git bran
 		session.Name,
 		session.Branch,
 		targetBranch,
+		session.WorktreePath,
 		session.WorktreePath,
 		session.WorktreePath,
 		targetBranchShort,
