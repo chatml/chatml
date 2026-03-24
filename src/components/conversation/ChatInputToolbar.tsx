@@ -1,4 +1,4 @@
-import { Fragment } from 'react';
+import { Fragment, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -14,7 +14,6 @@ import {
   ArrowUp,
   Square,
   Brain,
-  BookOpen,
   Zap,
   Plus,
   Link,
@@ -25,7 +24,12 @@ import {
   Shield,
   Mic,
   MicOff,
+  Hand,
+  Code,
+  ClipboardList,
+  AlertTriangle,
 } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
 import { ContextMeter } from './ContextMeter';
@@ -75,11 +79,22 @@ export interface PermissionModeProps {
   setDefault: (mode: PermissionMode) => void;
 }
 
-const PERMISSION_MODE_OPTIONS: { id: PermissionMode; label: string; description: string }[] = [
-  { id: 'bypassPermissions', label: 'Full access', description: 'All tools auto-approved' },
-  { id: 'acceptEdits', label: 'Accept edits', description: 'File edits auto-approved, Bash prompts' },
-  { id: 'default', label: 'Ask for approval', description: 'Approve each tool individually' },
-  { id: 'dontAsk', label: 'Read-only', description: 'Only read tools, all others denied' },
+type PermissionOptionId = PermissionMode | 'plan';
+
+interface PermissionOption {
+  id: PermissionOptionId;
+  label: string;
+  description: string;
+  icon: LucideIcon;
+  muted?: boolean;
+}
+
+const PERMISSION_MODE_OPTIONS: PermissionOption[] = [
+  { id: 'default', label: 'Ask permissions', description: 'Always ask before making changes', icon: Hand },
+  { id: 'acceptEdits', label: 'Auto accept edits', description: 'Automatically accept all file edits', icon: Code },
+  { id: 'dontAsk', label: 'Read-only', description: 'Only read tools allowed, all others denied', icon: Shield },
+  { id: 'plan', label: 'Plan mode', description: 'Create a plan before making changes', icon: ClipboardList },
+  { id: 'bypassPermissions', label: 'Bypass permissions', description: 'Accepts all permissions', icon: AlertTriangle, muted: true },
 ];
 
 export interface DictationProps {
@@ -93,6 +108,7 @@ interface ChatInputToolbarProps {
   thinking: ThinkingProps;
   permissionMode: PermissionModeProps;
   planModeEnabled: boolean;
+  defaultPlanMode: boolean;
   onPlanModeToggle: () => void;
   fastModeEnabled: boolean;
   onFastModeToggle: () => void;
@@ -110,6 +126,7 @@ export function ChatInputToolbar({
   thinking,
   permissionMode,
   planModeEnabled,
+  defaultPlanMode,
   onPlanModeToggle,
   fastModeEnabled,
   onFastModeToggle,
@@ -121,8 +138,28 @@ export function ChatInputToolbar({
   showInfo,
   dictation,
 }: ChatInputToolbarProps) {
-  const currentPermOption = PERMISSION_MODE_OPTIONS.find((o) => o.id === permissionMode.mode) ?? PERMISSION_MODE_OPTIONS[0];
-  const isPermModified = permissionMode.mode !== permissionMode.defaultMode;
+  const selectedOptionId: PermissionOptionId = planModeEnabled ? 'plan' : permissionMode.mode;
+  const matchedPermOption = PERMISSION_MODE_OPTIONS.find((o) => o.id === selectedOptionId);
+  if (!matchedPermOption && process.env.NODE_ENV !== 'production') {
+    console.warn(`[ChatInputToolbar] No permission option found for id: ${selectedOptionId}`);
+  }
+  const resolvedPermOption = matchedPermOption
+    ?? { id: permissionMode.mode, label: permissionMode.mode, description: '', icon: Shield, muted: false } as PermissionOption;
+  const isPermModified = (planModeEnabled !== defaultPlanMode) || permissionMode.mode !== permissionMode.defaultMode;
+
+  const handlePermissionSelect = useCallback((id: PermissionOptionId) => {
+    if (id === selectedOptionId) return;
+    if (id === 'plan') {
+      onPlanModeToggle();
+    } else {
+      if (planModeEnabled) {
+        onPlanModeToggle();
+      }
+      if (id !== permissionMode.mode) {
+        permissionMode.setMode(id);
+      }
+    }
+  }, [selectedOptionId, planModeEnabled, onPlanModeToggle, permissionMode]);
   return (
     <div className="flex items-center gap-1 px-2 pb-2">
       {/* Model Selector */}
@@ -295,94 +332,80 @@ export function ChatInputToolbar({
         </DropdownMenuContent>
       </DropdownMenu>
 
-      {/* Plan Mode Toggle */}
-      <Button
-        variant="ghost"
-        size={planModeEnabled ? 'sm' : 'icon'}
-        className={cn(
-          planModeEnabled ? 'h-7 gap-1.5 px-2' : 'h-7 w-7',
-          planModeEnabled && 'text-amber-500 hover:text-amber-600 bg-amber-500/10 hover:bg-amber-500/20'
-        )}
-        onClick={onPlanModeToggle}
-        title={`Plan mode ${planModeEnabled ? 'on' : 'off'} (⇧Tab)`}
-        aria-label={`Plan mode ${planModeEnabled ? 'on' : 'off'}`}
-        aria-pressed={planModeEnabled}
-      >
-        <BookOpen className="h-4 w-4" />
-        {planModeEnabled && <span className="text-xs font-medium">Plan</span>}
-      </Button>
-
       {/* Permission Mode Dropdown */}
       <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button
-              variant="ghost"
-              size="sm"
-              className={cn(
-                'h-7 gap-1.5 px-2 text-xs',
-                isPermModified && 'bg-amber-500/10 hover:bg-amber-500/20',
-              )}
-              title={`Permissions: ${currentPermOption.label}`}
-              aria-label={`Permissions: ${currentPermOption.label}`}
-            >
-              <Shield className="h-4 w-4" />
-              <span className="font-medium">{currentPermOption.label}</span>
-              <ChevronDown className="h-3 w-3" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="start" className="w-64">
-            <DropdownMenuLabel className="text-2xs font-normal text-muted-foreground uppercase tracking-wider">
-              Permission Mode
-            </DropdownMenuLabel>
-            {PERMISSION_MODE_OPTIONS.map((option) => {
-              const isSelected = option.id === permissionMode.mode;
-              const isDefault = option.id === permissionMode.defaultMode;
-              return (
-                <DropdownMenuItem
-                  key={option.id}
-                  onClick={() => permissionMode.setMode(option.id)}
-                  className="group flex-col items-start gap-0 py-2"
-                >
-                  <div className="flex w-full items-center gap-1.5">
-                    <span className="font-medium">{option.label}</span>
-                    <span className="ml-auto flex shrink-0 items-center gap-1">
-                      {isSelected && <Check className="h-3.5 w-3.5" />}
-                      {isDefault ? (
-                        <Star className="h-3 w-3 fill-current text-amber-500" />
-                      ) : (
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <button
-                              type="button"
-                              aria-label={`Set ${option.label} as default permission mode`}
-                              className="flex items-center justify-center rounded p-0.5 text-muted-foreground/50 opacity-0 transition-opacity group-hover:opacity-100 hover:text-foreground focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                              onPointerDown={(e) => {
-                                e.preventDefault();
-                                e.stopPropagation();
-                              }}
-                              onClick={(e) => {
-                                e.preventDefault();
-                                e.stopPropagation();
-                                permissionMode.setDefault(option.id);
-                                showInfo(`${option.label} set as default permission mode`);
-                              }}
-                            >
-                              <Star className="h-3 w-3" />
-                            </button>
-                          </TooltipTrigger>
-                          <TooltipContent side="right" sideOffset={8}>Set as default</TooltipContent>
-                        </Tooltip>
-                      )}
-                    </span>
-                  </div>
-                  <span className="text-xs text-muted-foreground leading-tight">
-                    {option.description}
-                  </span>
-                </DropdownMenuItem>
-              );
-            })}
-          </DropdownMenuContent>
-        </DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            variant="ghost"
+            size="sm"
+            className={cn(
+              'h-7 gap-1.5 px-2 text-xs',
+              isPermModified && 'text-amber-500 hover:text-amber-600 bg-amber-500/10 hover:bg-amber-500/20',
+            )}
+            title={`Permissions: ${resolvedPermOption.label}`}
+            aria-label={`Permissions: ${resolvedPermOption.label}`}
+          >
+            <resolvedPermOption.icon className="h-4 w-4" />
+            <span className="font-medium">{resolvedPermOption.label}</span>
+            <ChevronDown className="h-3 w-3" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="start" className="w-72">
+          {PERMISSION_MODE_OPTIONS.map((option) => {
+            const isSelected = option.id === selectedOptionId;
+            const isDefault = option.id === 'plan'
+              ? defaultPlanMode
+              : option.id === permissionMode.defaultMode;
+            const canSetDefault = option.id !== 'plan';
+            const Icon = option.icon;
+            return (
+              <DropdownMenuItem
+                key={option.id}
+                onClick={() => handlePermissionSelect(option.id)}
+                className={cn(
+                  'group flex items-start gap-3 py-2.5',
+                  option.muted && 'text-muted-foreground',
+                )}
+              >
+                <Icon className={cn('h-4 w-4 mt-0.5 shrink-0', option.muted && 'text-muted-foreground/60')} />
+                <div className="flex flex-col gap-0.5 min-w-0">
+                  <span className={cn('font-medium text-sm', option.muted && 'text-muted-foreground')}>{option.label}</span>
+                  <span className="text-xs text-muted-foreground leading-tight">{option.description}</span>
+                </div>
+                <span className="ml-auto flex shrink-0 items-center gap-1 mt-0.5">
+                  {isSelected && <Check className="h-4 w-4 text-blue-500" />}
+                  {isDefault ? (
+                    <Star className="h-3 w-3 fill-current text-amber-500" />
+                  ) : canSetDefault ? (
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <button
+                          type="button"
+                          aria-label={`Set ${option.label} as default permission mode`}
+                          className="flex items-center justify-center rounded p-0.5 text-muted-foreground/50 opacity-0 transition-opacity group-hover:opacity-100 hover:text-foreground focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                          onPointerDown={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                          }}
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            permissionMode.setDefault(option.id as PermissionMode);
+                            showInfo(`${option.label} set as default permission mode`);
+                          }}
+                        >
+                          <Star className="h-3 w-3" />
+                        </button>
+                      </TooltipTrigger>
+                      <TooltipContent side="right" sideOffset={8}>Set as default</TooltipContent>
+                    </Tooltip>
+                  ) : null}
+                </span>
+              </DropdownMenuItem>
+            );
+          })}
+        </DropdownMenuContent>
+      </DropdownMenu>
 
       {/* Spacer */}
       <div className="flex-1" />
