@@ -32,16 +32,18 @@ describe('updateStore', () => {
   }
 
   describe('checkForUpdates', () => {
-    it('sets status to available when update found', async () => {
+    it('auto-downloads when update found', async () => {
       const { store, mockCheck } = await setup();
       const fakeUpdate = makeFakeUpdate();
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       mockCheck.mockResolvedValueOnce(fakeUpdate as any);
 
       await store.getState().checkForUpdates();
+      // Wait for the fire-and-forget downloadAndInstall to settle
+      await vi.waitFor(() => expect(store.getState().status).toBe('ready'));
 
-      expect(store.getState().status).toBe('available');
       expect(store.getState().version).toBe('2.0.0');
+      expect(fakeUpdate.downloadAndInstall).toHaveBeenCalled();
     });
 
     it('resets to idle when no update available', async () => {
