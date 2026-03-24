@@ -59,7 +59,7 @@ mod platform {
     use objc2::rc::Retained;
     use objc2::runtime::{AnyClass, AnyObject, Bool};
     use objc2::{class, msg_send};
-    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+    use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
     use std::sync::{mpsc, Arc, Mutex};
     use tauri::{AppHandle, Emitter};
 
@@ -80,11 +80,11 @@ mod platform {
         /// Shared flag set to `true` when stop is initiated. The audio tap block
         /// and restart thread check this before proceeding.
         stopped: Arc<AtomicBool>,
-        /// Shared flag set to `true` while the restart thread is swapping tasks.
-        /// The old task's result handler checks this to ignore stale callbacks
-        /// (cancellation results/errors) that would otherwise corrupt accumulated
-        /// text or kill the session.
-        restarting: Arc<AtomicBool>,
+        /// Monotonically increasing generation counter. Incremented on each task
+        /// restart. Each task closure captures its generation at creation time and
+        /// compares against the current value — stale callbacks from cancelled
+        /// old tasks are permanently suppressed with no timing window.
+        task_generation: Arc<AtomicU64>,
         /// Confirmed text accumulated from completed recognition tasks.
         accumulated_text: Arc<Mutex<String>>,
         /// Channel sender to signal the restart thread.
@@ -207,7 +207,8 @@ mod platform {
         app: &AppHandle,
         accumulated_text: Arc<Mutex<String>>,
         stopped: Arc<AtomicBool>,
-        restarting: Arc<AtomicBool>,
+        task_generation: Arc<AtomicU64>,
+        my_generation: u64,
         restart_tx: mpsc::Sender<()>,
     ) -> Result<(Retained<AnyObject>, Retained<AnyObject>), String> {
         let request = objc_new(class!(SFSpeechAudioBufferRecognitionRequest));
@@ -217,19 +218,21 @@ mod platform {
         let app_for_transcript = app.clone();
         let accumulated_for_result = Arc::clone(&accumulated_text);
         let stopped_for_result = Arc::clone(&stopped);
-        let restarting_for_result = Arc::clone(&restarting);
+        let generation_for_result = Arc::clone(&task_generation);
 
-        let result_block =
-            block2::RcBlock::new(move |result: *mut AnyObject, error: *mut AnyObject| {
+        let result_block = block2::RcBlock::new(
+            move |result: *mut AnyObject, error: *mut AnyObject| {
                 if stopped_for_result.load(Ordering::Acquire) {
                     return;
                 }
 
-                // Ignore stale callbacks from the old task during a restart swap.
-                // Without this, a cancellation callback could either corrupt
-                // accumulated_text (if result is present) or kill the session
-                // (if an unsuppressed error code triggers stop_internal).
-                if restarting_for_result.load(Ordering::Acquire) {
+                // Ignore stale callbacks from old task generations. The generation
+                // counter is incremented atomically before a new task is created,
+                // so any callback from a previous generation is permanently invalid
+                // — unlike the old boolean restarting flag, which had a timing
+                // window between clearing and re-setting. Note: the `stopped`
+                // check above still has a narrow benign race with teardown.
+                if generation_for_result.load(Ordering::Acquire) != my_generation {
                     return;
                 }
 
@@ -267,14 +270,27 @@ mod platform {
                                 },
                             );
 
+                            let acc_len = acc_guard.len();
+                            let full_len = full_text.len();
+
                             // When this task's segment is finalized (pause or timeout),
                             // save the full accumulated text and signal a task restart.
                             if is_final {
-                                *acc_guard = full_text;
+                                *acc_guard = full_text; // move, no clone needed
                                 drop(acc_guard);
-                                log::info!("Dictation segment finalized, requesting task restart");
+                                log::info!(
+                                    "Dictation segment finalized (gen={}), accumulated {} chars, requesting restart",
+                                    my_generation, full_len
+                                );
                                 let _ = restart_tx.send(());
+                            } else {
+                                drop(acc_guard);
                             }
+
+                            log::debug!(
+                                "Dictation gen={} is_final={} current_len={} acc_len={} full_len={}",
+                                my_generation, is_final, current_text.len(), acc_len, full_len
+                            );
                         }
                     }
                 }
@@ -309,7 +325,8 @@ mod platform {
 
                     stop_internal_nonblocking();
                 }
-            });
+            },
+        );
 
         let task_ptr: *mut AnyObject = msg_send![
             recognizer,
@@ -365,7 +382,7 @@ mod platform {
 
             // Shared state
             let stopped = Arc::new(AtomicBool::new(false));
-            let restarting = Arc::new(AtomicBool::new(false));
+            let task_generation = Arc::new(AtomicU64::new(0));
             let accumulated_text = Arc::new(Mutex::new(String::new()));
             let (restart_tx, restart_rx) = mpsc::channel::<()>();
 
@@ -375,7 +392,8 @@ mod platform {
                 app,
                 Arc::clone(&accumulated_text),
                 Arc::clone(&stopped),
-                Arc::clone(&restarting),
+                Arc::clone(&task_generation),
+                0, // initial generation
                 restart_tx.clone(),
             )?;
 
@@ -448,7 +466,7 @@ mod platform {
                 recognition_task: task,
                 current_request_ptr: Arc::clone(&current_request_ptr),
                 stopped: Arc::clone(&stopped),
-                restarting: Arc::clone(&restarting),
+                task_generation: Arc::clone(&task_generation),
                 accumulated_text: Arc::clone(&accumulated_text),
                 restart_tx: Some(restart_tx),
                 _old_objects: Vec::new(),
@@ -479,8 +497,11 @@ mod platform {
                         break;
                     }
 
-                    // Suppress stale callbacks from the old task while we swap.
-                    state.restarting.store(true, Ordering::Release);
+                    // Increment generation to permanently invalidate old task callbacks.
+                    // Unlike a boolean flag, this has no timing window — old closures
+                    // captured the previous generation and will never match again.
+                    let new_gen = state.task_generation.fetch_add(1, Ordering::AcqRel) + 1;
+                    log::info!("Dictation task restart, advancing to gen={}", new_gen);
 
                     // End the old task gracefully
                     let _: () = msg_send![&state.recognition_request, endAudio];
@@ -507,10 +528,7 @@ mod platform {
                     // Create a fresh recognition task
                     let restart_tx = match &state.restart_tx {
                         Some(tx) => tx.clone(),
-                        None => {
-                            state.restarting.store(false, Ordering::Release);
-                            break;
-                        }
+                        None => break,
                     };
 
                     match create_recognition_task(
@@ -518,15 +536,16 @@ mod platform {
                         &app_for_restart,
                         Arc::clone(&state.accumulated_text),
                         Arc::clone(&state.stopped),
-                        Arc::clone(&state.restarting),
+                        Arc::clone(&state.task_generation),
+                        new_gen,
                         restart_tx,
                     ) {
                         Ok((new_request, new_task)) => {
                             // Re-check stopped flag — teardown may have raced us while
                             // we held the lock during create_recognition_task.
                             if state.stopped.load(Ordering::Acquire) {
+                                let _: () = msg_send![&new_request, endAudio];
                                 let _: () = msg_send![&new_task, cancel];
-                                state.restarting.store(false, Ordering::Release);
                                 break;
                             }
                             // Swap the request pointer atomically so the tap sends
@@ -537,20 +556,17 @@ mod platform {
                             state.recognition_request = new_request;
                             state.recognition_task = new_task;
 
-                            // Allow the new task's callbacks to proceed
-                            state.restarting.store(false, Ordering::Release);
-                            log::info!("Dictation task restarted successfully");
+                            log::info!("Dictation task restarted successfully (gen={})", new_gen);
                         }
                         Err(e) => {
                             // Restore the real old objects so teardown_dictation
                             // can call endAudio/cancel on them instead of on the
                             // NSObject placeholders (which would raise an ObjC
                             // unrecognized-selector exception and crash).
-                            if let Some(old_task) = state._old_objects.pop() {
-                                if let Some(old_request) = state._old_objects.pop() {
-                                    state.recognition_request = old_request;
-                                    state.recognition_task = old_task;
-                                }
+                            // _old_objects is always [old_request, old_task] at this point
+                            if state._old_objects.len() == 2 {
+                                state.recognition_task = state._old_objects.pop().unwrap();
+                                state.recognition_request = state._old_objects.pop().unwrap();
                             }
                             log::error!("Failed to restart dictation task: {}", e);
                             let _ = app_for_restart.emit(
@@ -560,8 +576,8 @@ mod platform {
                                 },
                             );
                             // Release the lock before stopping so stop_internal can acquire it.
-                            // Keep restarting=true so stale old-task callbacks are suppressed
-                            // until teardown_dictation sets stopped=true.
+                            // Old task callbacks are already invalidated by the generation
+                            // increment above — no need for a separate flag.
                             drop(guard);
                             stop_internal_nonblocking();
                             break;

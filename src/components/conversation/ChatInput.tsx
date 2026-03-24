@@ -254,7 +254,7 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
   // editor onChange (which fires with "" during reset) is ignored, while
   // manual keystrokes during dictation still sync message state normally.
   const settingFromTranscriptRef = useRef(false);
-  const { isDictating, toggle: toggleDictation, isAvailable: dictationAvailable, audioLevel } = useDictation({
+  const { isDictating, toggle: toggleDictation, isAvailable: dictationAvailable, audioLevelRef } = useDictation({
     onTranscript: (text) => {
       if (!text) return; // Ignore empty transcripts (e.g., phantom callback during teardown)
       // Backend sends the full accumulated transcript across task restarts.
@@ -1064,7 +1064,7 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
       )}
 
       {/* Dictation waveform visualizer */}
-      <DictationWaveform audioLevel={audioLevel} isActive={isDictating} shortcutHint={dictationShortcutHint} />
+      <DictationWaveform audioLevelRef={audioLevelRef} isActive={isDictating} shortcutHint={dictationShortcutHint} />
 
       <div className={cn(
         'relative',
