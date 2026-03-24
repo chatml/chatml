@@ -288,6 +288,9 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
   const inputSuggestion = useAppStore(
     (s) => selectedConversationId ? s.inputSuggestions[selectedConversationId] : undefined
   );
+  const promptSuggestions = useAppStore(
+    (s) => selectedConversationId ? s.promptSuggestions[selectedConversationId] : undefined
+  );
 
   // File mentions for Plate editor
   const [mentionItems, setMentionItems] = useState<MentionItem[]>([]);
@@ -690,6 +693,7 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
   const handlePillClick = useCallback((pill: SuggestionPill) => {
     if (selectedConversationId) {
       clearInputSuggestion(selectedConversationId);
+      useAppStore.getState().clearPromptSuggestions(selectedConversationId);
     }
     if (autoSubmitPill) {
       sendMessage(pill.value);
@@ -1013,9 +1017,17 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
 
   return (
     <div className="pt-1 px-3 pb-3">
-      {/* Pill Suggestions */}
+      {/* Pill Suggestions (input suggestions take priority, prompt suggestions as fallback) */}
       {suggestionsEnabled && inputSuggestion?.pills && inputSuggestion.pills.length > 0 && !isStreaming && !pendingPlanApproval && !isSuggestionStale && (
         <ChatInputPillSuggestions pills={inputSuggestion.pills} onPillClick={handlePillClick} />
+      )}
+      {/* Prompt suggestions intentionally skip the isSuggestionStale age check —
+          they represent "what to ask next" and stay relevant until the next turn clears them. */}
+      {suggestionsEnabled && (!inputSuggestion?.pills || inputSuggestion.pills.length === 0) && promptSuggestions && promptSuggestions.length > 0 && !isStreaming && !pendingPlanApproval && (
+        <ChatInputPillSuggestions
+          pills={promptSuggestions.map((s) => ({ label: s.length > 60 ? s.slice(0, 57) + '...' : s, value: s }))}
+          onPillClick={handlePillClick}
+        />
       )}
 
       {/* Plan Approval Bar */}

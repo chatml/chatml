@@ -132,6 +132,12 @@ export const BATCHABLE_EVENTS = new Set([
   'permission_mode_changed', 'plan_approval_request', 'plan_mode_auto_exited',
   'streaming_warning', 'summary_updated', 'checkpoint_created', 'files_rewound',
   'ghost_text',
+  // SDK 0.2.72+ informational events
+  'prompt_suggestion', 'tool_use_summary', 'rate_limit',
+  'elicitation_request', 'elicitation_result', 'elicitation_complete',
+  'hook_started', 'hook_progress', 'worktree_created', 'worktree_removed',
+  'instructions_loaded', 'supported_agents', 'mcp_servers_updated',
+  'initialization_result', 'session_forked', 'message_cancelled',
 ]);
 
 // Content event types that should be suppressed during reconciliation.
