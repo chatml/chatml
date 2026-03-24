@@ -3,6 +3,12 @@
 //! Uses AVAudioEngine to capture microphone input and SFSpeechRecognizer
 //! for real-time on-device transcription. Events are emitted to the frontend
 //! via Tauri's event system.
+//!
+//! When the recognition task completes a segment (isFinal=true — e.g. after a
+//! pause or the ~60s Apple timeout), the backend automatically restarts the
+//! recognition task while keeping the audio engine running. Confirmed text from
+//! completed tasks is accumulated and prepended to the current task's partial
+//! results, so the frontend always receives the full accumulated transcript.
 
 use serde::Serialize;
 
@@ -53,26 +59,42 @@ mod platform {
     use objc2::rc::Retained;
     use objc2::runtime::{AnyClass, AnyObject, Bool};
     use objc2::{class, msg_send};
-    use std::sync::atomic::{AtomicBool, Ordering};
-    use std::sync::{Arc, Mutex};
+    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+    use std::sync::{mpsc, Arc, Mutex};
     use tauri::{AppHandle, Emitter};
 
     /// Holds the active dictation session state.
-    /// ObjC objects stored as raw retained pointers for cross-thread usage.
+    ///
+    /// Long-lived objects (audio_engine, recognizer) persist across task restarts.
+    /// Short-lived objects (recognition_request, recognition_task) are swapped on
+    /// each restart. The `current_request_ptr` is read atomically by the audio tap
+    /// so it always appends buffers to the current request.
     struct ActiveDictation {
         audio_engine: Retained<AnyObject>,
+        recognizer: Retained<AnyObject>,
         recognition_request: Retained<AnyObject>,
         recognition_task: Retained<AnyObject>,
+        /// Atomic pointer to the current SFSpeechAudioBufferRecognitionRequest.
+        /// The audio tap block reads this to know where to send buffers.
+        current_request_ptr: Arc<AtomicUsize>,
         /// Shared flag set to `true` when stop is initiated. The audio tap block
-        /// checks this before dereferencing the recognition request pointer,
-        /// preventing use-after-free when the session is torn down.
+        /// and restart thread check this before proceeding.
         stopped: Arc<AtomicBool>,
+        /// Confirmed text accumulated from completed recognition tasks.
+        accumulated_text: Arc<Mutex<String>>,
+        /// Channel sender to signal the restart thread.
+        /// Dropped during teardown to terminate the restart thread.
+        restart_tx: Option<mpsc::Sender<()>>,
+        /// Old request/task objects kept alive until teardown to prevent
+        /// use-after-free from in-flight audio tap calls.
+        _old_objects: Vec<Retained<AnyObject>>,
     }
 
     // SAFETY: These ObjC objects are accessed exclusively through the ACTIVE_DICTATION Mutex.
     // The only cross-thread access pattern is:
     // - `start()` creates objects on the calling thread and stores them under the Mutex.
     // - `stop_internal()` takes ownership from the Mutex and calls teardown methods.
+    // - The restart thread locks the Mutex to swap request/task objects.
     //
     // Per-type threading safety:
     // - AVAudioEngine: `stop()` and `removeTapOnBus:` are thread-safe per Apple docs.
@@ -80,6 +102,14 @@ mod platform {
     // - SFSpeechAudioBufferRecognitionRequest: `endAudio` signals completion; we call it
     //   only after the audio tap is removed and the engine is stopped, so no concurrent
     //   `appendAudioPCMBuffer:` calls can race with it.
+    //
+    // Mid-session restart safety:
+    // - During a restart, the audio tap reads the atomic `current_request_ptr` without the
+    //   Mutex. Between `endAudio`/`cancel` on the old request and the atomic store of the
+    //   new pointer, the tap may still append buffers to the old (cancelled) request.
+    //   Apple's `appendAudioPCMBuffer:` silently ignores calls after `endAudio`, so this
+    //   is safe. The `_old_objects` vec keeps old requests alive to prevent use-after-free
+    //   from any in-flight tap calls during this window.
     unsafe impl Send for ActiveDictation {}
 
     static ACTIVE_DICTATION: Mutex<Option<ActiveDictation>> = Mutex::new(None);
@@ -136,7 +166,7 @@ mod platform {
     /// must not block the main thread while waiting. We spawn a helper thread
     /// to issue the request and wait for the result via mpsc channel.
     fn request_permissions() -> DictationPermissionStatus {
-        let (tx, rx) = std::sync::mpsc::channel();
+        let (tx, rx) = mpsc::channel();
 
         // Spawn a thread to issue the request so we don't block the current
         // (potentially main) thread while the system permission dialog is shown.
@@ -160,6 +190,117 @@ mod platform {
             },
             Err(_) => DictationPermissionStatus::Unavailable,
         }
+    }
+
+    /// Create a new SFSpeechAudioBufferRecognitionRequest + recognition task.
+    ///
+    /// The result handler emits accumulated transcript events (prefix from
+    /// previous tasks + current task text) and signals the restart thread
+    /// when `isFinal=true`.
+    unsafe fn create_recognition_task(
+        recognizer: &Retained<AnyObject>,
+        app: &AppHandle,
+        accumulated_text: Arc<Mutex<String>>,
+        stopped: Arc<AtomicBool>,
+        restart_tx: mpsc::Sender<()>,
+    ) -> Result<(Retained<AnyObject>, Retained<AnyObject>), String> {
+        let request = objc_new(class!(SFSpeechAudioBufferRecognitionRequest));
+        let _: () = msg_send![&request, setShouldReportPartialResults: Bool::YES];
+        let _: () = msg_send![&request, setRequiresOnDeviceRecognition: Bool::YES];
+
+        let app_for_transcript = app.clone();
+        let accumulated_for_result = Arc::clone(&accumulated_text);
+        let stopped_for_result = Arc::clone(&stopped);
+
+        let result_block =
+            block2::RcBlock::new(move |result: *mut AnyObject, error: *mut AnyObject| {
+                if stopped_for_result.load(Ordering::Acquire) {
+                    return;
+                }
+
+                if !result.is_null() {
+                    let transcription: *mut AnyObject = msg_send![result, bestTranscription];
+                    if !transcription.is_null() {
+                        let ns_text: *mut AnyObject = msg_send![transcription, formattedString];
+                        if !ns_text.is_null() {
+                            let current_text = nsstring_to_string(ns_text);
+                            if current_text.is_empty() {
+                                return;
+                            }
+
+                            let is_final: Bool = msg_send![result, isFinal];
+                            let is_final = is_final.as_bool();
+
+                            // Build full text: accumulated prefix + current task text.
+                            // Hold the lock for the entire read-modify-write to avoid
+                            // a stale prefix if another code path ever writes between
+                            // the read and write.
+                            let mut acc_guard = accumulated_for_result
+                                .lock()
+                                .unwrap_or_else(|e| e.into_inner());
+                            let full_text = if acc_guard.is_empty() {
+                                current_text.clone()
+                            } else {
+                                format!("{} {}", *acc_guard, current_text)
+                            };
+
+                            let _ = app_for_transcript.emit(
+                                "dictation-transcript",
+                                DictationTranscript {
+                                    text: full_text.clone(),
+                                    is_final,
+                                },
+                            );
+
+                            // When this task's segment is finalized (pause or timeout),
+                            // save the full accumulated text and signal a task restart.
+                            if is_final {
+                                *acc_guard = full_text;
+                                drop(acc_guard);
+                                log::info!("Dictation segment finalized, requesting task restart");
+                                let _ = restart_tx.send(());
+                            }
+                        }
+                    }
+                }
+
+                if !error.is_null() {
+                    let desc: *mut AnyObject = msg_send![error, localizedDescription];
+                    let msg = if !desc.is_null() {
+                        nsstring_to_string(desc)
+                    } else {
+                        "Unknown dictation error".to_string()
+                    };
+
+                    // Suppress "No speech detected" during automatic task restarts —
+                    // Apple fires this when the task completes without recent speech,
+                    // which is expected during the brief restart window.
+                    // Use the NSError code (locale-stable) instead of localizedDescription
+                    // to work correctly on non-English macOS installations.
+                    // kAFAssistantErrorDomain code 209 = "no speech detected" (SFSpeechRecognizer).
+                    let error_code: isize = msg_send![error, code];
+                    if error_code == 209 || error_code == 203 || error_code == 201 {
+                        log::debug!("Suppressing speech error code {} during task lifecycle", error_code);
+                        return;
+                    }
+
+                    log::warn!("Dictation error: {}", msg);
+
+                    let _ = app_for_transcript
+                        .emit("dictation-error", DictationError { message: msg });
+
+                    stop_internal_nonblocking();
+                }
+            });
+
+        let task_ptr: *mut AnyObject = msg_send![
+            recognizer,
+            recognitionTaskWithRequest: &*request,
+            resultHandler: &*result_block
+        ];
+        let task = objc_retain(task_ptr).ok_or("Failed to create recognition task")?;
+
+        Ok((request, task))
     }
 
     /// Start a dictation session. Sets up AVAudioEngine + SFSpeechRecognizer
@@ -193,12 +334,6 @@ mod platform {
                 return Err("Speech recognizer is not available".to_string());
             }
 
-            // Create SFSpeechAudioBufferRecognitionRequest
-            let request = objc_new(class!(SFSpeechAudioBufferRecognitionRequest));
-            let _: () = msg_send![&request, setShouldReportPartialResults: Bool::YES];
-            // Enable on-device recognition (macOS 13+, ignored on older)
-            let _: () = msg_send![&request, setRequiresOnDeviceRecognition: Bool::YES];
-
             // Create AVAudioEngine
             let engine = objc_new(class!(AVAudioEngine));
 
@@ -210,18 +345,26 @@ mod platform {
             let format = objc_retain(msg_send![input_node, outputFormatForBus: 0u64])
                 .ok_or("Failed to get audio format")?;
 
-            // Clone handles for callbacks
-            let app_for_transcript = app.clone();
-            let app_for_level = app.clone();
-
-            // Shared stopped flag — the tap block checks this before dereferencing
-            // the recognition request pointer, preventing use-after-free on teardown.
+            // Shared state
             let stopped = Arc::new(AtomicBool::new(false));
-            let stopped_for_tap = Arc::clone(&stopped);
-            let stopped_for_result = Arc::clone(&stopped);
+            let accumulated_text = Arc::new(Mutex::new(String::new()));
+            let (restart_tx, restart_rx) = mpsc::channel::<()>();
 
-            // Store request ptr as usize for the tap callback (avoids Send issues)
-            let request_ptr = Retained::as_ptr(&request) as usize;
+            // Create the initial recognition task
+            let (request, task) = create_recognition_task(
+                &recognizer,
+                app,
+                Arc::clone(&accumulated_text),
+                Arc::clone(&stopped),
+                restart_tx.clone(),
+            )?;
+
+            // Atomic pointer to the current request — read by the audio tap
+            let current_request_ptr =
+                Arc::new(AtomicUsize::new(Retained::as_ptr(&request) as usize));
+            let request_ptr_for_tap = Arc::clone(&current_request_ptr);
+            let stopped_for_tap = Arc::clone(&stopped);
+            let app_for_level = app.clone();
 
             // Install tap on input node for audio capture
             let tap_block =
@@ -230,8 +373,8 @@ mod platform {
                         return;
                     }
 
-                    // Append audio buffer to recognition request
-                    let req = request_ptr as *mut AnyObject;
+                    // Append audio buffer to the current recognition request
+                    let req = request_ptr_for_tap.load(Ordering::Acquire) as *mut AnyObject;
                     let _: () = msg_send![req, appendAudioPCMBuffer: buffer];
 
                     // Compute and emit audio level
@@ -249,70 +392,17 @@ mod platform {
                 block: &*tap_block
             ];
 
-            // Create recognition task with result handler
-            let result_block =
-                block2::RcBlock::new(move |result: *mut AnyObject, error: *mut AnyObject| {
-                    // Suppress ALL callbacks during intentional teardown. Setting
-                    // stopped=true before endAudio/cancel means:
-                    //   - Genuine final-word results from endAudio are lost (acceptable).
-                    //   - Phantom empty transcripts from cancel are suppressed (the fix).
-                    if stopped_for_result.load(Ordering::Acquire) {
-                        return;
-                    }
-
-                    if !result.is_null() {
-                        let transcription: *mut AnyObject = msg_send![result, bestTranscription];
-                        if !transcription.is_null() {
-                            let ns_text: *mut AnyObject = msg_send![transcription, formattedString];
-                            if !ns_text.is_null() {
-                                let text = nsstring_to_string(ns_text);
-                                let is_final: Bool = msg_send![result, isFinal];
-
-                                let _ = app_for_transcript.emit(
-                                    "dictation-transcript",
-                                    DictationTranscript {
-                                        text,
-                                        is_final: is_final.as_bool(),
-                                    },
-                                );
-                            }
-                        }
-                    }
-
-                    if !error.is_null() {
-                        let desc: *mut AnyObject = msg_send![error, localizedDescription];
-                        let msg = if !desc.is_null() {
-                            nsstring_to_string(desc)
-                        } else {
-                            "Unknown dictation error".to_string()
-                        };
-                        log::warn!("Dictation error: {}", msg);
-
-                        let _ = app_for_transcript
-                            .emit("dictation-error", DictationError { message: msg });
-
-                        // Auto-stop on error — use non-blocking variant to avoid
-                        // deadlock if this callback fires while start() holds the Mutex.
-                        stop_internal_nonblocking();
-                    }
-                });
-
-            let task_ptr: *mut AnyObject = msg_send![
-                &recognizer,
-                recognitionTaskWithRequest: &*request,
-                resultHandler: &*result_block
-            ];
-            let task = objc_retain(task_ptr).ok_or("Failed to create recognition task")?;
-
             // Prepare and start the audio engine
             let _: () = msg_send![&engine, prepare];
 
-            // AVAudioEngine.start() throws — use startAndReturnError:
             let mut error_ptr: *mut AnyObject = std::ptr::null_mut();
             let started: Bool = msg_send![&engine, startAndReturnError: &mut error_ptr];
             if !started.as_bool() {
                 let _: () = msg_send![input_node, removeTapOnBus: 0u64];
+                let _: () = msg_send![&request, endAudio];
                 let _: () = msg_send![&task, cancel];
+                // Note: restart_rx is dropped here; the restart_tx clone inside the
+                // result handler closure will get SendError on send, which is ignored.
 
                 let error_msg = if !error_ptr.is_null() {
                     let desc: *mut AnyObject = msg_send![error_ptr, localizedDescription];
@@ -333,9 +423,110 @@ mod platform {
             let mut guard = ACTIVE_DICTATION.lock().map_err(|e| e.to_string())?;
             *guard = Some(ActiveDictation {
                 audio_engine: engine,
+                recognizer,
                 recognition_request: request,
                 recognition_task: task,
-                stopped,
+                current_request_ptr: Arc::clone(&current_request_ptr),
+                stopped: Arc::clone(&stopped),
+                accumulated_text: Arc::clone(&accumulated_text),
+                restart_tx: Some(restart_tx),
+                _old_objects: Vec::new(),
+            });
+            drop(guard);
+
+            // Spawn the restart thread — listens for isFinal signals and swaps
+            // the recognition task while keeping the audio engine running.
+            let stopped_for_restart = Arc::clone(&stopped);
+            let app_for_restart = app.clone();
+            std::thread::spawn(move || {
+                while restart_rx.recv().is_ok() {
+                    if stopped_for_restart.load(Ordering::Acquire) {
+                        break;
+                    }
+
+                    let mut guard = match ACTIVE_DICTATION.lock() {
+                        Ok(g) => g,
+                        Err(_) => break,
+                    };
+
+                    let state = match guard.as_mut() {
+                        Some(s) => s,
+                        None => break,
+                    };
+
+                    if state.stopped.load(Ordering::Acquire) {
+                        break;
+                    }
+
+                    // End the old task gracefully
+                    let _: () = msg_send![&state.recognition_request, endAudio];
+                    let _: () = msg_send![&state.recognition_task, cancel];
+
+                    // Keep old objects alive to prevent use-after-free from in-flight tap calls.
+                    // Clear previous generations first — by the time we restart again, all
+                    // in-flight appendAudioPCMBuffer calls to the n-2 request have completed
+                    // (Apple dispatches audio tap callbacks synchronously per buffer).
+                    // We only need to retain the immediately preceding request/task pair.
+                    state._old_objects.clear();
+                    // Temporarily replace with NSObject placeholders while we hold the Mutex.
+                    // teardown_dictation cannot see these placeholders because it also
+                    // requires the Mutex, which the restart thread holds throughout.
+                    let old_request = std::mem::replace(
+                        &mut state.recognition_request,
+                        objc_new(class!(NSObject)),
+                    );
+                    let old_task = std::mem::replace(
+                        &mut state.recognition_task,
+                        objc_new(class!(NSObject)),
+                    );
+                    state._old_objects.push(old_request);
+                    state._old_objects.push(old_task);
+
+                    // Create a fresh recognition task
+                    let restart_tx = match &state.restart_tx {
+                        Some(tx) => tx.clone(),
+                        None => break,
+                    };
+
+                    match create_recognition_task(
+                        &state.recognizer,
+                        &app_for_restart,
+                        Arc::clone(&state.accumulated_text),
+                        Arc::clone(&state.stopped),
+                        restart_tx,
+                    ) {
+                        Ok((new_request, new_task)) => {
+                            // Re-check stopped flag — teardown may have raced us while
+                            // we held the lock during create_recognition_task.
+                            if state.stopped.load(Ordering::Acquire) {
+                                let _: () = msg_send![&new_task, cancel];
+                                break;
+                            }
+                            // Swap the request pointer atomically so the tap sends
+                            // buffers to the new request
+                            state.current_request_ptr.store(
+                                Retained::as_ptr(&new_request) as usize,
+                                Ordering::Release,
+                            );
+                            state.recognition_request = new_request;
+                            state.recognition_task = new_task;
+                            log::info!("Dictation task restarted successfully");
+                        }
+                        Err(e) => {
+                            log::error!("Failed to restart dictation task: {}", e);
+                            let _ = app_for_restart.emit(
+                                "dictation-error",
+                                DictationError {
+                                    message: format!("Failed to restart recognition: {}", e),
+                                },
+                            );
+                            // Release the lock before stopping so stop_internal can acquire it
+                            drop(guard);
+                            stop_internal_nonblocking();
+                            break;
+                        }
+                    }
+                }
             });
         }
 
@@ -379,10 +570,12 @@ mod platform {
 
     /// Perform the actual teardown of a dictation session.
     fn teardown_dictation(state: Option<ActiveDictation>) {
-        if let Some(state) = state {
-            // Signal the tap block to stop using the recognition request pointer
-            // BEFORE we remove the tap or drop the objects.
+        if let Some(mut state) = state {
+            // Signal the tap block and restart thread to stop.
             state.stopped.store(true, Ordering::Release);
+
+            // Drop the restart channel sender so the restart thread exits its loop.
+            state.restart_tx.take();
 
             unsafe {
                 // Stop audio engine first
@@ -402,6 +595,8 @@ mod platform {
                 // Cancel recognition task
                 let _: () = msg_send![&state.recognition_task, cancel];
             }
+
+            // Old objects are dropped here when `state` goes out of scope.
         }
     }
 

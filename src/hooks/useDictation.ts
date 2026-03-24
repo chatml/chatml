@@ -26,7 +26,7 @@ interface DictationError {
 }
 
 interface UseDictationOptions {
-  onTranscript: (text: string, isFinal: boolean) => void;
+  onTranscript: (text: string) => void;
   onError?: (message: string) => void;
   onEnd?: () => void;
 }
@@ -79,7 +79,7 @@ export function useDictation(options: UseDictationOptions): UseDictationReturn {
 
     const promises = [
       safeListen<DictationTranscript>('dictation-transcript', (payload) => {
-        optionsRef.current.onTranscript(payload.text, payload.is_final);
+        optionsRef.current.onTranscript(payload.text);
       }),
       safeListen<DictationAudioLevel>('dictation-audio-level', (payload) => {
         setAudioLevel(payload.level);

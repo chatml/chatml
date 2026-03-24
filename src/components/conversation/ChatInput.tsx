@@ -28,6 +28,7 @@ import { PlateInput, type PlateInputHandle } from './PlateInput';
 import { MODELS as SHARED_MODELS, type ModelEntry, toShortDisplayName, isNewModel, isDefaultRecommended, deduplicateById, deduplicateByName, sortModelEntries } from '@/lib/models';
 import type { MentionItem } from '@/components/ui/mention-node';
 import { trackEvent } from '@/lib/telemetry';
+import { playSound } from '@/lib/sounds';
 import { listSessionFiles, type FileNodeDTO } from '@/lib/api';
 
 // Extracted modules
@@ -254,28 +255,31 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
   // manual keystrokes during dictation still sync message state normally.
   const settingFromTranscriptRef = useRef(false);
   const { isDictating, toggle: toggleDictation, isAvailable: dictationAvailable, audioLevel } = useDictation({
-    onTranscript: (text, isFinal) => {
+    onTranscript: (text) => {
       if (!text) return; // Ignore empty transcripts (e.g., phantom callback during teardown)
-      const prefix = preDictationTextRef.current;
-      const combined = prefix ? `${prefix} ${text}` : text;
+      // Backend sends the full accumulated transcript across task restarts.
+      // We only prepend text that was in the editor before dictation started.
+      const pre = preDictationTextRef.current;
+      const full = pre ? `${pre} ${text}` : text;
       settingFromTranscriptRef.current = true;
-      plateInputRef.current?.setText(combined);
-      setMessage(combined);
+      plateInputRef.current?.setText(full);
+      setMessage(full);
       settingFromTranscriptRef.current = false;
-      // When a segment finalizes (pause detected), accumulate the combined text
-      // so the next speech segment appends to it instead of replacing it.
-      if (isFinal) {
-        preDictationTextRef.current = combined;
-      }
     },
     onError: (msg) => showError(msg),
   });
 
-  // Capture existing text when dictation starts
+  // Capture existing editor text when dictation starts so it can be prepended
+  // to the transcript. Re-captured on each fresh false→true transition, so
+  // rapid toggles would pick up mid-dictation text — acceptable since the
+  // backend accumulation resets per session anyway.
   const prevDictatingRef = useRef(false);
   useEffect(() => {
     if (isDictating && !prevDictatingRef.current) {
       preDictationTextRef.current = messageRef.current;
+      playSound('ding');
+    } else if (!isDictating && prevDictatingRef.current) {
+      playSound('pop');
     }
     prevDictatingRef.current = isDictating;
   }, [isDictating]);
