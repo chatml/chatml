@@ -280,6 +280,7 @@ func (m *Manager) StartConversation(ctx context.Context, sessionID, conversation
 				SessionName:  session.Name,
 				BranchName:   session.Branch,
 				OriginBranch: originBranch,
+				SessionType:  session.SessionType,
 			},
 			Timestamp: now,
 		}

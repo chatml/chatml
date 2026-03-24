@@ -1266,6 +1266,7 @@ func TestAddMessageToConversation_WithSetupInfo(t *testing.T) {
 			BranchName:   "feature/test",
 			OriginBranch: "main",
 			FileCount:    42,
+			SessionType:  models.SessionTypeBase,
 		},
 	}
 
@@ -1280,6 +1281,7 @@ func TestAddMessageToConversation_WithSetupInfo(t *testing.T) {
 	assert.Equal(t, "feature/test", page.Messages[0].SetupInfo.BranchName)
 	assert.Equal(t, "main", page.Messages[0].SetupInfo.OriginBranch)
 	assert.Equal(t, 42, page.Messages[0].SetupInfo.FileCount)
+	assert.Equal(t, models.SessionTypeBase, page.Messages[0].SetupInfo.SessionType)
 }
 
 func TestAddMessageToConversation_WithRunSummary(t *testing.T) {
@@ -2017,6 +2019,7 @@ func TestGetConversationMessages_WithSetupInfo(t *testing.T) {
 			BranchName:   "feature/test",
 			OriginBranch: "main",
 			FileCount:    42,
+			SessionType:  models.SessionTypeWorktree,
 		},
 		Timestamp: time.Now(),
 	}
@@ -2030,6 +2033,7 @@ func TestGetConversationMessages_WithSetupInfo(t *testing.T) {
 	assert.Equal(t, "feature/test", page.Messages[0].SetupInfo.BranchName)
 	assert.Equal(t, "main", page.Messages[0].SetupInfo.OriginBranch)
 	assert.Equal(t, 42, page.Messages[0].SetupInfo.FileCount)
+	assert.Equal(t, models.SessionTypeWorktree, page.Messages[0].SetupInfo.SessionType)
 }
 
 func TestGetConversationMessages_WithRunSummary(t *testing.T) {

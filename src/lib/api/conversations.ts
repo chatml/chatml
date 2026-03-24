@@ -28,6 +28,7 @@ export interface SetupInfoDTO {
   branchName: string;
   originBranch: string;
   fileCount?: number;
+  sessionType?: 'worktree' | 'base';
 }
 
 export interface RunStatsDTO {
