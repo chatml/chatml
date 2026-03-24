@@ -48,6 +48,13 @@ export function EmptyView({
   const hasWorkspace = !!selectedWorkspaceId;
   const modKey = isMacOS() ? '⌘' : 'Ctrl+';
 
+  const greeting = useMemo(() => {
+    const hour = new Date().getHours();
+    if (hour < 12) return 'Good morning';
+    if (hour < 17) return 'Good afternoon';
+    return 'Good evening';
+  }, []);
+
   return (
     <FullContentLayout
       title="Home"
@@ -56,38 +63,34 @@ export function EmptyView({
       showLeftSidebar={showLeftSidebar}
     >
       <div className="h-full overflow-y-auto bg-content-background">
-        <div className="max-w-2xl mx-auto px-6 pt-14 pb-16 stagger-children">
-          {/* Mascot + Brand Hero */}
-          <div className="flex flex-col items-center text-center mb-10">
-            {/* Mascot with ambient glow */}
-            <div className="relative mb-6">
-              <div className="absolute inset-0 rounded-full bg-brand/15 blur-[40px] pointer-events-none" />
-              <div className="relative w-20 h-20 rounded-full ring-[2.5px] ring-brand/40 ring-offset-[3px] ring-offset-background overflow-hidden shadow-xl shadow-brand/15">
+        <div className="max-w-xl mx-auto px-6 pt-8 pb-16 stagger-children">
+          {/* Compact Hero */}
+          <div className="flex items-center gap-3 mb-8">
+            <div className="relative shrink-0">
+              <div className="absolute inset-0 rounded-full bg-brand/10 blur-xl pointer-events-none" />
+              <div className="relative w-10 h-10 rounded-full ring-1 ring-border/50 overflow-hidden">
                 <Image
                   src="/mascot.png"
                   alt="ChatML mascot"
-                  width={80}
-                  height={80}
+                  width={40}
+                  height={40}
                   className="w-full h-full object-cover"
                   priority
                 />
               </div>
             </div>
-
-            {/* Brand wordmark */}
-            <h1 className="font-mono font-bold text-2xl tracking-[-0.05em] mb-2">
-              <span className="text-foreground/60">chat</span>
-              <span className="text-brand">ml</span>
-            </h1>
-
-            {/* Contextual subtitle */}
-            <p className="text-sm text-muted-foreground">
-              What would you like to work on?
-            </p>
+            <div>
+              <h1 className="text-base font-semibold text-foreground">
+                {greeting}
+              </h1>
+              <p className="text-sm text-muted-foreground">
+                What would you like to work on?
+              </p>
+            </div>
           </div>
 
           {/* Hero Action Grid */}
-          <div className="mb-10">
+          <div className="mb-6">
             <QuickActions
               onOpenProject={onOpenProject}
               onCloneFromUrl={onCloneFromUrl}
@@ -98,7 +101,7 @@ export function EmptyView({
           </div>
 
           {/* Live Activity Strip */}
-          <div className="mb-10">
+          <div className="mb-6">
             <LiveActivityStrip
               sessions={nonArchivedSessions}
               workspaces={workspaces}
@@ -107,7 +110,7 @@ export function EmptyView({
           </div>
 
           {/* Recent Sessions */}
-          <div className="mb-10">
+          <div className="mb-8">
             <RecentSessions
               sessions={recentSessions}
               workspaces={workspaces}
@@ -116,12 +119,8 @@ export function EmptyView({
           </div>
 
           {/* Cmd+K hint */}
-          <p className="text-center text-xs text-muted-foreground/60 pt-4">
-            Press{' '}
-            <kbd className="inline-flex items-center justify-center min-w-[1.5rem] px-1.5 py-0.5 rounded bg-muted text-muted-foreground font-mono text-xs">
-              {modKey}K
-            </kbd>{' '}
-            for commands
+          <p className="text-center text-[11px] text-muted-foreground/40 pt-2">
+            {modKey}K for commands
           </p>
         </div>
       </div>

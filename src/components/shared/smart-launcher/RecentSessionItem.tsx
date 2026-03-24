@@ -31,7 +31,7 @@ export function RecentSessionItem({ session, workspace, workspaceColors }: Recen
   return (
     <button
       onClick={handleClick}
-      className="w-full rounded-xl border border-transparent px-4 py-3 hover:bg-card/60 hover:border-border/50 transition-all duration-150 text-left cursor-pointer"
+      className="w-full rounded-lg px-3 py-2.5 hover:bg-muted/40 transition-colors duration-100 text-left cursor-pointer"
     >
       {/* Row 1: primary info */}
       <div className="flex items-center gap-2.5">
@@ -79,7 +79,7 @@ export function RecentSessionItem({ session, workspace, workspaceColors }: Recen
 
       {/* Row 2: secondary info */}
       {hasSecondRow && (
-        <div className="flex items-center gap-3 mt-1.5 ml-5 text-xs text-muted-foreground">
+        <div className="flex items-center gap-3 mt-1.5 ml-[18px] text-xs text-muted-foreground">
           {/* Workspace name */}
           {workspace && (
             <span className="truncate max-w-[120px]">{workspace.name}</span>

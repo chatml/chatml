@@ -15,30 +15,30 @@ const ACTION_CARDS = [
   {
     icon: Plus,
     label: 'New session',
+    description: 'Start coding with AI',
     key: 'new-session',
     requiresWorkspace: true,
-    bgClass: 'bg-brand/10 dark:bg-brand/15',
     iconClass: 'text-brand',
   },
   {
     icon: FolderOpen,
     label: 'Open project',
+    description: 'From local folder',
     key: 'open',
-    bgClass: 'bg-emerald-500/10 dark:bg-emerald-500/15',
     iconClass: 'text-emerald-600 dark:text-emerald-400',
   },
   {
     icon: Globe,
     label: 'Clone repo',
+    description: 'From GitHub URL',
     key: 'clone',
-    bgClass: 'bg-blue-500/10 dark:bg-blue-500/15',
     iconClass: 'text-blue-600 dark:text-blue-400',
   },
   {
     icon: GitBranch,
     label: 'From PR',
+    description: 'Review a pull request',
     key: 'from-pr',
-    bgClass: 'bg-purple-500/10 dark:bg-purple-500/15',
     iconClass: 'text-purple-600 dark:text-purple-400',
   },
 ] as const;
@@ -68,8 +68,8 @@ export function QuickActions({
   };
 
   return (
-    <div className="grid grid-cols-4 gap-4">
-      {ACTION_CARDS.map(({ icon: Icon, label, key, bgClass, iconClass, ...rest }) => {
+    <div className="grid grid-cols-2 gap-2.5">
+      {ACTION_CARDS.map(({ icon: Icon, label, description, key, iconClass, ...rest }) => {
         const disabled = 'requiresWorkspace' in rest && rest.requiresWorkspace && !hasWorkspace;
         return (
           <button
@@ -77,33 +77,31 @@ export function QuickActions({
             onClick={() => !disabled && handleCardClick(key)}
             disabled={disabled}
             className={cn(
-              'group flex flex-col items-center gap-3 py-4 px-2 rounded-2xl transition-all duration-200',
+              'group flex items-center gap-3 rounded-xl border px-3.5 py-3 text-left transition-all duration-150',
+              'border-border/40 bg-card/40',
               disabled
                 ? 'opacity-40 cursor-not-allowed'
-                : 'cursor-pointer hover:bg-muted/50'
+                : 'cursor-pointer hover:bg-card/80 hover:border-border/70 hover:shadow-sm active:scale-[0.98]'
             )}
             {...(key === 'open' ? { 'data-tour-target': 'add-workspace' } : {})}
           >
-            {/* Icon container */}
-            <div
-              className={cn(
-                'w-16 h-16 rounded-2xl flex items-center justify-center transition-all duration-200',
-                bgClass,
-                !disabled && 'group-hover:scale-[1.08] group-active:scale-[0.95]'
-              )}
-            >
-              <Icon className={cn('size-8', iconClass)} />
+            <div className={cn(
+              'size-9 rounded-lg bg-muted/50 flex items-center justify-center shrink-0 transition-colors',
+              !disabled && 'group-hover:bg-muted/80'
+            )}>
+              <Icon className={cn('size-5', iconClass)} />
             </div>
-
-            {/* Label */}
-            <span
-              className={cn(
-                'text-sm font-medium text-muted-foreground transition-colors duration-200',
+            <div className="min-w-0">
+              <div className={cn(
+                'text-sm font-medium text-foreground/90 transition-colors',
                 !disabled && 'group-hover:text-foreground'
-              )}
-            >
-              {label}
-            </span>
+              )}>
+                {label}
+              </div>
+              <div className="text-xs text-muted-foreground truncate">
+                {description}
+              </div>
+            </div>
           </button>
         );
       })}

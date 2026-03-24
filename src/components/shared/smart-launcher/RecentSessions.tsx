@@ -14,14 +14,14 @@ export function RecentSessions({ sessions, workspaces, workspaceColors }: Recent
 
   return (
     <div>
-      <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">
-        Recent Sessions
+      <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
+        Recent
       </h2>
 
       {sessions.length === 0 ? (
-        <p className="text-sm text-muted-foreground">No sessions yet</p>
+        <p className="text-sm text-muted-foreground py-4 text-center">No sessions yet</p>
       ) : (
-        <div className="flex flex-col gap-1">
+        <div className="divide-y divide-border/30">
           {sessions.map((session) => (
             <RecentSessionItem
               key={session.id}
