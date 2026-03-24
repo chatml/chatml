@@ -44,7 +44,7 @@ export function LiveActivityCard({ session, workspace, workspaceColors }: LiveAc
   return (
     <button
       onClick={handleClick}
-      className="w-[200px] shrink-0 snap-start rounded-xl border border-border/50 bg-card/50 px-4 py-3 hover:border-border hover:bg-card transition-all duration-200 cursor-pointer text-left"
+      className="w-[190px] shrink-0 snap-start rounded-lg border border-border/40 bg-card/60 px-3.5 py-2.5 hover:border-border/70 hover:bg-card transition-all duration-150 cursor-pointer text-left"
     >
       {/* Row 1: workspace dot + session name */}
       <div className="flex items-center gap-2 mb-2">
