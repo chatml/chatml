@@ -126,7 +126,7 @@ export function ToolApprovalPrompt({ conversationId }: ToolApprovalPromptProps) 
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const autoDeniedRef = useRef(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const handleActionRef = useRef<(action: string) => void>(() => {});
+  const handleActionRef = useRef<(action: 'allow_once' | 'allow_session' | 'allow_always' | 'deny_once' | 'deny_always') => void>(() => {});
 
   const isBash = pending?.toolName === 'Bash';
 
