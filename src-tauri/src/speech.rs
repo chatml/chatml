@@ -220,8 +220,8 @@ mod platform {
         let stopped_for_result = Arc::clone(&stopped);
         let generation_for_result = Arc::clone(&task_generation);
 
-        let result_block =
-            block2::RcBlock::new(move |result: *mut AnyObject, error: *mut AnyObject| {
+        let result_block = block2::RcBlock::new(
+            move |result: *mut AnyObject, error: *mut AnyObject| {
                 if stopped_for_result.load(Ordering::Acquire) {
                     return;
                 }
@@ -325,7 +325,8 @@ mod platform {
 
                     stop_internal_nonblocking();
                 }
-            });
+            },
+        );
 
         let task_ptr: *mut AnyObject = msg_send![
             recognizer,
