@@ -135,7 +135,6 @@ export function ToolApprovalPrompt({ conversationId }: ToolApprovalPromptProps) 
   if (pending?.requestId !== prevRequestId) {
     setPrevRequestId(pending?.requestId);
     if (pending) {
-      autoDeniedRef.current = false;
       setSubmitting(false);
       setError(null);
       setElapsed(0);
@@ -144,6 +143,13 @@ export function ToolApprovalPrompt({ conversationId }: ToolApprovalPromptProps) 
       }
     }
   }
+
+  // Reset autoDeniedRef when request changes (refs must be updated in effects, not during render)
+  useEffect(() => {
+    if (pending) {
+      autoDeniedRef.current = false;
+    }
+  }, [pending?.requestId, pending]);
 
   // Auto-focus textarea for Bash commands
   useEffect(() => {
@@ -174,7 +180,9 @@ export function ToolApprovalPrompt({ conversationId }: ToolApprovalPromptProps) 
   }, [conversationId, pending, clearPendingToolApproval, submitting, isBash, editedCommand]);
 
   // Keep ref in sync so the interval callback always has the latest handleAction
-  handleActionRef.current = handleAction;
+  useEffect(() => {
+    handleActionRef.current = handleAction;
+  }, [handleAction]);
 
   // Progress bar timer + auto-deny on timeout
   useEffect(() => {
