@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/chatml/chatml-backend/git"
 	"github.com/stretchr/testify/require"
 )
 
@@ -31,14 +32,14 @@ func TestResolveWorktreeGitDir_WorktreeFile(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Test resolveWorktreeGitDir
-	result, err := resolveWorktreeGitDir(worktreePath)
+	// Test git.ResolveGitDir
+	result, err := git.ResolveGitDir(worktreePath)
 	if err != nil {
-		t.Fatalf("resolveWorktreeGitDir failed: %v", err)
+		t.Fatalf("git.ResolveGitDir failed: %v", err)
 	}
 
 	if result != mainRepoGitDir {
-		t.Errorf("resolveWorktreeGitDir = %q, want %q", result, mainRepoGitDir)
+		t.Errorf("git.ResolveGitDir = %q, want %q", result, mainRepoGitDir)
 	}
 }
 
@@ -53,14 +54,14 @@ func TestResolveWorktreeGitDir_RegularRepo(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Test resolveWorktreeGitDir
-	result, err := resolveWorktreeGitDir(repoPath)
+	// Test git.ResolveGitDir
+	result, err := git.ResolveGitDir(repoPath)
 	if err != nil {
-		t.Fatalf("resolveWorktreeGitDir failed: %v", err)
+		t.Fatalf("git.ResolveGitDir failed: %v", err)
 	}
 
 	if result != gitDir {
-		t.Errorf("resolveWorktreeGitDir = %q, want %q", result, gitDir)
+		t.Errorf("git.ResolveGitDir = %q, want %q", result, gitDir)
 	}
 }
 
@@ -85,15 +86,15 @@ func TestResolveWorktreeGitDir_RelativePath(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Test resolveWorktreeGitDir
-	result, err := resolveWorktreeGitDir(worktreePath)
+	// Test git.ResolveGitDir
+	result, err := git.ResolveGitDir(worktreePath)
 	if err != nil {
-		t.Fatalf("resolveWorktreeGitDir failed: %v", err)
+		t.Fatalf("git.ResolveGitDir failed: %v", err)
 	}
 
 	// Result should be absolute and cleaned
 	if result != mainRepoGitDir {
-		t.Errorf("resolveWorktreeGitDir = %q, want %q", result, mainRepoGitDir)
+		t.Errorf("git.ResolveGitDir = %q, want %q", result, mainRepoGitDir)
 	}
 }
 
@@ -457,7 +458,7 @@ func TestResolveWorktreeGitDir_InvalidFormat(t *testing.T) {
 	gitFile := filepath.Join(worktreePath, ".git")
 	require.NoError(t, os.WriteFile(gitFile, []byte("invalid format\n"), 0644))
 
-	_, err := resolveWorktreeGitDir(worktreePath)
+	_, err := git.ResolveGitDir(worktreePath)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "unexpected .git file format")
 }
@@ -469,7 +470,7 @@ func TestResolveWorktreeGitDir_MissingGitFile(t *testing.T) {
 
 	// No .git file
 
-	_, err := resolveWorktreeGitDir(worktreePath)
+	_, err := git.ResolveGitDir(worktreePath)
 	require.Error(t, err)
 }
 
