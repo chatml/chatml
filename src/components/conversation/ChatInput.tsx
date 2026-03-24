@@ -25,7 +25,7 @@ import { LinearIssuePicker } from './LinearIssuePicker';
 import { WorkspacePicker } from './WorkspacePicker';
 import type { LinearIssueDTO } from '@/lib/api';
 import { PlateInput, type PlateInputHandle } from './PlateInput';
-import { MODELS as SHARED_MODELS, type ModelEntry, toShortDisplayName, isNewModel, isDefaultRecommended, deduplicateById, deduplicateByName } from '@/lib/models';
+import { MODELS as SHARED_MODELS, type ModelEntry, toShortDisplayName, isNewModel, isDefaultRecommended, deduplicateById, deduplicateByName, sortModelEntries } from '@/lib/models';
 import type { MentionItem } from '@/components/ui/mention-node';
 import { trackEvent } from '@/lib/telemetry';
 import { listSessionFiles, type FileNodeDTO } from '@/lib/api';
@@ -135,7 +135,7 @@ function buildModelList(dynamic: ReturnType<typeof useAppStore.getState>['suppor
   // Also deduplicate by display name — SDK may report dated variants
   // (e.g. claude-sonnet-4-6 and claude-sonnet-4-6-20260301) that resolve
   // to the same friendly name.
-  return deduplicateByName(entries);
+  return sortModelEntries(deduplicateByName(entries));
 }
 
 

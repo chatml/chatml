@@ -89,6 +89,24 @@ export function deduplicateByName<T extends { name: string }>(entries: T[]): T[]
   });
 }
 
+/** Tier rank for sorting: Opus=0, Sonnet=1, Haiku=2, unknown=3 */
+function modelTierRank(id: string): number {
+  const lower = id.toLowerCase();
+  if (lower.includes('opus')) return 0;
+  if (lower.includes('sonnet')) return 1;
+  if (lower.includes('haiku')) return 2;
+  return 3;
+}
+
+/** Sort model entries by tier (Opus → Sonnet → Haiku), then by ID for stability. */
+export function sortModelEntries<T extends { id: string }>(entries: T[]): T[] {
+  return [...entries].sort((a, b) => {
+    const rankDiff = modelTierRank(a.id) - modelTierRank(b.id);
+    if (rankDiff !== 0) return rankDiff;
+    return a.id.localeCompare(b.id);
+  });
+}
+
 /** SDK model entry as reported by the agent. */
 interface SdkModelEntry {
   value: string;
