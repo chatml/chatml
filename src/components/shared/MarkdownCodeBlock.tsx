@@ -1,10 +1,8 @@
 'use client';
 
 import dynamic from 'next/dynamic';
-import React, { useState, memo } from 'react';
-import { Copy, Check } from 'lucide-react';
-import { copyToClipboard } from '@/lib/tauri';
-import { COPY_FEEDBACK_DURATION_MS } from '@/lib/constants';
+import React, { memo } from 'react';
+import { CodeBlockWithCopy } from '@/components/shared/CodeBlockWithCopy';
 
 // Dynamically import MermaidDiagram to avoid SSR issues with mermaid.js
 const MermaidDiagram = dynamic(
@@ -22,6 +20,22 @@ const MermaidDiagram = dynamic(
   }
 );
 
+// Dynamically import HtmlPreview for live HTML rendering
+const HtmlPreview = dynamic(
+  () => import('@/components/shared/HtmlPreview').then((mod) => mod.HtmlPreview),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="flex items-center justify-center p-8 rounded-lg border border-border/50 bg-muted/30">
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+          Loading preview...
+        </div>
+      </div>
+    ),
+  }
+);
+
 // Mermaid diagram type keywords
 const MERMAID_KEYWORDS = /^(graph|flowchart|sequenceDiagram|classDiagram|stateDiagram|erDiagram|journey|gantt|pie|quadrantChart|requirementDiagram|gitGraph|mindmap|timeline|xychart|block-beta)\b/i;
 
@@ -30,34 +44,9 @@ function isMermaidCode(code: string, language?: string): boolean {
   return MERMAID_KEYWORDS.test(code.trim());
 }
 
-// Wrapper component with hover copy button
-function CodeBlockWithCopy({ children, code, ...rest }: React.HTMLAttributes<HTMLPreElement> & { code: string }) {
-  const [copied, setCopied] = useState(false);
-
-  const handleCopy = async () => {
-    const success = await copyToClipboard(code);
-    if (success) {
-      setCopied(true);
-      setTimeout(() => setCopied(false), COPY_FEEDBACK_DURATION_MS);
-    }
-  };
-
-  return (
-    <div className="relative group">
-      <pre {...rest}>{children}</pre>
-      <button
-        onClick={handleCopy}
-        className="absolute top-2 right-2 p-1.5 rounded-md bg-background/80 border border-border/50 opacity-0 group-hover:opacity-100 transition-opacity duration-200 hover:bg-surface-2"
-        title={copied ? 'Copied!' : 'Copy code'}
-      >
-        {copied ? (
-          <Check className="w-4 h-4 text-text-success" />
-        ) : (
-          <Copy className="w-4 h-4 text-muted-foreground" />
-        )}
-      </button>
-    </div>
-  );
+function isRenderableHtml(code: string): boolean {
+  const trimmed = code.trim();
+  return trimmed.startsWith('<') && trimmed.length > 20;
 }
 
 // Handle <pre> elements - this wraps code blocks
@@ -73,6 +62,10 @@ export const MarkdownPre = memo(function MarkdownPre(props: React.HTMLAttributes
       const className = childProps?.className || '';
       const language = className.replace('language-', '');
       const code = String(childProps?.children || '').replace(/\n$/, '');
+
+      if (language === 'html' && isRenderableHtml(code)) {
+        return <HtmlPreview code={code} />;
+      }
 
       if (isMermaidCode(code, language)) {
         return <MermaidDiagram code={code} />;
