@@ -845,6 +845,7 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onGitHubRepos,
                             <SortableWorkspaceItem
                               key={ws.id}
                               workspace={ws}
+                              baseSessions={group.baseSessions}
                               sessions={group.sessions}
                               isExpanded={isWorkspaceExpanded(ws.id)}
                               selectedSessionId={selectedSessionId}
@@ -1148,6 +1149,7 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onGitHubRepos,
 
 interface SortableWorkspaceItemProps {
   workspace: Workspace;
+  baseSessions?: WorktreeSession[];
   sessions: WorktreeSession[];
   isExpanded: boolean;
   selectedSessionId: string | null;
@@ -1168,6 +1170,7 @@ interface SortableWorkspaceItemProps {
 
 function SortableWorkspaceItem({
   workspace,
+  baseSessions,
   sessions,
   isExpanded,
   selectedSessionId,
@@ -1341,8 +1344,31 @@ function SortableWorkspaceItem({
         {/* Sessions */}
         <CollapsibleContent>
           <div className="ml-3 overflow-hidden">
-            {/* Sessions */}
-            {sessions.length === 0 ? (
+            {/* Base sessions first */}
+            {baseSessions?.map((session) => (
+              <ErrorBoundary
+                key={session.id}
+                section="SessionRow"
+                fallback={<CardErrorFallback message="Error loading session" />}
+              >
+                <SessionRow
+                  session={session}
+                  contentView={contentView}
+                  selectedSessionId={selectedSessionId}
+                  onSelectSession={onSelectSession}
+                  onArchiveSession={onArchiveSession}
+                  onTaskStatusChange={onTaskStatusChange}
+                  onOpenBranches={onOpenBranches}
+                  onOpenPRs={onOpenPRs}
+                  formatTimeAgo={formatTimeAgo}
+                />
+              </ErrorBoundary>
+            ))}
+            {baseSessions && baseSessions.length > 0 && sessions.length > 0 && (
+              <div className="my-1 mx-2 border-t border-border/40" />
+            )}
+            {/* Worktree sessions */}
+            {sessions.length === 0 && (!baseSessions || baseSessions.length === 0) ? (
               <div className="py-2 px-2 text-sm text-muted-foreground/70">
                 No active sessions
               </div>
@@ -1931,12 +1957,37 @@ function SortableProjectStatusItem({
 
             <CollapsibleContent>
               <div className="ml-3 overflow-hidden">
-                {(!group.subGroups || group.subGroups.length === 0) ? (
+                {/* Base sessions first */}
+                {group.baseSessions?.map((session) => (
+                  <ErrorBoundary
+                    key={session.id}
+                    section="SessionRow"
+                    fallback={<CardErrorFallback message="Error loading session" />}
+                  >
+                    <SessionRow
+                      session={session}
+                      contentView={contentView}
+                      selectedSessionId={selectedSessionId}
+                      onSelectSession={onSelectSession}
+                      onArchiveSession={onArchiveSession}
+                      onTaskStatusChange={onTaskStatusChange}
+                      onOpenBranches={onOpenBranches}
+                      onOpenPRs={onOpenPRs}
+                      formatTimeAgo={formatTimeAgo}
+                    />
+                  </ErrorBoundary>
+                ))}
+                {group.baseSessions && group.baseSessions.length > 0 &&
+                  group.subGroups && group.subGroups.length > 0 && (
+                  <div className="my-1 mx-2 border-t border-border/40" />
+                )}
+                {(!group.subGroups || group.subGroups.length === 0) &&
+                 (!group.baseSessions || group.baseSessions.length === 0) ? (
                   <div className="py-2 px-2 text-sm text-muted-foreground/70">
                     No active sessions
                   </div>
                 ) : (
-                  group.subGroups.map((subGroup) => (
+                  group.subGroups?.map((subGroup) => (
                     <Collapsible
                       key={subGroup.key}
                       open={isSubGroupExpanded(subGroup.key, subGroup.defaultCollapsed)}
