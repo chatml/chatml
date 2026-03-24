@@ -426,11 +426,17 @@ export async function approveTool(
   requestId: string,
   action: 'allow_once' | 'allow_session' | 'allow_always' | 'deny_once' | 'deny_always',
   specifier?: string,
+  updatedInput?: Record<string, unknown>,
 ): Promise<void> {
   const res = await fetchWithAuth(`${getApiBase()}/api/conversations/${convId}/approve-tool`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ requestId, action, ...(specifier && { specifier }) }),
+    body: JSON.stringify({
+      requestId,
+      action,
+      ...(specifier && { specifier }),
+      ...(updatedInput && { updatedInput }),
+    }),
   });
   if (!res.ok) {
     const text = await res.text();

@@ -120,9 +120,10 @@ type InputMessage struct {
 	// Sprint phase response fields (for update_sprint_phase tool)
 	Approved *bool `json:"approved,omitempty"`
 	// Tool approval response fields (for non-bypass permission modes)
-	ToolApprovalRequestID string `json:"toolApprovalRequestId,omitempty"`
-	ToolApprovalAction    string `json:"toolApprovalAction,omitempty"`
-	ToolApprovalSpecifier string `json:"toolApprovalSpecifier,omitempty"`
+	ToolApprovalRequestID    string          `json:"toolApprovalRequestId,omitempty"`
+	ToolApprovalAction       string          `json:"toolApprovalAction,omitempty"`
+	ToolApprovalSpecifier    string          `json:"toolApprovalSpecifier,omitempty"`
+	ToolApprovalUpdatedInput json.RawMessage `json:"toolApprovalUpdatedInput,omitempty"`
 }
 
 // findAgentRunner locates the agent-runner executable
@@ -719,12 +720,14 @@ func (p *Process) SendSprintPhaseResponse(requestId string, approved bool) error
 
 // SendToolApprovalResponse sends the user's approval/denial decision for a tool execution request.
 // Used in non-bypass permission modes (default, acceptEdits) when a tool needs user approval.
-func (p *Process) SendToolApprovalResponse(requestId, action, specifier string) error {
+// updatedInput optionally carries user-edited tool input (e.g. modified Bash command).
+func (p *Process) SendToolApprovalResponse(requestId, action, specifier string, updatedInput json.RawMessage) error {
 	return p.sendInput(InputMessage{
-		Type:                  "tool_approval_response",
-		ToolApprovalRequestID: requestId,
-		ToolApprovalAction:    action,
-		ToolApprovalSpecifier: specifier,
+		Type:                     "tool_approval_response",
+		ToolApprovalRequestID:    requestId,
+		ToolApprovalAction:       action,
+		ToolApprovalSpecifier:    specifier,
+		ToolApprovalUpdatedInput: updatedInput,
 	})
 }
 

@@ -285,6 +285,7 @@ interface InputMessage {
   toolApprovalRequestId?: string;
   toolApprovalAction?: string;
   toolApprovalSpecifier?: string;
+  toolApprovalUpdatedInput?: Record<string, unknown>;
   // Max thinking tokens override
   maxThinkingTokens?: number;
   // MCP server management fields (SDK v0.2.21+)
@@ -450,6 +451,7 @@ const TOOL_APPROVAL_TIMEOUT_MS = 60_000; // 60 seconds — matches SDK's canUseT
 interface ToolApprovalResult {
   action: "allow_once" | "allow_session" | "allow_always" | "deny_once" | "deny_always";
   specifier?: string;
+  updatedInput?: Record<string, unknown>;
 }
 interface PendingToolApprovalRequest {
   resolve: (result: ToolApprovalResult) => void;
@@ -867,6 +869,7 @@ function setupInputQueue(): void {
           pending.resolve({
             action: (input.toolApprovalAction || "deny_once") as ToolApprovalResult["action"],
             specifier: input.toolApprovalSpecifier,
+            updatedInput: input.toolApprovalUpdatedInput,
           });
         } else {
           emit({
@@ -1974,7 +1977,8 @@ const canUseTool: CanUseTool = async (toolName, toolInput, _options) => {
     }
 
     // allow_once, allow_session, allow_always all result in allow
-    return { behavior: "allow", updatedInput: toolInput };
+    const edited = result.updatedInput && typeof result.updatedInput === 'object' ? result.updatedInput : undefined;
+    return { behavior: "allow", updatedInput: edited ?? toolInput };
   } catch {
     // Timeout or cancellation — deny
     return { behavior: "deny", message: "Tool approval timed out or was cancelled" };

@@ -37,7 +37,7 @@ import { useChatInputAttachments } from './useChatInputAttachments';
 import { useChatInputKeyboardShortcuts } from './useChatInputKeyboardShortcuts';
 import { ChatInputPillSuggestions } from './ChatInputPillSuggestions';
 import { ChatInputPlanApproval } from './ChatInputPlanApproval';
-import { ToolApprovalBanner } from './ToolApprovalBanner';
+import { ToolApprovalPrompt } from './ToolApprovalPrompt';
 import { ChatInputToolbar, type PermissionMode } from './ChatInputToolbar';
 import { DictationWaveform } from './DictationWaveform';
 import { useDictation } from '@/hooks/useDictation';
@@ -1032,6 +1032,14 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
     return <SprintPhaseProposalPrompt conversationId={selectedConversationId} />;
   }
 
+  // If there's a pending tool approval, replace the entire composer with the approval UI.
+  // This takes priority over plan approval (which renders inline in the fall-through composer).
+  // In practice, tool approval and plan approval cannot be pending simultaneously: the agent
+  // is blocked waiting for the tool approval before it can emit further plan content.
+  if (pendingToolApproval && selectedConversationId) {
+    return <ToolApprovalPrompt conversationId={selectedConversationId} />;
+  }
+
   return (
     <div className="pt-1 px-3 pb-3">
       {/* Pill Suggestions (input suggestions take priority, prompt suggestions as fallback) */}
@@ -1057,11 +1065,6 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
           onHandOff={handleHandOff}
           onApprovePlan={handleApprovePlan}
         />
-      )}
-
-      {/* Tool Approval Banner */}
-      {pendingToolApproval && selectedConversationId && !pendingPlanApproval && (
-        <ToolApprovalBanner conversationId={selectedConversationId} />
       )}
 
       {/* Dictation waveform visualizer */}
