@@ -12,6 +12,7 @@ export interface SidebarGroup {
   workspaceId?: string;
   statusValue?: SessionTaskStatus;
   color?: string;
+  baseSessions?: WorktreeSession[];
   sessions: WorktreeSession[];
   subGroups?: SidebarGroup[];
 }
@@ -176,6 +177,8 @@ export function useSidebarSessions({
         const wsSessions = byWorkspace.get(ws.id) ?? [];
         if (wsSessions.length === 0 && filters.searchTerm) continue;
         const color = workspaceColors[ws.id] || getDefaultColor(ws.id);
+        const base = wsSessions.filter(s => s.sessionType === 'base');
+        const regular = wsSessions.filter(s => s.sessionType !== 'base');
         groups.push({
           key: `project:${ws.id}`,
           label: ws.name,
@@ -184,7 +187,8 @@ export function useSidebarSessions({
           defaultCollapsed: false,
           workspaceId: ws.id,
           color,
-          sessions: sortSessions(wsSessions, sortBy),
+          baseSessions: base,
+          sessions: sortSessions(regular, sortBy),
         });
       }
       return { groups, flatSessions: [], pinnedSessions: [] };
@@ -197,7 +201,9 @@ export function useSidebarSessions({
         const wsSessions = byWorkspace.get(ws.id) ?? [];
         if (wsSessions.length === 0 && filters.searchTerm) continue;
         const color = workspaceColors[ws.id] || getDefaultColor(ws.id);
-        const subGroups = buildStatusGroups(wsSessions, sortBy, `project:${ws.id}`);
+        const base = wsSessions.filter(s => s.sessionType === 'base');
+        const regular = wsSessions.filter(s => s.sessionType !== 'base');
+        const subGroups = buildStatusGroups(regular, sortBy, `project:${ws.id}`);
         groups.push({
           key: `project:${ws.id}`,
           label: ws.name,
@@ -206,6 +212,7 @@ export function useSidebarSessions({
           defaultCollapsed: false,
           workspaceId: ws.id,
           color,
+          baseSessions: base,
           sessions: [], // sessions are in subGroups
           subGroups,
         });
