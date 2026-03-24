@@ -56,33 +56,6 @@ export function BaseSessionCard({
     true,
   );
 
-  // Build status chips
-  const statusChips: { text: string; color: string }[] = [];
-  if (gitStatus) {
-    if (gitStatus.workingDirectory.hasChanges) {
-      const count = gitStatus.workingDirectory.totalUncommitted;
-      statusChips.push({
-        text: `${count} uncommitted`,
-        color: 'text-amber-500',
-      });
-    } else {
-      statusChips.push({ text: 'Clean', color: 'text-text-success' });
-    }
-
-    if (gitStatus.sync.aheadBy > 0) {
-      statusChips.push({
-        text: `${gitStatus.sync.aheadBy}\u2191`,
-        color: 'text-muted-foreground',
-      });
-    }
-    if (gitStatus.sync.behindBy > 0) {
-      statusChips.push({
-        text: `${gitStatus.sync.behindBy}\u2193`,
-        color: 'text-muted-foreground',
-      });
-    }
-  }
-
   // Activity icon overlay
   const activityIcon =
     activityState === 'working' ? (
@@ -134,31 +107,6 @@ export function BaseSessionCard({
                 </span>
               </div>
 
-              {/* Row 2: Git status chips */}
-              <div className="flex items-center gap-1 pl-[22px] text-xs text-muted-foreground">
-                {loading ? (
-                  <div className="w-24 h-3 rounded bg-muted animate-pulse" />
-                ) : (
-                  <>
-                    {statusChips.map((chip, i) => (
-                      <span key={i} className="flex items-center gap-1">
-                        {i > 0 && <span className="text-muted-foreground/40">&middot;</span>}
-                        <span className={chip.color}>{chip.text}</span>
-                      </span>
-                    ))}
-                    {statusChips.length > 0 && (
-                      <span className="text-muted-foreground/40">&middot;</span>
-                    )}
-                    <span className="shrink-0">
-                      {formatTimeAgo(
-                        lastAgentCompletedAt !== undefined && lastAgentCompletedAt > new Date(session.updatedAt).getTime()
-                          ? new Date(lastAgentCompletedAt).toISOString()
-                          : session.updatedAt
-                      )}
-                    </span>
-                  </>
-                )}
-              </div>
             </div>
           </HoverCardTrigger>
           <HoverCardContent side="right" align="start" sideOffset={8} className="w-72 p-0">
@@ -166,6 +114,7 @@ export function BaseSessionCard({
               session={session}
               formatTimeAgo={formatTimeAgo}
               lastAgentCompletedAt={lastAgentCompletedAt}
+              gitStatus={{ data: gitStatus, loading }}
               onCreatePR={() => {
                 setHoverOpen(false);
                 onSelectSession(session.id);
