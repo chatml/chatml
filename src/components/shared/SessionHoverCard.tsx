@@ -6,12 +6,14 @@ import { TaskStatusIcon } from '@/components/icons/TaskStatusIcon';
 import { getTaskStatusOption, getPRStatusInfo } from '@/lib/session-fields';
 import { PRNumberBadge } from '@/components/shared/PRNumberBadge';
 import type { WorktreeSession } from '@/lib/types';
+import type { GitStatusDTO } from '@/lib/api';
 
 interface SessionHoverCardBodyProps {
   session: WorktreeSession;
   formatTimeAgo: (date: string) => string;
   lastAgentCompletedAt?: number;
   onCreatePR?: () => void;
+  gitStatus?: { data: GitStatusDTO | null; loading: boolean };
 }
 
 export function SessionHoverCardBody({
@@ -19,6 +21,7 @@ export function SessionHoverCardBody({
   formatTimeAgo,
   lastAgentCompletedAt,
   onCreatePR,
+  gitStatus,
 }: SessionHoverCardBodyProps) {
   const hasStats = session.stats && (session.stats.additions > 0 || session.stats.deletions > 0);
   const hasPR = session.prStatus && session.prStatus !== 'none';
@@ -43,8 +46,35 @@ export function SessionHoverCardBody({
       </div>
 
       {/* Meta row: status + time */}
-      <div className="flex items-center gap-1.5 px-3 pb-2 text-xs text-muted-foreground">
-        {session.sessionType !== 'base' && (
+      <div className="flex items-center gap-1.5 px-3 pb-2 text-xs text-muted-foreground flex-wrap">
+        {session.sessionType === 'base' ? (
+          <>
+            {gitStatus?.loading ? (
+              <div className="w-20 h-3 rounded bg-muted animate-pulse" />
+            ) : gitStatus?.data ? (
+              <>
+                {gitStatus.data.workingDirectory.hasChanges ? (
+                  <span className="text-amber-500">{gitStatus.data.workingDirectory.totalUncommitted} uncommitted</span>
+                ) : (
+                  <span className="text-text-success">Clean</span>
+                )}
+                {gitStatus.data.sync.aheadBy > 0 && (
+                  <>
+                    <span className="text-muted-foreground/40">&middot;</span>
+                    <span>{gitStatus.data.sync.aheadBy}&uarr;</span>
+                  </>
+                )}
+                {gitStatus.data.sync.behindBy > 0 && (
+                  <>
+                    <span className="text-muted-foreground/40">&middot;</span>
+                    <span>{gitStatus.data.sync.behindBy}&darr;</span>
+                  </>
+                )}
+                <span className="text-muted-foreground/40">&middot;</span>
+              </>
+            ) : null}
+          </>
+        ) : (
           <>
             <TaskStatusIcon status={session.taskStatus} className="h-3 w-3 shrink-0" />
             <span className="shrink-0">{statusOption.label}</span>
