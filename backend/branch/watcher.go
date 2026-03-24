@@ -90,16 +90,41 @@ func (w *Watcher) WatchSession(sessionID, worktreePath, currentBranch string) er
 		return fmt.Errorf("failed to watch gitdir %s: %w", gitDir, err)
 	}
 
+	// If the stored branch looks like a stale detached-HEAD artifact,
+	// re-read the actual branch from HEAD. This self-heals sessions that
+	// had their branch corrupted by a transient detached state (e.g., rebase).
+	initialBranch := currentBranch
+	if strings.Contains(currentBranch, "(detached)") || currentBranch == "HEAD" {
+		if actual, err := readCurrentBranch(headPath); err == nil && actual != "" {
+			initialBranch = actual
+		}
+	}
+
 	w.sessions[sessionID] = &WatchEntry{
 		SessionID:    sessionID,
 		WorktreePath: worktreePath,
 		GitDir:       gitDir,
 		HeadPath:     headPath,
 		IndexPath:    filepath.Join(gitDir, "index"),
-		LastBranch:   currentBranch,
+		LastBranch:   initialBranch,
 	}
 
 	logger.BranchWatcher.Infof("Started watching session %s at %s", sessionID, headPath)
+
+	// Emit a correction event if we healed a stale detached branch
+	if initialBranch != currentBranch && initialBranch != "" {
+		onChange := w.onChange
+		w.mu.Unlock()
+		if onChange != nil {
+			onChange(BranchChangeEvent{
+				SessionID: sessionID,
+				OldBranch: currentBranch,
+				NewBranch: initialBranch,
+			})
+		}
+		w.mu.Lock()
+	}
+
 	return nil
 }
 
@@ -287,10 +312,8 @@ func readCurrentBranch(headPath string) (string, error) {
 		return strings.TrimPrefix(content, "ref: refs/heads/"), nil
 	}
 
-	// Detached HEAD state - return the commit SHA (first 8 chars)
-	if len(content) >= 8 {
-		return content[:8] + " (detached)", nil
-	}
-
-	return content, nil
+	// Detached HEAD state — return empty string so the watcher skips
+	// the event. Transient detached states (e.g., during rebase) should
+	// not overwrite the session's branch name.
+	return "", nil
 }

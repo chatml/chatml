@@ -132,9 +132,9 @@ func TestReadCurrentBranch_DetachedHead(t *testing.T) {
 		t.Fatalf("readCurrentBranch failed: %v", err)
 	}
 
-	expected := "abc123de (detached)"
-	if branch != expected {
-		t.Errorf("readCurrentBranch = %q, want %q", branch, expected)
+	// Detached HEAD should return empty string so watcher skips the event
+	if branch != "" {
+		t.Errorf("readCurrentBranch = %q, want empty string for detached HEAD", branch)
 	}
 }
 
@@ -483,7 +483,8 @@ func TestReadCurrentBranch_ShortSHA(t *testing.T) {
 
 	branch, err := readCurrentBranch(headPath)
 	require.NoError(t, err)
-	require.Equal(t, "abc123", branch)
+	// Short SHA is still a detached HEAD — should return empty string
+	require.Equal(t, "", branch)
 }
 
 func TestReadCurrentBranch_FileNotFound(t *testing.T) {
