@@ -134,6 +134,28 @@ func (h *Handlers) ReportPRCreated(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusAccepted)
 }
 
+// UnlinkPR clears all PR data from a session. Used when the user manually
+// unlinks a PR via the UI or the agent calls the clear_pr_link MCP tool.
+func (h *Handlers) UnlinkPR(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	sessionID := chi.URLParam(r, "sessionId")
+
+	if h.prWatcher == nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		return
+	}
+
+	// Verify session exists (consistent with ReportPRCreated)
+	session, err := h.store.GetSession(ctx, sessionID)
+	if err != nil || session == nil {
+		writeNotFound(w, "session")
+		return
+	}
+
+	h.prWatcher.UnlinkPR(sessionID)
+	w.WriteHeader(http.StatusAccepted)
+}
+
 // ReportPRMerged is called by the MCP tool when an agent merges a PR.
 // Triggers a force-check to verify the merge against GitHub.
 func (h *Handlers) ReportPRMerged(w http.ResponseWriter, r *http.Request) {

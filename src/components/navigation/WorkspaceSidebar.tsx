@@ -21,7 +21,7 @@ import { useAppStore } from '@/stores/appStore';
 import { navigate, navigateOrOpenTab } from '@/lib/navigation';
 import { useSettingsStore, getBranchPrefix, getWorkspaceBranchPrefix, type ContentView, type SidebarSortBy } from '@/stores/settingsStore';
 import { useSidebarSessions, isSidebarGroupExpanded, type SidebarGroup } from '@/hooks/useSidebarSessions';
-import { createSession as createSessionApi, listConversations as listConversationsApi, updateSession as updateSessionApi, deleteRepo as deleteRepoApi, addRepo as addRepoApi, mapSessionDTO, refreshPRStatus } from '@/lib/api';
+import { createSession as createSessionApi, listConversations as listConversationsApi, updateSession as updateSessionApi, deleteRepo as deleteRepoApi, addRepo as addRepoApi, mapSessionDTO, refreshPRStatus, unlinkPR } from '@/lib/api';
 import { registerSession, getSessionDirName } from '@/lib/tauri';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -82,6 +82,7 @@ import {
   ClipboardCheck,
   Link,
   FolderGit2,
+  Unlink,
 } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
@@ -1446,6 +1447,7 @@ function SessionRow({
 
   const prStatusInfo = getPRStatusInfo(session);
   const [hoverOpen, setHoverOpen] = useState(false);
+  const { showSuccess: showRowSuccess, showWarning: showRowWarning } = useToast();
 
   return (
     <ContextMenu onOpenChange={(open) => { if (open) setHoverOpen(false); }}>
@@ -1650,6 +1652,19 @@ function SessionRow({
           <ContextMenuItem onClick={() => onOpenPRs()}>
             <GitPullRequest className="h-4 w-4" />
             Pull Requests
+          </ContextMenuItem>
+        )}
+        {!!session.prNumber && (
+          <ContextMenuItem onClick={async () => {
+            try {
+              await unlinkPR(session.workspaceId, session.id);
+              showRowSuccess('Pull request unlinked');
+            } catch {
+              showRowWarning('Failed to unlink pull request');
+            }
+          }}>
+            <Unlink className="h-4 w-4" />
+            Unlink Pull Request
           </ContextMenuItem>
         )}
         {(onOpenBranches || onOpenPRs) && session.sessionType !== 'base' && <ContextMenuSeparator />}

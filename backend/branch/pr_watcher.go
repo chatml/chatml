@@ -21,8 +21,9 @@ type PRWatchEntry struct {
 	PRUrl       string
 	PRTitle     string
 	CheckStatus string
-	Mergeable   *bool
-	LastChecked time.Time
+	Mergeable      *bool
+	LastChecked    time.Time
+	SuppressUntil  time.Time // Suppress PR re-detection until this time (set by UnlinkPR)
 }
 
 // PRChangeEvent is emitted when a session's PR status changes
@@ -209,15 +210,17 @@ func (w *PRWatcher) ForceCheckSession(sessionID string) {
 		return
 	}
 
-	w.mu.RLock()
+	// Clear any suppression so force-check always works (e.g. "Check for Pull Request" after unlink)
+	w.mu.Lock()
 	entry, exists := w.sessions[sessionID]
 	if !exists {
-		w.mu.RUnlock()
+		w.mu.Unlock()
 		return
 	}
+	entry.SuppressUntil = time.Time{}
 	repoPath := entry.RepoPath
 	branch := entry.Branch
-	w.mu.RUnlock()
+	w.mu.Unlock()
 
 	logger.PRWatcher.Infof("Force-checking PR status for session %s (branch: %s)", sessionID, branch)
 
@@ -233,6 +236,62 @@ func (w *PRWatcher) ForceCheckSession(sessionID string) {
 	w.checkSessionsWithoutPR()
 	// Also check sessions with PR in case this was an update
 	w.checkSessionsWithPR()
+}
+
+// UnlinkPR clears all PR data from a session and suppresses re-detection for 5 minutes.
+// Used when the user manually unlinks a PR from the session. The suppression prevents the
+// PR watcher from re-detecting and re-linking the same PR on its next poll cycle.
+// "Check for Pull Request" (ForceCheckSession) clears the suppression.
+func (w *PRWatcher) UnlinkPR(sessionID string) {
+	// Ensure the session is in the watch map so suppression is always set,
+	// even if the watcher hasn't registered this session yet.
+	w.ensureSessionWatched(sessionID, "UnlinkPR")
+
+	w.mu.Lock()
+	entry, exists := w.sessions[sessionID]
+	if exists {
+		entry.PRStatus = models.PRStatusNone
+		entry.PRNumber = 0
+		entry.PRUrl = ""
+		entry.PRTitle = ""
+		entry.CheckStatus = ""
+		entry.Mergeable = nil
+		entry.SuppressUntil = time.Now().Add(5 * time.Minute)
+		logger.PRWatcher.Infof("Unlinked PR from session %s, suppressed re-detection for 5 minutes", sessionID)
+	}
+	w.mu.Unlock()
+
+	// Update database (best-effort — emit WebSocket event regardless so UI stays in sync)
+	if w.store != nil {
+		if err := w.store.UpdateSession(w.ctx, sessionID, func(sess *models.Session) {
+			sess.PRStatus = models.PRStatusNone
+			sess.PRNumber = 0
+			sess.PRUrl = ""
+			sess.PRTitle = ""
+			sess.HasMergeConflict = false
+			sess.HasCheckFailures = false
+			sess.CheckStatus = ""
+			sess.UpdatedAt = time.Now()
+			// Revert taskStatus: in_review → in_progress (only this transition)
+			if sess.TaskStatus == models.TaskStatusInReview {
+				sess.TaskStatus = models.TaskStatusInProgress
+			}
+		}); err != nil {
+			logger.PRWatcher.Errorf("Failed to unlink PR from session %s in DB: %v", sessionID, err)
+		}
+	}
+
+	// Emit change event for immediate WebSocket broadcast
+	if w.onChange != nil {
+		w.onChange(PRChangeEvent{
+			SessionID:   sessionID,
+			PRStatus:    models.PRStatusNone,
+			PRNumber:    0,
+			PRUrl:       "",
+			PRTitle:     "",
+			CheckStatus: "",
+		})
+	}
 }
 
 // RegisterPRFromAgent is called when the agent creates a PR via bash (gh pr create).
@@ -632,6 +691,16 @@ func (w *PRWatcher) checkRepoSessions(repoSessions map[repoKey][]*PRWatchEntry, 
 
 // checkSessionPR checks and updates PR status for a single session
 func (w *PRWatcher) checkSessionPR(owner, repo string, entry *PRWatchEntry, branchToPR map[string]*github.PRListItem) {
+	// Skip sessions with active suppression (set by UnlinkPR to prevent re-detection).
+	// Read SuppressUntil under RLock since UnlinkPR/ForceCheckSession write it under Lock.
+	w.mu.RLock()
+	suppressUntil := entry.SuppressUntil
+	w.mu.RUnlock()
+	if !suppressUntil.IsZero() && time.Now().Before(suppressUntil) {
+		logger.PRWatcher.Debugf("checkSessionPR session=%s: suppressed until %s, skipping", entry.SessionID, suppressUntil.Format(time.RFC3339))
+		return
+	}
+
 	pr, hasPR := branchToPR[entry.Branch]
 
 	if !hasPR && (entry.PRStatus == "" || entry.PRStatus == models.PRStatusNone) {
