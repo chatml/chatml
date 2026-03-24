@@ -808,9 +808,10 @@ func (h *Handlers) ApprovePlan(w http.ResponseWriter, r *http.Request) {
 
 // ToolApprovalRequest represents user approval/denial of a tool execution request
 type ToolApprovalRequest struct {
-	RequestID string `json:"requestId"`
-	Action    string `json:"action"`              // allow_once, allow_session, allow_always, deny_once, deny_always
-	Specifier string `json:"specifier,omitempty"` // Tool-specific specifier (e.g., "npm run *")
+	RequestID    string          `json:"requestId"`
+	Action       string          `json:"action"`                 // allow_once, allow_session, allow_always, deny_once, deny_always
+	Specifier    string          `json:"specifier,omitempty"`    // Tool-specific specifier (e.g., "npm run *")
+	UpdatedInput json.RawMessage `json:"updatedInput,omitempty"` // User-edited tool input (e.g., modified Bash command)
 }
 
 func (h *Handlers) ApproveTool(w http.ResponseWriter, r *http.Request) {
@@ -836,6 +837,11 @@ func (h *Handlers) ApproveTool(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// updatedInput is only meaningful for allow actions — clear it on deny
+	if strings.HasPrefix(req.Action, "deny") {
+		req.UpdatedInput = nil
+	}
+
 	// Get the process for this conversation
 	proc := h.agentManager.GetConversationProcess(convID)
 	if proc == nil {
@@ -844,7 +850,7 @@ func (h *Handlers) ApproveTool(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Send the approval/denial to the agent process
-	if err := proc.SendToolApprovalResponse(req.RequestID, req.Action, req.Specifier); err != nil {
+	if err := proc.SendToolApprovalResponse(req.RequestID, req.Action, req.Specifier, req.UpdatedInput); err != nil {
 		writeInternalError(w, "failed to send tool approval", err)
 		return
 	}
