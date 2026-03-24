@@ -1411,6 +1411,7 @@ function SessionRow({
   const sessionId = session.id;
   const activityState = useSessionActivityState(sessionId);
   const isSessionUnread = useIsSessionUnread(sessionId);
+  const lastAgentCompletedAt = useAppStore((s) => s.lastTurnCompletedAt[sessionId]);
 
   const prStatusInfo = getPRStatusInfo(session);
   const [hoverOpen, setHoverOpen] = useState(false);
@@ -1565,6 +1566,7 @@ function SessionRow({
             <SessionHoverCardBody
               session={session}
               formatTimeAgo={formatTimeAgo}
+              lastAgentCompletedAt={lastAgentCompletedAt}
               onCreatePR={() => {
                 setHoverOpen(false);
                 onSelectSession(session.id);
