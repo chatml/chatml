@@ -79,10 +79,8 @@ export interface PermissionModeProps {
   setDefault: (mode: PermissionMode) => void;
 }
 
-type PermissionOptionId = PermissionMode | 'plan';
-
 interface PermissionOption {
-  id: PermissionOptionId;
+  id: PermissionMode;
   label: string;
   description: string;
   icon: LucideIcon;
@@ -93,7 +91,6 @@ const PERMISSION_MODE_OPTIONS: PermissionOption[] = [
   { id: 'default', label: 'Ask permissions', description: 'Always ask before making changes', icon: Hand },
   { id: 'acceptEdits', label: 'Auto accept edits', description: 'Automatically accept all file edits', icon: Code },
   { id: 'dontAsk', label: 'Read-only', description: 'Only read tools allowed, all others denied', icon: Shield },
-  { id: 'plan', label: 'Plan mode', description: 'Create a plan before making changes', icon: ClipboardList },
   { id: 'bypassPermissions', label: 'Bypass permissions', description: 'Accepts all permissions', icon: AlertTriangle, muted: true },
 ];
 
@@ -108,7 +105,6 @@ interface ChatInputToolbarProps {
   thinking: ThinkingProps;
   permissionMode: PermissionModeProps;
   planModeEnabled: boolean;
-  defaultPlanMode: boolean;
   onPlanModeToggle: () => void;
   fastModeEnabled: boolean;
   onFastModeToggle: () => void;
@@ -126,7 +122,6 @@ export function ChatInputToolbar({
   thinking,
   permissionMode,
   planModeEnabled,
-  defaultPlanMode,
   onPlanModeToggle,
   fastModeEnabled,
   onFastModeToggle,
@@ -138,28 +133,15 @@ export function ChatInputToolbar({
   showInfo,
   dictation,
 }: ChatInputToolbarProps) {
-  const selectedOptionId: PermissionOptionId = planModeEnabled ? 'plan' : permissionMode.mode;
-  const matchedPermOption = PERMISSION_MODE_OPTIONS.find((o) => o.id === selectedOptionId);
-  if (!matchedPermOption && process.env.NODE_ENV !== 'production') {
-    console.warn(`[ChatInputToolbar] No permission option found for id: ${selectedOptionId}`);
-  }
-  const resolvedPermOption = matchedPermOption
+  const selectedOptionId = permissionMode.mode;
+  const resolvedPermOption = PERMISSION_MODE_OPTIONS.find((o) => o.id === selectedOptionId)
     ?? { id: permissionMode.mode, label: permissionMode.mode, description: '', icon: Shield, muted: false } as PermissionOption;
-  const isPermModified = (planModeEnabled !== defaultPlanMode) || permissionMode.mode !== permissionMode.defaultMode;
+  const isPermModified = permissionMode.mode !== permissionMode.defaultMode;
 
-  const handlePermissionSelect = useCallback((id: PermissionOptionId) => {
+  const handlePermissionSelect = useCallback((id: PermissionMode) => {
     if (id === selectedOptionId) return;
-    if (id === 'plan') {
-      onPlanModeToggle();
-    } else {
-      if (planModeEnabled) {
-        onPlanModeToggle();
-      }
-      if (id !== permissionMode.mode) {
-        permissionMode.setMode(id);
-      }
-    }
-  }, [selectedOptionId, planModeEnabled, onPlanModeToggle, permissionMode]);
+    permissionMode.setMode(id);
+  }, [selectedOptionId, permissionMode]);
   return (
     <div className="flex items-center gap-1 px-2 pb-2">
       {/* Model Selector */}
@@ -247,6 +229,23 @@ export function ChatInputToolbar({
           {fastModeEnabled && <span className="text-xs font-medium">Fast</span>}
         </Button>
       )}
+
+      {/* Plan Mode Toggle */}
+      <Button
+        variant="ghost"
+        size={planModeEnabled ? 'sm' : 'icon'}
+        className={cn(
+          planModeEnabled ? 'h-7 gap-1.5 px-2' : 'h-7 w-7',
+          planModeEnabled && 'text-amber-500 hover:text-amber-600 bg-amber-500/10 hover:bg-amber-500/20'
+        )}
+        onClick={onPlanModeToggle}
+        title={`Plan mode ${planModeEnabled ? 'on' : 'off'} (⌥P)`}
+        aria-label={`Plan mode ${planModeEnabled ? 'on' : 'off'}`}
+        aria-pressed={planModeEnabled}
+      >
+        <ClipboardList className="h-4 w-4" />
+        {planModeEnabled && <span className="text-xs font-medium">Plan</span>}
+      </Button>
 
       {/* Unified Thinking Level Dropdown */}
       <DropdownMenu>
@@ -352,10 +351,7 @@ export function ChatInputToolbar({
         <DropdownMenuContent align="start" className="w-72">
           {PERMISSION_MODE_OPTIONS.map((option) => {
             const isSelected = option.id === selectedOptionId;
-            const isDefault = option.id === 'plan'
-              ? defaultPlanMode
-              : option.id === permissionMode.defaultMode;
-            const canSetDefault = option.id !== 'plan';
+            const isDefault = option.id === permissionMode.defaultMode;
             const Icon = option.icon;
             return (
               <DropdownMenuItem
@@ -375,7 +371,7 @@ export function ChatInputToolbar({
                   {isSelected && <Check className="h-4 w-4 text-blue-500" />}
                   {isDefault ? (
                     <Star className="h-3 w-3 fill-current text-amber-500" />
-                  ) : canSetDefault ? (
+                  ) : (
                     <Tooltip>
                       <TooltipTrigger asChild>
                         <button
@@ -389,7 +385,7 @@ export function ChatInputToolbar({
                           onClick={(e) => {
                             e.preventDefault();
                             e.stopPropagation();
-                            permissionMode.setDefault(option.id as PermissionMode);
+                            permissionMode.setDefault(option.id);
                             showInfo(`${option.label} set as default permission mode`);
                           }}
                         >
@@ -398,7 +394,7 @@ export function ChatInputToolbar({
                       </TooltipTrigger>
                       <TooltipContent side="right" sideOffset={8}>Set as default</TooltipContent>
                     </Tooltip>
-                  ) : null}
+                  )}
                 </span>
               </DropdownMenuItem>
             );
