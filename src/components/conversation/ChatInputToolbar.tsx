@@ -436,7 +436,7 @@ export function ChatInputToolbar({
               size="icon"
               className={cn(
                 'h-7 w-7 rounded-md',
-                dictation.isDictating && 'dictation-active text-orange-500'
+                dictation.isDictating && 'dictation-active text-blue-500'
               )}
               onClick={dictation.onToggle}
               aria-label={dictation.isDictating ? 'Stop dictation' : 'Start dictation'}
