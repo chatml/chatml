@@ -144,19 +144,18 @@ export function ChatInputToolbar({
             return (
               <DropdownMenuItem
                 key={m.id}
-                className="group flex items-center gap-2 pr-1.5"
+                className="group flex items-start gap-2 pr-1.5 py-2"
                 onClick={() => model.setSelected(m)}
               >
-                <span className="flex flex-1 items-center gap-1.5 min-w-0">
-                  <Sparkles className="h-3.5 w-3.5 shrink-0 text-muted-foreground/70" />
-                  <span className="truncate">{m.name}</span>
-                  {m.isNew && (
-                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted font-medium leading-none">
-                      NEW
+                <span className="flex flex-1 flex-col min-w-0">
+                  <span className="truncate font-medium">{m.name}</span>
+                  {m.description && (
+                    <span className="text-xs text-muted-foreground leading-tight">
+                      {m.description}
                     </span>
                   )}
                 </span>
-                <span className="ml-auto flex shrink-0 items-center gap-1">
+                <span className="mt-0.5 flex shrink-0 items-center gap-1">
                   {isSelected && <Check className="h-3.5 w-3.5" />}
                   {isDefault ? (
                     <Star className="h-3 w-3 fill-current text-amber-500" />

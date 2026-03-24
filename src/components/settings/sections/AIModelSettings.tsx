@@ -13,7 +13,7 @@ import {
 import { Eye, EyeOff } from 'lucide-react';
 import { useSettingsStore, SETTINGS_DEFAULTS } from '@/stores/settingsStore';
 import { useAppStore } from '@/stores/appStore';
-import { MODELS as SHARED_MODELS, toShortDisplayName, isDefaultRecommended, deduplicateById, deduplicateByName, sortModelEntries } from '@/lib/models';
+import { MODELS as SHARED_MODELS, toShortDisplayName, getModelDescription, isDefaultRecommended, deduplicateById, deduplicateByName, sortModelEntries } from '@/lib/models';
 import type { ThinkingLevel } from '@/lib/thinkingLevels';
 import { getAnthropicApiKey, setAnthropicApiKey } from '@/lib/api';
 import { useToast } from '@/components/ui/toast';
@@ -38,11 +38,11 @@ export function AIModelSettings() {
   const dynamicModels = useAppStore((s) => s.supportedModels);
   const modelOptions = useMemo(() => {
     if (dynamicModels.length === 0) {
-      return SHARED_MODELS.map((m) => ({ id: m.id, name: m.name }));
+      return SHARED_MODELS.map((m) => ({ id: m.id, name: m.name, description: m.description }));
     }
     const entries = dynamicModels
       .filter((m) => !isDefaultRecommended(m.displayName))
-      .map((m) => ({ id: m.value, name: toShortDisplayName(m.value, m.displayName) }));
+      .map((m) => ({ id: m.value, name: toShortDisplayName(m.value, m.displayName), description: getModelDescription(m.value) }));
     return sortModelEntries(deduplicateByName(deduplicateById(entries)));
   }, [dynamicModels]);
 
@@ -59,12 +59,19 @@ export function AIModelSettings() {
           onReset={() => setDefaultModel(SETTINGS_DEFAULTS.defaultModel)}
         >
           <Select value={defaultModel} onValueChange={setDefaultModel}>
-            <SelectTrigger className="w-52" aria-label="Default model">
+            <SelectTrigger className="w-64" aria-label="Default model">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
               {modelOptions.map((m) => (
-                <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>
+                <SelectItem key={m.id} value={m.id} textValue={m.name}>
+                  <div className="flex flex-col">
+                    <span>{m.name}</span>
+                    {m.description && (
+                      <span className="text-xs text-muted-foreground">{m.description}</span>
+                    )}
+                  </div>
+                </SelectItem>
               ))}
             </SelectContent>
           </Select>
@@ -78,12 +85,19 @@ export function AIModelSettings() {
           onReset={() => setReviewModel(SETTINGS_DEFAULTS.reviewModel)}
         >
           <Select value={reviewModel} onValueChange={setReviewModel}>
-            <SelectTrigger className="w-52" aria-label="Review model">
+            <SelectTrigger className="w-64" aria-label="Review model">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
               {modelOptions.map((m) => (
-                <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>
+                <SelectItem key={m.id} value={m.id} textValue={m.name}>
+                  <div className="flex flex-col">
+                    <span>{m.name}</span>
+                    {m.description && (
+                      <span className="text-xs text-muted-foreground">{m.description}</span>
+                    )}
+                  </div>
+                </SelectItem>
               ))}
             </SelectContent>
           </Select>

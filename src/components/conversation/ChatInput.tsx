@@ -25,7 +25,7 @@ import { LinearIssuePicker } from './LinearIssuePicker';
 import { WorkspacePicker } from './WorkspacePicker';
 import type { LinearIssueDTO } from '@/lib/api';
 import { PlateInput, type PlateInputHandle } from './PlateInput';
-import { MODELS as SHARED_MODELS, type ModelEntry, toShortDisplayName, isNewModel, isDefaultRecommended, deduplicateById, deduplicateByName, sortModelEntries } from '@/lib/models';
+import { MODELS as SHARED_MODELS, type ModelEntry, toShortDisplayName, getModelDescription, isDefaultRecommended, deduplicateById, deduplicateByName, sortModelEntries } from '@/lib/models';
 import type { MentionItem } from '@/components/ui/mention-node';
 import { trackEvent } from '@/lib/telemetry';
 import { playSound } from '@/lib/sounds';
@@ -109,6 +109,7 @@ function flattenFileTree(nodes: FileNodeDTO[], parentPath: string = ''): FlatFil
 const STATIC_MODELS: ModelEntry[] = SHARED_MODELS.map((m) => ({
   id: m.id,
   name: m.name,
+  description: m.description,
   icon: Sparkles,
   supportsThinking: m.supportsThinking,
   supportsEffort: m.supportsEffort,
@@ -125,12 +126,12 @@ function buildModelList(dynamic: ReturnType<typeof useAppStore.getState>['suppor
       .map((m) => ({
         id: m.value,
         name: toShortDisplayName(m.value, m.displayName),
+        description: getModelDescription(m.value),
         icon: Sparkles,
         supportsThinking: m.supportsAdaptiveThinking ?? true,
         supportsEffort: m.supportsEffort ?? false,
         supportedEffortLevels: m.supportedEffortLevels,
         supportsFastMode: m.supportsFastMode,
-        isNew: isNewModel(m.value),
       }))
   );
   // Also deduplicate by display name — SDK may report dated variants
