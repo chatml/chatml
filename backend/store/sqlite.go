@@ -142,7 +142,6 @@ func (s *SQLiteStore) initSchema() error {
 	);
 	CREATE INDEX IF NOT EXISTS idx_sessions_workspace_id ON sessions(workspace_id);
 	CREATE INDEX IF NOT EXISTS idx_sessions_workspace_name ON sessions(workspace_id, name);
-	CREATE UNIQUE INDEX IF NOT EXISTS idx_sessions_base_per_workspace ON sessions(workspace_id) WHERE session_type = 'base';
 
 	-- Agents (legacy, still actively used by agent/manager.go)
 	CREATE TABLE IF NOT EXISTS agents (
