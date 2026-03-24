@@ -260,8 +260,9 @@ export function ConversationMessagePane({
           // visible movement — handles display:none → visible edge case.
           const el = messageListRef.current?.getScrollerElement();
           if (el && el.scrollTop > 0) {
-            el.scrollTop -= 1;
-            requestAnimationFrame(() => { el.scrollTop += 1; });
+            const target = el.scrollTop;
+            el.scrollTop = target - 1;
+            requestAnimationFrame(() => { el.scrollTop = target; });
           }
         }
       });
