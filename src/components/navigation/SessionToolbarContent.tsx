@@ -487,13 +487,13 @@ export function SessionToolbarContent() {
           </span>
           <span className="flex items-center gap-1.5 shrink-0">
             {selectedSession.sessionType === 'base' ? (
-              <FolderGit2 className="h-4 w-4 text-amber-500" />
+              <FolderGit2 className="h-4 w-4 text-blue-500" />
             ) : (
               <GitBranch className="h-4 w-4 text-purple-400" />
             )}
             <span className="text-base font-semibold truncate">{selectedSession.branch || selectedSession.name}</span>
             {selectedSession.sessionType === 'base' && (
-              <span className="text-xs px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-500 font-medium">Base</span>
+              <span className="text-xs px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-500 font-medium">Base</span>
             )}
           </span>
         </span>
@@ -502,17 +502,21 @@ export function SessionToolbarContent() {
         titlePosition: 'left' as const,
         title: (
           <div className="flex items-center gap-1.5">
-            <TaskStatusSelector
-              value={selectedSession.taskStatus}
-              onChange={handleTaskStatusChange}
-              size="sm"
-            />
-            <SprintPhaseBar
-              phase={selectedSession.sprintPhase}
-              onChange={handleSprintPhaseChange}
-              disabled={isAgentWorking}
-              onOpenToolbar={toggleSprintToolbar}
-            />
+            {selectedSession.sessionType !== 'base' && (
+              <>
+                <TaskStatusSelector
+                  value={selectedSession.taskStatus}
+                  onChange={handleTaskStatusChange}
+                  size="sm"
+                />
+                <SprintPhaseBar
+                  phase={selectedSession.sprintPhase}
+                  onChange={handleSprintPhaseChange}
+                  disabled={isAgentWorking}
+                  onOpenToolbar={toggleSprintToolbar}
+                />
+              </>
+            )}
             {selectedSession.prStatus && selectedSession.prStatus !== 'none' && selectedSession.prNumber && selectedWorkspaceId && (
               <PRHoverCard
                 workspaceId={selectedWorkspaceId}

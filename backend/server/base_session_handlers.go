@@ -166,9 +166,16 @@ func (h *Handlers) SwitchSessionBranch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Update session branch in DB
+	// Update session branch in DB and clear stale PR fields
 	if err := h.store.UpdateSession(ctx, sessionID, func(s *models.Session) {
 		s.Branch = req.Branch
+		s.PRStatus = models.PRStatusNone
+		s.PRNumber = 0
+		s.PRUrl = ""
+		s.PRTitle = ""
+		s.CheckStatus = models.CheckStatusNone
+		s.HasCheckFailures = false
+		s.HasMergeConflict = false
 	}); err != nil {
 		writeDBError(w, err)
 		return
@@ -180,6 +187,11 @@ func (h *Handlers) SwitchSessionBranch(w http.ResponseWriter, r *http.Request) {
 		h.snapshotCache.Invalidate(sessionID)
 	}
 
+	// Update PR watcher to poll the new branch (clears stale PR data)
+	if h.prWatcher != nil {
+		h.prWatcher.UpdateSessionBranch(sessionID, req.Branch)
+	}
+
 	// Broadcast branch change via WebSocket
 	if h.hub != nil {
 		h.hub.Broadcast(Event{
@@ -188,6 +200,21 @@ func (h *Handlers) SwitchSessionBranch(w http.ResponseWriter, r *http.Request) {
 				"sessionId": sessionID,
 				"reason":    "branch_switched",
 				"branch":    req.Branch,
+			},
+		})
+	}
+
+	// Broadcast PR clearing so the frontend removes the badge immediately
+	if h.hub != nil {
+		h.hub.Broadcast(Event{
+			Type:      "session_pr_update",
+			SessionID: sessionID,
+			Payload: map[string]interface{}{
+				"prStatus":    models.PRStatusNone,
+				"prNumber":    0,
+				"prUrl":       "",
+				"prTitle":     "",
+				"checkStatus": models.CheckStatusNone,
 			},
 		})
 	}

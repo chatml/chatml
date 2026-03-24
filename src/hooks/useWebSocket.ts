@@ -1280,6 +1280,16 @@ export function useWebSocket(enabled: boolean = true) {
               updates.taskStatus = payload.taskStatus as import('@/lib/types').SessionTaskStatus;
             }
 
+            // When PR is cleared (e.g., branch switch), ensure all PR fields are reset
+            if (updates.prStatus === 'none') {
+              updates.prNumber = 0;
+              updates.prUrl = '';
+              updates.prTitle = '';
+              updates.checkStatus = 'none';
+              updates.hasCheckFailures = false;
+              updates.hasMergeConflict = false;
+            }
+
             const prevPrStatus = getStore().sessions.find(
               (s: { id: string }) => s.id === data.sessionId
             )?.prStatus;
