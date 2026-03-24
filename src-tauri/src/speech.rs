@@ -280,14 +280,17 @@ mod platform {
                     // kAFAssistantErrorDomain code 209 = "no speech detected" (SFSpeechRecognizer).
                     let error_code: isize = msg_send![error, code];
                     if error_code == 209 || error_code == 203 || error_code == 201 {
-                        log::debug!("Suppressing speech error code {} during task lifecycle", error_code);
+                        log::debug!(
+                            "Suppressing speech error code {} during task lifecycle",
+                            error_code
+                        );
                         return;
                     }
 
                     log::warn!("Dictation error: {}", msg);
 
-                    let _ = app_for_transcript
-                        .emit("dictation-error", DictationError { message: msg });
+                    let _ =
+                        app_for_transcript.emit("dictation-error", DictationError { message: msg });
 
                     stop_internal_nonblocking();
                 }
@@ -475,10 +478,8 @@ mod platform {
                         &mut state.recognition_request,
                         objc_new(class!(NSObject)),
                     );
-                    let old_task = std::mem::replace(
-                        &mut state.recognition_task,
-                        objc_new(class!(NSObject)),
-                    );
+                    let old_task =
+                        std::mem::replace(&mut state.recognition_task, objc_new(class!(NSObject)));
                     state._old_objects.push(old_request);
                     state._old_objects.push(old_task);
 
@@ -504,10 +505,9 @@ mod platform {
                             }
                             // Swap the request pointer atomically so the tap sends
                             // buffers to the new request
-                            state.current_request_ptr.store(
-                                Retained::as_ptr(&new_request) as usize,
-                                Ordering::Release,
-                            );
+                            state
+                                .current_request_ptr
+                                .store(Retained::as_ptr(&new_request) as usize, Ordering::Release);
                             state.recognition_request = new_request;
                             state.recognition_task = new_task;
                             log::info!("Dictation task restarted successfully");
