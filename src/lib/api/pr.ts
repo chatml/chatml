@@ -1,4 +1,4 @@
-import { getApiBase, fetchWithAuth, handleResponse, ApiError } from './base';
+import { getApiBase, fetchWithAuth, handleResponse, handleVoidResponse, ApiError } from './base';
 
 export type CheckStatus = 'pending' | 'success' | 'failure' | 'none';
 
@@ -46,6 +46,13 @@ export async function refreshPRStatus(workspaceId: string, sessionId: string): P
     method: 'POST',
   });
   // 202 Accepted — fire-and-forget, result comes via WebSocket
+}
+
+export async function unlinkPR(workspaceId: string, sessionId: string): Promise<void> {
+  const res = await fetchWithAuth(`${getApiBase()}/api/repos/${workspaceId}/sessions/${sessionId}/pr/unlink`, {
+    method: 'POST',
+  });
+  await handleVoidResponse(res, 'Failed to unlink pull request');
 }
 
 // PR Dashboard types

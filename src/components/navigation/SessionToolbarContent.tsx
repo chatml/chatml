@@ -12,6 +12,7 @@ import {
   toStoreConversation,
   getCIFailureContext,
   refreshPRStatus,
+  unlinkPR,
   getGlobalActionTemplates,
   getWorkspaceActionTemplates,
   type AttachmentDTO,
@@ -44,6 +45,7 @@ import {
   Boxes,
   ExternalLink,
   FolderGit2,
+  Unlink,
 } from 'lucide-react';
 import { resolveWorkspaceColor } from '@/lib/workspace-colors';
 import { updateSession as apiUpdateSession } from '@/lib/api';
@@ -756,6 +758,18 @@ export function SessionToolbarContent() {
                     }
                   }}>
                     <Search /> Check for Pull Request
+                  </DropdownMenuItem>
+                )}
+                {!!selectedSession?.prNumber && selectedWorkspaceId && selectedSessionId && (
+                  <DropdownMenuItem onSelect={async () => {
+                    try {
+                      await unlinkPR(selectedWorkspaceId, selectedSessionId);
+                      showSuccess('Pull request unlinked');
+                    } catch {
+                      showWarning('Failed to unlink pull request');
+                    }
+                  }}>
+                    <Unlink /> Unlink Pull Request
                   </DropdownMenuItem>
                 )}
                 <DropdownMenuItem onSelect={() => handleGitActionMessage('Rebase this branch on origin/main, resolving any conflicts.')}>

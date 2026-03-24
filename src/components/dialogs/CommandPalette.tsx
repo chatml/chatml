@@ -17,6 +17,7 @@ import { useNavigationStore } from '@/stores/navigationStore';
 import { useShortcut } from '@/hooks/useShortcut';
 import { navigate } from '@/lib/navigation';
 import { copyToClipboard } from '@/lib/tauri';
+import { unlinkPR } from '@/lib/api';
 import { useToast } from '@/components/ui/toast';
 import { getShortcutById, formatShortcutKeys } from '@/lib/shortcuts';
 import { buildDeduplicatedModelIds } from '@/lib/models';
@@ -55,6 +56,7 @@ import {
   Copy,
   RefreshCw,
   Download,
+  Unlink,
   // Review
   Shield,
   FileCode,
@@ -449,6 +451,26 @@ const COMMANDS: Command[] = [
       }
     },
   },
+  {
+    id: 'git-unlink-pr',
+    category: 'Git',
+    label: 'Unlink Pull Request',
+    icon: Unlink,
+    keywords: ['pr', 'remove', 'clear', 'detach', 'disconnect', 'unlink'],
+    available: () => {
+      const { selectedSessionId, sessions } = useAppStore.getState();
+      const session = sessions.find((s) => s.id === selectedSessionId);
+      return !!session?.prNumber;
+    },
+    action: async () => {
+      const { selectedSessionId, sessions } = useAppStore.getState();
+      const session = sessions.find((s) => s.id === selectedSessionId);
+      if (session?.workspaceId && selectedSessionId) {
+        await unlinkPR(session.workspaceId, selectedSessionId);
+        return 'Pull request unlinked';
+      }
+    },
+  },
 
   // Review
   {
@@ -717,10 +739,15 @@ export function CommandPalette() {
     [search, pages.length]
   );
 
-  // Run an action, catching any thrown errors and showing a toast
+  // Run an action, catching any thrown errors and showing a toast.
+  // If the action returns a string, show it as a success toast.
   const runAction = useCallback(
     (action: () => unknown) => {
-      Promise.resolve(action()).catch((err: unknown) => {
+      Promise.resolve(action()).then((result) => {
+        if (typeof result === 'string') {
+          toast.success(result);
+        }
+      }).catch((err: unknown) => {
         const message = err instanceof Error ? err.message : 'Command failed';
         toast.error(message);
       });

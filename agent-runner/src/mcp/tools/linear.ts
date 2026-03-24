@@ -90,7 +90,33 @@ export function createLinearTools(context: WorkspaceContext) {
           };
         }
       },
-      { annotations: { idempotentHint: true } }
+      { annotations: { readOnlyHint: false, idempotentHint: true } }
+    ),
+
+    // Clear Linear issue association
+    tool(
+      "clear_linear_issue",
+      "Clear the Linear issue association from this session. Use this when you want to disassociate the current Linear issue.",
+      {},
+      async () => {
+        const issue = context.linearIssue;
+        if (!issue) {
+          return {
+            content: [{ type: "text", text: "No Linear issue is currently associated with this session." }],
+          };
+        }
+
+        const identifier = issue.identifier;
+        context.setLinearIssue(null);
+
+        return {
+          content: [{
+            type: "text",
+            text: `Cleared Linear issue ${identifier} from this session.`,
+          }],
+        };
+      },
+      { annotations: { readOnlyHint: false } }
     ),
 
     // Update Linear issue status
@@ -121,7 +147,7 @@ export function createLinearTools(context: WorkspaceContext) {
           }],
         };
       },
-      { annotations: { idempotentHint: true } }
+      { annotations: { readOnlyHint: false, idempotentHint: true } }
     ),
   ];
 }

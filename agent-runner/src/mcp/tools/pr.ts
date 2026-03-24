@@ -113,5 +113,47 @@ export function createPRTools(context: WorkspaceContext) {
       },
       { annotations: { readOnlyHint: false } }
     ),
+
+    tool(
+      "clear_pr_link",
+      "Clear the pull request link from this session. Use this when the PR was closed, abandoned, or you want to disassociate the current PR. The PR can be re-linked later via 'Check for Pull Request'.",
+      {},
+      async () => {
+        try {
+          const response = await fetchWithRetry(
+            `${BACKEND_URL}/api/repos/${context.workspaceId}/sessions/${context.sessionId}/pr/unlink`,
+            {
+              method: "POST",
+              headers: buildHeaders(false), // no JSON body
+            }
+          );
+
+          if (!response.ok) {
+            const error = await response.text();
+            return {
+              content: [{
+                type: "text" as const,
+                text: `Failed to unlink PR: ${response.status} ${error}`,
+              }],
+            };
+          }
+
+          return {
+            content: [{
+              type: "text" as const,
+              text: "Pull request unlinked from this session. The PR badge will be removed from the sidebar. Use 'Check for Pull Request' to re-link.",
+            }],
+          };
+        } catch (error) {
+          return {
+            content: [{
+              type: "text" as const,
+              text: `Error unlinking PR: ${formatFetchError(error)}`,
+            }],
+          };
+        }
+      },
+      { annotations: { readOnlyHint: false } }
+    ),
   ];
 }

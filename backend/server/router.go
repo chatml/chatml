@@ -138,6 +138,7 @@ func NewRouter(ctx context.Context, s *store.SQLiteStore, hub *Hub, agentMgr *ag
 		r.Post("/{id}/sessions/{sessionId}/pr-refresh", h.RefreshPRStatus)
 		r.Post("/{id}/sessions/{sessionId}/pr/report", h.ReportPRCreated)
 		r.Post("/{id}/sessions/{sessionId}/pr/report-merge", h.ReportPRMerged)
+		r.Post("/{id}/sessions/{sessionId}/pr/unlink", h.UnlinkPR)
 		r.Get("/{id}/settings/pr-template", h.GetPRTemplate)
 		r.Put("/{id}/settings/pr-template", h.SetPRTemplate)
 		r.Get("/{id}/settings/review-prompts", h.GetWorkspaceReviewPrompts)
