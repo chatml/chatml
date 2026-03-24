@@ -727,14 +727,21 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onGitHubRepos,
                     ))}
                   </DropdownMenuContent>
                 </DropdownMenu>
-                {workspaces.length <= 1 ? (
+                {sidebarProjectFilter ? (
+                  <button
+                    className="text-foreground hover:text-foreground transition-colors p-0.5 rounded hover:bg-surface-1"
+                    onClick={() => handleCreateSession(sidebarProjectFilter)}
+                  >
+                    <Plus className="h-4 w-4" />
+                  </button>
+                ) : workspaces.length <= 1 ? (
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                       <button className="text-foreground hover:text-foreground transition-colors p-0.5 rounded hover:bg-surface-1">
                         <Plus className="h-4 w-4" />
                       </button>
                     </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" className="w-56">
+                    <DropdownMenuContent align="end" className="w-64">
                       <DropdownMenuItem onClick={() => {
                         const targetId = selectedWorkspaceId || workspaces[0]?.id;
                         if (targetId) handleCreateSession(targetId);
@@ -760,7 +767,7 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onGitHubRepos,
                     </DropdownMenuTrigger>
                     <DropdownMenuContent
                       align="end"
-                      className="w-56"
+                      className="w-64"
                       onKeyDown={(e) => {
                         const num = parseInt(e.key, 10);
                         if (num >= 1 && num <= workspaces.length) {
