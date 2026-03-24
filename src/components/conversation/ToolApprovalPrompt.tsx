@@ -166,13 +166,6 @@ export function ToolApprovalPrompt({ conversationId }: ToolApprovalPromptProps) 
     };
   }, [pending]);
 
-  // Auto-deny on timeout
-  useEffect(() => {
-    if (!pending || elapsed < TIMEOUT_MS || autoDeniedRef.current) return;
-    autoDeniedRef.current = true;
-    handleAction('deny_once');
-  }, [elapsed, pending, handleAction]);
-
   const handleAction = useCallback(async (action: 'allow_once' | 'allow_session' | 'allow_always' | 'deny_once' | 'deny_always') => {
     if (!pending || submitting) return;
     setSubmitting(true);
@@ -190,6 +183,13 @@ export function ToolApprovalPrompt({ conversationId }: ToolApprovalPromptProps) 
       setError(err instanceof Error ? err.message : 'Failed to send tool approval');
     }
   }, [conversationId, pending, clearPendingToolApproval, submitting, isBash, editedCommand]);
+
+  // Auto-deny on timeout
+  useEffect(() => {
+    if (!pending || elapsed < TIMEOUT_MS || autoDeniedRef.current) return;
+    autoDeniedRef.current = true;
+    handleAction('deny_once');
+  }, [elapsed, pending, handleAction]);
 
   // Keyboard shortcuts
   useEffect(() => {
