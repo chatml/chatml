@@ -138,18 +138,26 @@ func (w *PRWatcher) UnwatchSession(sessionID string) {
 	}
 }
 
-// UpdateSessionBranch updates the branch for a watched session (e.g., after branch rename)
+// UpdateSessionBranch updates the branch for a watched session (e.g., after branch switch)
 // and invalidates the PR cache for the affected repo so the next poll fetches fresh data.
+// Clears stale PR data so the watcher doesn't carry over PR info from the old branch.
 func (w *PRWatcher) UpdateSessionBranch(sessionID, newBranch string) {
 	var repoPath string
 
 	w.mu.Lock()
 	if entry, exists := w.sessions[sessionID]; exists {
 		entry.Branch = newBranch
+		// Clear stale PR data from the old branch
+		entry.PRStatus = models.PRStatusNone
+		entry.PRNumber = 0
+		entry.PRUrl = ""
+		entry.PRTitle = ""
+		entry.CheckStatus = ""
+		entry.Mergeable = nil
 		// Reset last checked to trigger re-check
 		entry.LastChecked = time.Time{}
 		repoPath = entry.RepoPath
-		logger.PRWatcher.Infof("Updated branch for session %s: %s", sessionID, newBranch)
+		logger.PRWatcher.Infof("Updated branch for session %s: %s (cleared stale PR data)", sessionID, newBranch)
 	}
 	w.mu.Unlock()
 

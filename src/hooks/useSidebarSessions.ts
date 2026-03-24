@@ -39,11 +39,6 @@ const DEFAULT_COLLAPSED_STATUSES = new Set<SessionTaskStatus>(['done', 'cancelle
 
 function sortSessions(sessions: WorktreeSession[], sortBy: SidebarSortBy): WorktreeSession[] {
   return [...sessions].sort((a, b) => {
-    // Base sessions always sort first, regardless of sort mode
-    const aBase = a.sessionType === 'base' ? 0 : 1;
-    const bBase = b.sessionType === 'base' ? 0 : 1;
-    if (aBase !== bBase) return aBase - bBase;
-
     switch (sortBy) {
       case 'recent':
         return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
@@ -142,27 +137,33 @@ export function useSidebarSessions({
   filters,
   workspaceColors,
   getWorkspaceColor: getDefaultColor,
-}: UseSidebarSessionsOptions): { groups: SidebarGroup[]; flatSessions: WorktreeSession[] } {
+}: UseSidebarSessionsOptions): { groups: SidebarGroup[]; flatSessions: WorktreeSession[]; pinnedSessions: WorktreeSession[] } {
   return useMemo(() => {
     const filtered = filterSessions(sessions, filters);
+
+    // Separate base sessions — they are always pinned at the top, outside groups
+    const pinnedSessions = filtered.filter((s) => s.sessionType === 'base');
+    const regularSessions = filtered.filter((s) => s.sessionType !== 'base');
 
     if (groupBy === 'none') {
       return {
         groups: [],
-        flatSessions: sortSessions(filtered, sortBy),
+        flatSessions: sortSessions(regularSessions, sortBy),
+        pinnedSessions,
       };
     }
 
     if (groupBy === 'status') {
       return {
-        groups: buildStatusGroups(filtered, sortBy),
+        groups: buildStatusGroups(regularSessions, sortBy),
         flatSessions: [],
+        pinnedSessions,
       };
     }
 
-    // Pre-group sessions by workspace for O(w+n) instead of O(w×n)
+    // Pre-group regular sessions by workspace for O(w+n) instead of O(w×n)
     const byWorkspace = new Map<string, WorktreeSession[]>();
-    for (const s of filtered) {
+    for (const s of regularSessions) {
       const list = byWorkspace.get(s.workspaceId);
       if (list) list.push(s);
       else byWorkspace.set(s.workspaceId, [s]);
@@ -185,7 +186,7 @@ export function useSidebarSessions({
           sessions: sortSessions(wsSessions, sortBy),
         });
       }
-      return { groups, flatSessions: [] };
+      return { groups, flatSessions: [], pinnedSessions };
     }
 
     // project-status
@@ -208,10 +209,10 @@ export function useSidebarSessions({
           subGroups,
         });
       }
-      return { groups, flatSessions: [] };
+      return { groups, flatSessions: [], pinnedSessions };
     }
 
-    return { groups: [], flatSessions: [] };
+    return { groups: [], flatSessions: [], pinnedSessions };
   }, [sessions, workspaces, groupBy, sortBy, filters, workspaceColors, getDefaultColor]);
 }
 

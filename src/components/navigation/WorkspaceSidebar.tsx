@@ -177,7 +177,7 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onGitHubRepos,
   };
 
   // Sidebar grouping/sorting
-  const { groups: sidebarGroups, flatSessions } = useSidebarSessions({
+  const { groups: sidebarGroups, flatSessions, pinnedSessions } = useSidebarSessions({
     sessions,
     workspaces,
     groupBy: sidebarGroupBy,
@@ -728,10 +728,40 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onGitHubRepos,
                 </div>
               ) : (
                 <>
+                  {/* Pinned: Base sessions always render at the top */}
+                  {pinnedSessions.map((session) => {
+                    const ws = workspaces.find((w) => w.id === session.workspaceId);
+                    return (
+                      <ErrorBoundary
+                        key={session.id}
+                        section="SessionRow"
+                        fallback={<CardErrorFallback message="Error loading session" />}
+                      >
+                        <SessionRow
+                          session={session}
+                          contentView={contentView}
+                          selectedSessionId={selectedSessionId}
+                          onSelectSession={(id, e) => handleSelectSession(session.workspaceId, id, e)}
+                          onArchiveSession={handleArchiveSession}
+                          onTaskStatusChange={handleTaskStatusChange}
+                          onOpenBranches={(e) => navigateToBranches(session.workspaceId, e)}
+                          onOpenPRs={(e) => navigateToPRs(session.workspaceId, e)}
+                          formatTimeAgo={formatTimeAgo}
+                          showProjectIndicator={sidebarGroupBy === 'none'}
+                          workspaceColor={workspaceColors[session.workspaceId] || getWorkspaceColor(session.workspaceId)}
+                          workspaceName={ws?.name}
+                        />
+                      </ErrorBoundary>
+                    );
+                  })}
+                  {pinnedSessions.length > 0 && (flatSessions.length > 0 || sidebarGroups.length > 0) && (
+                    <div className="mx-2 my-1 border-t border-border/40" />
+                  )}
+
                   {/* Mode: None — flat session list */}
                   {sidebarGroupBy === 'none' && (
                     <>
-                      {flatSessions.length === 0 ? (
+                      {flatSessions.length === 0 && pinnedSessions.length === 0 ? (
                         <div className="py-2 px-2 text-sm text-muted-foreground/70">
                           No sessions found
                         </div>
@@ -768,7 +798,7 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onGitHubRepos,
                   {/* Mode: Status — status group headers with sessions */}
                   {sidebarGroupBy === 'status' && (
                     <>
-                      {sidebarGroups.length === 0 ? (
+                      {sidebarGroups.length === 0 && pinnedSessions.length === 0 ? (
                         <div className="py-2 px-2 text-sm text-muted-foreground/70">
                           No sessions found
                         </div>
@@ -1461,6 +1491,10 @@ function SessionRow({
                         <ClipboardCheck className="w-3.5 h-3.5 text-blue-500" />
                       </div>
                     </div>
+                  ) : session.sessionType === 'base' ? (
+                    <div className="w-4 shrink-0 flex items-center justify-center">
+                      <FolderGit2 className="w-3.5 h-3.5 text-blue-500" />
+                    </div>
                   ) : (
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
@@ -1489,9 +1523,6 @@ function SessionRow({
                   )}
                   {/* Branch name container - grows and truncates */}
                   <div className="flex items-center gap-1.5 flex-1 min-w-0 overflow-hidden">
-                    {session.sessionType === 'base' && (
-                      <FolderGit2 className="w-3.5 h-3.5 shrink-0 text-amber-500" />
-                    )}
                     <span className={cn(
                       "text-base truncate flex-1 w-0",
                       isSessionSelected ? "text-foreground font-normal" : "text-foreground/60 font-normal",
@@ -1584,27 +1615,31 @@ function SessionRow({
         </HoverCard>
       </ContextMenuTrigger>
       <ContextMenuContent>
-        <ContextMenuSub>
-          <ContextMenuSubTrigger>
-            <TaskStatusIcon status={session.taskStatus} className="h-4 w-4" />
-            Status
-          </ContextMenuSubTrigger>
-          <ContextMenuSubContent className="w-44">
-            {TASK_STATUS_OPTIONS.map((option) => (
-              <ContextMenuItem
-                key={option.value}
-                onClick={() => onTaskStatusChange(session.id, option.value)}
-              >
-                <TaskStatusIcon status={option.value} className="h-4 w-4" />
-                <span className="flex-1">{option.label}</span>
-                {option.value === session.taskStatus && (
-                  <Check className="h-3.5 w-3.5 text-muted-foreground" />
-                )}
-              </ContextMenuItem>
-            ))}
-          </ContextMenuSubContent>
-        </ContextMenuSub>
-        <ContextMenuSeparator />
+        {session.sessionType !== 'base' && (
+          <>
+            <ContextMenuSub>
+              <ContextMenuSubTrigger>
+                <TaskStatusIcon status={session.taskStatus} className="h-4 w-4" />
+                Status
+              </ContextMenuSubTrigger>
+              <ContextMenuSubContent className="w-44">
+                {TASK_STATUS_OPTIONS.map((option) => (
+                  <ContextMenuItem
+                    key={option.value}
+                    onClick={() => onTaskStatusChange(session.id, option.value)}
+                  >
+                    <TaskStatusIcon status={option.value} className="h-4 w-4" />
+                    <span className="flex-1">{option.label}</span>
+                    {option.value === session.taskStatus && (
+                      <Check className="h-3.5 w-3.5 text-muted-foreground" />
+                    )}
+                  </ContextMenuItem>
+                ))}
+              </ContextMenuSubContent>
+            </ContextMenuSub>
+            <ContextMenuSeparator />
+          </>
+        )}
         {onOpenBranches && (
           <ContextMenuItem onClick={() => onOpenBranches()}>
             <GitBranch className="h-4 w-4" />

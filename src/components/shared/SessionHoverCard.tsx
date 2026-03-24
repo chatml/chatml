@@ -1,6 +1,6 @@
 'use client';
 
-import { GitBranch, GitPullRequest } from 'lucide-react';
+import { FolderGit2, GitBranch, GitPullRequest } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { TaskStatusIcon } from '@/components/icons/TaskStatusIcon';
 import { getTaskStatusOption, getPRStatusInfo } from '@/lib/session-fields';
@@ -29,17 +29,28 @@ export function SessionHoverCardBody({
     <>
       {/* Header: branch icon + name */}
       <div className="flex items-center gap-1.5 px-3 pt-2.5 pb-1">
-        <GitBranch className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+        {session.sessionType === 'base' ? (
+          <FolderGit2 className="h-3.5 w-3.5 shrink-0 text-blue-500" />
+        ) : (
+          <GitBranch className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+        )}
         <span className="text-sm font-medium text-foreground truncate">
           {session.branch || session.name}
         </span>
+        {session.sessionType === 'base' && (
+          <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-500 font-medium shrink-0">Base</span>
+        )}
       </div>
 
       {/* Meta row: status + time */}
       <div className="flex items-center gap-1.5 px-3 pb-2 text-xs text-muted-foreground">
-        <TaskStatusIcon status={session.taskStatus} className="h-3 w-3 shrink-0" />
-        <span className="shrink-0">{statusOption.label}</span>
-        <span className="text-muted-foreground/50">&middot;</span>
+        {session.sessionType !== 'base' && (
+          <>
+            <TaskStatusIcon status={session.taskStatus} className="h-3 w-3 shrink-0" />
+            <span className="shrink-0">{statusOption.label}</span>
+            <span className="text-muted-foreground/50">&middot;</span>
+          </>
+        )}
         <span className="shrink-0">
           {formatTimeAgo(
             lastAgentCompletedAt !== undefined && lastAgentCompletedAt > new Date(session.updatedAt).getTime()
