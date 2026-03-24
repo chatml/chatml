@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import type { Workspace, WorktreeSession, SessionTaskStatus } from '@/lib/types';
-import { useSettingsStore } from '@/stores/settingsStore';
+import { useSettingsStore, applyStatusGroupOrder } from '@/stores/settingsStore';
 import type { SidebarGroupBy, SidebarSortBy } from '@/stores/settingsStore';
 
 export interface SidebarGroup {
@@ -136,6 +136,7 @@ interface UseSidebarSessionsOptions {
   projectFilter: string | null;
   workspaceColors: Record<string, string>;
   getWorkspaceColor: (id: string) => string;
+  statusGroupOrder: SessionTaskStatus[];
 }
 
 export function useSidebarSessions({
@@ -147,6 +148,7 @@ export function useSidebarSessions({
   projectFilter,
   workspaceColors,
   getWorkspaceColor: getDefaultColor,
+  statusGroupOrder,
 }: UseSidebarSessionsOptions): { groups: SidebarGroup[]; flatSessions: WorktreeSession[]; baseSessions: WorktreeSession[]; effectiveGroupBy: SidebarGroupBy } {
   return useMemo(() => {
     // When filtering to a single project, pre-filter sessions and downgrade groupBy
@@ -174,7 +176,7 @@ export function useSidebarSessions({
       const base = sortSessions(filtered.filter(s => s.sessionType === 'base'), sortBy);
       const regular = filtered.filter(s => s.sessionType !== 'base');
       return {
-        groups: buildStatusGroups(regular, sortBy),
+        groups: applyStatusGroupOrder(buildStatusGroups(regular, sortBy), statusGroupOrder),
         flatSessions: [],
         baseSessions: base,
         effectiveGroupBy,
@@ -221,7 +223,7 @@ export function useSidebarSessions({
         const color = workspaceColors[ws.id] || getDefaultColor(ws.id);
         const base = wsSessions.filter(s => s.sessionType === 'base');
         const regular = wsSessions.filter(s => s.sessionType !== 'base');
-        const subGroups = buildStatusGroups(regular, sortBy, `project:${ws.id}`);
+        const subGroups = applyStatusGroupOrder(buildStatusGroups(regular, sortBy, `project:${ws.id}`), statusGroupOrder);
         groups.push({
           key: `project:${ws.id}`,
           label: ws.name,
@@ -239,7 +241,7 @@ export function useSidebarSessions({
     }
 
     return { groups: [], flatSessions: [], baseSessions: [], effectiveGroupBy };
-  }, [sessions, workspaces, groupBy, sortBy, filters, projectFilter, workspaceColors, getDefaultColor]);
+  }, [sessions, workspaces, groupBy, sortBy, filters, projectFilter, workspaceColors, getDefaultColor, statusGroupOrder]);
 }
 
 /**
