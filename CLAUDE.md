@@ -4,33 +4,7 @@ ChatML is a native macOS desktop app for AI-assisted development. It uses isolat
 
 ## Task Management (MANDATORY)
 
-**Before starting any work, ALWAYS create a task list using TodoWrite.** This provides visibility into what you're doing.
-
-### When to Create Tasks
-
-- ANY request that involves code changes
-- ANY request with multiple steps
-- Even "simple" styling changes (they often cascade)
-
-### Task Workflow
-
-1. **Analyze the request** - Break it down into discrete steps
-2. **Create tasks** - Use `TodoWrite` for each step with clear `subject` and `activeForm`
-3. **Work sequentially** - Update task to `in_progress` before starting, `completed` when done
-4. **Add discovered tasks** - If you find additional work needed, create new tasks
-
-### Example
-
-User: "Make the font larger and add a blue pill style"
-
-```
-TodoWrite: "Increase font size" (activeForm: "Increasing font size")
-TodoWrite: "Add blue pill styling" (activeForm: "Adding blue pill styling")
-```
-
-Then work through each task, updating status as you go.
-
-**This is not optional.** The user needs visibility into your progress.
+Always create tasks with `TodoWrite` before starting work. Break requests into discrete steps, update each to `in_progress` before starting and `completed` when done. Add discovered tasks as you go. This is not optional — the user needs visibility into your progress.
 
 ## Tech Stack & Directory Structure
 
@@ -38,115 +12,96 @@ Then work through each task, updating status as you go.
 |-----------|------|---------|
 | `src/` | Next.js 16 / React 19 | Frontend UI components & hooks |
 | `backend/` | Go 1.25 | REST API, WebSocket, SQLite |
-| `agent-runner/` | Node.js / TypeScript | Claude Agent SDK wrapper |
+| `agent-runner/` | Node.js / TypeScript | Claude Agent SDK wrapper + MCP tools |
 | `src-tauri/` | Rust / Tauri 2 | Native desktop shell |
 
 ### Key Entry Points
 
-- `backend/main.go` - Go server entry point (port 9876)
-- `src/app/page.tsx` - Main dashboard page
-- `agent-runner/src/index.ts` - Agent process entry
-- `Makefile` - Build automation
+- `backend/main.go` — Go server entry point (port 9876)
+- `src/app/page.tsx` — Main dashboard page
+- `agent-runner/src/index.ts` — Agent process entry
+- `Makefile` — Build automation
+
+### Key Frontend Patterns
+
+- **Editor**: Plate.js rich text editor with InlineCombobox pattern for @ mentions and / slash commands
+- **State**: Zustand stores in `src/stores/` (14 stores — app, auth, connection, settings, tabs, UI, etc.)
+- **Components**: `src/components/` — `ui/` (shadcn/Radix primitives), `conversation/` (chat), `layout/` (shell), `panels/` (sidebars), `dialogs/` (modals)
+
+### Database
+
+- SQLite with WAL mode — schema in `backend/store/sqlite.go`
+- Migrations via `runMigrations()` in the same file
+- Key tables: repos, sessions, conversations, messages, tool_actions, review_comments, checkpoints, settings
 
 ## Development Commands
 
 ```bash
 # Development
 make dev              # Start all services (backend + frontend + Tauri)
-make backend          # Run Go backend only
-npm run dev           # Frontend dev server only
+make backend          # Build Go backend only
+make agent-runner     # Build agent-runner TypeScript
+npm run dev           # Frontend dev server only (port 3100, Turbopack)
 
 # Building
-make build            # Production build
-npm run build         # Frontend build only
+make build            # Production build (Tauri + frontend + backend)
+make build-debug      # Debug build (for deep links, OAuth testing)
+make install-debug    # Install debug .app to /Applications
 
-# Linting & Type Checking
+# Testing
+npm run test          # Frontend tests (Vitest)
+npm run test:run      # Frontend tests, single run
+cd backend && go test -race ./...   # Backend tests
+make test             # Backend tests with race detector
+make test-cover       # Backend tests with coverage report
+
+# Linting
 npm run lint          # ESLint
-npm run build         # TypeScript checked during build
+
+# Release
+make release VERSION=x.y.z   # Bump version, create PR (merge triggers CI build)
+
+# Other
+make init             # Initialize fresh worktree
+make clean            # Remove all build artifacts
 ```
-
-## Architecture
-
-### Data Model Hierarchy
-
-```
-Workspace → Session → Conversation → Message
-```
-
-- **Workspace** - A repository on disk
-- **Session** - An isolated git worktree for a task
-- **Conversation** - Chat within a session (task, review, or chat type)
-- **Message** - Individual messages with role (user/assistant/system)
-
-### Communication Flow
-
-1. Frontend connects to backend via HTTP REST + WebSocket (port 9876)
-2. Backend spawns `agent-runner` Node.js processes
-3. Agent processes run in isolated worktrees
-4. Output streams through WebSocket to UI
-5. State persisted in SQLite
-
-### State Management
-
-- **Frontend**: Zustand stores in `src/stores/`
-- **Backend**: SQLite persistence in `backend/store/`
 
 ## Git Workflow
 
 ### ⛔ CRITICAL: Never Commit to Main
 
-**NEVER make changes directly on `main`.** This is a strict rule with no exceptions.
+**NEVER make changes directly on `main`.** No exceptions.
 
-### Pre-Commit Checklist (MANDATORY)
-
-**Before EVERY commit, you MUST run:**
-
-```bash
-git branch --show-current
-```
-
-**If the output is `main` or `master`, STOP and do this:**
+Before EVERY commit, run `git branch --show-current`. If on `main`:
 
 ```bash
 git checkout -b fix/description-of-change   # or feature/
 ```
 
-> **Note:** Do NOT use `git stash` — stash is shared across all worktrees and can corrupt other sessions. Just create the branch directly (uncommitted changes carry over to the new branch).
-
-**Only then proceed with commit.**
+> **⚠️ Never use `git stash`** — stash is shared across all worktrees and will corrupt other sessions. Uncommitted changes carry over to a new branch automatically.
 
 ### Branch Naming
 
-```bash
-git checkout -b fix/description-of-change
-# or
-git checkout -b feature/description-of-change
-```
+- `fix/description-of-change`
+- `feature/description-of-change`
 
-### Workflow
+## ChatML MCP Tools
 
-1. Check current branch (MANDATORY)
-2. Create feature branch if on main
-3. Make changes
-4. Commit
-5. Push
-6. Create PR
+When working in a ChatML session, you have access to `mcp__chatml__*` tools for:
+- Session status, workspace diffs, workspace scripts config
+- Sprint context and phase updates
+- Linear issue integration (start, update status, clear)
+- Review comments (add, list, resolve, stats)
+- PR lifecycle (report created, report merged, clear link)
 
-**Treating this like a destructive operation - always verify the branch first.**
+Use these tools to interact with the ChatML platform rather than manual workarounds.
 
 ## Verification Checklist
 
 Run before completing any task:
 
 ```bash
-# Frontend
 npm run lint
-npm run build
-
-# Backend
-cd backend && go test ./...
-cd backend && go build ./...
-
-# Full stack (manual testing)
-make dev
+npm run build        # Also checks TypeScript
+make test            # Backend tests
 ```
