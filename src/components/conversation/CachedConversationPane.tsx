@@ -43,7 +43,11 @@ function convCacheReducer(state: ConvCacheState, action: ConvCacheAction): ConvC
       return state.activeId === null ? state : { ...state, activeId: null };
     case 'remove': {
       const ids = state.ids.filter(id => id !== action.conversationId);
-      return ids.length === state.ids.length ? state : { ids, activeId: state.activeId };
+      if (ids.length === state.ids.length) return state;
+      // Reset activeId when the removed conversation was active — otherwise the
+      // dispatch-during-render guard (conversationId !== convCache.activeId) won't
+      // fire on re-selection, leaving convCache.ids empty and the pane blank.
+      return { ids, activeId: state.activeId === action.conversationId ? null : state.activeId };
     }
     default:
       return state;
