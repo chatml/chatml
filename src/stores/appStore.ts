@@ -267,6 +267,8 @@ export interface InterruptedInfo {
   agentSessionId: string;
   hadPendingPlan: boolean;
   hadPendingQuestion: boolean;
+  hadPendingElicitation: boolean;
+  elicitationMcpServer?: string; // MCP server name if elicitation was pending
   snapshot: StreamingSnapshotDTO | null;
   resuming?: boolean; // true while resume is in progress
 }
@@ -357,6 +359,12 @@ interface AppState {
   // Input suggestions from Haiku (keyed by conversationId)
   inputSuggestions: { [conversationId: string]: InputSuggestion };
 
+  // SDK prompt suggestions (keyed by conversationId, array of suggestion strings)
+  promptSuggestions: { [conversationId: string]: string[] };
+
+  // Tool use summaries from SDK (keyed by conversationId)
+  toolUseSummaries: { [conversationId: string]: Array<{ summary: string; toolUseIds: string[] }> };
+
   // Conversation summaries (keyed by conversationId)
   summaries: { [conversationId: string]: Summary };
 
@@ -430,6 +438,14 @@ interface AppState {
   // Input suggestion actions
   setInputSuggestion: (conversationId: string, suggestion: InputSuggestion) => void;
   clearInputSuggestion: (conversationId: string) => void;
+
+  // SDK prompt suggestion actions
+  addPromptSuggestion: (conversationId: string, suggestion: string) => void;
+  clearPromptSuggestions: (conversationId: string) => void;
+
+  // Tool use summary actions
+  addToolUseSummary: (conversationId: string, summary: { summary: string; toolUseIds: string[] }) => void;
+  clearToolUseSummaries: (conversationId: string) => void;
 
   // Message actions
   addMessage: (message: Message) => void;
@@ -683,6 +699,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   pendingSprintPhaseProposal: {},
   interruptedState: {},
   inputSuggestions: {},
+  promptSuggestions: {},
+  toolUseSummaries: {},
   summaries: {},
   lastFileChange: null,
   messagePagination: {},
@@ -1282,6 +1300,32 @@ export const useAppStore = create<AppState>((set, get) => ({
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { [conversationId]: _removed, ...rest } = state.inputSuggestions;
     return { inputSuggestions: rest };
+  }),
+
+  // SDK prompt suggestion actions
+  addPromptSuggestion: (conversationId, suggestion) => set((state) => {
+    const existing = state.promptSuggestions[conversationId] ?? [];
+    // Deduplicate and cap at 3
+    if (existing.includes(suggestion)) return state;
+    const updated = [...existing, suggestion].slice(-3);
+    return { promptSuggestions: { ...state.promptSuggestions, [conversationId]: updated } };
+  }),
+  clearPromptSuggestions: (conversationId) => set((state) => {
+    if (!state.promptSuggestions[conversationId]) return state;
+    const { [conversationId]: _removed, ...rest } = state.promptSuggestions;
+    return { promptSuggestions: rest };
+  }),
+
+  // Tool use summary actions
+  addToolUseSummary: (conversationId, summary) => set((state) => {
+    const existing = state.toolUseSummaries[conversationId] ?? [];
+    const updated = [...existing, summary].slice(-20);
+    return { toolUseSummaries: { ...state.toolUseSummaries, [conversationId]: updated } };
+  }),
+  clearToolUseSummaries: (conversationId) => set((state) => {
+    if (!state.toolUseSummaries[conversationId]) return state;
+    const { [conversationId]: _removed, ...rest } = state.toolUseSummaries;
+    return { toolUseSummaries: rest };
   }),
 
   // Message actions

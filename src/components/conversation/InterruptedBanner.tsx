@@ -53,6 +53,13 @@ export function InterruptedBanner({ conversationId }: InterruptedBannerProps) {
           {interrupted.hadPendingQuestion && (
             <span className="text-muted-foreground"> The AI was waiting for your answer.</span>
           )}
+          {interrupted.hadPendingElicitation && (
+            <span className="text-muted-foreground">
+              {interrupted.elicitationMcpServer
+                ? ` ${interrupted.elicitationMcpServer} was requesting input.`
+                : ' An MCP server was requesting input.'}
+            </span>
+          )}
         </div>
         <Button
           variant="outline"

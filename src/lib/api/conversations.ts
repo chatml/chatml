@@ -320,6 +320,7 @@ export interface StreamingSnapshotDTO {
   subAgents?: SnapshotSubAgent[];
   pendingPlanApproval?: { requestId: string; planContent?: string; timestamp: number } | null;
   pendingUserQuestion?: { requestId: string; questions: import('@/lib/types').UserQuestion[]; timestamp: number } | null;
+  pendingElicitation?: { elicitationId: string; mcpServerName: string; timestamp: number } | null;
 }
 
 export async function getStreamingSnapshot(convId: string): Promise<StreamingSnapshotDTO | null> {

@@ -98,7 +98,6 @@ function calculateEditStats(params?: Record<string, unknown>): { additions: numb
 }
 
 export const ToolUsageBlock = memo(function ToolUsageBlock({
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   id,
   tool,
   params,
@@ -139,6 +138,15 @@ export const ToolUsageBlock = memo(function ToolUsageBlock({
       }
     }
   }, [compacted, isActive, conversationId, messageId]);
+  // Tool use summary: show AI-generated summary for the last tool in a summary group
+  const toolUseSummary = useAppStore((s) => {
+    if (!conversationId) return undefined;
+    const summaries = s.toolUseSummaries[conversationId];
+    if (!summaries) return undefined;
+    // Find a summary where this tool is the LAST in the group (avoids repetition)
+    return summaries.find((su) => su.toolUseIds[su.toolUseIds.length - 1] === id)?.summary;
+  });
+
   const mcpInfo = useMemo(() => parseMcpToolName(tool), [tool]);
 
   const ToolIcon = useMemo((): LucideIcon => {
@@ -360,6 +368,7 @@ export const ToolUsageBlock = memo(function ToolUsageBlock({
   const showExpandable = hasDetails || hasOutput;
 
   return (
+    <>
     <Collapsible open={isOpen} onOpenChange={handleOpenChange}>
       <CollapsibleTrigger
         className={cn(
@@ -660,6 +669,12 @@ export const ToolUsageBlock = memo(function ToolUsageBlock({
         </CollapsibleContent>
       )}
     </Collapsible>
+    {toolUseSummary && (
+      <div className="ml-6 mt-0.5 text-2xs text-text-3 italic leading-relaxed">
+        {toolUseSummary}
+      </div>
+    )}
+    </>
   );
 });
 

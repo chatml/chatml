@@ -492,6 +492,7 @@ func (m *Manager) handleConversationOutput(convID string, proc *Process) {
 	// Pending interaction state for snapshot recovery after app restart
 	var pendingPlanApprovalSnapshot *PendingPlanApprovalSnapshot
 	var pendingUserQuestionSnapshot *PendingUserQuestionSnapshot
+	var pendingElicitationSnapshot *PendingElicitationSnapshot
 
 	// Per-turn accumulation for message persistence (Phase 3)
 	var completedTools []models.ToolUsageRecord
@@ -587,6 +588,7 @@ func (m *Manager) handleConversationOutput(convID string, proc *Process) {
 			SubAgents:           subAgents,
 			PendingPlanApproval: pendingPlanApprovalSnapshot,
 			PendingUserQuestion: pendingUserQuestionSnapshot,
+			PendingElicitation:  pendingElicitationSnapshot,
 		}
 		data, err := json.Marshal(snapshot)
 		if err != nil {
@@ -1036,6 +1038,59 @@ outer:
 					}
 				}
 
+			// ── SDK 0.2.72+ event types ──────────────────────────────────
+
+			case EventTypeElicitationRequest:
+				// MCP server is requesting user input — track for snapshot recovery
+				pendingElicitationSnapshot = &PendingElicitationSnapshot{
+					ElicitationID: event.ElicitationID,
+					McpServerName: event.McpServerName,
+					Timestamp:     time.Now().UnixMilli(),
+				}
+				markSnapshotDirty()
+
+			case EventTypeElicitationResult:
+				// Elicitation answered — clear pending state
+				pendingElicitationSnapshot = nil
+				markSnapshotDirty()
+
+			case EventTypeElicitationComplete:
+				// Elicitation flow finished — clear pending state
+				pendingElicitationSnapshot = nil
+				markSnapshotDirty()
+
+			case EventTypePromptSuggestion:
+				// AI-generated next-prompt suggestion — forwarded to frontend only
+
+			case EventTypeToolUseSummary:
+				// AI-generated summary of preceding tool work — forwarded to frontend only
+
+			case EventTypeHookStarted, EventTypeHookProgress:
+				// Hook execution lifecycle — informational, no snapshot state
+
+			case EventTypeWorktreeCreated:
+				logger.Manager.Infof("[%s] Worktree created: %s", convID, event.WorktreePath)
+
+			case EventTypeWorktreeRemoved:
+				logger.Manager.Infof("[%s] Worktree removed: %s", convID, event.WorktreePath)
+
+			case EventTypeInstructionsLoaded:
+				logger.Manager.Debugf("[%s] Instructions loaded from %s (reason: %s)", convID, event.FilePath, event.LoadReason)
+
+			case EventTypeMcpServersUpdated:
+				// Dynamic MCP server configuration changed at runtime — informational
+
+			case EventTypeSupportedAgents, EventTypeInitializationResult:
+				// Informational — no state tracking needed
+
+			// ── SDK 0.2.76+ event types ──────────────────────────────────
+
+			case EventTypeSessionForked:
+				logger.Manager.Infof("[%s] Session forked", convID)
+
+			case EventTypeMessageCancelled:
+				logger.Manager.Debugf("[%s] Message cancelled", convID)
+
 			case EventTypeTurnComplete, EventTypeComplete, EventTypeResult:
 				// Atomically clear the active turn flag and take any deferred
 				// user message. Store BEFORE the assistant message so the DB
@@ -1205,6 +1260,7 @@ outer:
 				isThinking = false
 				pendingPlanApprovalSnapshot = nil
 				pendingUserQuestionSnapshot = nil
+				pendingElicitationSnapshot = nil
 				thinkingBlocks = nil
 				currentThinkingText = ""
 				thinkingBlockStart = nil

@@ -74,6 +74,7 @@ export function useWebSocket(enabled: boolean = true) {
         s.setThinking(convId, false);
         s.appendStreamingText(convId, text);
         s.clearInputSuggestion(convId);
+        s.clearPromptSuggestions(convId);
       },
       // onFlushThinking: simple append
       (convId, text) => {
@@ -182,6 +183,8 @@ export function useWebSocket(enabled: boolean = true) {
         store.clearInterruptedState(conversationId);
         // Clear stale input suggestions from the previous turn
         store.clearInputSuggestion(conversationId);
+        store.clearPromptSuggestions(conversationId);
+        store.clearToolUseSummaries(conversationId);
         // Capture budget/thinking configuration from init event (per-conversation)
         if (event?.budgetConfig) {
           const config = event.budgetConfig;
@@ -923,6 +926,54 @@ export function useWebSocket(enabled: boolean = true) {
         }
         break;
 
+      // ── SDK 0.2.72+ event types ──────────────────────────────────
+
+      case 'prompt_suggestion':
+        if (event?.suggestion && typeof event.suggestion === 'string') {
+          store.addPromptSuggestion(conversationId, event.suggestion);
+        }
+        break;
+
+      case 'tool_use_summary':
+        if (event?.summary && event?.precedingToolUseIds) {
+          store.addToolUseSummary(conversationId, {
+            summary: event.summary as string,
+            toolUseIds: event.precedingToolUseIds as string[],
+          });
+        }
+        break;
+
+      case 'rate_limit':
+        if (event?.rateLimitInfo) {
+          window.dispatchEvent(new CustomEvent('agent-notification', {
+            detail: { title: 'Rate limited', message: 'API rate limit reached, requests will be delayed', type: 'warning', conversationId },
+          }));
+        }
+        break;
+
+      case 'elicitation_request':
+        if (event?.mcpServerName) {
+          window.dispatchEvent(new CustomEvent('agent-notification', {
+            detail: { title: 'MCP Input', message: `${event.mcpServerName as string} is requesting input...`, type: 'info', conversationId },
+          }));
+        }
+        break;
+
+      case 'elicitation_result':
+      case 'elicitation_complete':
+      case 'hook_started':
+      case 'hook_progress':
+      case 'worktree_created':
+      case 'worktree_removed':
+      case 'instructions_loaded':
+      case 'supported_agents':
+      case 'mcp_servers_updated':
+      case 'initialization_result':
+      case 'session_forked':
+      case 'message_cancelled':
+        // Informational events — no frontend state changes needed
+        break;
+
     }
   // getStore is a stable reference (useAppStore.getState), no deps needed
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1044,6 +1095,8 @@ export function useWebSocket(enabled: boolean = true) {
           agentSessionId: item.agentSessionId,
           hadPendingPlan: !!item.snapshot?.pendingPlanApproval,
           hadPendingQuestion: !!item.snapshot?.pendingUserQuestion,
+          hadPendingElicitation: !!item.snapshot?.pendingElicitation,
+          elicitationMcpServer: item.snapshot?.pendingElicitation?.mcpServerName,
           snapshot: item.snapshot,
         });
         // Inject the snapshot's text as a visible assistant message so the user

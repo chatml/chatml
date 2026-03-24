@@ -200,7 +200,7 @@ type AgentEvent struct {
 	McpServerName   string                 `json:"mcpServerName,omitempty"`
 	ElicitationMode string                 `json:"elicitationMode,omitempty"`
 	URL             string                 `json:"url,omitempty"`
-	ElicitationId   string                 `json:"elicitationId,omitempty"`
+	ElicitationID   string                 `json:"elicitationId,omitempty"`
 	RequestedSchema map[string]interface{} `json:"requestedSchema,omitempty"`
 	Action          string                 `json:"action,omitempty"`
 
@@ -446,6 +446,7 @@ type StreamingSnapshot struct {
 	// Pending interaction state — persisted so the frontend can recover after app restart.
 	PendingPlanApproval *PendingPlanApprovalSnapshot `json:"pendingPlanApproval,omitempty"`
 	PendingUserQuestion *PendingUserQuestionSnapshot `json:"pendingUserQuestion,omitempty"`
+	PendingElicitation  *PendingElicitationSnapshot  `json:"pendingElicitation,omitempty"`
 }
 
 // PendingPlanApprovalSnapshot captures a pending ExitPlanMode approval request.
@@ -453,6 +454,13 @@ type PendingPlanApprovalSnapshot struct {
 	RequestID   string `json:"requestId"`
 	PlanContent string `json:"planContent,omitempty"`
 	Timestamp   int64  `json:"timestamp"` // Unix milliseconds
+}
+
+// PendingElicitationSnapshot captures a pending MCP elicitation request.
+type PendingElicitationSnapshot struct {
+	ElicitationID string `json:"elicitationId"`
+	McpServerName string `json:"mcpServerName"`
+	Timestamp     int64  `json:"timestamp"` // Unix milliseconds
 }
 
 // PendingUserQuestionSnapshot captures a pending AskUserQuestion request.
