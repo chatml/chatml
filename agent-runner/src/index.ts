@@ -207,7 +207,7 @@ const settingSources = settingSourcesArg
 
 // Task 7: Beta Features Flag
 const betasArg = getArg("--betas");
-const betas = betasArg ? betasArg.split(',').map(s => s.trim()) as ("context-1m-2025-08-07")[] : undefined;
+const betas = betasArg ? betasArg.split(',').map(s => s.trim()) : undefined;
 
 // Task 8: Model Configuration
 const model = getArg("--model");
