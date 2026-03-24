@@ -21,23 +21,17 @@ const CENTER_FACTORS = Array.from({ length: BAR_COUNT }, (_, i) => {
 });
 
 interface DictationWaveformProps {
-  audioLevel: number;
+  audioLevelRef: React.RefObject<number>;
   isActive: boolean;
   shortcutHint?: string;
 }
 
-export function DictationWaveform({ audioLevel, isActive, shortcutHint }: DictationWaveformProps) {
-  const audioLevelRef = useRef(audioLevel);
+export function DictationWaveform({ audioLevelRef, isActive, shortcutHint }: DictationWaveformProps) {
   const rafRef = useRef<number>(0);
   const timeRef = useRef(0);
   const lastFrameRef = useRef(0);
   // Direct refs to bar DOM elements — updated each frame without going through React state
   const barsRef = useRef<(HTMLDivElement | null)[]>([]);
-
-  // Keep audioLevel ref in sync without restarting the animation loop
-  useEffect(() => {
-    audioLevelRef.current = audioLevel;
-  }, [audioLevel]);
 
   // Animation loop — writes heights directly to DOM to avoid 60 React re-renders/sec
   useEffect(() => {
@@ -71,7 +65,9 @@ export function DictationWaveform({ audioLevel, isActive, shortcutHint }: Dictat
 
     rafRef.current = requestAnimationFrame(animate);
     return () => cancelAnimationFrame(rafRef.current);
-  }, [isActive]);
+    // audioLevelRef intentionally omitted — it's a stable ref object;
+    // we read .current each frame without needing to restart the loop.
+  }, [isActive]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!isActive) return null;
 

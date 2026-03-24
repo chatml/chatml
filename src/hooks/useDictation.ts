@@ -35,13 +35,13 @@ interface UseDictationReturn {
   isDictating: boolean;
   toggle: () => void;
   isAvailable: boolean;
-  audioLevel: number;
+  audioLevelRef: React.RefObject<number>;
 }
 
 export function useDictation(options: UseDictationOptions): UseDictationReturn {
   const [isDictating, setIsDictatingState] = useState(false);
   const [isAvailable, setIsAvailable] = useState(false);
-  const [audioLevel, setAudioLevel] = useState(0);
+  const audioLevelRef = useRef(0);
   const optionsRef = useRef(options);
   const isDictatingRef = useRef(false);
   const togglingRef = useRef(false);
@@ -82,7 +82,7 @@ export function useDictation(options: UseDictationOptions): UseDictationReturn {
         optionsRef.current.onTranscript(payload.text);
       }),
       safeListen<DictationAudioLevel>('dictation-audio-level', (payload) => {
-        setAudioLevel(payload.level);
+        audioLevelRef.current = payload.level;
       }),
       safeListen<DictationError>('dictation-error', (payload) => {
         // Apple's SFSpeechRecognizer fires a spurious "No speech detected" error
@@ -97,12 +97,12 @@ export function useDictation(options: UseDictationOptions): UseDictationReturn {
           return;
         }
         setDictating(false);
-        setAudioLevel(0);
+        audioLevelRef.current = 0;
         optionsRef.current.onError?.(payload.message);
       }),
       safeListen<void>('dictation-ended', () => {
         setDictating(false);
-        setAudioLevel(0);
+        audioLevelRef.current = 0;
         isStoppingRef.current = false;
         optionsRef.current.onEnd?.();
       }),
@@ -139,7 +139,7 @@ export function useDictation(options: UseDictationOptions): UseDictationReturn {
           return;
         }
         setDictating(false);
-        setAudioLevel(0);
+        audioLevelRef.current = 0;
         // isStoppingRef is reset when dictation-ended fires
       } else {
         try {
@@ -157,7 +157,7 @@ export function useDictation(options: UseDictationOptions): UseDictationReturn {
               // Best-effort recovery — if stop also fails, just reset UI state
             }
             setDictating(false);
-            setAudioLevel(0);
+            audioLevelRef.current = 0;
           } else {
             // Permission or other error — re-check permissions
             const status = await safeInvoke<DictationPermissionStatus>(
@@ -177,5 +177,5 @@ export function useDictation(options: UseDictationOptions): UseDictationReturn {
     }
   }, [isAvailable, setDictating]);
 
-  return { isDictating, toggle, isAvailable, audioLevel };
+  return { isDictating, toggle, isAvailable, audioLevelRef };
 }
