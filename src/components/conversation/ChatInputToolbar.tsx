@@ -75,11 +75,11 @@ export interface PermissionModeProps {
   setDefault: (mode: PermissionMode) => void;
 }
 
-const PERMISSION_MODE_OPTIONS: { id: PermissionMode; label: string; description: string; color: string }[] = [
-  { id: 'bypassPermissions', label: 'Full access', description: 'All tools auto-approved', color: 'text-green-500' },
-  { id: 'acceptEdits', label: 'Accept edits', description: 'File edits auto-approved, Bash prompts', color: 'text-blue-500' },
-  { id: 'default', label: 'Ask for approval', description: 'Approve each tool individually', color: 'text-yellow-500' },
-  { id: 'dontAsk', label: 'Read-only', description: 'Only read tools, all others denied', color: 'text-orange-500' },
+const PERMISSION_MODE_OPTIONS: { id: PermissionMode; label: string; description: string }[] = [
+  { id: 'bypassPermissions', label: 'Full access', description: 'All tools auto-approved' },
+  { id: 'acceptEdits', label: 'Accept edits', description: 'File edits auto-approved, Bash prompts' },
+  { id: 'default', label: 'Ask for approval', description: 'Approve each tool individually' },
+  { id: 'dontAsk', label: 'Read-only', description: 'Only read tools, all others denied' },
 ];
 
 export interface DictationProps {
@@ -321,7 +321,6 @@ export function ChatInputToolbar({
               className={cn(
                 'h-7 gap-1.5 px-2 text-xs',
                 isPermModified && 'bg-amber-500/10 hover:bg-amber-500/20',
-                currentPermOption.color,
               )}
               title={`Permissions: ${currentPermOption.label}`}
               aria-label={`Permissions: ${currentPermOption.label}`}
@@ -345,7 +344,7 @@ export function ChatInputToolbar({
                   className="group flex-col items-start gap-0 py-2"
                 >
                   <div className="flex w-full items-center gap-1.5">
-                    <span className={cn('font-medium', option.color)}>{option.label}</span>
+                    <span className="font-medium">{option.label}</span>
                     <span className="ml-auto flex shrink-0 items-center gap-1">
                       {isSelected && <Check className="h-3.5 w-3.5" />}
                       {isDefault ? (
