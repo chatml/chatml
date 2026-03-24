@@ -2,7 +2,7 @@
 
 import { useEffect, useCallback, useReducer, useMemo } from 'react';
 import { cn } from '@/lib/utils';
-import { GitBranch, Sparkles, Bug, TestTube2, Eye, RefreshCw, FileText } from 'lucide-react';
+import { GitBranch, Wand2, Bug, TestTube2, Eye, Code2, FileText } from 'lucide-react';
 import { ConversationMessagePane } from '@/components/conversation/ConversationMessagePane';
 
 // Maximum number of conversation Virtuoso instances to keep mounted per session.
@@ -146,12 +146,12 @@ export function CachedConversationPane({
 // --- Local sub-components ---
 
 const QUICK_ACTIONS = [
-  { icon: Bug, label: 'Fix a bug', prompt: 'Fix a bug: ' },
-  { icon: TestTube2, label: 'Write tests', prompt: 'Write tests for ' },
-  { icon: Sparkles, label: 'Add a feature', prompt: 'Add a feature: ' },
-  { icon: Eye, label: 'Review code', prompt: 'Review the code in ' },
-  { icon: RefreshCw, label: 'Refactor', prompt: 'Refactor ' },
-  { icon: FileText, label: 'Documentation', prompt: 'Write documentation for ' },
+  { icon: Bug, label: 'Fix a bug', description: 'Diagnose and resolve issues', prompt: 'Fix a bug: ', iconClass: 'text-rose-600 dark:text-rose-400', gradientClass: 'bg-gradient-to-b from-rose-500/15 to-rose-500/5' },
+  { icon: TestTube2, label: 'Write tests', description: 'Improve coverage and confidence', prompt: 'Write tests for ', iconClass: 'text-emerald-600 dark:text-emerald-400', gradientClass: 'bg-gradient-to-b from-emerald-500/15 to-emerald-500/5' },
+  { icon: Wand2, label: 'Add a feature', description: 'Build something new', prompt: 'Add a feature: ', iconClass: 'text-brand', gradientClass: 'bg-gradient-to-b from-brand/15 to-brand/5' },
+  { icon: Eye, label: 'Review code', description: 'Get a fresh perspective', prompt: 'Review the code in ', iconClass: 'text-blue-600 dark:text-blue-400', gradientClass: 'bg-gradient-to-b from-blue-500/15 to-blue-500/5' },
+  { icon: Code2, label: 'Refactor', description: 'Improve structure and clarity', prompt: 'Refactor ', iconClass: 'text-amber-600 dark:text-amber-400', gradientClass: 'bg-gradient-to-b from-amber-500/15 to-amber-500/5' },
+  { icon: FileText, label: 'Documentation', description: 'Explain what the code does', prompt: 'Write documentation for ', iconClass: 'text-purple-600 dark:text-purple-400', gradientClass: 'bg-gradient-to-b from-purple-500/15 to-purple-500/5' },
 ];
 
 function SessionHomeState({ sessionName }: { sessionName?: string }) {
@@ -163,31 +163,52 @@ function SessionHomeState({ sessionName }: { sessionName?: string }) {
 
   return (
     <div className="pt-3 pl-5 pr-12 pb-10 animate-fade-in">
-      <div className="max-w-md mx-auto text-center">
-        {sessionName && (
-          <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-brand/10 text-brand text-sm font-medium mb-6 animate-scale-in">
-            <GitBranch className="w-4 h-4" />
-            {sessionName}
+      <div className="relative">
+        <div className="absolute inset-x-0 top-0 h-48 bg-[radial-gradient(ellipse_60%_50%_at_50%_-20%,oklch(0.707_0.165_292/0.04),transparent)] dark:bg-[radial-gradient(ellipse_60%_50%_at_50%_-20%,oklch(0.707_0.165_292/0.06),transparent)] pointer-events-none" />
+
+        <div className="relative max-w-lg mx-auto stagger-children">
+          {sessionName && (
+            <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-brand/10 text-brand text-sm font-medium mb-5 animate-scale-in">
+              <GitBranch className="w-4 h-4" />
+              {sessionName}
+            </div>
+          )}
+
+          <div className="mb-6">
+            <h2 className="font-display text-[1.375rem] leading-[1.25] tracking-display">
+              Let&apos;s build something
+            </h2>
+            <p className="text-sm text-muted-foreground mt-1.5">
+              Pick a starting point, or just describe what you need
+            </p>
           </div>
-        )}
-        <h2 className="font-display text-[1.375rem] leading-[1.25] tracking-display mb-2">
-          What would you like to work on?
-        </h2>
-        <p className="text-sm text-muted-foreground mb-6">
-          Type below to start, or pick a quick action
-        </p>
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-          {QUICK_ACTIONS.map(({ icon: Icon, label, prompt }) => (
-            <button
-              key={label}
-              type="button"
-              onClick={() => handleTemplateClick(prompt)}
-              className="flex items-center gap-2 px-3 py-2.5 rounded-lg border border-border bg-card text-sm text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors cursor-pointer text-left"
-            >
-              <Icon className="w-4 h-4 shrink-0" />
-              {label}
-            </button>
-          ))}
+
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+            {QUICK_ACTIONS.map(({ icon: Icon, label, description, prompt, iconClass, gradientClass }) => (
+              <button
+                key={label}
+                type="button"
+                onClick={() => handleTemplateClick(prompt)}
+                className="group flex flex-col items-center text-center gap-2.5 rounded-xl border px-3 py-4 transition-all duration-150 border-border/30 bg-card/30 cursor-pointer hover:bg-card/60 hover:border-border/50 hover:shadow-sm active:scale-[0.98]"
+              >
+                <div className={cn(
+                  'size-10 rounded-xl flex items-center justify-center shrink-0 transition-colors',
+                  gradientClass,
+                  'group-hover:brightness-110'
+                )}>
+                  <Icon className={cn('size-5', iconClass)} />
+                </div>
+                <div className="min-w-0">
+                  <div className="text-sm font-medium text-foreground/90 transition-colors group-hover:text-foreground">
+                    {label}
+                  </div>
+                  <div className="text-[11px] text-muted-foreground/70 mt-0.5">
+                    {description}
+                  </div>
+                </div>
+              </button>
+            ))}
+          </div>
         </div>
       </div>
     </div>
