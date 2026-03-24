@@ -2,9 +2,7 @@
 import { tool } from "@anthropic-ai/claude-agent-sdk";
 import { z } from "zod";
 import type { WorkspaceContext } from "../context.js";
-import { fetchWithRetry, formatFetchError, buildHeaders } from "./fetch-utils.js";
-
-const BACKEND_URL = process.env.CHATML_BACKEND_URL || "http://127.0.0.1:9876";
+import { fetchWithRetry, formatFetchError, buildHeaders, BACKEND_URL } from "./fetch-utils.js";
 
 // Sprint phase definitions — keep in sync with:
 //   backend/models/types.go (ValidSprintPhases)

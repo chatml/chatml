@@ -2,19 +2,7 @@
 import { tool } from "@anthropic-ai/claude-agent-sdk";
 import { z } from "zod";
 import type { WorkspaceContext } from "../context.js";
-import { fetchWithRetry, formatFetchError } from "./fetch-utils.js";
-
-// Backend URL from environment. This matches the default port used by the Go backend.
-// TODO: Consider adding backendUrl to WorkspaceContext for consistency with other tools
-const BACKEND_URL = process.env.CHATML_BACKEND_URL || "http://127.0.0.1:9876";
-const AUTH_TOKEN = process.env.CHATML_AUTH_TOKEN || "";
-
-function buildHeaders(json = false): Record<string, string> {
-  const headers: Record<string, string> = {};
-  if (json) headers["Content-Type"] = "application/json";
-  if (AUTH_TOKEN) headers["Authorization"] = `Bearer ${AUTH_TOKEN}`;
-  return headers;
-}
+import { fetchWithRetry, formatFetchError, buildHeaders, BACKEND_URL } from "./fetch-utils.js";
 
 export function createCommentTools(context: WorkspaceContext) {
   return [
