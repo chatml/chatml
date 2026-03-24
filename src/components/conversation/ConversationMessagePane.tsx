@@ -242,30 +242,17 @@ export function ConversationMessagePane({
     isStreamingRef.current = selectedStreaming.isStreaming;
   }, [selectedStreaming.isStreaming]);
 
-  // When the pane becomes active after being hidden (e.g. session switch where
-  // the parent container was display:none), Virtuoso may need a scroll nudge.
-  // This handles the display:none → visible transition.
+  // Force Virtuoso remount when pane re-activates after being hidden.
+  // Virtuoso's internal size cache (keyed by virtual index) becomes stale when
+  // firstItemIndex drifts or messages change while the pane is inactive. A scroll
+  // nudge cannot fix stale size ranges — only a fresh mount clears them.
+  // The remount uses initialTopMostItemIndex: LAST to scroll to the latest messages.
+  const [virtuosoGeneration, setVirtuosoGeneration] = useState(0);
   const prevIsActiveRef = useRef(false);
   useEffect(() => {
     if (isActive && !prevIsActiveRef.current && hasMessages) {
       resetFollowState();
-      // Virtuoso preserves scrollTop through visibility:hidden, but display:none
-      // (from file viewer toggle) can leave stale measurements. Nudge scroll to
-      // force Virtuoso to recalculate visible items after any visibility transition.
-      requestAnimationFrame(() => {
-        if (isAtBottomRef.current) {
-          messageListRef.current?.scrollToBottom('auto');
-        } else {
-          // 1px scroll nudge triggers Virtuoso's internal recalculation without
-          // visible movement — handles display:none → visible edge case.
-          const el = messageListRef.current?.getScrollerElement();
-          if (el && el.scrollTop > 0) {
-            const target = el.scrollTop;
-            el.scrollTop = target - 1;
-            requestAnimationFrame(() => { el.scrollTop = target; });
-          }
-        }
-      });
+      setVirtuosoGeneration(g => g + 1);
     }
     prevIsActiveRef.current = isActive;
   }, [isActive, hasMessages, resetFollowState]);
@@ -496,6 +483,7 @@ export function ConversationMessagePane({
         isSearchPending={searchQuery !== debouncedSearchQuery}
       />
       <VirtualizedMessageList
+        key={virtuosoGeneration}
         ref={messageListRef}
         messages={conversationMessages}
         worktreePath={worktreePath}

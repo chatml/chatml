@@ -2305,13 +2305,14 @@ updateFileTabContent: (id, content) => set((state) => ({
         ...((queued || metadata.terminal) ? {
           queuedMessages: { ...state.queuedMessages, [conversationId]: remaining },
         } : {}),
-        // Keep pagination totalCount in sync when queued message was committed
-        ...(queued && convPagination ? {
+        // Keep pagination totalCount in sync: +1 for the assistant message,
+        // +1 more if a queued user message was also committed.
+        ...(convPagination ? {
           messagePagination: {
             ...state.messagePagination,
             [conversationId]: {
               ...convPagination,
-              totalCount: convPagination.totalCount + 1,
+              totalCount: convPagination.totalCount + 1 + (queued ? 1 : 0),
             },
           },
         } : {}),
