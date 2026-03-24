@@ -147,7 +147,7 @@ export function useSidebarSessions({
   projectFilter,
   workspaceColors,
   getWorkspaceColor: getDefaultColor,
-}: UseSidebarSessionsOptions): { groups: SidebarGroup[]; flatSessions: WorktreeSession[]; effectiveGroupBy: SidebarGroupBy } {
+}: UseSidebarSessionsOptions): { groups: SidebarGroup[]; flatSessions: WorktreeSession[]; baseSessions: WorktreeSession[]; effectiveGroupBy: SidebarGroupBy } {
   return useMemo(() => {
     // When filtering to a single project, pre-filter sessions and downgrade groupBy
     const effectiveSessions = projectFilter
@@ -160,17 +160,23 @@ export function useSidebarSessions({
     const filtered = filterSessions(effectiveSessions, filters);
 
     if (effectiveGroupBy === 'none') {
+      const base = sortSessions(filtered.filter(s => s.sessionType === 'base'), sortBy);
+      const regular = filtered.filter(s => s.sessionType !== 'base');
       return {
         groups: [],
-        flatSessions: sortSessions(filtered, sortBy),
+        flatSessions: sortSessions(regular, sortBy),
+        baseSessions: base,
         effectiveGroupBy,
       };
     }
 
     if (effectiveGroupBy === 'status') {
+      const base = sortSessions(filtered.filter(s => s.sessionType === 'base'), sortBy);
+      const regular = filtered.filter(s => s.sessionType !== 'base');
       return {
-        groups: buildStatusGroups(filtered, sortBy),
+        groups: buildStatusGroups(regular, sortBy),
         flatSessions: [],
+        baseSessions: base,
         effectiveGroupBy,
       };
     }
@@ -203,7 +209,7 @@ export function useSidebarSessions({
           sessions: sortSessions(regular, sortBy),
         });
       }
-      return { groups, flatSessions: [], effectiveGroupBy };
+      return { groups, flatSessions: [], baseSessions: [], effectiveGroupBy };
     }
 
     // project-status
@@ -229,10 +235,10 @@ export function useSidebarSessions({
           subGroups,
         });
       }
-      return { groups, flatSessions: [], effectiveGroupBy };
+      return { groups, flatSessions: [], baseSessions: [], effectiveGroupBy };
     }
 
-    return { groups: [], flatSessions: [], effectiveGroupBy };
+    return { groups: [], flatSessions: [], baseSessions: [], effectiveGroupBy };
   }, [sessions, workspaces, groupBy, sortBy, filters, projectFilter, workspaceColors, getDefaultColor]);
 }
 

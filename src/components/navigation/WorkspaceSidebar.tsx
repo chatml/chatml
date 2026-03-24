@@ -21,7 +21,7 @@ import { CSS } from '@dnd-kit/utilities';
 import { useAppStore } from '@/stores/appStore';
 import { useScheduledTaskStore } from '@/stores/scheduledTaskStore';
 import { navigate, navigateOrOpenTab } from '@/lib/navigation';
-import { useSettingsStore, getBranchPrefix, getWorkspaceBranchPrefix, type ContentView, type SidebarSortBy } from '@/stores/settingsStore';
+import { useSettingsStore, getBranchPrefix, getWorkspaceBranchPrefix, type ContentView, type SidebarGroupBy } from '@/stores/settingsStore';
 import { useSidebarSessions, isSidebarGroupExpanded, type SidebarGroup } from '@/hooks/useSidebarSessions';
 import { createSession as createSessionApi, listConversations as listConversationsApi, updateSession as updateSessionApi, deleteRepo as deleteRepoApi, addRepo as addRepoApi, mapSessionDTO, refreshPRStatus, unlinkPR } from '@/lib/api';
 import { registerSession, getSessionDirName } from '@/lib/tauri';
@@ -174,7 +174,7 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onGitHubRepos,
   };
 
   // Track which workspaces are collapsed (persisted)
-  const { collapsedWorkspaces, toggleWorkspaceCollapsed, expandWorkspace, contentView, recentlyRemovedWorkspaces, addRecentlyRemovedWorkspace, removeRecentlyRemovedWorkspace, unreadWorkspaces, markWorkspaceUnread, markWorkspaceRead, workspaceColors, sidebarGroupBy, sidebarSortBy, setSidebarGroupBy, setSidebarSortBy, collapsedSidebarGroups, toggleSidebarGroupCollapsed, lastRepoDashboardWorkspaceId, setLastRepoDashboardWorkspaceId, sidebarProjectFilter, setSidebarProjectFilter } = useSettingsStore();
+  const { collapsedWorkspaces, toggleWorkspaceCollapsed, expandWorkspace, contentView, recentlyRemovedWorkspaces, addRecentlyRemovedWorkspace, removeRecentlyRemovedWorkspace, unreadWorkspaces, markWorkspaceUnread, markWorkspaceRead, workspaceColors, sidebarGroupBy, setSidebarGroupBy, collapsedSidebarGroups, toggleSidebarGroupCollapsed, lastRepoDashboardWorkspaceId, setLastRepoDashboardWorkspaceId, sidebarProjectFilter, setSidebarProjectFilter } = useSettingsStore();
 
   const isWorkspaceExpanded = (workspaceId: string) => {
     return !collapsedWorkspaces.includes(workspaceId);
@@ -187,6 +187,13 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onGitHubRepos,
       setSidebarProjectFilter(null);
     }
   }, [sidebarProjectFilter, workspaces, setSidebarProjectFilter]);
+
+  // Auto-downgrade view when project filter makes project-based views redundant
+  useEffect(() => {
+    if (!sidebarProjectFilter) return;
+    if (sidebarGroupBy === 'project') setSidebarGroupBy('none');
+    else if (sidebarGroupBy === 'project-status') setSidebarGroupBy('status');
+  }, [sidebarProjectFilter, sidebarGroupBy, setSidebarGroupBy]);
 
   // Scheduled task data for sidebar grouping
   const scheduledTasks = useScheduledTaskStore((s) => s.tasks);
@@ -211,11 +218,11 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onGitHubRepos,
   }, [sessions]);
 
   // Sidebar grouping/sorting — only operates on non-scheduled sessions
-  const { groups: sidebarGroups, flatSessions, effectiveGroupBy } = useSidebarSessions({
+  const { groups: sidebarGroups, flatSessions, baseSessions, effectiveGroupBy } = useSidebarSessions({
     sessions: regularSessions,
     workspaces,
     groupBy: sidebarGroupBy,
-    sortBy: sidebarSortBy,
+    sortBy: 'recent',
     filters: {
       searchTerm,
     },
@@ -482,30 +489,12 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onGitHubRepos,
     : undefined;
   const sectionHeaderLabel = filteredWorkspaceName ?? 'All Projects';
 
-  // Group by toggle helpers — two independent booleans compose into the 4 groupBy states
-  const isGroupByProject = sidebarGroupBy === 'project' || sidebarGroupBy === 'project-status';
-  const isGroupByStatus = sidebarGroupBy === 'status' || sidebarGroupBy === 'project-status';
-
-  const toggleGroupByProject = () => {
-    const newProject = !isGroupByProject;
-    if (newProject && isGroupByStatus) setSidebarGroupBy('project-status');
-    else if (newProject) setSidebarGroupBy('project');
-    else if (isGroupByStatus) setSidebarGroupBy('status');
-    else setSidebarGroupBy('none');
-  };
-
-  const toggleGroupByStatus = () => {
-    const newStatus = !isGroupByStatus;
-    if (isGroupByProject && newStatus) setSidebarGroupBy('project-status');
-    else if (isGroupByProject) setSidebarGroupBy('project');
-    else if (newStatus) setSidebarGroupBy('status');
-    else setSidebarGroupBy('none');
-  };
-
-  const SORT_BY_OPTIONS: { value: SidebarSortBy; label: string }[] = [
-    { value: 'recent', label: 'Recent' },
-    { value: 'status', label: 'Status' },
-    { value: 'name', label: 'Name' },
+  // View options — single selector replacing Group by + Sort by
+  const VIEW_OPTIONS: { value: SidebarGroupBy; label: string; projectOnly?: boolean }[] = [
+    { value: 'none', label: 'Recent' },
+    { value: 'status', label: 'By Status' },
+    { value: 'project', label: 'By Project', projectOnly: true },
+    { value: 'project-status', label: 'By Project > Status', projectOnly: true },
   ];
 
   return (
@@ -706,28 +695,12 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onGitHubRepos,
                       Session History
                     </DropdownMenuItem>
                     <DropdownMenuSeparator />
-                    <DropdownMenuLabel>Group by</DropdownMenuLabel>
-                    <DropdownMenuCheckboxItem
-                      checked={isGroupByProject}
-                      onCheckedChange={toggleGroupByProject}
-                      onSelect={(e) => e.preventDefault()}
-                    >
-                      Project
-                    </DropdownMenuCheckboxItem>
-                    <DropdownMenuCheckboxItem
-                      checked={isGroupByStatus}
-                      onCheckedChange={toggleGroupByStatus}
-                      onSelect={(e) => e.preventDefault()}
-                    >
-                      Status
-                    </DropdownMenuCheckboxItem>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuLabel>Sort by</DropdownMenuLabel>
-                    {SORT_BY_OPTIONS.map((option) => (
+                    <DropdownMenuLabel>View</DropdownMenuLabel>
+                    {VIEW_OPTIONS.filter((o) => !o.projectOnly || !sidebarProjectFilter).map((option) => (
                       <DropdownMenuCheckboxItem
                         key={option.value}
-                        checked={sidebarSortBy === option.value}
-                        onCheckedChange={() => setSidebarSortBy(option.value)}
+                        checked={sidebarGroupBy === option.value}
+                        onCheckedChange={() => setSidebarGroupBy(option.value)}
                       >
                         {option.label}
                       </DropdownMenuCheckboxItem>
@@ -899,7 +872,25 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onGitHubRepos,
                   {/* Mode: None — flat session list */}
                   {effectiveGroupBy === 'none' && (
                     <>
-                      {flatSessions.length === 0 && scheduledGroups.length === 0 ? (
+                      {baseSessions.map((session) => (
+                        <ErrorBoundary
+                          key={session.id}
+                          section="BaseSessionCard"
+                          fallback={<CardErrorFallback message="Error loading session" />}
+                        >
+                          <BaseSessionCard
+                            session={session}
+                            contentView={contentView}
+                            selectedSessionId={selectedSessionId}
+                            onSelectSession={(id, e) => handleSelectSession(session.workspaceId, id, e)}
+                            formatTimeAgo={formatTimeAgo}
+                          />
+                        </ErrorBoundary>
+                      ))}
+                      {baseSessions.length > 0 && (flatSessions.length > 0 || scheduledGroups.length > 0) && (
+                        <div className="mx-2 my-1.5 border-t border-border/40" />
+                      )}
+                      {flatSessions.length === 0 && baseSessions.length === 0 && scheduledGroups.length === 0 ? (
                         <div className="py-2 px-2 text-sm text-muted-foreground/70">
                           No sessions found
                         </div>
@@ -936,7 +927,25 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onGitHubRepos,
                   {/* Mode: Status — status group headers with sessions */}
                   {effectiveGroupBy === 'status' && (
                     <>
-                      {sidebarGroups.length === 0 ? (
+                      {baseSessions.map((session) => (
+                        <ErrorBoundary
+                          key={session.id}
+                          section="BaseSessionCard"
+                          fallback={<CardErrorFallback message="Error loading session" />}
+                        >
+                          <BaseSessionCard
+                            session={session}
+                            contentView={contentView}
+                            selectedSessionId={selectedSessionId}
+                            onSelectSession={(id, e) => handleSelectSession(session.workspaceId, id, e)}
+                            formatTimeAgo={formatTimeAgo}
+                          />
+                        </ErrorBoundary>
+                      ))}
+                      {baseSessions.length > 0 && sidebarGroups.length > 0 && (
+                        <div className="mx-2 my-1.5 border-t border-border/40" />
+                      )}
+                      {sidebarGroups.length === 0 && baseSessions.length === 0 && scheduledGroups.length === 0 ? (
                         <div className="py-2 px-2 text-sm text-muted-foreground/70">
                           No sessions found
                         </div>
@@ -1129,24 +1138,11 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onGitHubRepos,
                   </>
                 )}
                 <ContextMenuSub>
-                  <ContextMenuSubTrigger>Group by</ContextMenuSubTrigger>
+                  <ContextMenuSubTrigger>View</ContextMenuSubTrigger>
                   <ContextMenuSubContent>
-                    <ContextMenuItem onClick={(e) => { e.preventDefault(); toggleGroupByProject(); }}>
-                      <Check className={cn("h-3.5 w-3.5", !isGroupByProject && "opacity-0")} />
-                      Project
-                    </ContextMenuItem>
-                    <ContextMenuItem onClick={(e) => { e.preventDefault(); toggleGroupByStatus(); }}>
-                      <Check className={cn("h-3.5 w-3.5", !isGroupByStatus && "opacity-0")} />
-                      Status
-                    </ContextMenuItem>
-                  </ContextMenuSubContent>
-                </ContextMenuSub>
-                <ContextMenuSub>
-                  <ContextMenuSubTrigger>Sort by</ContextMenuSubTrigger>
-                  <ContextMenuSubContent>
-                    {SORT_BY_OPTIONS.map((option) => (
-                      <ContextMenuItem key={option.value} onClick={() => setSidebarSortBy(option.value)}>
-                        <Check className={cn("h-3.5 w-3.5", sidebarSortBy !== option.value && "opacity-0")} />
+                    {VIEW_OPTIONS.filter((o) => !o.projectOnly || !sidebarProjectFilter).map((option) => (
+                      <ContextMenuItem key={option.value} onClick={() => setSidebarGroupBy(option.value)}>
+                        <Check className={cn("h-3.5 w-3.5", sidebarGroupBy !== option.value && "opacity-0")} />
                         {option.label}
                       </ContextMenuItem>
                     ))}
