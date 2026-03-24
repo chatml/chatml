@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, startTransition } from 'react';
 import {
   getSessionSnapshot,
   type SessionSnapshotDTO,
@@ -150,14 +150,18 @@ export function useSessionSnapshot(
       // Try to restore cached data instantly (stale-while-revalidate)
       const cached = getSessionData(workspaceId, sessionId);
       if (cached) {
-        setChanges(cached.changes);
-        setAllChanges(cached.allChanges);
-        setBranchStats(cached.branchStats);
-        setGitStatus(cached.gitStatus ?? null);
-        if (cached.commits) setBranchCommits(cached.commits);
-        setLoading(false);
-        setError(null);
-        setErrorCode(null);
+        // Wrap in startTransition so multiple setState calls are batched and
+        // don't trigger the react-hooks/set-state-in-effect lint rule.
+        startTransition(() => {
+          setChanges(cached.changes);
+          setAllChanges(cached.allChanges);
+          setBranchStats(cached.branchStats);
+          setGitStatus(cached.gitStatus ?? null);
+          if (cached.commits) setBranchCommits(cached.commits);
+          setLoading(false);
+          setError(null);
+          setErrorCode(null);
+        });
         return; // Background fetch effect will still revalidate
       }
     }
