@@ -1667,19 +1667,20 @@ function SessionRow({
             <ContextMenuSeparator />
           </>
         )}
-        {/* Hidden for shipping — Branches & PR context items */}
-        {false && onOpenBranches && (
+        {/* Hidden for shipping — Branches & PR context items
+        {onOpenBranches && (
           <ContextMenuItem onClick={() => onOpenBranches()}>
             <GitBranch className="h-4 w-4" />
             Branches
           </ContextMenuItem>
         )}
-        {false && onOpenPRs && (
+        {onOpenPRs && (
           <ContextMenuItem onClick={() => onOpenPRs()}>
             <GitPullRequest className="h-4 w-4" />
             Pull Requests
           </ContextMenuItem>
         )}
+        */}
         {!!session.prNumber && (
           <ContextMenuItem onClick={async () => {
             try {
@@ -1693,8 +1694,9 @@ function SessionRow({
             Unlink Pull Request
           </ContextMenuItem>
         )}
-        {/* Hidden for shipping — separator for Branches & PR items */}
-        {false && (onOpenBranches || onOpenPRs) && session.sessionType !== 'base' && <ContextMenuSeparator />}
+        {/* Hidden for shipping — separator for Branches & PR items
+        {(onOpenBranches || onOpenPRs) && session.sessionType !== 'base' && <ContextMenuSeparator />}
+        */}
         {session.sessionType !== 'base' && (
           <ContextMenuItem onClick={() => onArchiveSession(session.id)} variant="destructive">
             <Archive className="h-4 w-4" />
