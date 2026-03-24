@@ -1233,6 +1233,7 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
             setDefault: setDefaultPermissionMode,
           }}
           planModeEnabled={planModeEnabled}
+          defaultPlanMode={defaultPlanMode}
           onPlanModeToggle={handlePlanModeToggle}
           fastModeEnabled={fastModeEnabled}
           onFastModeToggle={handleFastModeToggle}
