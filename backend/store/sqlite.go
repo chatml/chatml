@@ -337,6 +337,48 @@ func (s *SQLiteStore) runMigrations() error {
 	_, _ = s.db.Exec(`ALTER TABLE sessions ADD COLUMN session_type TEXT NOT NULL DEFAULT 'worktree'`)
 	// Unique index: one base session per workspace
 	_, _ = s.db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_sessions_base_per_workspace ON sessions(workspace_id) WHERE session_type = 'base'`)
+	// Add scheduled_task_id column to sessions (ignore error if already exists)
+	_, _ = s.db.Exec(`ALTER TABLE sessions ADD COLUMN scheduled_task_id TEXT DEFAULT NULL`)
+	// Create scheduled_tasks table
+	_, _ = s.db.Exec(`CREATE TABLE IF NOT EXISTS scheduled_tasks (
+		id TEXT PRIMARY KEY,
+		workspace_id TEXT NOT NULL,
+		name TEXT NOT NULL,
+		description TEXT NOT NULL DEFAULT '',
+		prompt TEXT NOT NULL,
+		model TEXT NOT NULL DEFAULT '',
+		permission_mode TEXT NOT NULL DEFAULT 'default',
+		use_worktree INTEGER NOT NULL DEFAULT 0,
+		frequency TEXT NOT NULL DEFAULT 'daily',
+		cron_expression TEXT NOT NULL DEFAULT '',
+		schedule_hour INTEGER NOT NULL DEFAULT 9,
+		schedule_minute INTEGER NOT NULL DEFAULT 0,
+		schedule_day_of_week INTEGER NOT NULL DEFAULT 1,
+		schedule_day_of_month INTEGER NOT NULL DEFAULT 1,
+		enabled INTEGER NOT NULL DEFAULT 1,
+		last_run_at DATETIME DEFAULT NULL,
+		next_run_at DATETIME DEFAULT NULL,
+		created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		FOREIGN KEY (workspace_id) REFERENCES repos(id) ON DELETE CASCADE
+	)`)
+	_, _ = s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_scheduled_tasks_workspace ON scheduled_tasks(workspace_id)`)
+	_, _ = s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_scheduled_tasks_next_run ON scheduled_tasks(next_run_at) WHERE enabled = 1`)
+	// Create scheduled_task_runs table
+	_, _ = s.db.Exec(`CREATE TABLE IF NOT EXISTS scheduled_task_runs (
+		id TEXT PRIMARY KEY,
+		scheduled_task_id TEXT NOT NULL,
+		session_id TEXT,
+		status TEXT NOT NULL DEFAULT 'pending',
+		triggered_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		started_at DATETIME DEFAULT NULL,
+		completed_at DATETIME DEFAULT NULL,
+		error_message TEXT NOT NULL DEFAULT '',
+		FOREIGN KEY (scheduled_task_id) REFERENCES scheduled_tasks(id) ON DELETE CASCADE,
+		FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE SET NULL
+	)`)
+	_, _ = s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_scheduled_task_runs_task ON scheduled_task_runs(scheduled_task_id)`)
+	_, _ = s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_scheduled_task_runs_session ON scheduled_task_runs(session_id)`)
 	return nil
 }
 
@@ -519,8 +561,8 @@ func (s *SQLiteStore) AddSession(ctx context.Context, session *models.Session) e
 				task, status, agent_id, pr_status, pr_url, pr_number, pr_title, has_merge_conflict,
 				has_check_failures, check_status, stats_additions, stats_deletions, pinned, archived,
 				priority, task_status, archive_summary, archive_summary_status, auto_named, sprint_phase,
-				session_type, created_at, updated_at)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+				session_type, scheduled_task_id, created_at, updated_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			session.ID, session.WorkspaceID, session.Name, session.Branch,
 			session.WorktreePath, session.BaseCommitSHA, nullString(session.TargetBranch),
 			session.Task, session.Status, session.AgentID,
@@ -531,7 +573,7 @@ func (s *SQLiteStore) AddSession(ctx context.Context, session *models.Session) e
 			session.Priority, session.TaskStatus,
 			session.ArchiveSummary, session.ArchiveSummaryStatus,
 			boolToInt(session.AutoNamed), session.SprintPhase,
-			sessionType, session.CreatedAt, session.UpdatedAt)
+			sessionType, nullString(session.ScheduledTaskID), session.CreatedAt, session.UpdatedAt)
 		return err
 	})
 }
@@ -539,7 +581,7 @@ func (s *SQLiteStore) AddSession(ctx context.Context, session *models.Session) e
 func (s *SQLiteStore) GetSession(ctx context.Context, id string) (*models.Session, error) {
 	var session models.Session
 	var hasMergeConflict, hasCheckFailures, statsAdditions, statsDeletions, pinned, archived, autoNamed int
-	var agentID, targetBranch sql.NullString
+	var agentID, targetBranch, scheduledTaskID sql.NullString
 
 	err := s.db.QueryRowContext(ctx, `
 		SELECT id, workspace_id, name, branch, worktree_path, base_commit_sha, target_branch,
@@ -547,7 +589,7 @@ func (s *SQLiteStore) GetSession(ctx context.Context, id string) (*models.Sessio
 			pr_status, pr_url, pr_number, pr_title, has_merge_conflict, has_check_failures, check_status,
 			stats_additions, stats_deletions, pinned, archived, priority, task_status,
 			archive_summary, archive_summary_status, auto_named, sprint_phase, session_type,
-			created_at, updated_at
+			scheduled_task_id, created_at, updated_at
 		FROM sessions WHERE id = ?`, id).Scan(
 		&session.ID, &session.WorkspaceID, &session.Name, &session.Branch,
 		&session.WorktreePath, &session.BaseCommitSHA, &targetBranch,
@@ -557,7 +599,7 @@ func (s *SQLiteStore) GetSession(ctx context.Context, id string) (*models.Sessio
 		&pinned, &archived, &session.Priority, &session.TaskStatus,
 		&session.ArchiveSummary, &session.ArchiveSummaryStatus,
 		&autoNamed, &session.SprintPhase, &session.SessionType,
-		&session.CreatedAt, &session.UpdatedAt)
+		&scheduledTaskID, &session.CreatedAt, &session.UpdatedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -576,6 +618,9 @@ func (s *SQLiteStore) GetSession(ctx context.Context, id string) (*models.Sessio
 	if targetBranch.Valid {
 		session.TargetBranch = targetBranch.String
 	}
+	if scheduledTaskID.Valid {
+		session.ScheduledTaskID = scheduledTaskID.String
+	}
 	if statsAdditions > 0 || statsDeletions > 0 {
 		session.Stats = &models.SessionStats{
 			Additions: statsAdditions,
@@ -591,14 +636,15 @@ func (s *SQLiteStore) GetSession(ctx context.Context, id string) (*models.Sessio
 func (s *SQLiteStore) GetSessionWithWorkspace(ctx context.Context, id string) (*models.SessionWithWorkspace, error) {
 	var result models.SessionWithWorkspace
 	var hasMergeConflict, hasCheckFailures, statsAdditions, statsDeletions, pinned, archived, autoNamed int
-	var agentID, targetBranch sql.NullString
+	var agentID, targetBranch, scheduledTaskID sql.NullString
 
 	err := s.db.QueryRowContext(ctx, `
 		SELECT s.id, s.workspace_id, s.name, s.branch, s.worktree_path, s.base_commit_sha,
 			s.target_branch, s.task, s.status, s.agent_id, s.pr_status, s.pr_url, s.pr_number, s.pr_title,
 			s.has_merge_conflict, s.has_check_failures, s.check_status, s.stats_additions, s.stats_deletions,
 			s.pinned, s.archived, s.priority, s.task_status, s.archive_summary, s.archive_summary_status,
-			s.auto_named, s.sprint_phase, s.session_type, s.created_at, s.updated_at,
+			s.auto_named, s.sprint_phase, s.session_type, s.scheduled_task_id,
+			s.created_at, s.updated_at,
 			r.path, r.branch, r.remote
 		FROM sessions s
 		JOIN repos r ON s.workspace_id = r.id
@@ -609,7 +655,8 @@ func (s *SQLiteStore) GetSessionWithWorkspace(ctx context.Context, id string) (*
 		&result.PRStatus, &result.PRUrl, &result.PRNumber, &result.PRTitle,
 		&hasMergeConflict, &hasCheckFailures, &result.CheckStatus, &statsAdditions, &statsDeletions,
 		&pinned, &archived, &result.Priority, &result.TaskStatus, &result.ArchiveSummary, &result.ArchiveSummaryStatus,
-		&autoNamed, &result.SprintPhase, &result.SessionType, &result.CreatedAt, &result.UpdatedAt,
+		&autoNamed, &result.SprintPhase, &result.SessionType, &scheduledTaskID,
+		&result.CreatedAt, &result.UpdatedAt,
 		&result.WorkspacePath, &result.WorkspaceBranch, &result.WorkspaceRemote)
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -629,6 +676,9 @@ func (s *SQLiteStore) GetSessionWithWorkspace(ctx context.Context, id string) (*
 	if targetBranch.Valid {
 		result.TargetBranch = targetBranch.String
 	}
+	if scheduledTaskID.Valid {
+		result.ScheduledTaskID = scheduledTaskID.String
+	}
 	if statsAdditions > 0 || statsDeletions > 0 {
 		result.Stats = &models.SessionStats{
 			Additions: statsAdditions,
@@ -645,7 +695,7 @@ func (s *SQLiteStore) ListSessions(ctx context.Context, workspaceID string, incl
 		pr_status, pr_url, pr_number, pr_title, has_merge_conflict, has_check_failures, check_status,
 		stats_additions, stats_deletions, pinned, archived, priority, task_status,
 		archive_summary, archive_summary_status, auto_named, sprint_phase, session_type,
-		created_at, updated_at
+		scheduled_task_id, created_at, updated_at
 		FROM sessions WHERE workspace_id = ?`
 	if !includeArchived {
 		query += " AND archived = 0"
@@ -661,7 +711,7 @@ func (s *SQLiteStore) ListSessions(ctx context.Context, workspaceID string, incl
 	for rows.Next() {
 		var session models.Session
 		var hasMergeConflict, hasCheckFailures, statsAdditions, statsDeletions, pinned, archived, autoNamed int
-		var agentID, targetBranch sql.NullString
+		var agentID, targetBranch, scheduledTaskID sql.NullString
 
 		if err := rows.Scan(
 			&session.ID, &session.WorkspaceID, &session.Name, &session.Branch,
@@ -672,7 +722,7 @@ func (s *SQLiteStore) ListSessions(ctx context.Context, workspaceID string, incl
 			&pinned, &archived, &session.Priority, &session.TaskStatus,
 			&session.ArchiveSummary, &session.ArchiveSummaryStatus,
 			&autoNamed, &session.SprintPhase, &session.SessionType,
-			&session.CreatedAt, &session.UpdatedAt); err != nil {
+			&scheduledTaskID, &session.CreatedAt, &session.UpdatedAt); err != nil {
 			return nil, fmt.Errorf("ListSessions scan: %w", err)
 		}
 
@@ -686,6 +736,9 @@ func (s *SQLiteStore) ListSessions(ctx context.Context, workspaceID string, incl
 		}
 		if targetBranch.Valid {
 			session.TargetBranch = targetBranch.String
+		}
+		if scheduledTaskID.Valid {
+			session.ScheduledTaskID = scheduledTaskID.String
 		}
 		if statsAdditions > 0 || statsDeletions > 0 {
 			session.Stats = &models.SessionStats{
@@ -710,7 +763,7 @@ func (s *SQLiteStore) ListAllSessions(ctx context.Context, includeArchived bool)
 		pr_status, pr_url, pr_number, pr_title, has_merge_conflict, has_check_failures, check_status,
 		stats_additions, stats_deletions, pinned, archived, priority, task_status,
 		archive_summary, archive_summary_status, auto_named, sprint_phase, session_type,
-		created_at, updated_at
+		scheduled_task_id, created_at, updated_at
 		FROM sessions`
 	if !includeArchived {
 		query += " WHERE archived = 0"
@@ -726,7 +779,7 @@ func (s *SQLiteStore) ListAllSessions(ctx context.Context, includeArchived bool)
 	for rows.Next() {
 		var session models.Session
 		var hasMergeConflict, hasCheckFailures, statsAdditions, statsDeletions, pinned, archived, autoNamed int
-		var agentID, targetBranch sql.NullString
+		var agentID, targetBranch, scheduledTaskID sql.NullString
 
 		if err := rows.Scan(
 			&session.ID, &session.WorkspaceID, &session.Name, &session.Branch,
@@ -737,7 +790,7 @@ func (s *SQLiteStore) ListAllSessions(ctx context.Context, includeArchived bool)
 			&pinned, &archived, &session.Priority, &session.TaskStatus,
 			&session.ArchiveSummary, &session.ArchiveSummaryStatus,
 			&autoNamed, &session.SprintPhase, &session.SessionType,
-			&session.CreatedAt, &session.UpdatedAt); err != nil {
+			&scheduledTaskID, &session.CreatedAt, &session.UpdatedAt); err != nil {
 			return nil, fmt.Errorf("ListAllSessions scan: %w", err)
 		}
 
@@ -751,6 +804,9 @@ func (s *SQLiteStore) ListAllSessions(ctx context.Context, includeArchived bool)
 		}
 		if targetBranch.Valid {
 			session.TargetBranch = targetBranch.String
+		}
+		if scheduledTaskID.Valid {
+			session.ScheduledTaskID = scheduledTaskID.String
 		}
 		if statsAdditions > 0 || statsDeletions > 0 {
 			session.Stats = &models.SessionStats{
@@ -796,7 +852,7 @@ func (s *SQLiteStore) UpdateSession(ctx context.Context, id string, updates func
 				pr_number = ?, pr_title = ?, has_merge_conflict = ?, has_check_failures = ?, check_status = ?,
 				stats_additions = ?, stats_deletions = ?, pinned = ?, archived = ?,
 				priority = ?, task_status = ?, archive_summary = ?, archive_summary_status = ?,
-				auto_named = ?, sprint_phase = ?, session_type = ?, updated_at = ?
+				auto_named = ?, sprint_phase = ?, session_type = ?, scheduled_task_id = ?, updated_at = ?
 			WHERE id = ?`,
 			session.Name, session.Branch, session.WorktreePath, session.BaseCommitSHA,
 			nullString(session.TargetBranch),
@@ -807,7 +863,7 @@ func (s *SQLiteStore) UpdateSession(ctx context.Context, id string, updates func
 			session.Priority, session.TaskStatus,
 			session.ArchiveSummary, session.ArchiveSummaryStatus,
 			boolToInt(session.AutoNamed), session.SprintPhase, session.SessionType,
-			session.UpdatedAt, id)
+			nullString(session.ScheduledTaskID), session.UpdatedAt, id)
 		return err
 	})
 }
@@ -815,7 +871,7 @@ func (s *SQLiteStore) UpdateSession(ctx context.Context, id string, updates func
 func (s *SQLiteStore) getSessionNoLock(ctx context.Context, id string) (*models.Session, error) {
 	var session models.Session
 	var hasMergeConflict, hasCheckFailures, statsAdditions, statsDeletions, pinned, archived, autoNamed int
-	var agentID, targetBranch sql.NullString
+	var agentID, targetBranch, scheduledTaskID sql.NullString
 
 	err := s.db.QueryRowContext(ctx, `
 		SELECT id, workspace_id, name, branch, worktree_path, base_commit_sha, target_branch,
@@ -823,7 +879,7 @@ func (s *SQLiteStore) getSessionNoLock(ctx context.Context, id string) (*models.
 			pr_status, pr_url, pr_number, pr_title, has_merge_conflict, has_check_failures, check_status,
 			stats_additions, stats_deletions, pinned, archived, priority, task_status,
 			archive_summary, archive_summary_status, auto_named, sprint_phase, session_type,
-			created_at, updated_at
+			scheduled_task_id, created_at, updated_at
 		FROM sessions WHERE id = ?`, id).Scan(
 		&session.ID, &session.WorkspaceID, &session.Name, &session.Branch,
 		&session.WorktreePath, &session.BaseCommitSHA, &targetBranch,
@@ -833,7 +889,7 @@ func (s *SQLiteStore) getSessionNoLock(ctx context.Context, id string) (*models.
 		&pinned, &archived, &session.Priority, &session.TaskStatus,
 		&session.ArchiveSummary, &session.ArchiveSummaryStatus,
 		&autoNamed, &session.SprintPhase, &session.SessionType,
-		&session.CreatedAt, &session.UpdatedAt)
+		&scheduledTaskID, &session.CreatedAt, &session.UpdatedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -851,6 +907,9 @@ func (s *SQLiteStore) getSessionNoLock(ctx context.Context, id string) (*models.
 	}
 	if targetBranch.Valid {
 		session.TargetBranch = targetBranch.String
+	}
+	if scheduledTaskID.Valid {
+		session.ScheduledTaskID = scheduledTaskID.String
 	}
 	if statsAdditions > 0 || statsDeletions > 0 {
 		session.Stats = &models.SessionStats{
@@ -3039,4 +3098,275 @@ func ParseEnvVars(raw string) map[string]string {
 		}
 	}
 	return result
+}
+
+// ============================================================================
+// Scheduled Task methods
+// ============================================================================
+
+func (s *SQLiteStore) AddScheduledTask(ctx context.Context, task *models.ScheduledTask) error {
+	return RetryDBExec(ctx, "AddScheduledTask", DefaultRetryConfig(), func(ctx context.Context) error {
+		_, err := s.db.ExecContext(ctx, `
+			INSERT INTO scheduled_tasks (id, workspace_id, name, description, prompt, model,
+				permission_mode, use_worktree, frequency, cron_expression,
+				schedule_hour, schedule_minute, schedule_day_of_week, schedule_day_of_month,
+				enabled, last_run_at, next_run_at, created_at, updated_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			task.ID, task.WorkspaceID, task.Name, task.Description, task.Prompt, task.Model,
+			task.PermissionMode, boolToInt(task.UseWorktree), task.Frequency, task.CronExpression,
+			task.ScheduleHour, task.ScheduleMinute, task.ScheduleDayOfWeek, task.ScheduleDayOfMonth,
+			boolToInt(task.Enabled), task.LastRunAt, task.NextRunAt, task.CreatedAt, task.UpdatedAt)
+		return err
+	})
+}
+
+func (s *SQLiteStore) GetScheduledTask(ctx context.Context, id string) (*models.ScheduledTask, error) {
+	var task models.ScheduledTask
+	var enabled, useWorktree int
+	var lastRunAt, nextRunAt sql.NullTime
+
+	err := s.db.QueryRowContext(ctx, `
+		SELECT id, workspace_id, name, description, prompt, model,
+			permission_mode, use_worktree, frequency, cron_expression,
+			schedule_hour, schedule_minute, schedule_day_of_week, schedule_day_of_month,
+			enabled, last_run_at, next_run_at, created_at, updated_at
+		FROM scheduled_tasks WHERE id = ?`, id).Scan(
+		&task.ID, &task.WorkspaceID, &task.Name, &task.Description, &task.Prompt, &task.Model,
+		&task.PermissionMode, &useWorktree, &task.Frequency, &task.CronExpression,
+		&task.ScheduleHour, &task.ScheduleMinute, &task.ScheduleDayOfWeek, &task.ScheduleDayOfMonth,
+		&enabled, &lastRunAt, &nextRunAt, &task.CreatedAt, &task.UpdatedAt)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("GetScheduledTask: %w", err)
+	}
+
+	task.Enabled = intToBool(enabled)
+	task.UseWorktree = intToBool(useWorktree)
+	if lastRunAt.Valid {
+		task.LastRunAt = &lastRunAt.Time
+	}
+	if nextRunAt.Valid {
+		task.NextRunAt = &nextRunAt.Time
+	}
+	return &task, nil
+}
+
+func (s *SQLiteStore) ListAllScheduledTasks(ctx context.Context) ([]*models.ScheduledTask, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id, workspace_id, name, description, prompt, model,
+			permission_mode, use_worktree, frequency, cron_expression,
+			schedule_hour, schedule_minute, schedule_day_of_week, schedule_day_of_month,
+			enabled, last_run_at, next_run_at, created_at, updated_at
+		FROM scheduled_tasks ORDER BY created_at DESC`)
+	if err != nil {
+		return nil, fmt.Errorf("ListAllScheduledTasks: %w", err)
+	}
+	defer rows.Close()
+	return s.scanScheduledTasks(rows)
+}
+
+func (s *SQLiteStore) ListScheduledTasks(ctx context.Context, workspaceID string) ([]*models.ScheduledTask, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id, workspace_id, name, description, prompt, model,
+			permission_mode, use_worktree, frequency, cron_expression,
+			schedule_hour, schedule_minute, schedule_day_of_week, schedule_day_of_month,
+			enabled, last_run_at, next_run_at, created_at, updated_at
+		FROM scheduled_tasks WHERE workspace_id = ? ORDER BY created_at DESC`, workspaceID)
+	if err != nil {
+		return nil, fmt.Errorf("ListScheduledTasks: %w", err)
+	}
+	defer rows.Close()
+	return s.scanScheduledTasks(rows)
+}
+
+func (s *SQLiteStore) scanScheduledTasks(rows *sql.Rows) ([]*models.ScheduledTask, error) {
+	tasks := []*models.ScheduledTask{}
+	for rows.Next() {
+		var task models.ScheduledTask
+		var enabled, useWorktree int
+		var lastRunAt, nextRunAt sql.NullTime
+
+		if err := rows.Scan(
+			&task.ID, &task.WorkspaceID, &task.Name, &task.Description, &task.Prompt, &task.Model,
+			&task.PermissionMode, &useWorktree, &task.Frequency, &task.CronExpression,
+			&task.ScheduleHour, &task.ScheduleMinute, &task.ScheduleDayOfWeek, &task.ScheduleDayOfMonth,
+			&enabled, &lastRunAt, &nextRunAt, &task.CreatedAt, &task.UpdatedAt); err != nil {
+			return nil, fmt.Errorf("scanScheduledTasks: %w", err)
+		}
+
+		task.Enabled = intToBool(enabled)
+		task.UseWorktree = intToBool(useWorktree)
+		if lastRunAt.Valid {
+			task.LastRunAt = &lastRunAt.Time
+		}
+		if nextRunAt.Valid {
+			task.NextRunAt = &nextRunAt.Time
+		}
+		tasks = append(tasks, &task)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("scanScheduledTasks rows: %w", err)
+	}
+	return tasks, nil
+}
+
+func (s *SQLiteStore) UpdateScheduledTask(ctx context.Context, id string, updates func(*models.ScheduledTask)) error {
+	task, err := s.GetScheduledTask(ctx, id)
+	if err != nil {
+		return err
+	}
+	if task == nil {
+		return fmt.Errorf("UpdateScheduledTask: task %s %w", id, ErrNotFound)
+	}
+	updates(task)
+	task.UpdatedAt = time.Now()
+
+	return RetryDBExec(ctx, "UpdateScheduledTask", DefaultRetryConfig(), func(ctx context.Context) error {
+		_, err := s.db.ExecContext(ctx, `
+			UPDATE scheduled_tasks SET
+				name = ?, description = ?, prompt = ?, model = ?,
+				permission_mode = ?, use_worktree = ?, frequency = ?, cron_expression = ?,
+				schedule_hour = ?, schedule_minute = ?, schedule_day_of_week = ?, schedule_day_of_month = ?,
+				enabled = ?, last_run_at = ?, next_run_at = ?, updated_at = ?
+			WHERE id = ?`,
+			task.Name, task.Description, task.Prompt, task.Model,
+			task.PermissionMode, boolToInt(task.UseWorktree), task.Frequency, task.CronExpression,
+			task.ScheduleHour, task.ScheduleMinute, task.ScheduleDayOfWeek, task.ScheduleDayOfMonth,
+			boolToInt(task.Enabled), task.LastRunAt, task.NextRunAt, task.UpdatedAt, id)
+		return err
+	})
+}
+
+func (s *SQLiteStore) DeleteScheduledTask(ctx context.Context, id string) error {
+	return RetryDBExec(ctx, "DeleteScheduledTask", DefaultRetryConfig(), func(ctx context.Context) error {
+		result, err := s.db.ExecContext(ctx, `DELETE FROM scheduled_tasks WHERE id = ?`, id)
+		if err != nil {
+			return err
+		}
+		rows, _ := result.RowsAffected()
+		if rows == 0 {
+			return fmt.Errorf("DeleteScheduledTask: task %s %w", id, ErrNotFound)
+		}
+		return nil
+	})
+}
+
+// ListDueScheduledTasks returns all enabled tasks whose next_run_at is at or before the given time
+func (s *SQLiteStore) ListDueScheduledTasks(ctx context.Context, before time.Time) ([]*models.ScheduledTask, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id, workspace_id, name, description, prompt, model,
+			permission_mode, use_worktree, frequency, cron_expression,
+			schedule_hour, schedule_minute, schedule_day_of_week, schedule_day_of_month,
+			enabled, last_run_at, next_run_at, created_at, updated_at
+		FROM scheduled_tasks
+		WHERE enabled = 1 AND next_run_at IS NOT NULL AND next_run_at <= ?
+		ORDER BY next_run_at ASC`, before)
+	if err != nil {
+		return nil, fmt.Errorf("ListDueScheduledTasks: %w", err)
+	}
+	defer rows.Close()
+	return s.scanScheduledTasks(rows)
+}
+
+// ============================================================================
+// Scheduled Task Run methods
+// ============================================================================
+
+func (s *SQLiteStore) AddScheduledTaskRun(ctx context.Context, run *models.ScheduledTaskRun) error {
+	return RetryDBExec(ctx, "AddScheduledTaskRun", DefaultRetryConfig(), func(ctx context.Context) error {
+		_, err := s.db.ExecContext(ctx, `
+			INSERT INTO scheduled_task_runs (id, scheduled_task_id, session_id, status,
+				triggered_at, started_at, completed_at, error_message)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+			run.ID, run.ScheduledTaskID, nullString(run.SessionID), run.Status,
+			run.TriggeredAt, run.StartedAt, run.CompletedAt, run.ErrorMessage)
+		return err
+	})
+}
+
+func (s *SQLiteStore) ListScheduledTaskRuns(ctx context.Context, taskID string, limit int) ([]*models.ScheduledTaskRun, error) {
+	if limit <= 0 {
+		limit = 20
+	}
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id, scheduled_task_id, session_id, status,
+			triggered_at, started_at, completed_at, error_message
+		FROM scheduled_task_runs
+		WHERE scheduled_task_id = ?
+		ORDER BY triggered_at DESC
+		LIMIT ?`, taskID, limit)
+	if err != nil {
+		return nil, fmt.Errorf("ListScheduledTaskRuns: %w", err)
+	}
+	defer rows.Close()
+
+	runs := []*models.ScheduledTaskRun{}
+	for rows.Next() {
+		var run models.ScheduledTaskRun
+		var sessionID sql.NullString
+		var startedAt, completedAt sql.NullTime
+
+		if err := rows.Scan(
+			&run.ID, &run.ScheduledTaskID, &sessionID, &run.Status,
+			&run.TriggeredAt, &startedAt, &completedAt, &run.ErrorMessage); err != nil {
+			return nil, fmt.Errorf("ListScheduledTaskRuns scan: %w", err)
+		}
+
+		if sessionID.Valid {
+			run.SessionID = sessionID.String
+		}
+		if startedAt.Valid {
+			run.StartedAt = &startedAt.Time
+		}
+		if completedAt.Valid {
+			run.CompletedAt = &completedAt.Time
+		}
+		runs = append(runs, &run)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("ListScheduledTaskRuns rows: %w", err)
+	}
+	return runs, nil
+}
+
+func (s *SQLiteStore) UpdateScheduledTaskRun(ctx context.Context, id string, updates func(*models.ScheduledTaskRun)) error {
+	// Fetch current run
+	var run models.ScheduledTaskRun
+	var sessionID sql.NullString
+	var startedAt, completedAt sql.NullTime
+
+	err := s.db.QueryRowContext(ctx, `
+		SELECT id, scheduled_task_id, session_id, status,
+			triggered_at, started_at, completed_at, error_message
+		FROM scheduled_task_runs WHERE id = ?`, id).Scan(
+		&run.ID, &run.ScheduledTaskID, &sessionID, &run.Status,
+		&run.TriggeredAt, &startedAt, &completedAt, &run.ErrorMessage)
+	if err == sql.ErrNoRows {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("UpdateScheduledTaskRun fetch: %w", err)
+	}
+	if sessionID.Valid {
+		run.SessionID = sessionID.String
+	}
+	if startedAt.Valid {
+		run.StartedAt = &startedAt.Time
+	}
+	if completedAt.Valid {
+		run.CompletedAt = &completedAt.Time
+	}
+
+	updates(&run)
+
+	return RetryDBExec(ctx, "UpdateScheduledTaskRun", DefaultRetryConfig(), func(ctx context.Context) error {
+		_, err := s.db.ExecContext(ctx, `
+			UPDATE scheduled_task_runs SET
+				session_id = ?, status = ?, started_at = ?, completed_at = ?, error_message = ?
+			WHERE id = ?`,
+			nullString(run.SessionID), run.Status, run.StartedAt, run.CompletedAt, run.ErrorMessage, id)
+		return err
+	})
 }

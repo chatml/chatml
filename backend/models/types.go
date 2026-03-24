@@ -42,6 +42,7 @@ type Session struct {
 	ArchiveSummary       string `json:"archiveSummary,omitempty"`
 	ArchiveSummaryStatus string `json:"archiveSummaryStatus,omitempty"` // "", "generating", "completed", "failed"
 	AutoNamed            bool   `json:"autoNamed,omitempty"`            // True if session was auto-renamed based on context
+	ScheduledTaskID      string `json:"scheduledTaskId,omitempty"`      // FK to scheduled_tasks if created by scheduler
 	CreatedAt        time.Time     `json:"createdAt"`
 	UpdatedAt        time.Time     `json:"updatedAt"`
 }
@@ -558,4 +559,119 @@ type Checkpoint struct {
 	MessageIndex   int       `json:"messageIndex"`
 	IsResult       bool      `json:"isResult"`
 	Timestamp      time.Time `json:"timestamp"`
+}
+
+// ScheduledTask represents a recurring task template that spawns sessions on a schedule
+type ScheduledTask struct {
+	ID                 string     `json:"id"`
+	WorkspaceID        string     `json:"workspaceId"`
+	Name               string     `json:"name"`
+	Description        string     `json:"description"`
+	Prompt             string     `json:"prompt"`
+	Model              string     `json:"model,omitempty"`
+	PermissionMode     string     `json:"permissionMode"`
+	UseWorktree        bool       `json:"useWorktree"`
+	Frequency          string     `json:"frequency"`                    // hourly, daily, weekly, monthly
+	CronExpression     string     `json:"cronExpression,omitempty"`     // reserved for future cron support
+	ScheduleHour       int        `json:"scheduleHour"`                 // 0-23
+	ScheduleMinute     int        `json:"scheduleMinute"`               // 0-59
+	ScheduleDayOfWeek  int        `json:"scheduleDayOfWeek"`            // 0=Sun..6=Sat (for weekly)
+	ScheduleDayOfMonth int        `json:"scheduleDayOfMonth"`           // 1-31 (for monthly)
+	Enabled            bool       `json:"enabled"`
+	LastRunAt          *time.Time `json:"lastRunAt,omitempty"`
+	NextRunAt          *time.Time `json:"nextRunAt,omitempty"`
+	CreatedAt          time.Time  `json:"createdAt"`
+	UpdatedAt          time.Time  `json:"updatedAt"`
+}
+
+// ScheduledTaskRun represents a single execution of a scheduled task
+type ScheduledTaskRun struct {
+	ID              string     `json:"id"`
+	ScheduledTaskID string     `json:"scheduledTaskId"`
+	SessionID       string     `json:"sessionId,omitempty"`
+	Status          string     `json:"status"` // pending, running, completed, failed
+	TriggeredAt     time.Time  `json:"triggeredAt"`
+	StartedAt       *time.Time `json:"startedAt,omitempty"`
+	CompletedAt     *time.Time `json:"completedAt,omitempty"`
+	ErrorMessage    string     `json:"errorMessage,omitempty"`
+}
+
+// Frequency constants for scheduled tasks
+const (
+	FrequencyHourly  = "hourly"
+	FrequencyDaily   = "daily"
+	FrequencyWeekly  = "weekly"
+	FrequencyMonthly = "monthly"
+)
+
+// ValidFrequencies is the set of valid frequency values
+var ValidFrequencies = map[string]bool{
+	FrequencyHourly:  true,
+	FrequencyDaily:   true,
+	FrequencyWeekly:  true,
+	FrequencyMonthly: true,
+}
+
+// ScheduledTaskRun status constants
+const (
+	RunStatusPending   = "pending"
+	RunStatusRunning   = "running"
+	RunStatusCompleted = "completed"
+	RunStatusFailed    = "failed"
+)
+
+// ComputeNextRun calculates the next scheduled run time based on frequency and schedule config.
+// Uses time.Local so schedule times are in the user's system timezone. Around DST transitions,
+// wall-clock times may shift by ±1 hour — this is acceptable for a desktop app.
+func ComputeNextRun(task *ScheduledTask, after time.Time) *time.Time {
+	loc := time.Local
+	h, m := task.ScheduleHour, task.ScheduleMinute
+
+	var next time.Time
+	switch task.Frequency {
+	case FrequencyHourly:
+		next = time.Date(after.Year(), after.Month(), after.Day(), after.Hour(), m, 0, 0, loc)
+		if !next.After(after) {
+			next = next.Add(1 * time.Hour)
+		}
+
+	case FrequencyDaily:
+		next = time.Date(after.Year(), after.Month(), after.Day(), h, m, 0, 0, loc)
+		if !next.After(after) {
+			next = next.AddDate(0, 0, 1)
+		}
+
+	case FrequencyWeekly:
+		next = time.Date(after.Year(), after.Month(), after.Day(), h, m, 0, 0, loc)
+		targetDay := time.Weekday(task.ScheduleDayOfWeek)
+		daysUntil := int(targetDay - next.Weekday())
+		if daysUntil < 0 {
+			daysUntil += 7
+		}
+		next = next.AddDate(0, 0, daysUntil)
+		if !next.After(after) {
+			next = next.AddDate(0, 0, 7)
+		}
+
+	case FrequencyMonthly:
+		day := task.ScheduleDayOfMonth
+		// Cap at 28 to avoid Feb/short-month overflows — Go would normalise
+		// day 31 of Feb to March 3, producing a silently wrong schedule.
+		// The UI also limits input to max 28.
+		if day > 28 {
+			day = 28
+		}
+		next = time.Date(after.Year(), after.Month(), day, h, m, 0, 0, loc)
+		if !next.After(after) {
+			next = next.AddDate(0, 1, 0)
+		}
+
+	default:
+		next = time.Date(after.Year(), after.Month(), after.Day(), h, m, 0, 0, loc)
+		if !next.After(after) {
+			next = next.AddDate(0, 0, 1)
+		}
+	}
+
+	return &next
 }

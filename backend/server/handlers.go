@@ -536,6 +536,11 @@ type baseBranchCacheEntry struct {
 	expiresAt time.Time
 }
 
+// ScheduledTaskTrigger is the interface the handlers need from the scheduler
+type ScheduledTaskTrigger interface {
+	TriggerNow(ctx context.Context, taskID string) (*models.ScheduledTaskRun, error)
+}
+
 type Handlers struct {
 	store            *store.SQLiteStore
 	repoManager      *git.RepoManager
@@ -559,6 +564,7 @@ type Handlers struct {
 	snapshotCache    *SnapshotCache
 	aiClient         ai.Provider
 	scriptRunner     *scripts.Runner
+	scheduler        ScheduledTaskTrigger // Set after init via SetScheduler
 	serverCtx        context.Context
 	serverCancel     context.CancelFunc
 	bgWg             sync.WaitGroup
@@ -702,6 +708,11 @@ func NewHandlers(ctx context.Context, s *store.SQLiteStore, am *agent.Manager, d
 		serverCtx:        serverCtx,
 		serverCancel:     serverCancel,
 	}
+}
+
+// SetScheduler injects the scheduler after initialization (avoids circular dependency)
+func (h *Handlers) SetScheduler(s ScheduledTaskTrigger) {
+	h.scheduler = s
 }
 
 // getSessionAndWorkspace fetches session and workspace data in a single query.

@@ -13,7 +13,8 @@ import {
 import { getAuthToken } from '@/lib/auth-token';
 import { getBackendPort } from '@/lib/backend-port';
 import { useConnectionStore } from '@/stores/connectionStore';
-import { getConversationDropStats, getActiveStreamingConversations, getInterruptedConversations, getConversationMessages, getStreamingSnapshot, toStoreMessage, updateSession as updateSessionApi, refreshPRStatus, addSystemMessage } from '@/lib/api';
+import { getConversationDropStats, getActiveStreamingConversations, getInterruptedConversations, getConversationMessages, getStreamingSnapshot, toStoreMessage, updateSession as updateSessionApi, refreshPRStatus, addSystemMessage, listAllSessions, mapSessionDTO } from '@/lib/api';
+import { useScheduledTaskStore } from '@/stores/scheduledTaskStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useBranchCacheStore } from '@/stores/branchCacheStore';
 import { useSlashCommandStore } from '@/stores/slashCommandStore';
@@ -1195,6 +1196,27 @@ export function useWebSocket(enabled: boolean = true) {
           const payload = data.payload as Record<string, unknown> | undefined;
           const stats = payload?.stats as { additions: number; deletions: number } | null | undefined;
           getStore().updateSession(data.sessionId, { stats: stats ?? undefined });
+          return;
+        }
+
+        // Handle scheduled task run events — refresh sessions and task store
+        if (data.type === 'scheduled_task_run') {
+          const payload = data.payload as Record<string, unknown> | undefined;
+          if (payload?.sessionId && typeof payload.sessionId === 'string') {
+            // Fetch all sessions to find the newly created one
+            listAllSessions().then((sessions) => {
+              const store = getStore(); // fresh read inside callback
+              for (const dto of sessions) {
+                const mapped = mapSessionDTO(dto);
+                const existing = store.sessions.find((s) => s.id === mapped.id);
+                if (!existing) {
+                  store.addSession(mapped);
+                }
+              }
+            }).catch(() => {});
+            // Refresh scheduled task store
+            useScheduledTaskStore.getState().fetchTasks();
+          }
           return;
         }
 

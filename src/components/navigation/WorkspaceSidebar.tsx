@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { SidebarUpdateBanner } from '@/components/shared/SidebarUpdateBanner';
 import {
   DndContext,
@@ -19,6 +19,7 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { useAppStore } from '@/stores/appStore';
+import { useScheduledTaskStore } from '@/stores/scheduledTaskStore';
 import { navigate, navigateOrOpenTab } from '@/lib/navigation';
 import { useSettingsStore, getBranchPrefix, getWorkspaceBranchPrefix, type ContentView, type SidebarSortBy } from '@/stores/settingsStore';
 import { useSidebarSessions, isSidebarGroupExpanded, type SidebarGroup } from '@/hooks/useSidebarSessions';
@@ -187,9 +188,31 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onGitHubRepos,
     }
   }, [sidebarProjectFilter, workspaces, setSidebarProjectFilter]);
 
-  // Sidebar grouping/sorting
+  // Scheduled task data for sidebar grouping
+  const scheduledTasks = useScheduledTaskStore((s) => s.tasks);
+
+  useEffect(() => {
+    useScheduledTaskStore.getState().fetchTasks();
+  }, []);
+
+  // Separate scheduled sessions from regular sessions BEFORE they enter useSidebarSessions
+  // so they don't appear in workspace groups or status groups.
+  const { regularSessions, scheduledSessionsList } = useMemo(() => {
+    const regular: typeof sessions = [];
+    const scheduled: typeof sessions = [];
+    for (const s of sessions) {
+      if (s.scheduledTaskId) {
+        scheduled.push(s);
+      } else {
+        regular.push(s);
+      }
+    }
+    return { regularSessions: regular, scheduledSessionsList: scheduled };
+  }, [sessions]);
+
+  // Sidebar grouping/sorting — only operates on non-scheduled sessions
   const { groups: sidebarGroups, flatSessions, effectiveGroupBy } = useSidebarSessions({
-    sessions,
+    sessions: regularSessions,
     workspaces,
     groupBy: sidebarGroupBy,
     sortBy: sidebarSortBy,
@@ -200,6 +223,30 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onGitHubRepos,
     workspaceColors,
     getWorkspaceColor,
   });
+
+  // Group scheduled sessions by their task for the sidebar "Scheduled" section
+  const scheduledGroups = useMemo(() => {
+    const grouped: Record<string, { taskName: string; sessions: typeof scheduledSessionsList }> = {};
+
+    for (const session of scheduledSessionsList) {
+      const taskId = session.scheduledTaskId!;
+      if (!grouped[taskId]) {
+        const task = scheduledTasks.find((t) => t.id === taskId);
+        grouped[taskId] = {
+          taskName: task?.name || 'Scheduled task',
+          sessions: [],
+        };
+      }
+      grouped[taskId].sessions.push(session);
+    }
+
+    return Object.entries(grouped).map(([taskId, data]) => ({
+      taskId,
+      taskName: data.taskName,
+      task: scheduledTasks.find((t) => t.id === taskId),
+      sessions: data.sessions,
+    }));
+  }, [scheduledSessionsList, scheduledTasks]);
 
   const formatTimeAgo = (date: string) => {
     const now = new Date();
@@ -577,6 +624,28 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onGitHubRepos,
             Skills
           </span>
         </div>
+        <div
+          className={cn(
+            "group flex items-center gap-2 px-2 py-1.5 rounded-md cursor-pointer",
+            contentView.type === 'scheduled-tasks'
+              ? "bg-surface-2 text-foreground"
+              : "hover:bg-surface-1"
+          )}
+          onClick={() => navigate({ contentView: { type: 'scheduled-tasks' } })}
+        >
+          <Clock className={cn(
+            "w-4 h-4",
+            contentView.type === 'scheduled-tasks' ? "text-muted-foreground" : "text-muted-foreground/70"
+          )} />
+          <span className={cn(
+            "text-base font-medium",
+            contentView.type === 'scheduled-tasks'
+              ? "text-foreground"
+              : "text-muted-foreground group-hover:text-foreground"
+          )}>
+            Scheduled
+          </span>
+        </div>
       </div>
 
       {/* Session List */}
@@ -780,10 +849,57 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onGitHubRepos,
                 </div>
               ) : (
                 <>
+                  {/* Scheduled task runs section */}
+                  {scheduledGroups.length > 0 && (
+                    <>
+                      <div className="px-3 pt-2 pb-1">
+                        <span className="text-[10px] font-semibold uppercase text-muted-foreground/60 tracking-wider">
+                          Scheduled
+                        </span>
+                      </div>
+                      {scheduledGroups.map((group) => (
+                        <Collapsible key={group.taskId} defaultOpen>
+                          <CollapsibleTrigger className="flex items-center gap-1.5 px-2 py-1 w-full hover:bg-surface-1 rounded-md mx-1 group/sched">
+                            <ChevronDown className="w-3 h-3 text-muted-foreground transition-transform group-data-[state=closed]/sched:-rotate-90" />
+                            <span className="text-sm font-medium truncate flex-1 text-left">{group.taskName}</span>
+                            <span className="text-[10px] text-muted-foreground shrink-0">
+                              {group.task?.frequency ? group.task.frequency.charAt(0).toUpperCase() + group.task.frequency.slice(1) : ''}
+                            </span>
+                          </CollapsibleTrigger>
+                          <CollapsibleContent>
+                            {group.sessions.map((session) => (
+                              <ErrorBoundary
+                                key={session.id}
+                                section="SessionRow"
+                                fallback={<CardErrorFallback message="Error loading session" />}
+                              >
+                                <SessionRow
+                                  session={session}
+                                  contentView={contentView}
+                                  selectedSessionId={selectedSessionId}
+                                  onSelectSession={(id, e) => handleSelectSession(session.workspaceId, id, e)}
+                                  onArchiveSession={handleArchiveSession}
+                                  onTaskStatusChange={handleTaskStatusChange}
+                                  onOpenBranches={(e) => navigateToBranches(session.workspaceId, e)}
+                                  onOpenPRs={(e) => navigateToPRs(session.workspaceId, e)}
+                                  formatTimeAgo={formatTimeAgo}
+                                  showProjectIndicator={false}
+                                />
+                              </ErrorBoundary>
+                            ))}
+                          </CollapsibleContent>
+                        </Collapsible>
+                      ))}
+                      {flatSessions.length > 0 && (
+                        <div className="mx-2 my-1.5 border-t border-border/40" />
+                      )}
+                    </>
+                  )}
+
                   {/* Mode: None — flat session list */}
                   {effectiveGroupBy === 'none' && (
                     <>
-                      {flatSessions.length === 0 ? (
+                      {flatSessions.length === 0 && scheduledGroups.length === 0 ? (
                         <div className="py-2 px-2 text-sm text-muted-foreground/70">
                           No sessions found
                         </div>

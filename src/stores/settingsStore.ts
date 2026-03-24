@@ -51,7 +51,8 @@ export type ContentView =
   | { type: 'branches'; workspaceId: string }
   | { type: 'repositories' }
   | { type: 'session-manager' }
-  | { type: 'skills-store' };
+  | { type: 'skills-store' }
+  | { type: 'scheduled-tasks' };
 
 // Panel layout type - maps panel id to size (percentage)
 export type PanelLayout = Record<string, number>;

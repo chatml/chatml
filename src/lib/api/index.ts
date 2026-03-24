@@ -20,3 +20,4 @@ export * from './memory';
 export * from './scripts';
 export * from './avatars';
 export * from './gstack';
+export * from './scheduled-tasks';
