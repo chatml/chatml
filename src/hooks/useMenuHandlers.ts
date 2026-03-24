@@ -292,14 +292,23 @@ export function useMenuHandlers(options: MenuHandlersOptions) {
         case 'previous_tab':
           options.selectPreviousTab();
           break;
-        case 'quick_review':
+        case 'review_quick':
           window.dispatchEvent(new CustomEvent('start-review', { detail: { type: 'quick' } }));
           break;
-        case 'deep_review':
+        case 'review_deep':
           window.dispatchEvent(new CustomEvent('start-review', { detail: { type: 'deep' } }));
           break;
-        case 'security_audit':
+        case 'review_security':
           window.dispatchEvent(new CustomEvent('start-review', { detail: { type: 'security' } }));
+          break;
+        case 'review_performance':
+          window.dispatchEvent(new CustomEvent('start-review', { detail: { type: 'performance' } }));
+          break;
+        case 'review_architecture':
+          window.dispatchEvent(new CustomEvent('start-review', { detail: { type: 'architecture' } }));
+          break;
+        case 'review_premerge':
+          window.dispatchEvent(new CustomEvent('start-review', { detail: { type: 'premerge' } }));
           break;
         case 'open_in_vscode': {
           const { selectedSessionId, sessions: allSessions } = useAppStore.getState();

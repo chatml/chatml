@@ -239,6 +239,39 @@ pub fn create_menu(app: &tauri::AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
         )
         .build()?;
 
+    let review_submenu = SubmenuBuilder::new(app, "Review")
+        .item(
+            &MenuItemBuilder::with_id("review_quick", "Quick Scan")
+                .enabled(false)
+                .build(app)?,
+        )
+        .item(
+            &MenuItemBuilder::with_id("review_deep", "Deep Review")
+                .enabled(false)
+                .build(app)?,
+        )
+        .item(
+            &MenuItemBuilder::with_id("review_security", "Security Audit")
+                .enabled(false)
+                .build(app)?,
+        )
+        .item(
+            &MenuItemBuilder::with_id("review_performance", "Performance")
+                .enabled(false)
+                .build(app)?,
+        )
+        .item(
+            &MenuItemBuilder::with_id("review_architecture", "Architecture")
+                .enabled(false)
+                .build(app)?,
+        )
+        .item(
+            &MenuItemBuilder::with_id("review_premerge", "Pre-merge Check")
+                .enabled(false)
+                .build(app)?,
+        )
+        .build()?;
+
     let session_menu = SubmenuBuilder::new(app, "Session")
         .item(&thinking_submenu)
         .item(
@@ -259,21 +292,7 @@ pub fn create_menu(app: &tauri::AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
                 .build(app)?,
         )
         .separator()
-        .item(
-            &MenuItemBuilder::with_id("quick_review", "Quick Review")
-                .enabled(false)
-                .build(app)?,
-        )
-        .item(
-            &MenuItemBuilder::with_id("deep_review", "Deep Review")
-                .enabled(false)
-                .build(app)?,
-        )
-        .item(
-            &MenuItemBuilder::with_id("security_audit", "Security Audit")
-                .enabled(false)
-                .build(app)?,
-        )
+        .item(&review_submenu)
         .separator()
         .item(
             &MenuItemBuilder::with_id("open_in_vscode", "Open in VS Code")
