@@ -59,10 +59,14 @@ func gitCmd(repoPath string, args ...string) (*exec.Cmd, context.CancelFunc) {
 	return gitCmdWithContext(context.Background(), TimeoutMedium, repoPath, args...)
 }
 
-type RepoManager struct{}
+type RepoManager struct {
+	cache *GitCache
+}
 
 func NewRepoManager() *RepoManager {
-	return &RepoManager{}
+	return &RepoManager{
+		cache: NewGitCache(),
+	}
 }
 
 // ValidateGitRef validates a git reference (branch, tag, commit SHA) to prevent command injection.
@@ -97,6 +101,13 @@ func (rm *RepoManager) ValidateRepo(path string) error {
 }
 
 func (rm *RepoManager) GetCurrentBranch(ctx context.Context, repoPath string) (string, error) {
+	// Fast path: resolve gitDir via cache, then read HEAD directly
+	if gitDir, err := rm.cache.GetGitDir(repoPath); err == nil {
+		if branch, err := readBranchFromGitDir(gitDir); err == nil {
+			return branch, nil
+		}
+	}
+	// Fallback to subprocess
 	cmd, cancel := gitCmdWithContext(ctx, TimeoutFast, repoPath, "rev-parse", "--abbrev-ref", "HEAD")
 	defer cancel()
 	out, err := cmd.Output()
@@ -767,11 +778,22 @@ func (rm *RepoManager) getSyncStatus(ctx context.Context, repoPath, baseBranch s
 		return status, fmt.Errorf("invalid base branch: %w", err)
 	}
 
-	// Check if remote tracking branch exists
-	cmd, cancel := gitCmdWithContext(ctx, TimeoutFast, repoPath, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}")
-	remoteOut, _ := cmd.Output()
-	cancel()
-	remoteBranch := strings.TrimSpace(string(remoteOut))
+	// Check if remote tracking branch exists — resolve gitDir once, then use cached upstream
+	var remoteBranch string
+	if gitDir, err := rm.cache.GetGitDir(repoPath); err == nil {
+		if currentBranch, err := readBranchFromGitDir(gitDir); err == nil {
+			if upstream, err := rm.cache.GetUpstreamRef(repoPath, currentBranch); err == nil {
+				remoteBranch = upstream
+			}
+		}
+	}
+	if remoteBranch == "" {
+		// Fallback to subprocess
+		cmd, cancel := gitCmdWithContext(ctx, TimeoutFast, repoPath, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}")
+		remoteOut, _ := cmd.Output()
+		cancel()
+		remoteBranch = strings.TrimSpace(string(remoteOut))
+	}
 	if remoteBranch != "" {
 		status.RemoteBranch = remoteBranch
 		status.HasRemote = true
@@ -779,7 +801,7 @@ func (rm *RepoManager) getSyncStatus(ctx context.Context, repoPath, baseBranch s
 
 	// Get ahead/behind compared to base branch (origin/main or similar)
 	remoteBase := "origin/" + baseBranch
-	cmd, cancel = gitCmdWithContext(ctx, TimeoutMedium, repoPath, "rev-list", "--left-right", "--count", remoteBase+"...HEAD")
+	cmd, cancel := gitCmdWithContext(ctx, TimeoutMedium, repoPath, "rev-list", "--left-right", "--count", remoteBase+"...HEAD")
 	countOut, err := cmd.Output()
 	cancel()
 	if err != nil {
@@ -818,9 +840,16 @@ func (rm *RepoManager) getSyncStatus(ctx context.Context, repoPath, baseBranch s
 
 // getInProgressStatus checks for in-progress git operations
 func (rm *RepoManager) getInProgressStatus(ctx context.Context, repoPath string) (*InProgressStatus, error) {
+	// Fast path: resolve gitDir via cache, then check git internal files
+	if gitDir, err := rm.cache.GetGitDir(repoPath); err == nil {
+		if status, err := readInProgressFromGitDir(gitDir); err == nil {
+			return status, nil
+		}
+	}
+
+	// Fallback to subprocess for git-dir resolution
 	status := &InProgressStatus{Type: "none"}
 
-	// Get the git directory for this worktree
 	cmd, cancel := gitCmdWithContext(ctx, TimeoutFast, repoPath, "rev-parse", "--git-dir")
 	defer cancel()
 	gitDirOut, err := cmd.Output()
@@ -837,7 +866,6 @@ func (rm *RepoManager) getInProgressStatus(ctx context.Context, repoPath string)
 	rebaseApplyDir := filepath.Join(gitDir, "rebase-apply")
 	if _, err := os.Stat(rebaseMergeDir); err == nil {
 		status.Type = "rebase"
-		// Get progress
 		if msgnum, err := os.ReadFile(filepath.Join(rebaseMergeDir, "msgnum")); err == nil {
 			fmt.Sscanf(strings.TrimSpace(string(msgnum)), "%d", &status.Current)
 		}
@@ -848,7 +876,6 @@ func (rm *RepoManager) getInProgressStatus(ctx context.Context, repoPath string)
 	}
 	if _, err := os.Stat(rebaseApplyDir); err == nil {
 		status.Type = "rebase"
-		// Get progress from rebase-apply
 		if next, err := os.ReadFile(filepath.Join(rebaseApplyDir, "next")); err == nil {
 			fmt.Sscanf(strings.TrimSpace(string(next)), "%d", &status.Current)
 		}
@@ -858,19 +885,14 @@ func (rm *RepoManager) getInProgressStatus(ctx context.Context, repoPath string)
 		return status, nil
 	}
 
-	// Check for merge
 	if _, err := os.Stat(filepath.Join(gitDir, "MERGE_HEAD")); err == nil {
 		status.Type = "merge"
 		return status, nil
 	}
-
-	// Check for cherry-pick
 	if _, err := os.Stat(filepath.Join(gitDir, "CHERRY_PICK_HEAD")); err == nil {
 		status.Type = "cherry-pick"
 		return status, nil
 	}
-
-	// Check for revert
 	if _, err := os.Stat(filepath.Join(gitDir, "REVERT_HEAD")); err == nil {
 		status.Type = "revert"
 		return status, nil
@@ -1211,6 +1233,13 @@ func (rm *RepoManager) getAheadBehind(ctx context.Context, repoPath, branchName 
 
 // GetHeadSHA returns the SHA of the current HEAD commit
 func (rm *RepoManager) GetHeadSHA(ctx context.Context, repoPath string) (string, error) {
+	// Fast path: resolve gitDir via cache, then read HEAD and resolve ref (with cached packed-refs)
+	if gitDir, err := rm.cache.GetGitDir(repoPath); err == nil {
+		if sha, err := readHeadSHAFromGitDir(gitDir, rm.cache); err == nil {
+			return sha, nil
+		}
+	}
+	// Fallback to subprocess
 	cmd, cancel := gitCmdWithContext(ctx, TimeoutFast, repoPath, "rev-parse", "HEAD")
 	defer cancel()
 	out, err := cmd.Output()
@@ -1222,14 +1251,24 @@ func (rm *RepoManager) GetHeadSHA(ctx context.Context, repoPath string) (string,
 
 // GetGitHubRemote extracts the GitHub owner and repo name from the origin remote URL
 func (rm *RepoManager) GetGitHubRemote(ctx context.Context, repoPath string) (owner, repo string, err error) {
-	cmd, cancel := gitCmdWithContext(ctx, TimeoutFast, repoPath, "remote", "get-url", "origin")
-	defer cancel()
-	out, err := cmd.Output()
-	if err != nil {
-		return "", "", fmt.Errorf("failed to get origin remote: %w", err)
+	// Fast path: read remote URL from .git/config (with cache)
+	var remoteURL string
+	if rm.cache != nil {
+		remoteURL, err = rm.cache.GetRemoteURL(repoPath, "origin")
+	} else {
+		remoteURL, err = readRemoteURL(repoPath, "origin")
 	}
 
-	remoteURL := strings.TrimSpace(string(out))
+	if err != nil {
+		// Fallback to subprocess
+		cmd, cancel := gitCmdWithContext(ctx, TimeoutFast, repoPath, "remote", "get-url", "origin")
+		defer cancel()
+		out, fallbackErr := cmd.Output()
+		if fallbackErr != nil {
+			return "", "", fmt.Errorf("failed to get origin remote: %w", fallbackErr)
+		}
+		remoteURL = strings.TrimSpace(string(out))
+	}
 
 	// Parse various GitHub URL formats:
 	// - https://github.com/owner/repo.git

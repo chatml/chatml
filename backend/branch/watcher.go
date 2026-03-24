@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/chatml/chatml-backend/git"
 	"github.com/chatml/chatml-backend/logger"
 	"github.com/fsnotify/fsnotify"
 )
@@ -64,7 +65,7 @@ func NewWatcher(onChange func(BranchChangeEvent)) (*Watcher, error) {
 // WatchSession starts watching a session's git HEAD file
 func (w *Watcher) WatchSession(sessionID, worktreePath, currentBranch string) error {
 	// Resolve gitdir from worktree's .git file
-	gitDir, err := resolveWorktreeGitDir(worktreePath)
+	gitDir, err := git.ResolveGitDir(worktreePath)
 	if err != nil {
 		return fmt.Errorf("failed to resolve gitdir for %s: %w", worktreePath, err)
 	}
@@ -271,42 +272,6 @@ func (w *Watcher) handleEvent(event fsnotify.Event) {
 			onBranchChangeNotify(evt.SessionID, evt.NewBranch)
 		}
 	}
-}
-
-// resolveWorktreeGitDir reads the worktree's .git file to find the actual gitdir
-func resolveWorktreeGitDir(worktreePath string) (string, error) {
-	gitFile := filepath.Join(worktreePath, ".git")
-
-	info, err := os.Stat(gitFile)
-	if err != nil {
-		return "", err
-	}
-
-	// If .git is a directory (not a worktree), the HEAD file is directly in it
-	if info.IsDir() {
-		return gitFile, nil
-	}
-
-	// .git is a file (worktree), read it to find the gitdir
-	data, err := os.ReadFile(gitFile)
-	if err != nil {
-		return "", err
-	}
-
-	content := strings.TrimSpace(string(data))
-	// Format: "gitdir: /path/to/main/repo/.git/worktrees/session-name"
-	if !strings.HasPrefix(content, "gitdir: ") {
-		return "", fmt.Errorf("unexpected .git file format: %s", content)
-	}
-
-	gitDir := strings.TrimPrefix(content, "gitdir: ")
-
-	// Handle relative paths
-	if !filepath.IsAbs(gitDir) {
-		gitDir = filepath.Join(worktreePath, gitDir)
-	}
-
-	return filepath.Clean(gitDir), nil
 }
 
 // readCurrentBranch reads the branch name from a HEAD file
