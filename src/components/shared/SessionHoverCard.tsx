@@ -10,12 +10,14 @@ import type { WorktreeSession } from '@/lib/types';
 interface SessionHoverCardBodyProps {
   session: WorktreeSession;
   formatTimeAgo: (date: string) => string;
+  lastAgentCompletedAt?: number;
   onCreatePR?: () => void;
 }
 
 export function SessionHoverCardBody({
   session,
   formatTimeAgo,
+  lastAgentCompletedAt,
   onCreatePR,
 }: SessionHoverCardBodyProps) {
   const hasStats = session.stats && (session.stats.additions > 0 || session.stats.deletions > 0);
@@ -37,7 +39,13 @@ export function SessionHoverCardBody({
         <TaskStatusIcon status={session.taskStatus} className="h-3 w-3 shrink-0" />
         <span className="shrink-0">{statusOption.label}</span>
         <span className="text-muted-foreground/50">&middot;</span>
-        <span className="shrink-0">{formatTimeAgo(session.updatedAt)}</span>
+        <span className="shrink-0">
+          {formatTimeAgo(
+            lastAgentCompletedAt !== undefined && lastAgentCompletedAt > new Date(session.updatedAt).getTime()
+              ? new Date(lastAgentCompletedAt).toISOString()
+              : session.updatedAt
+          )}
+        </span>
       </div>
 
       {/* PR row */}
