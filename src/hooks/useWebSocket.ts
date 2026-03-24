@@ -116,7 +116,7 @@ export function useWebSocket(enabled: boolean = true) {
           // canUseTool/hooks pause the agent, so the backend may report idle even
           // though the session is actually waiting for user interaction.
           const streaming = store.streamingState[conversationId];
-          if (streaming?.pendingToolApproval || streaming?.pendingPlanApproval || streaming?.pendingUserQuestion) {
+          if (streaming?.pendingToolApproval || streaming?.pendingPlanApproval || store.pendingUserQuestion[conversationId]) {
             return;
           }
           const startTime = streaming?.startTime;
