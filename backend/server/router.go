@@ -184,6 +184,17 @@ func NewRouter(ctx context.Context, s *store.SQLiteStore, hub *Hub, agentMgr *ag
 		// Commit status endpoints
 		r.Post("/{id}/sessions/{sessionId}/status", h.PostCommitStatus)
 		r.Get("/{id}/sessions/{sessionId}/statuses", h.ListCommitStatuses)
+		// Base session endpoints (preflight, branch management, stash)
+		r.Get("/{id}/sessions/{sessionId}/preflight", h.PreflightCheck)
+		r.Get("/{id}/sessions/{sessionId}/current-branch", h.GetCurrentSessionBranch)
+		r.Post("/{id}/sessions/{sessionId}/branches/create", h.CreateSessionBranch)
+		r.Post("/{id}/sessions/{sessionId}/branches/switch", h.SwitchSessionBranch)
+		r.Delete("/{id}/sessions/{sessionId}/branches/{branchName}", h.DeleteSessionBranch)
+		r.Get("/{id}/sessions/{sessionId}/stashes", h.ListStashes)
+		r.Post("/{id}/sessions/{sessionId}/stashes", h.CreateStash)
+		r.Post("/{id}/sessions/{sessionId}/stashes/{index}/apply", h.ApplyStash)
+		r.Post("/{id}/sessions/{sessionId}/stashes/{index}/pop", h.PopStash)
+		r.Delete("/{id}/sessions/{sessionId}/stashes/{index}", h.DropStash)
 		r.Get("/{id}/agents", h.ListAgents)
 		r.With(agentRateLimiter).Post("/{id}/agents", h.SpawnAgent)
 		// File tabs

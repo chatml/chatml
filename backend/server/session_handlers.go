@@ -152,6 +152,73 @@ type CreateSessionRequest struct {
 	CheckoutExisting bool `json:"checkoutExisting,omitempty"`
 	// SystemMessage is optional custom content for the initial system message (e.g. PR context)
 	SystemMessage string `json:"systemMessage,omitempty"`
+	// SessionType is "worktree" (default) or "base" — base sessions operate on the repo directly
+	SessionType string `json:"sessionType,omitempty"`
+}
+
+// initBaseSession creates a base session with its initial conversation and setup message,
+// then starts the branch watcher. Returns the created session or an error.
+func (h *Handlers) initBaseSession(ctx context.Context, workspaceID, name, branch, repoPath string) (*models.Session, error) {
+	now := time.Now()
+	sess := &models.Session{
+		ID:           uuid.New().String(),
+		WorkspaceID:  workspaceID,
+		Name:         name,
+		Branch:       branch,
+		WorktreePath: repoPath,
+		SessionType:  models.SessionTypeBase,
+		Status:       "idle",
+		PRStatus:     "none",
+		Priority:     models.PriorityNone,
+		TaskStatus:   models.TaskStatusInProgress,
+		CreatedAt:    now,
+		UpdatedAt:    now,
+	}
+
+	if err := h.store.AddSession(ctx, sess); err != nil {
+		return nil, fmt.Errorf("add session: %w", err)
+	}
+
+	// Create initial conversation
+	convID := uuid.New().String()[:8]
+	conv := &models.Conversation{
+		ID:          convID,
+		SessionID:   sess.ID,
+		Type:        models.ConversationTypeTask,
+		Name:        "Untitled",
+		Status:      models.ConversationStatusIdle,
+		Messages:    []models.Message{},
+		ToolSummary: []models.ToolAction{},
+		CreatedAt:   now,
+		UpdatedAt:   now,
+	}
+	if err := h.store.AddConversation(ctx, conv); err != nil {
+		return nil, fmt.Errorf("add conversation: %w", err)
+	}
+
+	// System message
+	setupMsg := models.Message{
+		ID:   uuid.New().String()[:8],
+		Role: "system",
+		SetupInfo: &models.SetupInfo{
+			SessionName:  sess.Name,
+			BranchName:   branch,
+			OriginBranch: branch,
+		},
+		Timestamp: now,
+	}
+	if err := h.store.AddMessageToConversation(ctx, convID, setupMsg); err != nil {
+		return nil, fmt.Errorf("add setup message: %w", err)
+	}
+
+	// Watch for branch changes
+	if h.branchWatcher != nil {
+		if err := h.branchWatcher.WatchSession(sess.ID, repoPath, branch); err != nil {
+			logger.Handlers.Warnf("Failed to start branch watching for base session %s: %v", sess.ID, err)
+		}
+	}
+
+	return sess, nil
 }
 
 // resolveRepoBranchPrefix returns the branch prefix based on repo-level settings.
@@ -216,6 +283,38 @@ func (h *Handlers) CreateSession(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+
+	// ─── Base session fast path ───
+	// Base sessions operate directly on the repo checkout: no worktree, no branch creation.
+	if req.SessionType == models.SessionTypeBase {
+		// Enforce one base session per workspace
+		existing, err := h.store.GetBaseSessionForWorkspace(ctx, workspaceID)
+		if err != nil {
+			writeDBError(w, err)
+			return
+		}
+		if existing != nil {
+			writeConflict(w, "workspace already has a base session")
+			return
+		}
+
+		branch, _ := h.repoManager.GetCurrentBranch(ctx, repo.Path)
+		sessionName := req.Name
+		if sessionName == "" {
+			sessionName = repo.Name
+		}
+
+		sess, err := h.initBaseSession(ctx, workspaceID, sessionName, branch, repo.Path)
+		if err != nil {
+			writeInternalError(w, "failed to create base session", err)
+			return
+		}
+
+		writeJSON(w, sess)
+		return
+	}
+
+	// ─── Worktree session path (existing logic) ───
 
 	// Generate session ID
 	sessionID := uuid.New().String()
@@ -590,6 +689,12 @@ func (h *Handlers) UpdateSession(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Block archiving of base sessions
+	if req.Archived != nil && *req.Archived && session.IsBaseSession() {
+		writeValidationError(w, "base sessions cannot be archived")
+		return
+	}
+
 	// If archiving, check if session has any messages. Delete blank sessions instead.
 	if req.Archived != nil && *req.Archived {
 		hasMessages, msgErr := h.store.SessionHasMessages(ctx, id)
@@ -847,6 +952,12 @@ func (h *Handlers) DeleteSession(w http.ResponseWriter, r *http.Request) {
 	sess, err := h.store.GetSession(ctx, sessionID)
 	if err != nil {
 		writeDBError(w, err)
+		return
+	}
+
+	// Block deletion of base sessions
+	if sess != nil && sess.IsBaseSession() {
+		writeValidationError(w, "base sessions cannot be deleted")
 		return
 	}
 

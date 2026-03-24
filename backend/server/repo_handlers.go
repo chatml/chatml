@@ -58,6 +58,11 @@ func (h *Handlers) AddRepo(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Auto-create base session for the new workspace
+	if _, err := h.initBaseSession(ctx, repo.ID, repo.Name, branch, repo.Path); err != nil {
+		logger.Handlers.Warnf("Failed to auto-create base session for workspace %s: %v", repo.ID, err)
+	}
+
 	writeJSON(w, repo)
 }
 

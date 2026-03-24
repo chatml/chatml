@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/chatml/chatml-backend/logger"
+	"github.com/chatml/chatml-backend/models"
 )
 
 // Git command timeout tiers — choose the appropriate tier at each call site.
@@ -1609,4 +1610,269 @@ func (rm *RepoManager) GetFileDiffUnified(ctx context.Context, repoPath, baseRef
 	}
 
 	return diff, nil
+}
+
+// ============================================================================
+// Base session operations: preflight checks, branch management, stash
+// ============================================================================
+
+// CheckPreflight inspects the repository for states that block base session usage.
+func (rm *RepoManager) CheckPreflight(ctx context.Context, repoPath string) (*models.PreflightStatus, error) {
+	status := &models.PreflightStatus{OK: true}
+
+	// Resolve git dir (handles both regular repos and worktrees)
+	cmd, cancel := gitCmdWithContext(ctx, TimeoutFast, repoPath, "rev-parse", "--git-dir")
+	defer cancel()
+	gitDirOut, err := cmd.Output()
+	if err != nil {
+		status.OK = false
+		status.CorruptedIndex = true
+		status.ErrorMessage = "unable to resolve git directory"
+		return status, nil
+	}
+	gitDir := strings.TrimSpace(string(gitDirOut))
+	if !filepath.IsAbs(gitDir) {
+		gitDir = filepath.Join(repoPath, gitDir)
+	}
+
+	// Check for active rebase
+	if _, err := os.Stat(filepath.Join(gitDir, "rebase-merge")); err == nil {
+		status.OK = false
+		status.ActiveRebase = true
+	}
+	if _, err := os.Stat(filepath.Join(gitDir, "rebase-apply")); err == nil {
+		status.OK = false
+		status.ActiveRebase = true
+	}
+
+	// Check for active merge
+	if _, err := os.Stat(filepath.Join(gitDir, "MERGE_HEAD")); err == nil {
+		status.OK = false
+		status.ActiveMerge = true
+	}
+
+	// Check for active cherry-pick
+	if _, err := os.Stat(filepath.Join(gitDir, "CHERRY_PICK_HEAD")); err == nil {
+		status.OK = false
+		status.ActiveCherryPick = true
+	}
+
+	// Check for detached HEAD
+	cmd2, cancel2 := gitCmdWithContext(ctx, TimeoutFast, repoPath, "symbolic-ref", "HEAD")
+	defer cancel2()
+	if err := cmd2.Run(); err != nil {
+		status.OK = false
+		status.DetachedHead = true
+	}
+
+	// Check for corrupted index (git status fails)
+	cmd3, cancel3 := gitCmdWithContext(ctx, TimeoutMedium, repoPath, "status", "--porcelain")
+	defer cancel3()
+	if err := cmd3.Run(); err != nil {
+		status.OK = false
+		status.CorruptedIndex = true
+	}
+
+	// Build error message
+	if !status.OK {
+		var issues []string
+		if status.ActiveRebase {
+			issues = append(issues, "a rebase is in progress")
+		}
+		if status.ActiveMerge {
+			issues = append(issues, "a merge is in progress")
+		}
+		if status.ActiveCherryPick {
+			issues = append(issues, "a cherry-pick is in progress")
+		}
+		if status.DetachedHead {
+			issues = append(issues, "HEAD is detached")
+		}
+		if status.CorruptedIndex {
+			issues = append(issues, "git index may be corrupted")
+		}
+		status.ErrorMessage = "Repository is in an unusual state: " + strings.Join(issues, "; ")
+	}
+
+	return status, nil
+}
+
+// CreateBranch creates a new branch at the given start point.
+func (rm *RepoManager) CreateBranch(ctx context.Context, repoPath, name, startPoint string) error {
+	if err := ValidateGitRef(name); err != nil {
+		return fmt.Errorf("invalid branch name: %w", err)
+	}
+	args := []string{"branch", name}
+	if startPoint != "" {
+		if err := ValidateGitRef(startPoint); err != nil {
+			return fmt.Errorf("invalid start point: %w", err)
+		}
+		args = append(args, startPoint)
+	}
+	cmd, cancel := gitCmdWithContext(ctx, TimeoutMedium, repoPath, args...)
+	defer cancel()
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("git branch failed: %s", strings.TrimSpace(string(out)))
+	}
+	return nil
+}
+
+// SwitchBranch switches the working tree to the given branch.
+// Returns an error with dirty file details if the working tree has uncommitted changes.
+func (rm *RepoManager) SwitchBranch(ctx context.Context, repoPath, branchName string) error {
+	if err := ValidateGitRef(branchName); err != nil {
+		return fmt.Errorf("invalid branch name: %w", err)
+	}
+
+	cmd, cancel := gitCmdWithContext(ctx, TimeoutHeavy, repoPath, "switch", branchName)
+	defer cancel()
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		outStr := strings.TrimSpace(string(out))
+		// Detect dirty working tree
+		if strings.Contains(outStr, "uncommitted changes") || strings.Contains(outStr, "local changes") {
+			return &DirtyWorkingTreeError{Message: outStr}
+		}
+		return fmt.Errorf("git switch failed: %s", outStr)
+	}
+	return nil
+}
+
+// DirtyWorkingTreeError indicates that a branch switch was blocked by uncommitted changes.
+type DirtyWorkingTreeError struct {
+	Message string
+}
+
+func (e *DirtyWorkingTreeError) Error() string {
+	return e.Message
+}
+
+// ListStashes returns all stash entries for the repository.
+func (rm *RepoManager) ListStashes(ctx context.Context, repoPath string) ([]models.StashEntry, error) {
+	cmd, cancel := gitCmdWithContext(ctx, TimeoutMedium, repoPath, "stash", "list", "--format=%gd\t%gs")
+	defer cancel()
+	out, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("git stash list: %w", err)
+	}
+
+	raw := strings.TrimSpace(string(out))
+	if raw == "" {
+		return []models.StashEntry{}, nil
+	}
+
+	var entries []models.StashEntry
+	for _, line := range strings.Split(raw, "\n") {
+		parts := strings.SplitN(line, "\t", 2)
+		if len(parts) < 2 {
+			continue
+		}
+		// parts[0] = "stash@{0}", parts[1] = message
+		idxStr := strings.TrimPrefix(parts[0], "stash@{")
+		idxStr = strings.TrimSuffix(idxStr, "}")
+		idx, err := strconv.Atoi(idxStr)
+		if err != nil {
+			continue // skip malformed lines rather than silently using 0
+		}
+
+		// Extract branch from message if present (format: "WIP on branch: ..." or "On branch: ...")
+		msg := parts[1]
+		branch := ""
+		if colonIdx := strings.Index(msg, ":"); colonIdx != -1 {
+			prefix := msg[:colonIdx]
+			if spaceIdx := strings.LastIndex(prefix, " "); spaceIdx != -1 {
+				branch = prefix[spaceIdx+1:]
+			}
+		}
+
+		entries = append(entries, models.StashEntry{
+			Index:   idx,
+			Branch:  branch,
+			Message: msg,
+		})
+	}
+	return entries, nil
+}
+
+// CreateStash creates a new stash with an optional message.
+func (rm *RepoManager) CreateStash(ctx context.Context, repoPath, message string, includeUntracked bool) error {
+	args := []string{"stash", "push"}
+	if message != "" {
+		args = append(args, "-m", message)
+	}
+	if includeUntracked {
+		args = append(args, "--include-untracked")
+	}
+	cmd, cancel := gitCmdWithContext(ctx, TimeoutHeavy, repoPath, args...)
+	defer cancel()
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("git stash push: %s", strings.TrimSpace(string(out)))
+	}
+	return nil
+}
+
+// ApplyStash applies a stash entry without removing it.
+func (rm *RepoManager) ApplyStash(ctx context.Context, repoPath string, index int) error {
+	ref := fmt.Sprintf("stash@{%d}", index)
+	cmd, cancel := gitCmdWithContext(ctx, TimeoutHeavy, repoPath, "stash", "apply", ref)
+	defer cancel()
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("git stash apply: %s", strings.TrimSpace(string(out)))
+	}
+	return nil
+}
+
+// PopStash applies and removes a stash entry.
+func (rm *RepoManager) PopStash(ctx context.Context, repoPath string, index int) error {
+	ref := fmt.Sprintf("stash@{%d}", index)
+	cmd, cancel := gitCmdWithContext(ctx, TimeoutHeavy, repoPath, "stash", "pop", ref)
+	defer cancel()
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("git stash pop: %s", strings.TrimSpace(string(out)))
+	}
+	return nil
+}
+
+// DropStash removes a stash entry without applying it.
+func (rm *RepoManager) DropStash(ctx context.Context, repoPath string, index int) error {
+	ref := fmt.Sprintf("stash@{%d}", index)
+	cmd, cancel := gitCmdWithContext(ctx, TimeoutMedium, repoPath, "stash", "drop", ref)
+	defer cancel()
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("git stash drop: %s", strings.TrimSpace(string(out)))
+	}
+	return nil
+}
+
+// GetDirtyFiles returns a list of files with uncommitted changes (staged or unstaged).
+func (rm *RepoManager) GetDirtyFiles(ctx context.Context, repoPath string) ([]string, error) {
+	cmd, cancel := gitCmdWithContext(ctx, TimeoutMedium, repoPath, "status", "--porcelain")
+	defer cancel()
+	out, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("git status: %w", err)
+	}
+	raw := strings.TrimSpace(string(out))
+	if raw == "" {
+		return nil, nil
+	}
+	var files []string
+	for _, line := range strings.Split(raw, "\n") {
+		if len(line) > 3 {
+			name := strings.TrimSpace(line[3:])
+			// For renames/copies, porcelain v1 format is "old -> new"; use the destination.
+			if arrowIdx := strings.Index(name, " -> "); arrowIdx != -1 {
+				name = name[arrowIdx+4:]
+			}
+			if name != "" {
+				files = append(files, name)
+			}
+		}
+	}
+	return files, nil
 }

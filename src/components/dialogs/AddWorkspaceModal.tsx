@@ -5,7 +5,7 @@ import { useAppStore } from '@/stores/appStore';
 import { useShallow } from 'zustand/react/shallow';
 import { useSettingsStore, getBranchPrefix, getWorkspaceBranchPrefix } from '@/stores/settingsStore';
 import { navigate } from '@/lib/navigation';
-import { addRepo, createSession as createSessionApi, listConversations as listConversationsApi, mapSessionDTO } from '@/lib/api';
+import { addRepo, createSession as createSessionApi, listSessions as listSessionsApi, listConversations as listConversationsApi, mapSessionDTO } from '@/lib/api';
 import type { SetupInfo } from '@/lib/types';
 import {
   Dialog,
@@ -67,7 +67,11 @@ export function AddWorkspaceModal({ isOpen, onClose }: AddWorkspaceModalProps) {
       };
       addWorkspace(workspace);
 
-      // Auto-create first session for the new workspace (backend generates city-based name)
+      // Fetch the auto-created base session (created by backend during AddRepo)
+      const existingSessions = await listSessionsApi(workspace.id);
+      existingSessions.forEach((s) => addSession(mapSessionDTO(s)));
+
+      // Auto-create first worktree session for the new workspace
       const branchPrefix = workspace.branchPrefix
         ? getWorkspaceBranchPrefix(workspace)
         : getBranchPrefix();

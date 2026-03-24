@@ -39,6 +39,11 @@ const DEFAULT_COLLAPSED_STATUSES = new Set<SessionTaskStatus>(['done', 'cancelle
 
 function sortSessions(sessions: WorktreeSession[], sortBy: SidebarSortBy): WorktreeSession[] {
   return [...sessions].sort((a, b) => {
+    // Base sessions always sort first, regardless of sort mode
+    const aBase = a.sessionType === 'base' ? 0 : 1;
+    const bBase = b.sessionType === 'base' ? 0 : 1;
+    if (aBase !== bBase) return aBase - bBase;
+
     switch (sortBy) {
       case 'recent':
         return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();

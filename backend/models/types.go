@@ -20,6 +20,7 @@ type Session struct {
 	Name             string        `json:"name"`
 	Branch           string        `json:"branch"`
 	WorktreePath     string        `json:"worktreePath"`
+	SessionType      string        `json:"sessionType"`              // "worktree" or "base"
 	BaseCommitSHA    string        `json:"baseCommitSha,omitempty"`    // Commit SHA the session was created from
 	TargetBranch     string        `json:"targetBranch,omitempty"`    // Per-session target branch override (e.g. "origin/develop")
 	Task             string        `json:"task,omitempty"`
@@ -263,6 +264,17 @@ const (
 	ConversationStatusIdle      = "idle"
 	ConversationStatusCompleted = "completed"
 )
+
+// SessionType constants
+const (
+	SessionTypeWorktree = "worktree"
+	SessionTypeBase     = "base"
+)
+
+// IsBaseSession returns true if this session operates directly on the repo checkout.
+func (s *Session) IsBaseSession() bool {
+	return s.SessionType == SessionTypeBase
+}
 
 // SessionStatus constants
 const (
@@ -516,6 +528,24 @@ type BranchSyncResult struct {
 	NewBaseSha    string   `json:"newBaseSha,omitempty"`
 	ConflictFiles []string `json:"conflictFiles,omitempty"`
 	ErrorMessage  string   `json:"errorMessage,omitempty"`
+}
+
+// PreflightStatus reports git state issues that block base session usage.
+type PreflightStatus struct {
+	OK               bool   `json:"ok"`
+	ActiveRebase     bool   `json:"activeRebase,omitempty"`
+	ActiveMerge      bool   `json:"activeMerge,omitempty"`
+	ActiveCherryPick bool   `json:"activeCherryPick,omitempty"`
+	DetachedHead     bool   `json:"detachedHead,omitempty"`
+	CorruptedIndex   bool   `json:"corruptedIndex,omitempty"`
+	ErrorMessage     string `json:"errorMessage,omitempty"`
+}
+
+// StashEntry represents a single git stash entry.
+type StashEntry struct {
+	Index   int    `json:"index"`
+	Branch  string `json:"branch"`
+	Message string `json:"message"`
 }
 
 // Checkpoint represents a file state snapshot created by the Claude Agent SDK at message boundaries.

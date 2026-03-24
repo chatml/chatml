@@ -13,8 +13,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/chatml/chatml-backend/appdir"
 	"github.com/chatml/chatml-backend/agent"
+	"github.com/chatml/chatml-backend/appdir"
 	"github.com/chatml/chatml-backend/branch"
 	"github.com/chatml/chatml-backend/git"
 	"github.com/chatml/chatml-backend/github"
@@ -25,6 +25,8 @@ import (
 	"github.com/chatml/chatml-backend/scripts"
 	"github.com/chatml/chatml-backend/server"
 	"github.com/chatml/chatml-backend/store"
+
+	"github.com/google/uuid"
 )
 
 const (
@@ -509,6 +511,101 @@ func main() {
 	// become available (env var, keychain, credentials file, cached SDK token).
 	router, routerCleanup := server.NewRouter(ctx, s, hub, agentMgr, ghClient, linearClient, branchWatcher, prWatcher, prCache, issueCache, statsCache, diffCache, snapshotCache, nil, scriptRunner)
 	defer routerCleanup()
+
+	// Backfill base sessions for existing workspaces that don't have one yet.
+	// This handles upgrades from versions that didn't auto-create base sessions.
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				logger.Main.Errorf("PANIC in base session backfill: %v\n%s", r, debug.Stack())
+			}
+		}()
+
+		repos, err := s.ListRepos(ctx)
+		if err != nil {
+			logger.Main.Warnf("Base session backfill: failed to list repos: %v", err)
+			return
+		}
+
+		for _, repo := range repos {
+			// Check if workspace already has a base session
+			existing, err := s.GetBaseSessionForWorkspace(ctx, repo.ID)
+			if err != nil {
+				logger.Main.Warnf("Base session backfill: failed to check workspace %s: %v", repo.ID, err)
+				continue
+			}
+			if existing != nil {
+				continue // already has one
+			}
+
+			// Verify the repo path still exists on disk
+			if _, statErr := os.Stat(repo.Path); os.IsNotExist(statErr) {
+				continue
+			}
+
+			branch, _ := repoManager.GetCurrentBranch(ctx, repo.Path)
+			now := time.Now()
+			sess := &models.Session{
+				ID:           uuid.New().String(),
+				WorkspaceID:  repo.ID,
+				Name:         repo.Name,
+				Branch:       branch,
+				WorktreePath: repo.Path,
+				SessionType:  models.SessionTypeBase,
+				Status:       "idle",
+				PRStatus:     "none",
+				Priority:     models.PriorityNone,
+				TaskStatus:   models.TaskStatusInProgress,
+				CreatedAt:    now,
+				UpdatedAt:    now,
+			}
+			if err := s.AddSession(ctx, sess); err != nil {
+				logger.Main.Warnf("Base session backfill: failed to create session for workspace %s: %v", repo.ID, err)
+				continue
+			}
+
+			convID := uuid.New().String()[:8]
+			conv := &models.Conversation{
+				ID:          convID,
+				SessionID:   sess.ID,
+				Type:        models.ConversationTypeTask,
+				Name:        "Untitled",
+				Status:      models.ConversationStatusIdle,
+				Messages:    []models.Message{},
+				ToolSummary: []models.ToolAction{},
+				CreatedAt:   now,
+				UpdatedAt:   now,
+			}
+			if err := s.AddConversation(ctx, conv); err != nil {
+				logger.Main.Warnf("Base session backfill: failed to create conversation for workspace %s: %v", repo.ID, err)
+				continue
+			}
+
+			setupMsg := models.Message{
+				ID:   uuid.New().String()[:8],
+				Role: "system",
+				SetupInfo: &models.SetupInfo{
+					SessionName:  sess.Name,
+					BranchName:   branch,
+					OriginBranch: branch,
+				},
+				Timestamp: now,
+			}
+			if err := s.AddMessageToConversation(ctx, convID, setupMsg); err != nil {
+				logger.Main.Warnf("Base session backfill: failed to create setup message for workspace %s: %v", repo.ID, err)
+				continue
+			}
+
+			// Start branch watching for the backfilled session
+			if branchWatcher != nil {
+				if watchErr := branchWatcher.WatchSession(sess.ID, repo.Path, branch); watchErr != nil {
+					logger.Main.Warnf("Base session backfill: failed to watch session %s: %v", sess.ID, watchErr)
+				}
+			}
+
+			logger.Main.Infof("Backfilled base session for workspace %q (%s)", repo.Name, repo.ID)
+		}
+	}()
 
 	// Pre-warm session stats cache in background so the first getDashboardData
 	// returns stats from cache instead of computing them on-the-fly.
