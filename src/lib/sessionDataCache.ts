@@ -11,7 +11,7 @@
  * Follows the same LRU Map pattern as diffCache.ts.
  */
 
-import type { FileChangeDTO, BranchStatsDTO } from '@/lib/api';
+import type { FileChangeDTO, BranchStatsDTO, GitStatusDTO, BranchCommitDTO } from '@/lib/api';
 import type { FileNode } from '@/components/files/FileTree';
 
 export interface SessionCacheEntry {
@@ -19,6 +19,8 @@ export interface SessionCacheEntry {
   changes: FileChangeDTO[];
   allChanges: FileChangeDTO[];
   branchStats: BranchStatsDTO | null;
+  gitStatus?: GitStatusDTO | null;
+  commits?: BranchCommitDTO[];
 }
 
 const cache = new Map<string, SessionCacheEntry>();

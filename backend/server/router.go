@@ -20,10 +20,10 @@ import (
 	"github.com/rs/cors"
 )
 
-func NewRouter(ctx context.Context, s *store.SQLiteStore, hub *Hub, agentMgr *agent.Manager, ghClient *github.Client, linearClient *linear.Client, bw *branch.Watcher, prw *branch.PRWatcher, prCache *github.PRCache, issueCache *github.IssueCache, statsCache *SessionStatsCache, diffCache *DiffCache, aiClient ai.Provider, scriptRunner *scripts.Runner) (http.Handler, func()) {
+func NewRouter(ctx context.Context, s *store.SQLiteStore, hub *Hub, agentMgr *agent.Manager, ghClient *github.Client, linearClient *linear.Client, bw *branch.Watcher, prw *branch.PRWatcher, prCache *github.PRCache, issueCache *github.IssueCache, statsCache *SessionStatsCache, diffCache *DiffCache, snapshotCache *SnapshotCache, aiClient ai.Provider, scriptRunner *scripts.Runner) (http.Handler, func()) {
 	r := chi.NewRouter()
 	dirCacheConfig := LoadDirListingCacheConfig()
-	h := NewHandlers(ctx, s, agentMgr, dirCacheConfig, bw, prw, hub, ghClient, prCache, issueCache, statsCache, diffCache, aiClient, scriptRunner)
+	h := NewHandlers(ctx, s, agentMgr, dirCacheConfig, bw, prw, hub, ghClient, prCache, issueCache, statsCache, diffCache, snapshotCache, aiClient, scriptRunner)
 	auth := NewAuthHandlers(ghClient, s)
 	linearAuth := NewLinearAuthHandlers(linearClient, s)
 	// Relay is only enabled when CHATML_RELAY_URL is set (i.e., a cloud relay
@@ -133,6 +133,7 @@ func NewRouter(ctx context.Context, s *store.SQLiteStore, hub *Hub, agentMgr *ag
 		r.Get("/{id}/sessions/{sessionId}/changes", h.GetSessionChanges)
 		r.Get("/{id}/sessions/{sessionId}/branch-commits", h.GetSessionBranchCommits)
 		r.Get("/{id}/sessions/{sessionId}/git-status", h.GetSessionGitStatus)
+		r.Get("/{id}/sessions/{sessionId}/snapshot", h.GetSessionSnapshot)
 		r.Get("/{id}/sessions/{sessionId}/pr-status", h.GetSessionPRStatus)
 		r.Post("/{id}/sessions/{sessionId}/pr-refresh", h.RefreshPRStatus)
 		r.Post("/{id}/sessions/{sessionId}/pr/report", h.ReportPRCreated)
