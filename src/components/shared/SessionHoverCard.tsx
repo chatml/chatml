@@ -3,7 +3,7 @@
 import { GitBranch, GitPullRequest } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { TaskStatusIcon } from '@/components/icons/TaskStatusIcon';
-import { getTaskStatusOption } from '@/lib/session-fields';
+import { getTaskStatusOption, getPRStatusInfo } from '@/lib/session-fields';
 import { PRNumberBadge } from '@/components/shared/PRNumberBadge';
 import type { WorktreeSession } from '@/lib/types';
 
@@ -21,6 +21,7 @@ export function SessionHoverCardBody({
   const hasStats = session.stats && (session.stats.additions > 0 || session.stats.deletions > 0);
   const hasPR = session.prStatus && session.prStatus !== 'none';
   const statusOption = getTaskStatusOption(session.taskStatus);
+  const prStatusInfo = getPRStatusInfo(session);
 
   return (
     <>
@@ -41,16 +42,23 @@ export function SessionHoverCardBody({
       </div>
 
       {/* PR row */}
-      {hasPR && session.prNumber && session.prTitle && (
-        <div className="border-t border-border/50 px-3 py-2 flex items-center gap-2 min-w-0">
-          <PRNumberBadge
-            prNumber={session.prNumber}
-            prStatus={session.prStatus as 'open' | 'merged' | 'closed'}
-            checkStatus={session.checkStatus}
-            hasMergeConflict={session.hasMergeConflict}
-            prUrl={session.prUrl}
-          />
-          <span className="text-xs text-muted-foreground truncate">{session.prTitle}</span>
+      {hasPR && session.prNumber && (
+        <div className="border-t border-border/50 px-3 py-2 flex flex-col gap-1.5 min-w-0">
+          <div className="flex items-center gap-2">
+            <PRNumberBadge
+              prNumber={session.prNumber}
+              prStatus={session.prStatus as 'open' | 'merged' | 'closed'}
+              checkStatus={session.checkStatus}
+              hasMergeConflict={session.hasMergeConflict}
+              prUrl={session.prUrl}
+            />
+            {prStatusInfo && (
+              <span className={cn('text-xs', prStatusInfo.color)}>{prStatusInfo.text}</span>
+            )}
+          </div>
+          {session.prTitle && (
+            <span className="text-sm font-medium text-foreground line-clamp-3">{session.prTitle}</span>
+          )}
         </div>
       )}
 

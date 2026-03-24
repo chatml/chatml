@@ -7,14 +7,9 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from '@/components/ui/collapsible';
-import {
-  ChevronDown,
-  Folder,
-  CheckCircle2,
-  XCircle,
-  AlertTriangle,
-} from 'lucide-react';
+import { ChevronDown, Folder } from 'lucide-react';
 import { TaskStatusIcon } from '@/components/icons/TaskStatusIcon';
+import { getPRStatusInfo } from '@/lib/session-fields';
 
 interface WorkspaceTreeItemProps {
   workspace: Workspace;
@@ -33,29 +28,6 @@ export function WorkspaceTreeItem({
   onToggle,
   onSelectSession,
 }: WorkspaceTreeItemProps) {
-  // Get PR status display info
-  const getPRStatusInfo = (session: WorktreeSession) => {
-    const hasPR = session.prStatus && session.prStatus !== 'none';
-    if (!hasPR) return null;
-
-    if (session.hasMergeConflict) {
-      return { text: 'Merge conflict', color: 'text-text-warning', icon: AlertTriangle };
-    }
-    if (session.hasCheckFailures) {
-      return { text: 'Checks failing', color: 'text-text-error', icon: XCircle };
-    }
-    if (session.prStatus === 'merged') {
-      return { text: 'Merged', color: 'text-nav-icon-prs', icon: CheckCircle2 };
-    }
-    if (session.prStatus === 'open') {
-      if (session.checkStatus === 'pending') {
-        return { text: 'Checks running', color: 'text-amber-500', icon: AlertTriangle };
-      }
-      return { text: 'Ready to merge', color: 'text-text-success', icon: CheckCircle2 };
-    }
-    return null;
-  };
-
   return (
     <div className="mb-1">
       <Collapsible open={isExpanded} onOpenChange={onToggle}>

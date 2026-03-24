@@ -67,8 +67,6 @@ import {
   Archive,
   Settings2,
   CheckCircle2,
-  XCircle,
-  AlertTriangle,
   Folder,
   Globe,
   Github,
@@ -87,7 +85,7 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
 import { getWorkspaceColor, WORKSPACE_COLORS } from '@/lib/workspace-colors';
-import { TASK_STATUS_OPTIONS } from '@/lib/session-fields';
+import { TASK_STATUS_OPTIONS, getPRStatusInfo } from '@/lib/session-fields';
 import { TaskStatusIcon } from '@/components/icons/TaskStatusIcon';
 import { useToast } from '@/components/ui/toast';
 import {
@@ -1414,28 +1412,7 @@ function SessionRow({
   const activityState = useSessionActivityState(sessionId);
   const isSessionUnread = useIsSessionUnread(sessionId);
 
-  // Determine PR status display
-  const getPRStatusInfo = () => {
-    if (!hasPR) return null;
-    if (session.hasMergeConflict) {
-      return { text: 'Merge conflict', color: 'text-text-warning', icon: AlertTriangle };
-    }
-    if (session.hasCheckFailures) {
-      return { text: 'Checks failing', color: 'text-text-error', icon: XCircle };
-    }
-    if (session.prStatus === 'merged') {
-      return { text: 'Merged', color: 'text-brand', icon: CheckCircle2 };
-    }
-    if (session.prStatus === 'open') {
-      if (session.checkStatus === 'pending') {
-        return { text: 'Checks running', color: 'text-amber-500', icon: AlertTriangle };
-      }
-      return { text: 'Ready to merge', color: 'text-text-success', icon: CheckCircle2 };
-    }
-    return null;
-  };
-
-  const prStatusInfo = getPRStatusInfo();
+  const prStatusInfo = getPRStatusInfo(session);
   const [hoverOpen, setHoverOpen] = useState(false);
 
   return (
