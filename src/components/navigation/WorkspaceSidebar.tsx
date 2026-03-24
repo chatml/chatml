@@ -250,6 +250,8 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onGitHubRepos,
     statusGroupOrder,
   });
 
+  const hasMultipleWorkspaces = workspaces.length > 1;
+
   // Auto-exit reorder mode when group-by changes to 'none' (nothing to reorder)
   useEffect(() => {
     if (effectiveGroupBy === 'none') setIsReorderMode(false);
@@ -1070,7 +1072,7 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onGitHubRepos,
                                 onOpenBranches={(e) => navigateToBranches(session.workspaceId, e)}
                                 onOpenPRs={(e) => navigateToPRs(session.workspaceId, e)}
                                 formatTimeAgo={formatTimeAgo}
-                                showProjectIndicator
+                                showProjectIndicator={hasMultipleWorkspaces}
                                 workspaceColor={workspaceColors[session.workspaceId] || getWorkspaceColor(session.workspaceId)}
                                 workspaceName={ws?.name}
                               />
@@ -1123,7 +1125,7 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onGitHubRepos,
                             onOpenBranches={navigateToBranches}
                             onOpenPRs={navigateToPRs}
                             formatTimeAgo={formatTimeAgo}
-                            showProjectIndicator
+                            showProjectIndicator={hasMultipleWorkspaces}
                           />
                         ))
                       )}
