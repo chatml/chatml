@@ -115,7 +115,7 @@ export function CachedConversationPane({
       isActive ? 'z-10' : 'invisible pointer-events-none z-0'
     )}>
       {/* Message panes — one per cached conversation, visibility-toggled */}
-      <div className="relative flex-1 min-h-0">
+      <div className="relative flex-1 min-h-0 overflow-hidden">
         {/* Session home state when no conversation is selected and no conversations exist */}
         {!conversationId && !hasConversations && (
           <div className="h-full overflow-auto">
@@ -136,7 +136,7 @@ export function CachedConversationPane({
       </div>
 
       {/* Chat Input */}
-      <div className="shrink-0 relative">
+      <div className="shrink-0 relative z-10">
         {children}
       </div>
     </div>
