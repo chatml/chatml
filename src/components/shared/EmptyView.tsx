@@ -1,14 +1,13 @@
 'use client';
 
 import { useMemo } from 'react';
-import Image from 'next/image';
 import { useWorkspaceSelection } from '@/stores/selectors';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { isMacOS } from '@/lib/platform';
+import { resolveWorkspaceColor } from '@/lib/workspace-colors';
 import { FullContentLayout } from '@/components/layout/FullContentLayout';
 import { QuickActions } from './smart-launcher/QuickActions';
-import { RecentSessions } from './smart-launcher/RecentSessions';
-import { LiveActivityStrip } from './smart-launcher/LiveActivityStrip';
+import { SessionsList } from './smart-launcher/SessionsList';
 
 interface EmptyViewProps {
   onOpenProject: () => void;
@@ -18,6 +17,17 @@ interface EmptyViewProps {
   onOpenSettings?: () => void;
   onOpenShortcuts?: () => void;
   showLeftSidebar?: boolean;
+}
+
+function ShortcutHint({ keys, label }: { keys: string; label: string }) {
+  return (
+    <span className="flex items-center gap-1.5 text-[11px] text-muted-foreground/40">
+      <kbd className="font-mono text-[10px] bg-surface-1/60 border border-border/20 rounded px-1.5 py-0.5">
+        {keys}
+      </kbd>
+      {label}
+    </span>
+  );
 }
 
 export function EmptyView({
@@ -37,16 +47,25 @@ export function EmptyView({
     [sessions]
   );
 
-  const recentSessions = useMemo(
+  const displaySessions = useMemo(
     () =>
       [...nonArchivedSessions]
         .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
-        .slice(0, 5),
+        .slice(0, 8),
     [nonArchivedSessions]
   );
 
   const hasWorkspace = !!selectedWorkspaceId;
   const modKey = isMacOS() ? '⌘' : 'Ctrl+';
+
+  const selectedWorkspace = useMemo(
+    () => workspaces.find((w) => w.id === selectedWorkspaceId),
+    [workspaces, selectedWorkspaceId]
+  );
+
+  const wsColor = selectedWorkspace
+    ? resolveWorkspaceColor(selectedWorkspace.id, workspaceColors)
+    : undefined;
 
   const greeting = useMemo(() => {
     const hour = new Date().getHours();
@@ -57,71 +76,65 @@ export function EmptyView({
 
   return (
     <FullContentLayout
-      title="Home"
       onOpenSettings={onOpenSettings}
       onOpenShortcuts={onOpenShortcuts}
       showLeftSidebar={showLeftSidebar}
     >
-      <div className="h-full overflow-y-auto bg-content-background">
-        <div className="max-w-xl mx-auto px-6 pt-8 pb-16 stagger-children">
-          {/* Compact Hero */}
-          <div className="flex items-center gap-3 mb-8">
-            <div className="relative shrink-0">
-              <div className="absolute inset-0 rounded-full bg-brand/10 blur-xl pointer-events-none" />
-              <div className="relative w-10 h-10 rounded-full ring-1 ring-border/50 overflow-hidden">
-                <Image
-                  src="/mascot.png"
-                  alt="ChatML mascot"
-                  width={40}
-                  height={40}
-                  className="w-full h-full object-cover"
-                  priority
-                />
-              </div>
-            </div>
-            <div>
-              <h1 className="text-base font-semibold text-foreground">
+      <div className="h-full overflow-y-auto bg-content-background @container">
+        {/* Subtle brand gradient overlay */}
+        <div className="relative">
+          <div className="absolute inset-x-0 top-0 h-64 bg-[radial-gradient(ellipse_60%_50%_at_50%_-20%,oklch(0.707_0.165_292/0.06),transparent)] dark:bg-[radial-gradient(ellipse_60%_50%_at_50%_-20%,oklch(0.707_0.165_292/0.08),transparent)] pointer-events-none" />
+
+          <div className="relative max-w-2xl mx-auto px-6 pt-12 pb-20 stagger-children">
+            {/* Hero */}
+            <div className="mb-10">
+              <h1 className="font-display text-3xl tracking-display text-foreground">
                 {greeting}
               </h1>
-              <p className="text-sm text-muted-foreground">
+              <p className="text-base text-muted-foreground mt-1.5">
                 What would you like to work on?
               </p>
+              {selectedWorkspace && wsColor && (
+                <div className="mt-3 inline-flex items-center gap-2 rounded-full border border-border/30 bg-surface-1/50 px-3 py-1">
+                  <div
+                    className="w-2 h-2 rounded-full"
+                    style={{ backgroundColor: wsColor }}
+                  />
+                  <span className="text-xs text-muted-foreground">
+                    {selectedWorkspace.name}
+                  </span>
+                </div>
+              )}
+            </div>
+
+            {/* Quick Actions */}
+            <div className="mb-10">
+              <QuickActions
+                onOpenProject={onOpenProject}
+                onCloneFromUrl={onCloneFromUrl}
+                onNewSession={onNewSession}
+                onCreateSession={onCreateSession}
+                hasWorkspace={hasWorkspace}
+              />
+            </div>
+
+            {/* Unified Sessions List */}
+            <div className="mb-8">
+              <SessionsList
+                sessions={displaySessions}
+                workspaces={workspaces}
+                workspaceColors={workspaceColors}
+              />
+            </div>
+
+            {/* Keyboard shortcut hints */}
+            <div className="flex items-center justify-center gap-4 pt-4">
+              <ShortcutHint keys={`${modKey}K`} label="Commands" />
+              <ShortcutHint keys={`${modKey}N`} label="New session" />
+              <ShortcutHint keys={`${modKey}O`} label="Open project" />
+              <ShortcutHint keys={`${modKey},`} label="Settings" />
             </div>
           </div>
-
-          {/* Hero Action Grid */}
-          <div className="mb-6">
-            <QuickActions
-              onOpenProject={onOpenProject}
-              onCloneFromUrl={onCloneFromUrl}
-              onNewSession={onNewSession}
-              onCreateSession={onCreateSession}
-              hasWorkspace={hasWorkspace}
-            />
-          </div>
-
-          {/* Live Activity Strip */}
-          <div className="mb-6">
-            <LiveActivityStrip
-              sessions={nonArchivedSessions}
-              workspaces={workspaces}
-              workspaceColors={workspaceColors}
-            />
-          </div>
-
-          {/* Recent Sessions */}
-          <div className="mb-8">
-            <RecentSessions
-              sessions={recentSessions}
-              workspaces={workspaces}
-              workspaceColors={workspaceColors}
-            />
-          </div>
-
-          {/* Cmd+K hint */}
-          <p className="text-center text-[11px] text-muted-foreground/40 pt-2">
-            {modKey}K for commands
-          </p>
         </div>
       </div>
     </FullContentLayout>
