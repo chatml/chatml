@@ -345,13 +345,14 @@ func (h *Handlers) GetCIFailureContext(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Find the latest head SHA from completed runs
+	// Find the latest head SHA from any run (runs are returned newest first).
+	// We intentionally do not restrict to "completed" runs here — a workflow run
+	// may still be "in_progress" if some jobs are still running, even though one
+	// or more individual jobs have already completed with a failure.
 	var latestSHA string
 	for _, run := range runs {
-		if run.Status == "completed" {
-			latestSHA = run.HeadSHA
-			break // runs are returned newest first
-		}
+		latestSHA = run.HeadSHA
+		break // runs are returned newest first
 	}
 
 	if latestSHA == "" {
@@ -363,7 +364,10 @@ func (h *Handlers) GetCIFailureContext(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Filter to failed runs from the latest SHA
+	// Filter to runs from the latest SHA that have or may have failures.
+	// Include both fully-completed failed runs and in-progress runs (their
+	// individual jobs may already be completed with a failure conclusion).
+	// Skip runs that are still queued/waiting and have no jobs to inspect yet.
 	var failedRuns []FailedRunContext
 	totalFailed := 0
 	truncatedOverall := false
@@ -373,10 +377,12 @@ func (h *Handlers) GetCIFailureContext(w http.ResponseWriter, r *http.Request) {
 		if run.HeadSHA != latestSHA {
 			continue
 		}
-		if run.Status != "completed" {
+		// Skip runs that haven't started — no jobs to inspect yet
+		if run.Status == "queued" || run.Status == "waiting" || run.Status == "pending" || run.Status == "requested" {
 			continue
 		}
-		if run.Conclusion != "failure" && run.Conclusion != "timed_out" {
+		// Skip completed runs that succeeded or were otherwise non-failing
+		if run.Status == "completed" && run.Conclusion != "failure" && run.Conclusion != "timed_out" {
 			continue
 		}
 
