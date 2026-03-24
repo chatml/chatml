@@ -125,6 +125,7 @@ export function BaseSessionCard({
         </HoverCard>
       </ContextMenuTrigger>
       <ContextMenuContent>
+        {/* Hidden for shipping — Branches & PR context menu items
         {onOpenBranches && (
           <ContextMenuItem onClick={() => onOpenBranches()}>
             <GitBranch className="h-4 w-4" />
@@ -137,6 +138,7 @@ export function BaseSessionCard({
             Pull Requests
           </ContextMenuItem>
         )}
+        */}
       </ContextMenuContent>
     </ContextMenu>
   );

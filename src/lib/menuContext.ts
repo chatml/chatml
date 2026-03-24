@@ -63,7 +63,7 @@ export function computeMenuState(inputs: MenuContextInputs): Record<string, bool
     command_palette: true,
     file_picker: hasSession,
     open_session_manager: true,
-    open_pr_dashboard: true,
+    open_pr_dashboard: false, // Hidden for shipping
     open_repositories: true,
     toggle_zen_mode: sessionInConversation,
     reset_layouts: true,
