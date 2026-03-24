@@ -195,6 +195,13 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onGitHubRepos,
     else if (sidebarGroupBy === 'project-status') setSidebarGroupBy('status');
   }, [sidebarProjectFilter, sidebarGroupBy, setSidebarGroupBy]);
 
+  // Auto-upgrade view when clearing project filter (entering ALL PROJECTS)
+  useEffect(() => {
+    if (sidebarProjectFilter) return;
+    if (sidebarGroupBy === 'none') setSidebarGroupBy('project');
+    else if (sidebarGroupBy === 'status') setSidebarGroupBy('project-status');
+  }, [sidebarProjectFilter, sidebarGroupBy, setSidebarGroupBy]);
+
   // Scheduled task data for sidebar grouping
   const scheduledTasks = useScheduledTaskStore((s) => s.tasks);
 
@@ -490,9 +497,9 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onGitHubRepos,
   const sectionHeaderLabel = filteredWorkspaceName ?? 'All Projects';
 
   // View options — single selector replacing Group by + Sort by
-  const VIEW_OPTIONS: { value: SidebarGroupBy; label: string; projectOnly?: boolean }[] = [
-    { value: 'none', label: 'Recent' },
-    { value: 'status', label: 'By Status' },
+  const VIEW_OPTIONS: { value: SidebarGroupBy; label: string; projectOnly?: boolean; singleProjectOnly?: boolean }[] = [
+    { value: 'none', label: 'Recent', singleProjectOnly: true },
+    { value: 'status', label: 'By Status', singleProjectOnly: true },
     { value: 'project', label: 'By Project', projectOnly: true },
     { value: 'project-status', label: 'By Project > Status', projectOnly: true },
   ];
@@ -696,7 +703,7 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onGitHubRepos,
                     </DropdownMenuItem>
                     <DropdownMenuSeparator />
                     <DropdownMenuLabel>View</DropdownMenuLabel>
-                    {VIEW_OPTIONS.filter((o) => !o.projectOnly || !sidebarProjectFilter).map((option) => (
+                    {VIEW_OPTIONS.filter((o) => (!o.projectOnly || !sidebarProjectFilter) && (!o.singleProjectOnly || sidebarProjectFilter)).map((option) => (
                       <DropdownMenuCheckboxItem
                         key={option.value}
                         checked={sidebarGroupBy === option.value}
@@ -1140,7 +1147,7 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onGitHubRepos,
                 <ContextMenuSub>
                   <ContextMenuSubTrigger>View</ContextMenuSubTrigger>
                   <ContextMenuSubContent>
-                    {VIEW_OPTIONS.filter((o) => !o.projectOnly || !sidebarProjectFilter).map((option) => (
+                    {VIEW_OPTIONS.filter((o) => (!o.projectOnly || !sidebarProjectFilter) && (!o.singleProjectOnly || sidebarProjectFilter)).map((option) => (
                       <ContextMenuItem key={option.value} onClick={() => setSidebarGroupBy(option.value)}>
                         <Check className={cn("h-3.5 w-3.5", sidebarGroupBy !== option.value && "opacity-0")} />
                         {option.label}
