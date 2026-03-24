@@ -136,12 +136,9 @@ export const PlateInput = forwardRef<PlateInputHandle, PlateInputProps>(
       },
       clear: () => {
         editor.tf.reset();
-        // Defer to allow synchronous Slate DOM updates to complete
         queueMicrotask(() => {
           try {
-            if (editor.children.length > 0) {
-              editor.tf.focus();
-            }
+            editor.tf.focus();
           } catch { /* editor may be unmounted */ }
         });
       },
@@ -152,14 +149,12 @@ export const PlateInput = forwardRef<PlateInputHandle, PlateInputProps>(
         return extractContent(editor.children);
       },
       setText: (text: string) => {
-        editor.tf.reset();
-        // Defer to allow synchronous Slate DOM updates to complete
+        // Replace editor content synchronously to avoid the async gap between
+        // reset() and insertText() that caused dictation text loss.
+        editor.tf.setValue([{ type: 'p', children: [{ text }] }]);
         queueMicrotask(() => {
           try {
-            if (editor.children.length > 0) {
-              editor.tf.focus();
-              editor.tf.insertText(text);
-            }
+            editor.tf.focus({ edge: 'end' });
           } catch { /* editor may be unmounted */ }
         });
       },
