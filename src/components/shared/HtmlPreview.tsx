@@ -122,7 +122,7 @@ export function HtmlPreview({ code }: HtmlPreviewProps) {
 
   // Debounce srcdoc updates during streaming
   const [debouncedCode, setDebouncedCode] = useState(code);
-  const debounceTimer = useRef<ReturnType<typeof setTimeout>>();
+  const debounceTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   useEffect(() => {
     if (debounceTimer.current) clearTimeout(debounceTimer.current);
