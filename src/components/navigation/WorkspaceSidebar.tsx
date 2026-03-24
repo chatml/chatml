@@ -188,7 +188,7 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onGitHubRepos,
   }, [sidebarProjectFilter, workspaces, setSidebarProjectFilter]);
 
   // Sidebar grouping/sorting
-  const { groups: sidebarGroups, flatSessions } = useSidebarSessions({
+  const { groups: sidebarGroups, flatSessions, effectiveGroupBy } = useSidebarSessions({
     sessions,
     workspaces,
     groupBy: sidebarGroupBy,
@@ -781,7 +781,7 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onGitHubRepos,
               ) : (
                 <>
                   {/* Mode: None — flat session list */}
-                  {sidebarGroupBy === 'none' && (
+                  {effectiveGroupBy === 'none' && (
                     <>
                       {flatSessions.length === 0 ? (
                         <div className="py-2 px-2 text-sm text-muted-foreground/70">
@@ -818,7 +818,7 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onGitHubRepos,
                   )}
 
                   {/* Mode: Status — status group headers with sessions */}
-                  {sidebarGroupBy === 'status' && (
+                  {effectiveGroupBy === 'status' && (
                     <>
                       {sidebarGroups.length === 0 ? (
                         <div className="py-2 px-2 text-sm text-muted-foreground/70">
@@ -849,7 +849,7 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onGitHubRepos,
                   )}
 
                   {/* Mode: Project — workspace headers with sessions (with DnD) */}
-                  {sidebarGroupBy === 'project' && (
+                  {effectiveGroupBy === 'project' && (
                     <DndContext
                       sensors={sensors}
                       collisionDetection={closestCenter}
@@ -898,7 +898,7 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onGitHubRepos,
                   )}
 
                   {/* Mode: Project > Status — workspace headers with status sub-groups */}
-                  {sidebarGroupBy === 'project-status' && (
+                  {effectiveGroupBy === 'project-status' && (
                     <DndContext
                       sensors={sensors}
                       collisionDetection={closestCenter}
