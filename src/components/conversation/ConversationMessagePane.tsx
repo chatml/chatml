@@ -249,14 +249,23 @@ export function ConversationMessagePane({
   useEffect(() => {
     if (isActive && !prevIsActiveRef.current && hasMessages) {
       resetFollowState();
-      // If the user was at bottom before deactivation, ensure we're still there.
       // Virtuoso preserves scrollTop through visibility:hidden, but display:none
-      // (from file viewer toggle) may require a nudge.
-      if (isAtBottomRef.current) {
-        requestAnimationFrame(() => {
+      // (from file viewer toggle) can leave stale measurements. Nudge scroll to
+      // force Virtuoso to recalculate visible items after any visibility transition.
+      requestAnimationFrame(() => {
+        if (isAtBottomRef.current) {
           messageListRef.current?.scrollToBottom('auto');
-        });
-      }
+        } else {
+          // 1px scroll nudge triggers Virtuoso's internal recalculation without
+          // visible movement — handles display:none → visible edge case.
+          const el = messageListRef.current?.getScrollerElement();
+          if (el && el.scrollTop > 0) {
+            const target = el.scrollTop;
+            el.scrollTop = target - 1;
+            requestAnimationFrame(() => { el.scrollTop = target; });
+          }
+        }
+      });
     }
     prevIsActiveRef.current = isActive;
   }, [isActive, hasMessages, resetFollowState]);
