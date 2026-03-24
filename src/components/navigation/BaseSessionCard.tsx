@@ -108,8 +108,8 @@ export function BaseSessionCard({
               className={cn(
                 'group relative flex flex-col gap-1 rounded-lg border px-2.5 py-2 my-0.5 cursor-pointer transition-colors',
                 isSessionSelected
-                  ? 'bg-surface-2 border-border/60 hover:bg-surface-3'
-                  : 'bg-surface-0 border-border/40 hover:bg-surface-1',
+                  ? 'bg-blue-500/10 border-blue-500/20 hover:bg-blue-500/15'
+                  : 'bg-blue-500/[0.04] border-blue-500/10 hover:bg-blue-500/[0.07]',
               )}
               onClick={(e) => onSelectSession(session.id, e)}
             >
