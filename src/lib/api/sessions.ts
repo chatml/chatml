@@ -23,6 +23,7 @@ export interface SessionDTO {
   hasCheckFailures?: boolean;
   checkStatus?: 'none' | 'pending' | 'success' | 'failure';
   targetBranch?: string;
+  sessionType?: 'worktree' | 'base';
   sprintPhase?: string | null;
   pinned?: boolean;
   archived?: boolean;
@@ -53,6 +54,7 @@ export function mapSessionDTO(session: SessionDTO): import('@/lib/types').Worktr
     hasCheckFailures: session.hasCheckFailures,
     checkStatus: session.checkStatus as import('@/lib/types').WorktreeSession['checkStatus'],
     targetBranch: session.targetBranch,
+    sessionType: session.sessionType,
     sprintPhase: (session.sprintPhase || null) as import('@/lib/types').SprintPhase | null,
     pinned: session.pinned,
     archived: session.archived,
@@ -81,7 +83,7 @@ export async function listAllSessions(includeArchived?: boolean): Promise<Sessio
 
 export async function createSession(
   workspaceId: string,
-  data: { name?: string; branch?: string; branchPrefix?: string; worktreePath?: string; task?: string; checkoutExisting?: boolean; systemMessage?: string } = {}
+  data: { name?: string; branch?: string; branchPrefix?: string; worktreePath?: string; task?: string; checkoutExisting?: boolean; systemMessage?: string; sessionType?: 'worktree' | 'base' } = {}
 ): Promise<SessionDTO> {
   const res = await fetchWithAuth(`${getApiBase()}/api/repos/${workspaceId}/sessions`, {
     method: 'POST',
@@ -111,6 +113,99 @@ export async function deleteSession(workspaceId: string, sessionId: string): Pro
     method: 'DELETE',
   });
   await handleVoidResponse(res, 'Failed to delete session');
+}
+
+// ============================================================================
+// Base session API functions
+// ============================================================================
+
+export interface PreflightStatus {
+  ok: boolean;
+  activeRebase?: boolean;
+  activeMerge?: boolean;
+  activeCherryPick?: boolean;
+  detachedHead?: boolean;
+  corruptedIndex?: boolean;
+  errorMessage?: string;
+}
+
+export interface StashEntry {
+  index: number;
+  branch: string;
+  message: string;
+}
+
+export async function preflightCheck(workspaceId: string, sessionId: string): Promise<PreflightStatus> {
+  const res = await fetchWithAuth(`${getApiBase()}/api/repos/${workspaceId}/sessions/${sessionId}/preflight`);
+  return handleResponse<PreflightStatus>(res);
+}
+
+export async function getCurrentBranch(workspaceId: string, sessionId: string): Promise<{ branch: string }> {
+  const res = await fetchWithAuth(`${getApiBase()}/api/repos/${workspaceId}/sessions/${sessionId}/current-branch`);
+  return handleResponse<{ branch: string }>(res);
+}
+
+export async function createBranch(workspaceId: string, sessionId: string, name: string, startPoint?: string): Promise<{ branch: string }> {
+  const res = await fetchWithAuth(`${getApiBase()}/api/repos/${workspaceId}/sessions/${sessionId}/branches/create`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, startPoint }),
+  });
+  return handleResponse<{ branch: string }>(res);
+}
+
+export async function switchBranch(workspaceId: string, sessionId: string, branch: string): Promise<{ branch: string }> {
+  const res = await fetchWithAuth(`${getApiBase()}/api/repos/${workspaceId}/sessions/${sessionId}/branches/switch`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ branch }),
+  });
+  return handleResponse<{ branch: string }>(res);
+}
+
+export async function deleteBranch(workspaceId: string, sessionId: string, branchName: string): Promise<void> {
+  const res = await fetchWithAuth(`${getApiBase()}/api/repos/${workspaceId}/sessions/${sessionId}/branches/${encodeURIComponent(branchName)}`, {
+    method: 'DELETE',
+  });
+  await handleVoidResponse(res, 'Failed to delete branch');
+}
+
+export async function listStashes(workspaceId: string, sessionId: string): Promise<StashEntry[]> {
+  const res = await fetchWithAuth(`${getApiBase()}/api/repos/${workspaceId}/sessions/${sessionId}/stashes`);
+  return handleResponse<StashEntry[]>(res);
+}
+
+export async function createStash(workspaceId: string, sessionId: string, message?: string, includeUntracked?: boolean): Promise<void> {
+  const res = await fetchWithAuth(`${getApiBase()}/api/repos/${workspaceId}/sessions/${sessionId}/stashes`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ message, includeUntracked }),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new ApiError(text || `HTTP ${res.status}`, res.status, text);
+  }
+}
+
+export async function applyStash(workspaceId: string, sessionId: string, index: number): Promise<void> {
+  const res = await fetchWithAuth(`${getApiBase()}/api/repos/${workspaceId}/sessions/${sessionId}/stashes/${index}/apply`, {
+    method: 'POST',
+  });
+  await handleVoidResponse(res, 'Failed to apply stash');
+}
+
+export async function popStash(workspaceId: string, sessionId: string, index: number): Promise<void> {
+  const res = await fetchWithAuth(`${getApiBase()}/api/repos/${workspaceId}/sessions/${sessionId}/stashes/${index}/pop`, {
+    method: 'POST',
+  });
+  await handleVoidResponse(res, 'Failed to pop stash');
+}
+
+export async function dropStash(workspaceId: string, sessionId: string, index: number): Promise<void> {
+  const res = await fetchWithAuth(`${getApiBase()}/api/repos/${workspaceId}/sessions/${sessionId}/stashes/${index}`, {
+    method: 'DELETE',
+  });
+  await handleVoidResponse(res, 'Failed to drop stash');
 }
 
 export async function sendSessionMessage(

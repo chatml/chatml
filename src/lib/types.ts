@@ -54,6 +54,7 @@ export interface WorktreeSession {
   hasCheckFailures?: boolean;
   checkStatus?: 'none' | 'pending' | 'success' | 'failure';
   targetBranch?: string; // Per-session target branch override (e.g. "origin/develop")
+  sessionType?: 'worktree' | 'base'; // "base" = operates on repo directly, no worktree
   sprintPhase?: SprintPhase | null; // Current sprint workflow phase (null = no sprint active)
   createdAt: string;
   updatedAt: string;

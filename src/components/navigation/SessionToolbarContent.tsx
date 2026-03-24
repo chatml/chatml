@@ -43,6 +43,7 @@ import {
   Gauge,
   Boxes,
   ExternalLink,
+  FolderGit2,
 } from 'lucide-react';
 import { resolveWorkspaceColor } from '@/lib/workspace-colors';
 import { updateSession as apiUpdateSession } from '@/lib/api';
@@ -485,8 +486,15 @@ export function SessionToolbarContent() {
             <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
           </span>
           <span className="flex items-center gap-1.5 shrink-0">
-            <GitBranch className="h-4 w-4 text-purple-400" />
+            {selectedSession.sessionType === 'base' ? (
+              <FolderGit2 className="h-4 w-4 text-amber-500" />
+            ) : (
+              <GitBranch className="h-4 w-4 text-purple-400" />
+            )}
             <span className="text-base font-semibold truncate">{selectedSession.branch || selectedSession.name}</span>
+            {selectedSession.sessionType === 'base' && (
+              <span className="text-xs px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-500 font-medium">Base</span>
+            )}
           </span>
         </span>
       ),

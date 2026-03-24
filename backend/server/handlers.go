@@ -530,6 +530,12 @@ func (c *DirListingCache) Stats() (total int, expired int) {
 	return total, expired
 }
 
+// baseBranchCacheEntry holds a cached branch name with expiry.
+type baseBranchCacheEntry struct {
+	branch    string
+	expiresAt time.Time
+}
+
 type Handlers struct {
 	store            *store.SQLiteStore
 	repoManager      *git.RepoManager
@@ -540,6 +546,7 @@ type Handlers struct {
 	fileSizeConfig   FileSizeConfig
 	dirCache         *DirListingCache
 	branchCache      *BranchCache
+	baseBranchCache  sync.Map // sessionID → *baseBranchCacheEntry (2s TTL)
 	branchWatcher    *branch.Watcher
 	prWatcher        *branch.PRWatcher
 	hub              *Hub // For broadcasting WebSocket events
@@ -718,6 +725,29 @@ func (h *Handlers) getSessionAndWorkspace(ctx context.Context, sessionID string)
 	workingPath = session.WorktreePath
 	if workingPath == "" {
 		workingPath = session.WorkspacePath
+	}
+
+	// For base sessions, dynamically read the current branch from git.
+	// The DB branch field may be stale if the user switched branches externally.
+	// Use a short TTL cache to avoid spawning a git subprocess on every call.
+	if session.IsBaseSession() {
+		const baseBranchTTL = 2 * time.Second
+		usedCache := false
+		if cached, ok := h.baseBranchCache.Load(session.ID); ok {
+			if entry := cached.(*baseBranchCacheEntry); time.Now().Before(entry.expiresAt) {
+				session.Branch = entry.branch
+				usedCache = true
+			}
+		}
+		if !usedCache {
+			if currentBranch, brErr := h.repoManager.GetCurrentBranch(ctx, workingPath); brErr == nil && currentBranch != "" {
+				session.Branch = currentBranch
+				h.baseBranchCache.Store(session.ID, &baseBranchCacheEntry{
+					branch:    currentBranch,
+					expiresAt: time.Now().Add(baseBranchTTL),
+				})
+			}
+		}
 	}
 
 	// Compute the merge-base between the target branch and HEAD.

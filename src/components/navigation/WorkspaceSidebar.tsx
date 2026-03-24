@@ -81,6 +81,7 @@ import {
   MessageCircleQuestion,
   ClipboardCheck,
   Link,
+  FolderGit2,
 } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
@@ -1488,6 +1489,9 @@ function SessionRow({
                   )}
                   {/* Branch name container - grows and truncates */}
                   <div className="flex items-center gap-1.5 flex-1 min-w-0 overflow-hidden">
+                    {session.sessionType === 'base' && (
+                      <FolderGit2 className="w-3.5 h-3.5 shrink-0 text-amber-500" />
+                    )}
                     <span className={cn(
                       "text-base truncate flex-1 w-0",
                       isSessionSelected ? "text-foreground font-normal" : "text-foreground/60 font-normal",
@@ -1505,18 +1509,20 @@ function SessionRow({
                         <span className="text-text-error ml-1">-{session.stats!.deletions}</span>
                       </span>
                     )}
-                    {/* Archive action - visible on hover */}
-                    <div className="hidden group-hover:flex items-center gap-1">
-                      <button
-                        className="p-0.5 rounded hover:bg-muted text-muted-foreground/60 hover:text-muted-foreground"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onArchiveSession(session.id);
-                        }}
-                      >
-                        <Archive className="h-3.5 w-3.5" />
-                      </button>
-                    </div>
+                    {/* Archive action - visible on hover (hidden for base sessions) */}
+                    {session.sessionType !== 'base' && (
+                      <div className="hidden group-hover:flex items-center gap-1">
+                        <button
+                          className="p-0.5 rounded hover:bg-muted text-muted-foreground/60 hover:text-muted-foreground"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onArchiveSession(session.id);
+                          }}
+                        >
+                          <Archive className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    )}
                   </div>
                 </div>
                 {/* Second line: project indicator · PR info · status (only when there's meaningful content) */}
@@ -1611,11 +1617,13 @@ function SessionRow({
             Pull Requests
           </ContextMenuItem>
         )}
-        {(onOpenBranches || onOpenPRs) && <ContextMenuSeparator />}
-        <ContextMenuItem onClick={() => onArchiveSession(session.id)} variant="destructive">
-          <Archive className="h-4 w-4" />
-          Archive
-        </ContextMenuItem>
+        {(onOpenBranches || onOpenPRs) && session.sessionType !== 'base' && <ContextMenuSeparator />}
+        {session.sessionType !== 'base' && (
+          <ContextMenuItem onClick={() => onArchiveSession(session.id)} variant="destructive">
+            <Archive className="h-4 w-4" />
+            Archive
+          </ContextMenuItem>
+        )}
       </ContextMenuContent>
     </ContextMenu>
   );
