@@ -126,20 +126,24 @@ export function ToolApprovalPrompt({ conversationId }: ToolApprovalPromptProps) 
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const autoDeniedRef = useRef(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const handleActionRef = useRef<(action: string) => void>(() => {});
 
   const isBash = pending?.toolName === 'Bash';
 
-  // Initialize edited command when a new request arrives
-  useEffect(() => {
+  // Reset state when a new request arrives (render-time adjustment — not an effect)
+  const [prevRequestId, setPrevRequestId] = useState<string>();
+  if (pending?.requestId !== prevRequestId) {
+    setPrevRequestId(pending?.requestId);
     if (pending) {
       autoDeniedRef.current = false;
       setSubmitting(false);
       setError(null);
+      setElapsed(0);
       if (pending.toolName === 'Bash') {
         setEditedCommand((pending.toolInput.command as string) || '');
       }
     }
-  }, [pending?.requestId, pending?.toolName, pending?.toolInput]);
+  }
 
   // Auto-focus textarea for Bash commands
   useEffect(() => {
@@ -150,21 +154,6 @@ export function ToolApprovalPrompt({ conversationId }: ToolApprovalPromptProps) 
       textareaRef.current.setSelectionRange(len, len);
     }
   }, [isBash, pending?.requestId]);
-
-  // Progress bar timer
-  useEffect(() => {
-    if (!pending) {
-      setElapsed(0);
-      return;
-    }
-    const startTime = pending.timestamp;
-    timerRef.current = setInterval(() => {
-      setElapsed(Date.now() - startTime);
-    }, 200);
-    return () => {
-      if (timerRef.current) clearInterval(timerRef.current);
-    };
-  }, [pending]);
 
   const handleAction = useCallback(async (action: 'allow_once' | 'allow_session' | 'allow_always' | 'deny_once' | 'deny_always') => {
     if (!pending || submitting) return;
@@ -184,12 +173,25 @@ export function ToolApprovalPrompt({ conversationId }: ToolApprovalPromptProps) 
     }
   }, [conversationId, pending, clearPendingToolApproval, submitting, isBash, editedCommand]);
 
-  // Auto-deny on timeout
+  // Keep ref in sync so the interval callback always has the latest handleAction
+  handleActionRef.current = handleAction;
+
+  // Progress bar timer + auto-deny on timeout
   useEffect(() => {
-    if (!pending || elapsed < TIMEOUT_MS || autoDeniedRef.current) return;
-    autoDeniedRef.current = true;
-    handleAction('deny_once');
-  }, [elapsed, pending, handleAction]);
+    if (!pending) return;
+    const startTime = pending.timestamp;
+    timerRef.current = setInterval(() => {
+      const now = Date.now() - startTime;
+      setElapsed(now);
+      if (now >= TIMEOUT_MS && !autoDeniedRef.current) {
+        autoDeniedRef.current = true;
+        handleActionRef.current('deny_once');
+      }
+    }, 200);
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+    };
+  }, [pending]);
 
   // Keyboard shortcuts
   useEffect(() => {
