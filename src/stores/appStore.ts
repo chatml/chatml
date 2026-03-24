@@ -1677,8 +1677,10 @@ updateFileTabContent: (id, content) => set((state) => ({
       error,
       thinking: null,
       isThinking: false,
-      pendingPlanApproval: null,
-      pendingToolApproval: null,
+      // Preserve pending approvals — they are active user interactions that should
+      // only be dismissed explicitly by terminal events, not as a side effect.
+      pendingPlanApproval: state.streamingState[conversationId]?.pendingPlanApproval ?? null,
+      pendingToolApproval: state.streamingState[conversationId]?.pendingToolApproval ?? null,
       startTime: undefined,
       recovery: undefined,
     }),
@@ -1728,8 +1730,9 @@ updateFileTabContent: (id, content) => set((state) => ({
       error: null,
       thinking: null,
       isThinking: false,
-      pendingPlanApproval: null,
-      pendingToolApproval: null,
+      // Preserve pending approvals — see setStreamingError comment.
+      pendingPlanApproval: state.streamingState[conversationId]?.pendingPlanApproval ?? null,
+      pendingToolApproval: state.streamingState[conversationId]?.pendingToolApproval ?? null,
       startTime: undefined,
       compactBoundary: undefined,
     }),
@@ -2083,7 +2086,7 @@ updateFileTabContent: (id, content) => set((state) => ({
       // When terminal, force streaming off and clear queue regardless
       const keepStreaming = !metadata.terminal && hasQueuedMessages;
 
-      // Build cleared streaming state (preserve planModeActive)
+      // Build cleared streaming state (preserve planModeActive and pending approvals)
       // If there are remaining queued messages (non-terminal), keep isStreaming true to avoid flash
       const clearedStreaming = {
         text: '',
@@ -2095,8 +2098,10 @@ updateFileTabContent: (id, content) => set((state) => ({
         isThinking: false,
         startTime: keepStreaming ? Date.now() : undefined,
         planModeActive: streaming?.planModeActive || false,
-        pendingPlanApproval: null,
-        pendingToolApproval: null,
+        // Preserve pending approvals — they are active user interactions cleared
+        // explicitly by terminal event handlers, not by finalization side effects.
+        pendingPlanApproval: streaming?.pendingPlanApproval ?? null,
+        pendingToolApproval: streaming?.pendingToolApproval ?? null,
         approvedPlanContent: undefined,
         approvedPlanTimestamp: undefined,
       };

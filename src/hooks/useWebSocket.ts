@@ -112,7 +112,14 @@ export function useWebSocket(enabled: boolean = true) {
         // Uses finalizeStreamingMessage instead of clearStreamingText to preserve
         // any streamed content (text + tool blocks) that hasn't been committed yet.
         if (data.payload === 'idle' && store.streamingState[conversationId]?.isStreaming) {
-          const startTime = store.streamingState[conversationId]?.startTime;
+          // Don't finalize if the agent is blocked waiting for user approval —
+          // canUseTool/hooks pause the agent, so the backend may report idle even
+          // though the session is actually waiting for user interaction.
+          const streaming = store.streamingState[conversationId];
+          if (streaming?.pendingToolApproval || streaming?.pendingPlanApproval || streaming?.pendingUserQuestion) {
+            return;
+          }
+          const startTime = streaming?.startTime;
           const durationMs = startTime ? Date.now() - startTime : undefined;
           // Finalize streaming and commit any queued user message atomically.
           // commitQueued commits the user message AFTER the assistant message
@@ -377,6 +384,8 @@ export function useWebSocket(enabled: boolean = true) {
         freshStore.updateConversation(conversationId, { status: 'completed' });
         freshStore.clearAgentTodos(conversationId);
         freshStore.clearPendingUserQuestion(conversationId);
+        freshStore.clearPendingToolApproval(conversationId);
+        freshStore.clearPendingPlanApproval(conversationId);
         const resultConv = freshStore.conversations.find((c) => c.id === conversationId);
         if (resultConv) {
           freshStore.setLastTurnCompletedAt(resultConv.sessionId, Date.now());
@@ -417,6 +426,8 @@ export function useWebSocket(enabled: boolean = true) {
         });
         turnStore.updateConversation(conversationId, { status: 'active' });
         turnStore.clearAgentTodos(conversationId);
+        turnStore.clearPendingToolApproval(conversationId);
+        turnStore.clearPendingPlanApproval(conversationId);
         const turnConv = turnStore.conversations.find((c) => c.id === conversationId);
         if (turnConv) {
           turnStore.setLastTurnCompletedAt(turnConv.sessionId, Date.now());
@@ -429,6 +440,8 @@ export function useWebSocket(enabled: boolean = true) {
         store.finalizeStreamingMessage(conversationId, { commitQueued: true, terminal: true });
         store.clearAgentTodos(conversationId);
         store.clearPendingUserQuestion(conversationId);
+        store.clearPendingToolApproval(conversationId);
+        store.clearPendingPlanApproval(conversationId);
         store.updateConversation(conversationId, { status: 'idle' });
         const completeConv = store.conversations.find((c) => c.id === conversationId);
         if (completeConv) {
@@ -535,6 +548,8 @@ export function useWebSocket(enabled: boolean = true) {
         }
 
         store.finalizeStreamingMessage(conversationId, { commitQueued: true, terminal: true });
+        store.clearPendingToolApproval(conversationId);
+        store.clearPendingPlanApproval(conversationId);
         store.setStreamingError(conversationId, errorMessage);
         store.updateConversation(conversationId, { status: 'idle' });
         notifyDesktop(conversationId, 'Task error', (errorMessage || 'Unknown error').slice(0, 100));
@@ -727,6 +742,8 @@ export function useWebSocket(enabled: boolean = true) {
 
       case 'interrupted':
         store.finalizeStreamingMessage(conversationId, { commitQueued: true, terminal: true });
+        store.clearPendingToolApproval(conversationId);
+        store.clearPendingPlanApproval(conversationId);
         addSystemMessage(conversationId, 'Agent was stopped by user.')
           .then(({ id }) => {
             store.addMessage({
@@ -928,6 +945,8 @@ export function useWebSocket(enabled: boolean = true) {
       for (const convId of locallyStreaming) {
         if (!serverActiveSet.has(convId)) {
           store.finalizeStreamingMessage(convId, { commitQueued: true, terminal: true });
+          store.clearPendingToolApproval(convId);
+          store.clearPendingPlanApproval(convId);
           store.clearThinking(convId);
           store.updateConversation(convId, { status: 'completed' });
 

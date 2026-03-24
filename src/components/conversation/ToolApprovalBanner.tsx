@@ -4,7 +4,7 @@ import { Shield, ShieldAlert, Terminal, FileEdit, Globe, Wrench } from 'lucide-r
 import { useAppStore } from '@/stores/appStore';
 import { approveTool } from '@/lib/api/conversations';
 
-const TIMEOUT_MS = 60_000; // 60 seconds
+const TIMEOUT_MS = 55_000; // 55s — 5s before agent-runner's 60s timeout so our deny arrives first
 
 function getToolIcon(toolName: string) {
   switch (toolName) {
