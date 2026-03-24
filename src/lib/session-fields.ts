@@ -13,7 +13,7 @@ import {
   Rocket,
   BookOpen,
 } from 'lucide-react';
-import type { SessionPriority, SessionTaskStatus, SprintPhase } from './types';
+import type { SessionPriority, SessionTaskStatus, SprintPhase, WorktreeSession } from './types';
 
 export interface PriorityOption {
   value: SessionPriority;
@@ -74,4 +74,23 @@ export const SPRINT_PHASE_OPTIONS: SprintPhaseOption[] = [
 
 export function getSprintPhaseOption(value: SprintPhase): SprintPhaseOption {
   return SPRINT_PHASE_OPTIONS.find((o) => o.value === value) ?? SPRINT_PHASE_OPTIONS[0];
+}
+
+export interface PRStatusInfo {
+  text: string;
+  color: string;
+}
+
+export function getPRStatusInfo(session: WorktreeSession): PRStatusInfo | null {
+  const hasPR = session.prStatus && session.prStatus !== 'none';
+  if (!hasPR) return null;
+  if (session.hasMergeConflict) return { text: 'Merge conflict', color: 'text-text-warning' };
+  if (session.hasCheckFailures) return { text: 'Checks failing', color: 'text-text-error' };
+  if (session.prStatus === 'merged') return { text: 'Merged', color: 'text-nav-icon-prs' };
+  if (session.prStatus === 'closed') return { text: 'Closed', color: 'text-muted-foreground' };
+  if (session.prStatus === 'open') {
+    if (session.checkStatus === 'pending') return { text: 'Checks running', color: 'text-amber-500' };
+    return { text: 'Ready to merge', color: 'text-text-success' };
+  }
+  return null;
 }
