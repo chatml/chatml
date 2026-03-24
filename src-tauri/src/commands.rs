@@ -312,6 +312,9 @@ pub fn update_menu_state(app: tauri::AppHandle, items: Vec<(String, bool)>) -> R
                     MenuItemKind::Check(ci) => {
                         let _ = ci.set_enabled(enabled);
                     }
+                    MenuItemKind::Icon(ii) => {
+                        let _ = ii.set_enabled(enabled);
+                    }
                     _ => {}
                 }
             }
