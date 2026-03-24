@@ -397,8 +397,11 @@ export function ConversationMessagePane({
       const handleScroll = () => {
         const threshold = isStreamingRef.current ? 200 : 50;
         const atBottom = scrollerEl.scrollHeight - scrollerEl.scrollTop - scrollerEl.clientHeight <= threshold;
-        // Only override to show the pill; let Virtuoso handle the "returned to bottom" case
-        if (!atBottom && isAtBottomRef.current) {
+        // Only override to show the pill; let Virtuoso handle the "returned to bottom" case.
+        // No guard on isAtBottomRef — the pill must show whenever we're not at
+        // bottom, even if the ref was already false (e.g. atBottomStateChange
+        // fired while the pane was inactive, setting the ref but not the state).
+        if (!atBottom) {
           isAtBottomRef.current = false;
           setShowScrollButton(true);
         }
