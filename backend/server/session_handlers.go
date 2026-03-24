@@ -204,6 +204,7 @@ func (h *Handlers) initBaseSession(ctx context.Context, workspaceID, name, branc
 			SessionName:  sess.Name,
 			BranchName:   branch,
 			OriginBranch: branch,
+			SessionType:  models.SessionTypeBase,
 		},
 		Timestamp: now,
 	}
@@ -566,6 +567,7 @@ func (h *Handlers) CreateSession(w http.ResponseWriter, r *http.Request) {
 			SessionName:  sess.Name,
 			BranchName:   sess.Branch,
 			OriginBranch: originBranch,
+			SessionType:  models.SessionTypeWorktree,
 		},
 		Timestamp: now,
 	}

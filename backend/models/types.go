@@ -130,12 +130,13 @@ type MessagePage struct {
 	OldestPosition int       `json:"oldestPosition,omitempty"`
 }
 
-// SetupInfo contains information about the worktree setup for system messages
+// SetupInfo contains information about the session setup for system messages
 type SetupInfo struct {
 	SessionName  string `json:"sessionName"`
 	BranchName   string `json:"branchName"`
 	OriginBranch string `json:"originBranch"`
 	FileCount    int    `json:"fileCount,omitempty"`
+	SessionType  string `json:"sessionType,omitempty"`
 }
 
 // RunStats contains detailed statistics from an agent run

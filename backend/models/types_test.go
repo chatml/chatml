@@ -279,6 +279,7 @@ func TestMessage_JSONSerialization(t *testing.T) {
 				BranchName:   "feature/test",
 				OriginBranch: "main",
 				FileCount:    42,
+				SessionType:  SessionTypeWorktree,
 			},
 			Timestamp: now,
 		}
@@ -295,6 +296,7 @@ func TestMessage_JSONSerialization(t *testing.T) {
 		require.Equal(t, "feature/test", decoded.SetupInfo.BranchName)
 		require.Equal(t, "main", decoded.SetupInfo.OriginBranch)
 		require.Equal(t, 42, decoded.SetupInfo.FileCount)
+		require.Equal(t, SessionTypeWorktree, decoded.SetupInfo.SessionType)
 	})
 
 	t.Run("message with run summary", func(t *testing.T) {
@@ -564,6 +566,7 @@ func TestSetupInfo_JSONSerialization(t *testing.T) {
 		BranchName:   "feature/awesome",
 		OriginBranch: "main",
 		FileCount:    256,
+		SessionType:  SessionTypeWorktree,
 	}
 
 	data, err := json.Marshal(info)
@@ -577,6 +580,7 @@ func TestSetupInfo_JSONSerialization(t *testing.T) {
 	require.Equal(t, info.BranchName, decoded.BranchName)
 	require.Equal(t, info.OriginBranch, decoded.OriginBranch)
 	require.Equal(t, info.FileCount, decoded.FileCount)
+	require.Equal(t, info.SessionType, decoded.SessionType)
 }
 
 func TestSetupInfo_JSONSerialization_OmitEmpty(t *testing.T) {
@@ -596,6 +600,9 @@ func TestSetupInfo_JSONSerialization_OmitEmpty(t *testing.T) {
 
 	_, hasFileCount := rawMap["fileCount"]
 	require.False(t, hasFileCount, "fileCount should be omitted when zero")
+
+	_, hasSessionType := rawMap["sessionType"]
+	require.False(t, hasSessionType, "sessionType should be omitted when empty")
 }
 
 func TestToolAction_JSONSerialization(t *testing.T) {

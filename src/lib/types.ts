@@ -218,6 +218,7 @@ export interface SetupInfo {
   branchName: string;
   originBranch: string;
   fileCount?: number;
+  sessionType?: 'worktree' | 'base';
 }
 
 // Attachment = File attached to a message

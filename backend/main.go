@@ -588,6 +588,7 @@ func main() {
 					SessionName:  sess.Name,
 					BranchName:   branch,
 					OriginBranch: branch,
+					SessionType:  models.SessionTypeBase,
 				},
 				Timestamp: now,
 			}
