@@ -486,7 +486,7 @@ const READ_ONLY_TOOLS = new Set([
 
 // Tools that make external network calls — auto-allowed in most modes but
 // blocked in dontAsk mode to prevent data exfiltration.
-const NETWORK_TOOLS = new Set(["WebSearch"]);
+const NETWORK_TOOLS = new Set(["WebSearch", "WebFetch"]);
 
 // Track the last file written during plan mode so we can include plan content
 // in the plan_approval_request event when ExitPlanMode fires.
@@ -1874,8 +1874,15 @@ const canUseTool: CanUseTool = async (toolName, toolInput, _options) => {
     return { behavior: "deny", message: "This tool is not available in plan mode. Present your plan using ExitPlanMode first." };
   }
 
+  // In plan mode, use the underlying permission mode for non-denied tools so that
+  // e.g. bypassPermissions still auto-allows Agent and third-party MCP tools that
+  // aren't covered by READ_ONLY_TOOLS or the mcp__chatml__ prefix.
+  const effectiveMode = currentPermissionMode === "plan"
+    ? prePlanPermissionMode
+    : currentPermissionMode;
+
   // Bypass mode: allow everything (existing behavior, unchanged)
-  if (currentPermissionMode === "bypassPermissions") {
+  if (effectiveMode === "bypassPermissions") {
     return { behavior: "allow", updatedInput: toolInput };
   }
 
@@ -1889,9 +1896,9 @@ const canUseTool: CanUseTool = async (toolName, toolInput, _options) => {
     return { behavior: "allow", updatedInput: toolInput };
   }
 
-  // Network tools (e.g., WebSearch) are auto-allowed except in dontAsk mode
+  // Network tools (e.g., WebSearch, WebFetch) are auto-allowed except in dontAsk mode
   // where they could exfiltrate codebase context via search queries.
-  if (NETWORK_TOOLS.has(toolName) && currentPermissionMode !== "dontAsk") {
+  if (NETWORK_TOOLS.has(toolName) && effectiveMode !== "dontAsk") {
     return { behavior: "allow", updatedInput: toolInput };
   }
 
@@ -1917,15 +1924,18 @@ const canUseTool: CanUseTool = async (toolName, toolInput, _options) => {
     return { behavior: "allow", updatedInput: toolInput };
   }
 
-  // acceptEdits mode: auto-allow file modifications, prompt for Bash/MCP/other
-  if (currentPermissionMode === "acceptEdits") {
+  // acceptEdits mode: auto-allow file modifications, prompt for Bash/MCP/other.
+  // Note: Write/Edit/NotebookEdit are already denied by PLAN_MODE_DENIED_TOOLS
+  // when currentPermissionMode === "plan", so this branch is only reachable for
+  // non-plan-mode sessions where effectiveMode === "acceptEdits".
+  if (effectiveMode === "acceptEdits") {
     if (["Write", "Edit", "NotebookEdit"].includes(toolName)) {
       return { behavior: "allow", updatedInput: toolInput };
     }
   }
 
   // dontAsk mode: deny anything not pre-approved by rules above
-  if (currentPermissionMode === "dontAsk") {
+  if (effectiveMode === "dontAsk") {
     return { behavior: "deny", message: "Tool not pre-approved in dontAsk mode" };
   }
 
