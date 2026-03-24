@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback, useMemo, useDeferredValue } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo, useDeferredValue, startTransition } from 'react';
 import { useAppStore, type QueuedMessage } from '@/stores/appStore';
 import {
   useMessages,
@@ -252,7 +252,7 @@ export function ConversationMessagePane({
   useEffect(() => {
     if (isActive && !prevIsActiveRef.current && hasMessages) {
       resetFollowState();
-      setVirtuosoGeneration(g => g + 1);
+      startTransition(() => setVirtuosoGeneration(g => g + 1));
     }
     prevIsActiveRef.current = isActive;
   }, [isActive, hasMessages, resetFollowState]);
