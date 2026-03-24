@@ -109,6 +109,7 @@ export const SETTINGS_DEFAULTS = {
   sidebarGroupBy: 'project' as SidebarGroupBy,
   sidebarSortBy: 'recent' as SidebarSortBy,
   sidebarShowSessionMeta: true,
+  sidebarProjectFilter: null as string | null,
   // Dictation
   dictationShortcut: 'cmd-shift-d' as DictationShortcutPreset,
   dictationCustomShortcut: '',
@@ -191,6 +192,7 @@ interface SettingsState {
   sidebarGroupBy: SidebarGroupBy;
   sidebarSortBy: SidebarSortBy;
   sidebarShowSessionMeta: boolean; // Whether to show the second line (PR status) in session cells
+  sidebarProjectFilter: string | null; // null = all projects, or a workspaceId to filter
   collapsedSidebarGroups: string[]; // composite keys toggled from default, e.g. "status:done"
   workspaceOrder: string[]; // Persisted workspace display order (array of workspace IDs)
 
@@ -263,6 +265,7 @@ interface SettingsState {
   setSidebarGroupBy: (value: SidebarGroupBy) => void;
   setSidebarSortBy: (value: SidebarSortBy) => void;
   setSidebarShowSessionMeta: (value: boolean) => void;
+  setSidebarProjectFilter: (id: string | null) => void;
   toggleSidebarGroupCollapsed: (key: string) => void;
   ensureSidebarGroupExpanded: (key: string, defaultCollapsed: boolean) => void;
   setLastRepoDashboardWorkspaceId: (id: string | null) => void;
@@ -296,6 +299,7 @@ export const useSettingsStore = create<SettingsState>()(
       hasCompletedGuidedTour: false,
       sidebarGroupBy: 'project', // Default: group by project
       sidebarSortBy: 'recent', // Default: sort by recency
+      sidebarProjectFilter: null, // null = all projects
       collapsedSidebarGroups: [], // Keys toggled from default state
       workspaceOrder: [], // Empty = use natural backend order until user first reorders
       lastRepoDashboardWorkspaceId: null, // Last workspace selected in PR/Branches views
@@ -442,6 +446,7 @@ export const useSettingsStore = create<SettingsState>()(
       setSidebarGroupBy: (value) => set({ sidebarGroupBy: value }),
       setSidebarSortBy: (value) => set({ sidebarSortBy: value }),
       setSidebarShowSessionMeta: (value) => set({ sidebarShowSessionMeta: value }),
+      setSidebarProjectFilter: (id) => set({ sidebarProjectFilter: id }),
       setLastRepoDashboardWorkspaceId: (id) => set({ lastRepoDashboardWorkspaceId: id }),
       setWorkspaceOrder: (order) => set({ workspaceOrder: order }),
       toggleSidebarGroupCollapsed: (key) =>
