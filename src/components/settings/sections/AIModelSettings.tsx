@@ -13,7 +13,7 @@ import {
 import { Eye, EyeOff } from 'lucide-react';
 import { useSettingsStore, SETTINGS_DEFAULTS } from '@/stores/settingsStore';
 import { useAppStore } from '@/stores/appStore';
-import { MODELS as SHARED_MODELS, toShortDisplayName, isDefaultRecommended, deduplicateById, deduplicateByName } from '@/lib/models';
+import { MODELS as SHARED_MODELS, toShortDisplayName, isDefaultRecommended, deduplicateById, deduplicateByName, sortModelEntries } from '@/lib/models';
 import type { ThinkingLevel } from '@/lib/thinkingLevels';
 import { getAnthropicApiKey, setAnthropicApiKey } from '@/lib/api';
 import { useToast } from '@/components/ui/toast';
@@ -43,7 +43,7 @@ export function AIModelSettings() {
     const entries = dynamicModels
       .filter((m) => !isDefaultRecommended(m.displayName))
       .map((m) => ({ id: m.value, name: toShortDisplayName(m.value, m.displayName) }));
-    return deduplicateByName(deduplicateById(entries));
+    return sortModelEntries(deduplicateByName(deduplicateById(entries)));
   }, [dynamicModels]);
 
   return (
