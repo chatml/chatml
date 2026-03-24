@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { SidebarUpdateBanner } from '@/components/shared/SidebarUpdateBanner';
 import {
   DndContext,
   closestCenter,
@@ -1012,7 +1013,9 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onGitHubRepos,
       </ContextMenu>
 
       {/* Footer */}
-      <div className="p-2 border-t border-sidebar-border flex items-center gap-1 shrink-0">
+      <div className="border-t border-sidebar-border shrink-0">
+        <SidebarUpdateBanner />
+        <div className="p-2 flex items-center gap-1">
         <Tooltip open={addMenuOpen ? false : undefined}>
           <DropdownMenu open={addMenuOpen} onOpenChange={setAddMenuOpen}>
             <TooltipTrigger asChild>
@@ -1114,6 +1117,7 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onGitHubRepos,
               <X className="h-3.5 w-3.5" />
             </button>
           )}
+        </div>
         </div>
       </div>
 

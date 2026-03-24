@@ -33,7 +33,7 @@ export const useUpdateStore = create<UpdateState>()((set, get) => ({
     if (!isTauri()) return null;
 
     const { status } = get();
-    if (status === 'checking' || status === 'downloading' || status === 'waiting') return null;
+    if (status === 'checking' || status === 'available' || status === 'downloading' || status === 'waiting') return null;
 
     try {
       set({ status: 'checking', error: null });
@@ -43,6 +43,8 @@ export const useUpdateStore = create<UpdateState>()((set, get) => ({
       if (result) {
         pendingUpdate = result;
         set({ status: 'available', version: result.version });
+        // Auto-download so the update is ready to install
+        void get().downloadAndInstall();
         return 'available';
       } else {
         pendingUpdate = null;
