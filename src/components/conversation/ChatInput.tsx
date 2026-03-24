@@ -251,10 +251,11 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
 
   // Speech-to-text dictation
   const preDictationTextRef = useRef('');
-  // Flag set only around setText calls from onTranscript so the resulting
-  // editor onChange (which fires with "" during reset) is ignored, while
-  // manual keystrokes during dictation still sync message state normally.
-  const settingFromTranscriptRef = useRef(false);
+  // Holds the last transcript text set during dictation. Used as a "floor" in
+  // onInput: any editor onChange delivering text shorter than this ref is a
+  // stale/intermediate event from Slate's async onChange and is discarded.
+  // Unlike the old boolean flag approach, this has no timing window.
+  const lastTranscriptRef = useRef('');
   const { isDictating, toggle: toggleDictation, isAvailable: dictationAvailable, audioLevelRef } = useDictation({
     onTranscript: (text) => {
       if (!text) return; // Ignore empty transcripts (e.g., phantom callback during teardown)
@@ -262,10 +263,9 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
       // We only prepend text that was in the editor before dictation started.
       const pre = preDictationTextRef.current;
       const full = pre ? `${pre} ${text}` : text;
-      settingFromTranscriptRef.current = true;
+      lastTranscriptRef.current = full;
       plateInputRef.current?.setText(full);
       setMessage(full);
-      settingFromTranscriptRef.current = false;
     },
     onError: (msg) => showError(msg),
   });
@@ -278,8 +278,10 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
   useEffect(() => {
     if (isDictating && !prevDictatingRef.current) {
       preDictationTextRef.current = messageRef.current;
+      lastTranscriptRef.current = messageRef.current;
       playSound('ding');
     } else if (!isDictating && prevDictatingRef.current) {
+      lastTranscriptRef.current = '';
       playSound('pop');
     }
     prevDictatingRef.current = isDictating;
@@ -1183,12 +1185,13 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
             slashCommands={slashCommands}
             onSlashCommandExecute={handleSlashCommandExecute}
             onInput={(text) => {
-              // Skip the onChange fired by editor.tf.reset() inside setText —
-              // it emits "" before queueMicrotask re-inserts the transcript.
-              // Manual keystrokes during dictation still sync normally.
-              if (!settingFromTranscriptRef.current) {
-                setMessage(text);
+              // During dictation, reject any editor onChange that delivers text
+              // shorter than the last transcript we set. This catches stale/empty
+              // intermediate events from Slate's async onChange after setValue().
+              if (isDictating && text.length < lastTranscriptRef.current.length) {
+                return;
               }
+              setMessage(text);
               if (text.trim() && selectedConversationId && useAppStore.getState().inputSuggestions[selectedConversationId]) {
                 clearInputSuggestion(selectedConversationId);
               }
