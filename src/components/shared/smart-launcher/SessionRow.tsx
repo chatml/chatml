@@ -50,9 +50,10 @@ export function SessionRow({ session, workspace, workspaceColors, isActive }: Se
       onClick={handleClick}
       className={cn(
         'w-full flex flex-col gap-1 rounded-lg px-3 py-2.5 text-left cursor-pointer transition-colors duration-100',
+        'border-l-2',
         isActive
-          ? 'border-l-2 bg-surface-1/30 hover:bg-surface-1/50'
-          : 'hover:bg-surface-1/40'
+          ? 'bg-surface-1/30 hover:bg-surface-1/50'
+          : 'border-l-transparent hover:bg-surface-1/40'
       )}
       style={isActive ? { borderLeftColor: color } : undefined}
     >
@@ -90,24 +91,26 @@ export function SessionRow({ session, workspace, workspaceColors, isActive }: Se
           </div>
         )}
 
-        {/* Status label for active sessions */}
-        {statusConfig && (
-          <span className={cn('text-xs shrink-0', statusConfig.textClass)}>
-            {statusConfig.label}
-          </span>
-        )}
-
         {/* Relative time */}
         <span className="text-xs text-muted-foreground shrink-0">
           {formatRelativeTime(session.updatedAt)}
         </span>
       </div>
 
-      {/* Row 2: secondary info */}
-      {hasSecondRow && (
+      {/* Row 2: status label + secondary info */}
+      {(hasSecondRow || statusConfig) && (
         <div className="flex items-center gap-3 ml-5 text-[11px] text-muted-foreground">
+          {statusConfig && (
+            <span className={cn('shrink-0', statusConfig.textClass)}>
+              {statusConfig.label}
+            </span>
+          )}
+
           {workspace && (
-            <span className="truncate max-w-[120px]">{workspace.name}</span>
+            <>
+              {statusConfig && <span className="text-border">·</span>}
+              <span className="truncate max-w-[120px]">{workspace.name}</span>
+            </>
           )}
 
           {session.task && (
