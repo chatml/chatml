@@ -1239,12 +1239,22 @@ const preToolUseHook: HookCallback = async (input, toolUseId) => {
     });
   }
 
-  // Track Write tool file paths during plan mode so exitPlanModeHook can
+  // Track Write/Read tool file paths during plan mode so exitPlanModeHook can
   // read the plan content and include it in the plan_approval_request event.
-  if (currentPermissionMode === "plan" && hookInput.tool_name === "Write") {
-    const writeInput = hookInput.tool_input as { file_path?: string };
-    if (writeInput.file_path) {
-      lastPlanFilePath = writeInput.file_path;
+  // Write always sets the path (authoritative). Read also tracks the latest
+  // /.claude/plans/ path — this handles app restart (Write tracking lost) and
+  // ensures the most recently read plan file is used if multiple are accessed.
+  if (currentPermissionMode === "plan") {
+    if (hookInput.tool_name === "Write") {
+      const writeInput = hookInput.tool_input as { file_path?: string };
+      if (writeInput.file_path) {
+        lastPlanFilePath = writeInput.file_path;
+      }
+    } else if (hookInput.tool_name === "Read") {
+      const readInput = hookInput.tool_input as { file_path?: string };
+      if (readInput.file_path?.includes("/.claude/plans/")) {
+        lastPlanFilePath = readInput.file_path;
+      }
     }
   }
 
