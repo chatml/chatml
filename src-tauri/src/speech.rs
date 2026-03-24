@@ -218,6 +218,7 @@ mod platform {
             // the recognition request pointer, preventing use-after-free on teardown.
             let stopped = Arc::new(AtomicBool::new(false));
             let stopped_for_tap = Arc::clone(&stopped);
+            let stopped_for_result = Arc::clone(&stopped);
 
             // Store request ptr as usize for the tap callback (avoids Send issues)
             let request_ptr = Retained::as_ptr(&request) as usize;
@@ -271,6 +272,12 @@ mod platform {
                     }
 
                     if !error.is_null() {
+                        // Suppress errors triggered by intentional stop — cancelling
+                        // the recognition task causes Apple's API to fire an error callback.
+                        if stopped_for_result.load(Ordering::Acquire) {
+                            return;
+                        }
+
                         let desc: *mut AnyObject = msg_send![error, localizedDescription];
                         let msg = if !desc.is_null() {
                             nsstring_to_string(desc)

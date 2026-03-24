@@ -644,7 +644,7 @@ code.hljs { padding: 3px 5px; }
 
 .dictation-active {
   position: relative;
-  background-color: rgba(249, 115, 22, 0.1);
+  background-color: rgba(59, 130, 246, 0.1);
 }
 
 .dictation-active::after {
@@ -652,14 +652,14 @@ code.hljs { padding: 3px 5px; }
   position: absolute;
   inset: 0;
   border-radius: inherit;
-  border: 2px solid rgba(249, 115, 22, 0.4);
+  border: 2px solid rgba(59, 130, 246, 0.4);
   animation: dictation-pulse 1.5s ease-in-out infinite;
   will-change: transform, opacity;
   pointer-events: none;
 }
 
 .dictation-active:hover {
-  background-color: rgba(249, 115, 22, 0.2);
+  background-color: rgba(59, 130, 246, 0.2);
 }
 
 /* Sound level bars animation — currently unused, no component references .sound-bar */

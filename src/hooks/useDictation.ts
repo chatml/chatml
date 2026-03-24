@@ -45,6 +45,9 @@ export function useDictation(options: UseDictationOptions): UseDictationReturn {
   const optionsRef = useRef(options);
   const isDictatingRef = useRef(false);
   const togglingRef = useRef(false);
+  // Tracks whether an explicit stop is in progress — used to suppress the
+  // spurious "no speech detected" error Apple fires during session teardown.
+  const isStoppingRef = useRef(false);
 
   useEffect(() => {
     optionsRef.current = options;
@@ -82,6 +85,17 @@ export function useDictation(options: UseDictationOptions): UseDictationReturn {
         setAudioLevel(payload.level);
       }),
       safeListen<DictationError>('dictation-error', (payload) => {
+        // Apple's SFSpeechRecognizer fires a spurious "No speech detected" error
+        // during session teardown after cancelling the recognition task. Suppress
+        // it only when we know an explicit stop is in progress — the Rust-side
+        // stopped_for_result flag handles the same race but has a narrow window
+        // before the AtomicBool is set; this is the JS-side safety net.
+        if (
+          isStoppingRef.current &&
+          payload.message.toLowerCase().includes('no speech detected')
+        ) {
+          return;
+        }
         setDictating(false);
         setAudioLevel(0);
         optionsRef.current.onError?.(payload.message);
@@ -89,6 +103,7 @@ export function useDictation(options: UseDictationOptions): UseDictationReturn {
       safeListen<void>('dictation-ended', () => {
         setDictating(false);
         setAudioLevel(0);
+        isStoppingRef.current = false;
         optionsRef.current.onEnd?.();
       }),
     ];
@@ -113,16 +128,19 @@ export function useDictation(options: UseDictationOptions): UseDictationReturn {
 
     try {
       if (isDictatingRef.current) {
+        isStoppingRef.current = true;
         // Use raw invoke (not safeInvoke) so stop errors are visible and don't silently desync UI
         try {
           await invoke('stop_dictation');
         } catch (e: unknown) {
+          isStoppingRef.current = false;
           const errMsg = e instanceof Error ? e.message : String(e);
           optionsRef.current.onError?.(`Failed to stop dictation: ${errMsg}`);
           return;
         }
         setDictating(false);
         setAudioLevel(0);
+        // isStoppingRef is reset when dictation-ended fires
       } else {
         try {
           // Use raw invoke (not safeInvoke) so we can inspect the error for "already active" desync recovery

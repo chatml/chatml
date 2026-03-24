@@ -1,25 +1,24 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useEffect, useRef } from 'react';
 import { Mic } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const BAR_COUNT = 24;
+const MIN_HEIGHT = 0.08;
+const WAVE_SPEED = 4;
 
-// Pre-compute deterministic base offsets (no randomness needed — visual variety
-// comes from the audio-level multipliers which change per frame).
-const BAR_OFFSETS = Array.from({ length: BAR_COUNT }, (_, i) => {
-  // Use a simple hash-like formula for deterministic but varied offsets
-  const t = ((i * 7 + 3) % BAR_COUNT) / BAR_COUNT;
-  return t * 0.3 + 0.05;
+// Phase offsets for each bar — creates two overlapping sine waves for organic feel
+const PHASE_OFFSETS = Array.from({ length: BAR_COUNT }, (_, i) => ({
+  primary: (i / BAR_COUNT) * Math.PI * 2,
+  secondary: (i / BAR_COUNT) * Math.PI * 3 + 1.2,
+}));
+
+// Center envelope — bars in the center are taller than edges
+const CENTER_FACTORS = Array.from({ length: BAR_COUNT }, (_, i) => {
+  const center = (BAR_COUNT - 1) / 2;
+  return 1 - (Math.abs(i - center) / center) * 0.3;
 });
-
-// Simple deterministic hash to produce pseudo-random multipliers per bar + audioLevel
-function barMultiplier(index: number, level: number): number {
-  const seed = index * 2654435761 + Math.round(level * 1000) * 2246822519;
-  const hash = ((seed >>> 0) ^ (seed >>> 16)) >>> 0;
-  return 0.6 + (hash % 1000) / 2500; // range [0.6, 1.0]
-}
 
 interface DictationWaveformProps {
   audioLevel: number;
@@ -28,11 +27,51 @@ interface DictationWaveformProps {
 }
 
 export function DictationWaveform({ audioLevel, isActive, shortcutHint }: DictationWaveformProps) {
-  // Derive multipliers deterministically from audioLevel (no setState needed)
-  const barMultipliers = useMemo(
-    () => Array.from({ length: BAR_COUNT }, (_, i) => barMultiplier(i, audioLevel)),
-    [audioLevel]
-  );
+  const audioLevelRef = useRef(audioLevel);
+  const rafRef = useRef<number>(0);
+  const timeRef = useRef(0);
+  const lastFrameRef = useRef(0);
+  // Direct refs to bar DOM elements — updated each frame without going through React state
+  const barsRef = useRef<(HTMLDivElement | null)[]>([]);
+
+  // Keep audioLevel ref in sync without restarting the animation loop
+  useEffect(() => {
+    audioLevelRef.current = audioLevel;
+  }, [audioLevel]);
+
+  // Animation loop — writes heights directly to DOM to avoid 60 React re-renders/sec
+  useEffect(() => {
+    if (!isActive) return;
+
+    lastFrameRef.current = performance.now();
+
+    const animate = (now: number) => {
+      const dt = (now - lastFrameRef.current) / 1000;
+      lastFrameRef.current = now;
+      timeRef.current += dt;
+
+      const t = timeRef.current;
+      const level = audioLevelRef.current;
+
+      for (let i = 0; i < BAR_COUNT; i++) {
+        const el = barsRef.current[i];
+        if (!el) continue;
+        const { primary, secondary } = PHASE_OFFSETS[i];
+        // Two overlapping sine waves at different speeds for organic motion
+        const wave1 = Math.sin(t * WAVE_SPEED + primary);
+        const wave2 = Math.sin(t * WAVE_SPEED * 0.7 + secondary) * 0.4;
+        const combined = (wave1 + wave2) / 1.4; // normalize to [-1, 1]
+        const normalized = (combined + 1) / 2; // [0, 1]
+        const height = MIN_HEIGHT + level * normalized * CENTER_FACTORS[i] * (1 - MIN_HEIGHT);
+        el.style.height = `${Math.max(8, height * 100)}%`;
+      }
+
+      rafRef.current = requestAnimationFrame(animate);
+    };
+
+    rafRef.current = requestAnimationFrame(animate);
+    return () => cancelAnimationFrame(rafRef.current);
+  }, [isActive]);
 
   if (!isActive) return null;
 
@@ -40,43 +79,31 @@ export function DictationWaveform({ audioLevel, isActive, shortcutHint }: Dictat
     <div
       className={cn(
         'flex items-center gap-3 px-3 py-2 rounded-t-lg',
-        'bg-orange-500/5 border-b border-orange-500/20',
+        'bg-blue-500/5 border-b border-blue-500/20',
         'animate-in slide-in-from-bottom-2 fade-in duration-200'
       )}
     >
       {/* Mic icon with pulse */}
       <div className="relative flex-shrink-0">
-        <Mic className="size-4 text-orange-500" />
-        <div className="absolute inset-0 rounded-full border border-orange-500/40 animate-ping" />
+        <Mic className="size-4 text-blue-500" />
+        <div className="absolute inset-0 rounded-full border border-blue-500/40 animate-ping" />
       </div>
 
       {/* Waveform bars */}
       <div className="flex items-center gap-[2px] h-6 flex-1 min-w-0">
-        {BAR_OFFSETS.map((baseOffset, i) => {
-          const multiplier = barMultipliers[i] ?? 1;
-          const height = Math.min(
-            1,
-            baseOffset + audioLevel * multiplier
-          );
-          // Create a gentle wave shape: bars in the center are taller
-          const centerFactor =
-            1 - Math.abs(i - BAR_COUNT / 2) / (BAR_COUNT / 2) * 0.3;
-
-          return (
-            <div
-              key={i}
-              className="sound-bar flex-1 min-w-[2px] max-w-[4px] rounded-full bg-orange-500/60"
-              style={{
-                height: `${Math.max(8, height * centerFactor * 100)}%`,
-              }}
-            />
-          );
-        })}
+        {Array.from({ length: BAR_COUNT }, (_, i) => (
+          <div
+            key={i}
+            ref={(el) => { barsRef.current[i] = el; }}
+            className="sound-bar flex-1 min-w-[2px] max-w-[4px] rounded-full bg-blue-500/60"
+            style={{ height: `${MIN_HEIGHT * 100}%` }}
+          />
+        ))}
       </div>
 
       {/* Label */}
       <div className="flex-shrink-0 flex items-center gap-2">
-        <span className="text-xs font-medium text-orange-600 dark:text-orange-400">
+        <span className="text-xs font-medium text-blue-600 dark:text-blue-400">
           Listening...
         </span>
         {shortcutHint && (
