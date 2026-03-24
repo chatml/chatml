@@ -112,6 +112,7 @@ import { CardErrorFallback } from '@/components/shared/ErrorFallbacks';
 import { HoverCard, HoverCardTrigger, HoverCardContent } from '@/components/ui/hover-card';
 import { SessionHoverCardBody } from '@/components/shared/SessionHoverCard';
 import { dispatchAppEvent } from '@/lib/custom-events';
+import { BaseSessionCard } from '@/components/navigation/BaseSessionCard';
 
 interface WorkspaceSidebarProps {
   onOpenProject: () => void;
@@ -729,33 +730,25 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onGitHubRepos,
               ) : (
                 <>
                   {/* Pinned: Base sessions always render at the top */}
-                  {pinnedSessions.map((session) => {
-                    const ws = workspaces.find((w) => w.id === session.workspaceId);
-                    return (
-                      <ErrorBoundary
-                        key={session.id}
-                        section="SessionRow"
-                        fallback={<CardErrorFallback message="Error loading session" />}
-                      >
-                        <SessionRow
-                          session={session}
-                          contentView={contentView}
-                          selectedSessionId={selectedSessionId}
-                          onSelectSession={(id, e) => handleSelectSession(session.workspaceId, id, e)}
-                          onArchiveSession={handleArchiveSession}
-                          onTaskStatusChange={handleTaskStatusChange}
-                          onOpenBranches={(e) => navigateToBranches(session.workspaceId, e)}
-                          onOpenPRs={(e) => navigateToPRs(session.workspaceId, e)}
-                          formatTimeAgo={formatTimeAgo}
-                          showProjectIndicator={sidebarGroupBy === 'none'}
-                          workspaceColor={workspaceColors[session.workspaceId] || getWorkspaceColor(session.workspaceId)}
-                          workspaceName={ws?.name}
-                        />
-                      </ErrorBoundary>
-                    );
-                  })}
+                  {pinnedSessions.map((session) => (
+                    <ErrorBoundary
+                      key={session.id}
+                      section="BaseSessionCard"
+                      fallback={<CardErrorFallback message="Error loading session" />}
+                    >
+                      <BaseSessionCard
+                        session={session}
+                        contentView={contentView}
+                        selectedSessionId={selectedSessionId}
+                        onSelectSession={(id, e) => handleSelectSession(session.workspaceId, id, e)}
+                        onOpenBranches={(e) => navigateToBranches(session.workspaceId, e)}
+                        onOpenPRs={(e) => navigateToPRs(session.workspaceId, e)}
+                        formatTimeAgo={formatTimeAgo}
+                      />
+                    </ErrorBoundary>
+                  ))}
                   {pinnedSessions.length > 0 && (flatSessions.length > 0 || sidebarGroups.length > 0) && (
-                    <div className="mx-2 my-1 border-t border-border/40" />
+                    <div className="mx-2 my-1.5 border-t border-border/40" />
                   )}
 
                   {/* Mode: None — flat session list */}
@@ -1348,16 +1341,14 @@ function SortableWorkspaceItem({
             {baseSessions?.map((session) => (
               <ErrorBoundary
                 key={session.id}
-                section="SessionRow"
+                section="BaseSessionCard"
                 fallback={<CardErrorFallback message="Error loading session" />}
               >
-                <SessionRow
+                <BaseSessionCard
                   session={session}
                   contentView={contentView}
                   selectedSessionId={selectedSessionId}
                   onSelectSession={onSelectSession}
-                  onArchiveSession={onArchiveSession}
-                  onTaskStatusChange={onTaskStatusChange}
                   onOpenBranches={onOpenBranches}
                   onOpenPRs={onOpenPRs}
                   formatTimeAgo={formatTimeAgo}
@@ -1365,7 +1356,7 @@ function SortableWorkspaceItem({
               </ErrorBoundary>
             ))}
             {baseSessions && baseSessions.length > 0 && sessions.length > 0 && (
-              <div className="my-1 mx-2 border-t border-border/40" />
+              <div className="my-1.5 mx-2 border-t border-border/40" />
             )}
             {/* Worktree sessions */}
             {sessions.length === 0 && (!baseSessions || baseSessions.length === 0) ? (
@@ -1961,16 +1952,14 @@ function SortableProjectStatusItem({
                 {group.baseSessions?.map((session) => (
                   <ErrorBoundary
                     key={session.id}
-                    section="SessionRow"
+                    section="BaseSessionCard"
                     fallback={<CardErrorFallback message="Error loading session" />}
                   >
-                    <SessionRow
+                    <BaseSessionCard
                       session={session}
                       contentView={contentView}
                       selectedSessionId={selectedSessionId}
                       onSelectSession={onSelectSession}
-                      onArchiveSession={onArchiveSession}
-                      onTaskStatusChange={onTaskStatusChange}
                       onOpenBranches={onOpenBranches}
                       onOpenPRs={onOpenPRs}
                       formatTimeAgo={formatTimeAgo}
@@ -1979,7 +1968,7 @@ function SortableProjectStatusItem({
                 ))}
                 {group.baseSessions && group.baseSessions.length > 0 &&
                   group.subGroups && group.subGroups.length > 0 && (
-                  <div className="my-1 mx-2 border-t border-border/40" />
+                  <div className="my-1.5 mx-2 border-t border-border/40" />
                 )}
                 {(!group.subGroups || group.subGroups.length === 0) &&
                  (!group.baseSessions || group.baseSessions.length === 0) ? (
