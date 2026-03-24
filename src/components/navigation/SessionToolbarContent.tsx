@@ -323,28 +323,14 @@ export function SessionToolbarContent() {
     setStreaming(selectedConversationId, true);
 
     setFixIssuesLoading(true);
+
+    // Step 1: fetch CI context — on failure, fall back to a generic send
+    let context: Awaited<ReturnType<typeof getCIFailureContext>> | null = null;
     try {
-      const context = await getCIFailureContext(selectedWorkspaceId, selectedSessionId);
-
-      if (context.failedRuns.length === 0) {
-        setStreaming(selectedConversationId, false);
-        updateConversation(selectedConversationId, { status: 'idle' });
-        addMessage({
-          id: crypto.randomUUID(),
-          conversationId: selectedConversationId,
-          role: 'assistant',
-          content: 'No CI failures found. All checks may have passed.',
-          timestamp: new Date().toISOString(),
-        });
-        showWarning('No CI failures found. Checks may have passed.');
-        return;
-      }
-
-      const message = formatCIFailureMessage(context);
-      await sendConversationMessage(selectedConversationId, message, [templateAttachment]);
+      context = await getCIFailureContext(selectedWorkspaceId, selectedSessionId);
     } catch (error) {
       console.error('Failed to fetch CI failure context:', error);
-      // Fallback to generic message
+      // Fallback: send without failure details
       try {
         await sendConversationMessage(selectedConversationId, 'Fix the failing CI checks', [templateAttachment]);
         showWarning('Could not fetch CI details. Sent generic request.');
@@ -353,6 +339,45 @@ export function SessionToolbarContent() {
         updateConversation(selectedConversationId, { status: 'idle' });
         showWarning('Failed to send message to agent.');
       }
+      setFixIssuesLoading(false);
+      return;
+    }
+
+    // Step 2: handle no-failures case
+    if (context.failedRuns.length === 0) {
+      setStreaming(selectedConversationId, false);
+      updateConversation(selectedConversationId, { status: 'idle' });
+      addMessage({
+        id: crypto.randomUUID(),
+        conversationId: selectedConversationId,
+        role: 'assistant',
+        content: 'No CI failures found. All checks may have passed.',
+        timestamp: new Date().toISOString(),
+      });
+      showWarning('No CI failures found. Checks may have passed.');
+      setFixIssuesLoading(false);
+      return;
+    }
+
+    // Step 3: send with failure details attached
+    const failureContent = formatCIFailureMessage(context);
+    const failureAttachment: AttachmentDTO = {
+      id: crypto.randomUUID(),
+      type: 'file',
+      name: 'CI Failure Details',
+      mimeType: 'text/markdown',
+      size: new Blob([failureContent]).size,
+      lineCount: failureContent.split('\n').length,
+      base64Data: toBase64(failureContent),
+      preview: failureContent.slice(0, 200),
+      isInstruction: false,
+    };
+    try {
+      await sendConversationMessage(selectedConversationId, 'Fix the failing CI checks', [templateAttachment, failureAttachment]);
+    } catch {
+      setStreaming(selectedConversationId, false);
+      updateConversation(selectedConversationId, { status: 'idle' });
+      showWarning('Failed to send message to agent.');
     } finally {
       setFixIssuesLoading(false);
     }
