@@ -262,6 +262,11 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
       plateInputRef.current?.setText(combined);
       setMessage(combined);
       settingFromTranscriptRef.current = false;
+      // When a segment finalizes (pause detected), accumulate the combined text
+      // so the next speech segment appends to it instead of replacing it.
+      if (isFinal) {
+        preDictationTextRef.current = combined;
+      }
     },
     onError: (msg) => showError(msg),
   });
