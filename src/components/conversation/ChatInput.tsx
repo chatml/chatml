@@ -249,12 +249,19 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
 
   // Speech-to-text dictation
   const preDictationTextRef = useRef('');
+  // Flag set only around setText calls from onTranscript so the resulting
+  // editor onChange (which fires with "" during reset) is ignored, while
+  // manual keystrokes during dictation still sync message state normally.
+  const settingFromTranscriptRef = useRef(false);
   const { isDictating, toggle: toggleDictation, isAvailable: dictationAvailable, audioLevel } = useDictation({
     onTranscript: (text, isFinal) => {
+      if (!text) return; // Ignore empty transcripts (e.g., phantom callback during teardown)
       const prefix = preDictationTextRef.current;
       const combined = prefix ? `${prefix} ${text}` : text;
+      settingFromTranscriptRef.current = true;
       plateInputRef.current?.setText(combined);
       setMessage(combined);
+      settingFromTranscriptRef.current = false;
     },
     onError: (msg) => showError(msg),
   });
@@ -1064,15 +1071,20 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
             />
           </svg>
         )}
-        {/* Gradient border for streaming state (static for performance) */}
-        {isStreaming && !pendingPlanApproval && (
+        {/* Gradient border for streaming state (static for performance) — hidden when dictating */}
+        {isStreaming && !pendingPlanApproval && !isDictating && (
           <div className="absolute -inset-[1px] rounded-lg bg-gradient-to-r from-brand/60 via-purple-500/80 to-brand/60 opacity-70" />
+        )}
+        {/* Blue border for active dictation (takes priority over streaming) */}
+        {isDictating && (
+          <div className="absolute -inset-[1px] rounded-lg bg-blue-500/50 opacity-70" />
         )}
       <div className={cn(
         'relative rounded-lg border border-border bg-card dark:bg-input',
-        isStreaming && !pendingPlanApproval && 'border-transparent',
+        isStreaming && !pendingPlanApproval && !isDictating && 'border-transparent',
         pendingPlanApproval && 'border-transparent',
         planModeEnabled && !isStreaming && 'border-transparent',
+        isDictating && 'border-transparent',
         isDragOver && 'ring-2 ring-primary ring-offset-2 border-primary'
       )}>
         {/* Drag overlay - drop zone */}
@@ -1146,7 +1158,12 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
             slashCommands={slashCommands}
             onSlashCommandExecute={handleSlashCommandExecute}
             onInput={(text) => {
-              setMessage(text);
+              // Skip the onChange fired by editor.tf.reset() inside setText —
+              // it emits "" before queueMicrotask re-inserts the transcript.
+              // Manual keystrokes during dictation still sync normally.
+              if (!settingFromTranscriptRef.current) {
+                setMessage(text);
+              }
               if (text.trim() && selectedConversationId && useAppStore.getState().inputSuggestions[selectedConversationId]) {
                 clearInputSuggestion(selectedConversationId);
               }
