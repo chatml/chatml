@@ -120,12 +120,20 @@ function buildStatusGroups(
   return groups;
 }
 
+/** When filtering to a single project, project-level grouping is redundant. */
+function downgradeGroupBy(groupBy: SidebarGroupBy): SidebarGroupBy {
+  if (groupBy === 'project') return 'none';
+  if (groupBy === 'project-status') return 'status';
+  return groupBy;
+}
+
 interface UseSidebarSessionsOptions {
   sessions: WorktreeSession[];
   workspaces: Workspace[];
   groupBy: SidebarGroupBy;
   sortBy: SidebarSortBy;
   filters: FilterOptions;
+  projectFilter: string | null;
   workspaceColors: Record<string, string>;
   getWorkspaceColor: (id: string) => string;
 }
@@ -136,34 +144,36 @@ export function useSidebarSessions({
   groupBy,
   sortBy,
   filters,
+  projectFilter,
   workspaceColors,
   getWorkspaceColor: getDefaultColor,
-}: UseSidebarSessionsOptions): { groups: SidebarGroup[]; flatSessions: WorktreeSession[]; pinnedSessions: WorktreeSession[] } {
+}: UseSidebarSessionsOptions): { groups: SidebarGroup[]; flatSessions: WorktreeSession[] } {
   return useMemo(() => {
-    const filtered = filterSessions(sessions, filters);
+    // When filtering to a single project, pre-filter sessions and downgrade groupBy
+    const effectiveSessions = projectFilter
+      ? sessions.filter((s) => s.workspaceId === projectFilter)
+      : sessions;
+    const effectiveGroupBy: SidebarGroupBy = projectFilter
+      ? downgradeGroupBy(groupBy)
+      : groupBy;
 
-    // In flat/status modes, pin base sessions at the top.
-    // In project/project-status modes, nest them under their workspace.
-    const pinnedSessions = filtered.filter((s) => s.sessionType === 'base');
-    const regularSessions = filtered.filter((s) => s.sessionType !== 'base');
+    const filtered = filterSessions(effectiveSessions, filters);
 
-    if (groupBy === 'none') {
+    if (effectiveGroupBy === 'none') {
       return {
         groups: [],
-        flatSessions: sortSessions(regularSessions, sortBy),
-        pinnedSessions,
+        flatSessions: sortSessions(filtered, sortBy),
       };
     }
 
-    if (groupBy === 'status') {
+    if (effectiveGroupBy === 'status') {
       return {
-        groups: buildStatusGroups(regularSessions, sortBy),
+        groups: buildStatusGroups(filtered, sortBy),
         flatSessions: [],
-        pinnedSessions,
       };
     }
 
-    // For project-based grouping, include ALL sessions (base + regular) under their workspace
+    // For project-based grouping, bucket sessions by workspace
     const byWorkspace = new Map<string, WorktreeSession[]>();
     for (const s of filtered) {
       const list = byWorkspace.get(s.workspaceId);
@@ -171,7 +181,7 @@ export function useSidebarSessions({
       else byWorkspace.set(s.workspaceId, [s]);
     }
 
-    if (groupBy === 'project') {
+    if (effectiveGroupBy === 'project') {
       const groups: SidebarGroup[] = [];
       for (const ws of workspaces) {
         const wsSessions = byWorkspace.get(ws.id) ?? [];
@@ -191,11 +201,11 @@ export function useSidebarSessions({
           sessions: sortSessions(regular, sortBy),
         });
       }
-      return { groups, flatSessions: [], pinnedSessions: [] };
+      return { groups, flatSessions: [] };
     }
 
     // project-status
-    if (groupBy === 'project-status') {
+    if (effectiveGroupBy === 'project-status') {
       const groups: SidebarGroup[] = [];
       for (const ws of workspaces) {
         const wsSessions = byWorkspace.get(ws.id) ?? [];
@@ -217,11 +227,11 @@ export function useSidebarSessions({
           subGroups,
         });
       }
-      return { groups, flatSessions: [], pinnedSessions: [] };
+      return { groups, flatSessions: [] };
     }
 
-    return { groups: [], flatSessions: [], pinnedSessions: [] };
-  }, [sessions, workspaces, groupBy, sortBy, filters, workspaceColors, getDefaultColor]);
+    return { groups: [], flatSessions: [] };
+  }, [sessions, workspaces, groupBy, sortBy, filters, projectFilter, workspaceColors, getDefaultColor]);
 }
 
 /**

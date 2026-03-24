@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { SidebarUpdateBanner } from '@/components/shared/SidebarUpdateBanner';
 import {
   DndContext,
@@ -173,14 +173,22 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onGitHubRepos,
   };
 
   // Track which workspaces are collapsed (persisted)
-  const { collapsedWorkspaces, toggleWorkspaceCollapsed, expandWorkspace, contentView, recentlyRemovedWorkspaces, addRecentlyRemovedWorkspace, removeRecentlyRemovedWorkspace, unreadWorkspaces, markWorkspaceUnread, markWorkspaceRead, workspaceColors, sidebarGroupBy, sidebarSortBy, setSidebarGroupBy, setSidebarSortBy, collapsedSidebarGroups, toggleSidebarGroupCollapsed, lastRepoDashboardWorkspaceId, setLastRepoDashboardWorkspaceId } = useSettingsStore();
+  const { collapsedWorkspaces, toggleWorkspaceCollapsed, expandWorkspace, contentView, recentlyRemovedWorkspaces, addRecentlyRemovedWorkspace, removeRecentlyRemovedWorkspace, unreadWorkspaces, markWorkspaceUnread, markWorkspaceRead, workspaceColors, sidebarGroupBy, sidebarSortBy, setSidebarGroupBy, setSidebarSortBy, collapsedSidebarGroups, toggleSidebarGroupCollapsed, lastRepoDashboardWorkspaceId, setLastRepoDashboardWorkspaceId, sidebarProjectFilter, setSidebarProjectFilter } = useSettingsStore();
 
   const isWorkspaceExpanded = (workspaceId: string) => {
     return !collapsedWorkspaces.includes(workspaceId);
   };
 
+  // Auto-clear project filter if the workspace no longer exists
+  useEffect(() => {
+    if (workspaces.length === 0) return; // workspaces not yet loaded
+    if (sidebarProjectFilter && !workspaces.some((ws) => ws.id === sidebarProjectFilter)) {
+      setSidebarProjectFilter(null);
+    }
+  }, [sidebarProjectFilter, workspaces, setSidebarProjectFilter]);
+
   // Sidebar grouping/sorting
-  const { groups: sidebarGroups, flatSessions, pinnedSessions } = useSidebarSessions({
+  const { groups: sidebarGroups, flatSessions } = useSidebarSessions({
     sessions,
     workspaces,
     groupBy: sidebarGroupBy,
@@ -188,6 +196,7 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onGitHubRepos,
     filters: {
       searchTerm,
     },
+    projectFilter: sidebarProjectFilter,
     workspaceColors,
     getWorkspaceColor,
   });
@@ -420,8 +429,11 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onGitHubRepos,
     return isSidebarGroupExpanded(key, defaultCollapsed, collapsedSidebarGroups);
   };
 
-  // Section header label
-  const sectionHeaderLabel = 'Sessions';
+  // Section header label — dynamic based on project filter
+  const filteredWorkspaceName = sidebarProjectFilter
+    ? workspaces.find((ws) => ws.id === sidebarProjectFilter)?.name
+    : undefined;
+  const sectionHeaderLabel = filteredWorkspaceName ?? 'All Projects';
 
   // Group by toggle helpers — two independent booleans compose into the 4 groupBy states
   const isGroupByProject = sidebarGroupBy === 'project' || sidebarGroupBy === 'project-status';
@@ -574,9 +586,44 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onGitHubRepos,
             <div className="py-2 px-1 flex flex-col">
               {/* Section Header */}
               <div className="group/header px-2 pt-1 pb-2 flex items-center justify-between">
-                <span className="text-xs font-medium text-muted-foreground/60 uppercase tracking-wider">
-                  {sectionHeaderLabel}
-                </span>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <button className="flex items-center gap-1 text-xs font-medium text-muted-foreground/60 uppercase tracking-wider hover:text-foreground transition-colors rounded px-1 -ml-1 py-0.5 hover:bg-surface-1">
+                      <span className="truncate max-w-[140px]">{sectionHeaderLabel}</span>
+                      <ChevronDown className="h-3 w-3 shrink-0" />
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start" className="w-56">
+                    <DropdownMenuItem
+                      onClick={() => setSidebarProjectFilter(null)}
+                      className="flex items-center justify-between"
+                    >
+                      <div className="flex items-center gap-2">
+                        <Folder className="h-4 w-4 text-muted-foreground" />
+                        <span>All Projects</span>
+                      </div>
+                      {sidebarProjectFilter === null && <Check className="h-4 w-4" />}
+                    </DropdownMenuItem>
+                    {workspaces.length > 0 && (
+                      <>
+                        <DropdownMenuSeparator />
+                        {workspaces.map((ws) => (
+                          <DropdownMenuItem
+                            key={ws.id}
+                            onClick={() => setSidebarProjectFilter(ws.id)}
+                            className="flex items-center justify-between"
+                          >
+                            <div className="flex items-center gap-2 min-w-0">
+                              <Folder className="h-4 w-4 shrink-0 text-muted-foreground" />
+                              <span className="truncate">{ws.name}</span>
+                            </div>
+                            {sidebarProjectFilter === ws.id && <Check className="h-4 w-4 shrink-0" />}
+                          </DropdownMenuItem>
+                        ))}
+                      </>
+                    )}
+                  </DropdownMenuContent>
+                </DropdownMenu>
                 <div className="flex items-center gap-0.5">
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
@@ -733,32 +780,10 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onGitHubRepos,
                 </div>
               ) : (
                 <>
-                  {/* Pinned: Base sessions always render at the top */}
-                  {pinnedSessions.map((session) => (
-                    <ErrorBoundary
-                      key={session.id}
-                      section="BaseSessionCard"
-                      fallback={<CardErrorFallback message="Error loading session" />}
-                    >
-                      <BaseSessionCard
-                        session={session}
-                        contentView={contentView}
-                        selectedSessionId={selectedSessionId}
-                        onSelectSession={(id, e) => handleSelectSession(session.workspaceId, id, e)}
-                        onOpenBranches={(e) => navigateToBranches(session.workspaceId, e)}
-                        onOpenPRs={(e) => navigateToPRs(session.workspaceId, e)}
-                        formatTimeAgo={formatTimeAgo}
-                      />
-                    </ErrorBoundary>
-                  ))}
-                  {pinnedSessions.length > 0 && (flatSessions.length > 0 || sidebarGroups.length > 0) && (
-                    <div className="mx-2 my-1.5 border-t border-border/40" />
-                  )}
-
                   {/* Mode: None — flat session list */}
                   {sidebarGroupBy === 'none' && (
                     <>
-                      {flatSessions.length === 0 && pinnedSessions.length === 0 ? (
+                      {flatSessions.length === 0 ? (
                         <div className="py-2 px-2 text-sm text-muted-foreground/70">
                           No sessions found
                         </div>
@@ -795,7 +820,7 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onGitHubRepos,
                   {/* Mode: Status — status group headers with sessions */}
                   {sidebarGroupBy === 'status' && (
                     <>
-                      {sidebarGroups.length === 0 && pinnedSessions.length === 0 ? (
+                      {sidebarGroups.length === 0 ? (
                         <div className="py-2 px-2 text-sm text-muted-foreground/70">
                           No sessions found
                         </div>
