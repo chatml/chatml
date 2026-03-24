@@ -141,7 +141,8 @@ export function useSidebarSessions({
   return useMemo(() => {
     const filtered = filterSessions(sessions, filters);
 
-    // Separate base sessions — they are always pinned at the top, outside groups
+    // In flat/status modes, pin base sessions at the top.
+    // In project/project-status modes, nest them under their workspace.
     const pinnedSessions = filtered.filter((s) => s.sessionType === 'base');
     const regularSessions = filtered.filter((s) => s.sessionType !== 'base');
 
@@ -161,9 +162,9 @@ export function useSidebarSessions({
       };
     }
 
-    // Pre-group regular sessions by workspace for O(w+n) instead of O(w×n)
+    // For project-based grouping, include ALL sessions (base + regular) under their workspace
     const byWorkspace = new Map<string, WorktreeSession[]>();
-    for (const s of regularSessions) {
+    for (const s of filtered) {
       const list = byWorkspace.get(s.workspaceId);
       if (list) list.push(s);
       else byWorkspace.set(s.workspaceId, [s]);
@@ -186,7 +187,7 @@ export function useSidebarSessions({
           sessions: sortSessions(wsSessions, sortBy),
         });
       }
-      return { groups, flatSessions: [], pinnedSessions };
+      return { groups, flatSessions: [], pinnedSessions: [] };
     }
 
     // project-status
@@ -209,10 +210,10 @@ export function useSidebarSessions({
           subGroups,
         });
       }
-      return { groups, flatSessions: [], pinnedSessions };
+      return { groups, flatSessions: [], pinnedSessions: [] };
     }
 
-    return { groups: [], flatSessions: [], pinnedSessions };
+    return { groups: [], flatSessions: [], pinnedSessions: [] };
   }, [sessions, workspaces, groupBy, sortBy, filters, workspaceColors, getDefaultColor]);
 }
 
