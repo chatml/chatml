@@ -24,6 +24,7 @@ export interface SessionDTO {
   checkStatus?: 'none' | 'pending' | 'success' | 'failure';
   targetBranch?: string;
   sessionType?: 'worktree' | 'base';
+  scheduledTaskId?: string;
   sprintPhase?: string | null;
   pinned?: boolean;
   archived?: boolean;
@@ -55,6 +56,7 @@ export function mapSessionDTO(session: SessionDTO): import('@/lib/types').Worktr
     checkStatus: session.checkStatus as import('@/lib/types').WorktreeSession['checkStatus'],
     targetBranch: session.targetBranch,
     sessionType: session.sessionType,
+    scheduledTaskId: session.scheduledTaskId,
     sprintPhase: (session.sprintPhase || null) as import('@/lib/types').SprintPhase | null,
     pinned: session.pinned,
     archived: session.archived,

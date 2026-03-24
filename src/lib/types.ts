@@ -55,6 +55,7 @@ export interface WorktreeSession {
   checkStatus?: 'none' | 'pending' | 'success' | 'failure';
   targetBranch?: string; // Per-session target branch override (e.g. "origin/develop")
   sessionType?: 'worktree' | 'base'; // "base" = operates on repo directly, no worktree
+  scheduledTaskId?: string; // FK to scheduled_tasks if created by scheduler
   sprintPhase?: SprintPhase | null; // Current sprint workflow phase (null = no sprint active)
   createdAt: string;
   updatedAt: string;
@@ -842,4 +843,42 @@ export interface SessionToggleState {
   thinkingLevel: import('@/lib/thinkingLevels').ThinkingLevel;
   planModeEnabled: boolean;
   fastModeEnabled?: boolean; // Optional for backward compat with persisted state pre-fast-mode
+}
+
+// Scheduled task frequency options
+export type ScheduledTaskFrequency = 'hourly' | 'daily' | 'weekly' | 'monthly';
+
+// ScheduledTask defines a recurring task template that spawns sessions on a schedule
+export interface ScheduledTask {
+  id: string;
+  workspaceId: string;
+  name: string;
+  description: string;
+  prompt: string;
+  model: string;
+  permissionMode: string;
+  useWorktree: boolean;
+  frequency: ScheduledTaskFrequency;
+  cronExpression?: string;
+  scheduleHour: number;
+  scheduleMinute: number;
+  scheduleDayOfWeek: number;
+  scheduleDayOfMonth: number;
+  enabled: boolean;
+  lastRunAt?: string;
+  nextRunAt?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// ScheduledTaskRun represents a single execution of a scheduled task
+export interface ScheduledTaskRun {
+  id: string;
+  scheduledTaskId: string;
+  sessionId?: string;
+  status: 'pending' | 'running' | 'completed' | 'failed';
+  triggeredAt: string;
+  startedAt?: string;
+  completedAt?: string;
+  errorMessage?: string;
 }

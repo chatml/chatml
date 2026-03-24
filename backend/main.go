@@ -22,6 +22,7 @@ import (
 	"github.com/chatml/chatml-backend/logger"
 	"github.com/chatml/chatml-backend/models"
 	"github.com/chatml/chatml-backend/naming"
+	"github.com/chatml/chatml-backend/scheduler"
 	"github.com/chatml/chatml-backend/scripts"
 	"github.com/chatml/chatml-backend/server"
 	"github.com/chatml/chatml-backend/store"
@@ -509,8 +510,19 @@ func main() {
 	// AI client: nil at init — handlers.getAIClient() resolves dynamically via
 	// agentMgr.CreateAIClient() on each call, picking up credentials as they
 	// become available (env var, keychain, credentials file, cached SDK token).
-	router, routerCleanup := server.NewRouter(ctx, s, hub, agentMgr, ghClient, linearClient, branchWatcher, prWatcher, prCache, issueCache, statsCache, diffCache, snapshotCache, nil, scriptRunner)
+	router, handlers, routerCleanup := server.NewRouter(ctx, s, hub, agentMgr, ghClient, linearClient, branchWatcher, prWatcher, prCache, issueCache, statsCache, diffCache, snapshotCache, nil, scriptRunner)
 	defer routerCleanup()
+
+	// Initialize and start the scheduled task scheduler
+	taskScheduler := scheduler.NewScheduler(ctx, s, agentMgr, func(eventType string, payload map[string]interface{}) {
+		hub.Broadcast(server.Event{
+			Type:    eventType,
+			Payload: payload,
+		})
+	})
+	handlers.SetScheduler(taskScheduler)
+	go taskScheduler.Start()
+	defer taskScheduler.Stop()
 
 	// Backfill base sessions for existing workspaces that don't have one yet.
 	// This handles upgrades from versions that didn't auto-create base sessions.

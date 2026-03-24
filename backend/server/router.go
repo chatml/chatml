@@ -20,7 +20,7 @@ import (
 	"github.com/rs/cors"
 )
 
-func NewRouter(ctx context.Context, s *store.SQLiteStore, hub *Hub, agentMgr *agent.Manager, ghClient *github.Client, linearClient *linear.Client, bw *branch.Watcher, prw *branch.PRWatcher, prCache *github.PRCache, issueCache *github.IssueCache, statsCache *SessionStatsCache, diffCache *DiffCache, snapshotCache *SnapshotCache, aiClient ai.Provider, scriptRunner *scripts.Runner) (http.Handler, func()) {
+func NewRouter(ctx context.Context, s *store.SQLiteStore, hub *Hub, agentMgr *agent.Manager, ghClient *github.Client, linearClient *linear.Client, bw *branch.Watcher, prw *branch.PRWatcher, prCache *github.PRCache, issueCache *github.IssueCache, statsCache *SessionStatsCache, diffCache *DiffCache, snapshotCache *SnapshotCache, aiClient ai.Provider, scriptRunner *scripts.Runner) (http.Handler, *Handlers, func()) {
 	r := chi.NewRouter()
 	dirCacheConfig := LoadDirListingCacheConfig()
 	h := NewHandlers(ctx, s, agentMgr, dirCacheConfig, bw, prw, hub, ghClient, prCache, issueCache, statsCache, diffCache, snapshotCache, aiClient, scriptRunner)
@@ -104,6 +104,16 @@ func NewRouter(ctx context.Context, s *store.SQLiteStore, hub *Hub, agentMgr *ag
 
 	// Sessions endpoint — returns all sessions across all workspaces in a single query
 	r.Get("/api/sessions", h.ListAllSessions)
+
+	// Scheduled tasks endpoints
+	r.Get("/api/scheduled-tasks", h.ListAllScheduledTasks)
+	r.Route("/api/scheduled-tasks/{taskId}", func(r chi.Router) {
+		r.Get("/", h.GetScheduledTask)
+		r.Patch("/", h.UpdateScheduledTask)
+		r.Delete("/", h.DeleteScheduledTask)
+		r.Get("/runs", h.ListScheduledTaskRuns)
+		r.Post("/trigger", h.TriggerScheduledTask)
+	})
 
 	// Available agents metadata (not workspace-specific)
 	r.Get("/api/settings/available-agents", h.GetAvailableAgents)
@@ -227,6 +237,9 @@ func NewRouter(ctx context.Context, s *store.SQLiteStore, hub *Hub, agentMgr *ag
 		r.Post("/{id}/sessions/{sessionId}/scripts/setup", h.RunSetupScripts)
 		r.Post("/{id}/sessions/{sessionId}/scripts/stop", h.StopSessionScript)
 		r.Get("/{id}/sessions/{sessionId}/scripts/runs", h.ListScriptRuns)
+		// Scheduled task endpoints (workspace-scoped creation)
+		r.Get("/{id}/scheduled-tasks", h.ListWorkspaceScheduledTasks)
+		r.Post("/{id}/scheduled-tasks", h.CreateScheduledTask)
 	})
 
 	// Conversation endpoints (top-level for direct access)
@@ -371,5 +384,5 @@ func NewRouter(ctx context.Context, s *store.SQLiteStore, hub *Hub, agentMgr *ag
 		relayH.SetRouter(handler)
 	}
 
-	return handler, h.Close
+	return handler, h, h.Close
 }
