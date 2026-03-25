@@ -2,6 +2,7 @@ mod commands;
 mod error;
 mod icons;
 mod menu;
+mod sf_symbols;
 mod sidecar;
 mod speech;
 mod state;
@@ -181,6 +182,9 @@ pub fn run() {
             // Create and set the menu
             let menu_result = menu::create_menu(app.handle())?;
             app.set_menu(menu_result)?;
+
+            // Apply SF Symbol icons to native menu items (no-op on non-macOS and macOS < 11)
+            sf_symbols::apply_sf_symbols_to_menu();
 
             // Set macOS traffic light position
             #[cfg(target_os = "macos")]
