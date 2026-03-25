@@ -167,12 +167,6 @@ pub fn create_menu(app: &tauri::AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
                 .accelerator("CmdOrCtrl+Shift+R")
                 .build(app)?,
         )
-        .separator()
-        .item(
-            &MenuItemBuilder::with_id("enter_full_screen", "Enter Full Screen")
-                .accelerator("Ctrl+Super+F")
-                .build(app)?,
-        )
         .build()?;
 
     // 5. Go menu

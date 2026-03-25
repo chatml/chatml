@@ -67,8 +67,6 @@ export function computeMenuState(inputs: MenuContextInputs): Record<string, bool
     open_repositories: true,
     toggle_zen_mode: sessionInConversation,
     reset_layouts: true,
-    enter_full_screen: true,
-
     // Go menu
     navigate_back: canGoBack,
     navigate_forward: canGoForward,
