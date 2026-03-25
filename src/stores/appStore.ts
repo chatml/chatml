@@ -2126,9 +2126,15 @@ updateFileTabContent: (id, content) => set((state) => ({
     return set((state) => {
       const streaming = state.streamingState[conversationId];
       const queuedQueue = state.queuedMessages[conversationId] ?? [];
-      const hasQueuedMessages = queuedQueue.length > 0;
+
+      // Compute queued message commit EARLY so keepStreaming uses post-commit count.
+      // Previously keepStreaming used pre-commit count, causing isStreaming to stay true
+      // even when the queue would be empty after commit — leading to a stale streaming
+      // state that turn_complete then had to clean up, causing a visual flash.
+      const queued = metadata.commitQueued && queuedQueue.length > 0 ? queuedQueue[0] : null;
+      const remaining = metadata.terminal ? [] : (queued ? queuedQueue.slice(1) : queuedQueue);
       // When terminal, force streaming off and clear queue regardless
-      const keepStreaming = !metadata.terminal && hasQueuedMessages;
+      const keepStreaming = !metadata.terminal && remaining.length > 0;
 
       // Build cleared streaming state (preserve planModeActive and pending approvals)
       // If there are remaining queued messages (non-terminal), keep isStreaming true to avoid flash
@@ -2152,9 +2158,7 @@ updateFileTabContent: (id, content) => set((state) => ({
 
       // If no streaming text, just clear the state (but still commit first queued message if requested)
       if (!streaming?.text) {
-        const queued = metadata.commitQueued && queuedQueue.length > 0 ? queuedQueue[0] : null;
-        // Terminal: clear entire queue after committing first; otherwise preserve remaining
-        const remaining = metadata.terminal ? [] : (queued ? queuedQueue.slice(1) : queuedQueue);
+        // queued and remaining already computed above
         const convPagination = state.messagePagination[conversationId];
         return {
           streamingState: {
@@ -2273,9 +2277,7 @@ updateFileTabContent: (id, content) => set((state) => ({
 
       // Atomically: add message AND clear streaming state
       // When commitQueued is set, commit the first queued user message AFTER the assistant message
-      const queued = metadata.commitQueued && queuedQueue.length > 0 ? queuedQueue[0] : null;
-      // Terminal: clear entire queue after committing first; otherwise preserve remaining
-      const remaining = metadata.terminal ? [] : (queued ? queuedQueue.slice(1) : queuedQueue);
+      // (queued and remaining already computed above)
       const existing = state.messagesByConversation[conversationId] ?? [];
       const updatedMessages = queued
         ? [...existing, newMessage, queuedToMessage(queued, conversationId)]

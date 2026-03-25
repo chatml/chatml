@@ -35,6 +35,11 @@ import {
 // Re-export for backward compatibility (ChatInput.tsx imports markPlanModeExited from here)
 export { markPlanModeExited };
 
+// Track conversations where `result` already finalized streaming + committed queued messages.
+// Prevents `turn_complete` (which always follows `result`) from double-finalizing and
+// setting isStreaming=false in the gap before the next turn's `init`.
+const resultFinalizedSet = new Set<string>();
+
 /**
  * Clean up module-level state for a conversation that is being removed.
  * Call this when deleting sessions to prevent stale entries from lingering
@@ -43,6 +48,7 @@ export { markPlanModeExited };
 export function cleanupConversationState(conversationId: string) {
   clearReconciliationState(conversationId);
   clearPlanModeState(conversationId);
+  resultFinalizedSet.delete(conversationId);
 }
 
 
@@ -121,6 +127,7 @@ export function useWebSocket(enabled: boolean = true) {
           if (streaming?.pendingToolApproval || streaming?.pendingPlanApproval || store.pendingUserQuestion[conversationId]) {
             return;
           }
+          resultFinalizedSet.delete(conversationId);
           const startTime = streaming?.startTime;
           const durationMs = startTime ? Date.now() - startTime : undefined;
           // Finalize streaming and commit any queued user message atomically.
@@ -159,6 +166,9 @@ export function useWebSocket(enabled: boolean = true) {
 
     switch (data.type) {
       case 'init':
+        // Clear result-finalized flag — a new turn is starting
+        resultFinalizedSet.delete(conversationId);
+
         // If an init event arrives for an already-streaming conversation, finalize
         // the previous turn. When queued messages exist, this is the earliest signal
         // that the agent picked up the queued message — commit it to the timeline.
@@ -178,6 +188,12 @@ export function useWebSocket(enabled: boolean = true) {
           store.clearThinking(conversationId);
           store.clearSubAgents(conversationId);
         }
+        // Always activate streaming on init — a new turn is starting.
+        // This bridges the isStreaming gap that occurs when result+turn_complete
+        // set isStreaming=false before the next turn's assistant_text arrives.
+        // Safety: if the process stalls after init without sending further events,
+        // the conversation_status:'idle' safety-net (above) will clear isStreaming.
+        store.setStreaming(conversationId, true);
         // Clear recovery state — the agent recovered successfully
         store.clearAgentRecovery(conversationId);
         // Clear interrupted state — the agent resumed successfully after app restart
@@ -374,6 +390,9 @@ export function useWebSocket(enabled: boolean = true) {
             permissionDenials,
           },
         });
+        // Mark that result already finalized — turn_complete should skip re-finalization
+        resultFinalizedSet.add(conversationId);
+
         const resultModelUsage = event.modelUsage as Record<string, { contextWindow?: number }> | undefined;
         if (resultModelUsage) {
           for (const key of Object.keys(resultModelUsage)) {
@@ -385,7 +404,13 @@ export function useWebSocket(enabled: boolean = true) {
             }
           }
         }
-        freshStore.updateConversation(conversationId, { status: 'completed' });
+        // Only mark completed if there were no queued messages at the time of result.
+        // If there were queued messages, the agent will pick them up for the next turn.
+        // Note: freshStore is a pre-finalization snapshot, so this checks the pre-commit count.
+        const hadQueuedMessages = (freshStore.queuedMessages[conversationId] ?? []).length > 0;
+        if (!hadQueuedMessages) {
+          freshStore.updateConversation(conversationId, { status: 'completed' });
+        }
         freshStore.clearAgentTodos(conversationId);
         freshStore.clearPendingUserQuestion(conversationId);
         freshStore.clearPendingToolApproval(conversationId);
@@ -408,6 +433,28 @@ export function useWebSocket(enabled: boolean = true) {
 
       case 'turn_complete': {
         const turnStore = getStore();
+        // If `result` already finalized streaming + committed queued messages,
+        // skip re-finalization to avoid setting isStreaming=false in the gap
+        // before the next turn's `init`. Just do cleanup.
+        if (resultFinalizedSet.has(conversationId)) {
+          resultFinalizedSet.delete(conversationId);
+          // Only override status to 'active' if there are queued messages the agent
+          // will process next. Otherwise leave status as 'completed' (set by result).
+          const hasQueuedForNextTurn = (turnStore.queuedMessages[conversationId] ?? []).length > 0;
+          if (hasQueuedForNextTurn) {
+            turnStore.updateConversation(conversationId, { status: 'active' });
+          }
+          turnStore.clearAgentTodos(conversationId);
+          turnStore.clearPendingToolApproval(conversationId);
+          turnStore.clearPendingPlanApproval(conversationId);
+          const turnConvSkip = turnStore.conversations.find((c) => c.id === conversationId);
+          if (turnConvSkip) {
+            turnStore.setLastTurnCompletedAt(turnConvSkip.sessionId, Date.now());
+          }
+          notifyBackgroundSession(conversationId);
+          break;
+        }
+
         const turnStartTime = turnStore.streamingState[conversationId]?.startTime;
         const turnDurationMs = turnStartTime ? Date.now() - turnStartTime : undefined;
 
@@ -441,6 +488,7 @@ export function useWebSocket(enabled: boolean = true) {
       }
 
       case 'complete': {
+        resultFinalizedSet.delete(conversationId);
         store.finalizeStreamingMessage(conversationId, { commitQueued: true, terminal: true });
         store.clearAgentTodos(conversationId);
         store.clearPendingUserQuestion(conversationId);

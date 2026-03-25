@@ -1094,13 +1094,13 @@ outer:
 
 			case EventTypeTurnComplete, EventTypeComplete, EventTypeResult:
 				// Atomically clear the active turn flag and take any deferred
-				// user message. Store BEFORE the assistant message so the DB
-				// position ordering is: [queued_user_N, assistant_N+1].
-				// This must be atomic so a concurrent SendConversationMessage
-				// cannot slip a new message between clearing the flag and
-				// flushing the old deferred one.
+				// user message. When an assistant message exists, both are
+				// stored in a single DB transaction so neither can be lost
+				// independently. Position ordering: [assistant, queued_user].
+				// EndTurnAndTakePending is atomic so a concurrent
+				// SendConversationMessage cannot slip a new message between
+				// clearing the flag and flushing the old deferred one.
 				pending := proc.EndTurnAndTakePending()
-				m.storePendingUserMessage(ctx, convID, pending)
 
 				// Store accumulated message and reset streaming state.
 				if currentAssistantMessage != "" {
@@ -1235,7 +1235,7 @@ outer:
 						}
 					}
 
-					if err := m.store.AddMessageToConversation(ctx, convID, models.Message{
+					assistantMsg := models.Message{
 						ID:              uuid.New().String()[:8],
 						Role:            "assistant",
 						Content:         currentAssistantMessage,
@@ -1247,10 +1247,27 @@ outer:
 						Timeline:        timeline,
 						RunSummary:      runSummary,
 						Timestamp:       time.Now(),
-					}); err != nil {
-						logger.Manager.Errorf("Failed to store assistant message for conv %s: %v", convID, err)
 					}
+					// Atomically store assistant + deferred user message in a
+					// single transaction so both succeed or fail together.
+					msgs := []models.Message{assistantMsg}
+					if pending != nil {
+						msgs = append(msgs, *pending)
+					}
+					if err := m.store.AddMessagesToConversation(ctx, convID, msgs); err != nil {
+						logger.Manager.Errorf("Failed to store messages for conv %s: %v", convID, err)
+					}
+					// Save attachments for the deferred user message (best-effort)
+					if pending != nil && len(pending.Attachments) > 0 {
+						if err := m.store.SaveAttachments(ctx, pending.ID, pending.Attachments); err != nil {
+							logger.Manager.Errorf("Failed to save attachments for deferred message: %v", err)
+						}
+					}
+					pending = nil // consumed
 					currentAssistantMessage = ""
+				} else if pending != nil {
+					// No assistant message — just persist the deferred user message
+					m.storePendingUserMessage(ctx, convID, pending)
 				}
 
 				// Reset per-turn accumulation state
@@ -1406,11 +1423,10 @@ outer:
 	flushCtx, flushCancel := context.WithTimeout(context.Background(), 1*time.Second)
 	defer flushCancel()
 
-	// Atomically clear active turn flag and flush any remaining deferred user
-	// message. Store BEFORE the assistant message so the DB position ordering
-	// is: [queued_user_N, assistant_N+1].
+	// Atomically clear active turn flag and take any deferred user message.
+	// When an assistant message exists, both are stored in a single DB
+	// transaction. Position ordering: [assistant, queued_user].
 	pendingFinal := proc.EndTurnAndTakePending()
-	m.storePendingUserMessage(flushCtx, convID, pendingFinal)
 
 	// Store any remaining assistant message (with full enrichment)
 	if currentAssistantMessage != "" {
@@ -1472,7 +1488,7 @@ outer:
 
 		durationMs := int(time.Since(turnStartTime).Milliseconds())
 
-		if err := m.store.AddMessageToConversation(flushCtx, convID, models.Message{
+		finalAssistantMsg := models.Message{
 			ID:              uuid.New().String()[:8],
 			Role:            "assistant",
 			Content:         currentAssistantMessage,
@@ -1483,9 +1499,26 @@ outer:
 			DurationMs:      durationMs,
 			Timeline:        timeline,
 			Timestamp:       time.Now(),
-		}); err != nil {
-			logger.Manager.Errorf("Failed to store final assistant message for conv %s: %v", convID, err)
 		}
+		// Atomically store assistant + deferred user message in a
+		// single transaction so both succeed or fail together.
+		finalMsgs := []models.Message{finalAssistantMsg}
+		if pendingFinal != nil {
+			finalMsgs = append(finalMsgs, *pendingFinal)
+		}
+		if err := m.store.AddMessagesToConversation(flushCtx, convID, finalMsgs); err != nil {
+			logger.Manager.Errorf("Failed to store final messages for conv %s: %v", convID, err)
+		}
+		// Save attachments for the deferred user message (best-effort)
+		if pendingFinal != nil && len(pendingFinal.Attachments) > 0 {
+			if err := m.store.SaveAttachments(flushCtx, pendingFinal.ID, pendingFinal.Attachments); err != nil {
+				logger.Manager.Errorf("Failed to save attachments for deferred message: %v", err)
+			}
+		}
+		pendingFinal = nil // consumed
+	} else if pendingFinal != nil {
+		// No assistant message — just persist the deferred user message
+		m.storePendingUserMessage(flushCtx, convID, pendingFinal)
 	}
 
 	// Clear snapshot on process exit — but only if this process is still the current
