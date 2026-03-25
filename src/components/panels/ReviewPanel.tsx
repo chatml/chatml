@@ -38,7 +38,9 @@ import { useAppStore } from '@/stores/appStore';
 import {
   listReviewComments,
   updateReviewComment as apiUpdateReviewComment,
+  listReviewScorecards,
 } from '@/lib/api';
+import type { ReviewScorecardDTO, ReviewScore } from '@/lib/api/sessions';
 import type { Attachment, ReviewComment } from '@/lib/types';
 import { dispatchAppEvent } from '@/lib/custom-events';
 
@@ -69,6 +71,7 @@ export function ReviewPanel({ workspaceId, sessionId, onFileSelect, onSendFeedba
   const [collapsedFiles, setCollapsedFiles] = useState<Set<string>>(new Set());
   const [groupByFile, setGroupByFile] = useState(false);
   const [addedToChatIds, setAddedToChatIds] = useState<Set<string>>(new Set());
+  const [scorecards, setScorecards] = useState<ReviewScorecardDTO[]>([]);
 
   const comments = useAppStore((s) =>
     sessionId ? s.reviewComments[sessionId] || EMPTY : EMPTY
@@ -102,6 +105,11 @@ export function ReviewPanel({ workspaceId, sessionId, onFileSelect, onSendFeedba
       .finally(() => {
         if (!cancelled) setLoading(false);
       });
+
+    // Also fetch scorecards
+    listReviewScorecards(workspaceId, sessionId)
+      .then((data) => { if (!cancelled) setScorecards(data); })
+      .catch(() => {});
 
     return () => { cancelled = true; };
   }, [workspaceId, sessionId, setReviewComments]);
@@ -305,6 +313,47 @@ export function ReviewPanel({ workspaceId, sessionId, onFileSelect, onSendFeedba
           </TooltipContent>
         </Tooltip>
       </div>
+
+      {/* Scorecards */}
+      {scorecards.length > 0 && (
+        <div className="border-b px-2 py-2 space-y-2">
+          {scorecards.map((sc) => {
+            let scores: ReviewScore[] = [];
+            try { scores = JSON.parse(sc.scores); } catch {}
+            const avg = scores.length > 0
+              ? scores.reduce((s, d) => s + d.score, 0) / scores.length
+              : 0;
+            return (
+              <div key={sc.id} className="rounded-md border bg-surface-1 p-2">
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="text-xs font-medium capitalize">{sc.reviewType} Review</span>
+                  <span className="text-[10px] text-muted-foreground">{avg.toFixed(1)}/10 avg</span>
+                </div>
+                <div className="space-y-1">
+                  {scores.map((d, i) => (
+                    <div key={i} className="flex items-center gap-1.5">
+                      <span className="text-[10px] text-muted-foreground w-20 truncate shrink-0">{d.dimension}</span>
+                      <div className="flex-1 h-1.5 rounded-full bg-muted overflow-hidden">
+                        <div
+                          className={cn(
+                            'h-full rounded-full transition-all',
+                            d.score >= 7 ? 'bg-green-500' : d.score >= 4 ? 'bg-amber-500' : 'bg-red-500',
+                          )}
+                          style={{ width: `${(d.score / (d.maxScore || 10)) * 100}%` }}
+                        />
+                      </div>
+                      <span className="text-[10px] text-muted-foreground w-6 text-right shrink-0">{d.score}/{d.maxScore || 10}</span>
+                    </div>
+                  ))}
+                </div>
+                {sc.summary && (
+                  <p className="text-[10px] text-muted-foreground mt-1.5 line-clamp-2">{sc.summary}</p>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
 
       {/* Comments list */}
       {loading ? (

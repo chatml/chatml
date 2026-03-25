@@ -155,6 +155,51 @@ const REVIEW_PROMPTS: Record<string, string> = {
     '- suggestion: Minor cleanup items that are nice-to-have before merge\n\n' +
     'Do NOT flag: Pre-existing TODOs unrelated to the current changes, console.error or console.warn used for intentional error reporting, test files that use console.log for test debugging, type assertions (as SomeType) that are narrowing not widening. ' +
     REVIEW_SUMMARY + MARKDOWN_INSTRUCTION,
+  product:
+    'Perform a product-focused review of the changes in this session. ' + REVIEW_TOOL_INSTRUCTIONS +
+    'Think like a product owner: does this change deliver user value without scope creep?\n\n' +
+    'Review strategy:\n' +
+    '1. Start with get_workspace_diff summary to understand the scope and intent of the changes\n' +
+    '2. For each changed file, evaluate whether the change aligns with stated requirements\n' +
+    '3. Look at the full change set holistically — does it add unnecessary complexity?\n' +
+    '4. Check that edge cases users would encounter are handled gracefully\n\n' +
+    'Check for:\n' +
+    '- Scope creep: Features, behaviors, or UI elements not in the original requirement. Extra configurability or options that add complexity without clear user value. "While I\'m here" refactors unrelated to the task.\n' +
+    '- User value: Does every change contribute to a clear user-facing benefit? Are there changes that only benefit developers without improving the product?\n' +
+    '- Requirement alignment: Do the changes actually solve the stated problem? Are there requirements that appear to be missed or partially implemented?\n' +
+    '- Unnecessary complexity: Over-engineered solutions for simple problems. Premature abstractions. Feature flags or configuration options that add cognitive load without clear need.\n' +
+    '- Feature completeness: Missing empty states, loading states, or error states that users will encounter. Missing keyboard shortcuts or accessibility paths for new interactions.\n' +
+    '- Edge cases from user perspective: What happens with zero items, one item, many items? What if the user is offline, has slow network, or uses a screen reader?\n' +
+    '- Copy and messaging: Are user-facing strings clear, consistent, and helpful? Are error messages actionable?\n\n' +
+    'Severity guidance:\n' +
+    '- error: Scope creep (significant work outside requirements), missing core requirements, broken user flows\n' +
+    '- warning: Partial implementations that will confuse users, unclear copy, missing edge case handling\n' +
+    '- suggestion: Opportunities to simplify, better copy, additional empty states\n\n' +
+    'Do NOT flag: Code quality issues (that\'s for deep review), performance concerns (that\'s for performance review), security issues (that\'s for security review). Stay in the product lane. ' +
+    REVIEW_SUMMARY + MARKDOWN_INSTRUCTION,
+  design:
+    'Perform a design-focused review of the changes in this session. ' + REVIEW_TOOL_INSTRUCTIONS +
+    'Think like a designer: evaluate visual quality, UX consistency, and accessibility.\n\n' +
+    'Review strategy:\n' +
+    '1. Start with get_workspace_diff summary to identify UI-related changes\n' +
+    '2. For each UI file (components, styles, layouts), read the full file to understand the visual context\n' +
+    '3. Check for consistency with existing patterns in sibling components\n' +
+    '4. Look for accessibility and interaction quality issues\n\n' +
+    'Check for:\n' +
+    '- UX consistency: Do new UI elements match existing patterns? Same spacing, sizing, colors, fonts, border radii, and hover/active states as similar elements?\n' +
+    '- Visual hierarchy: Is the information hierarchy clear? Primary actions visually prominent, secondary actions subdued? Proper use of typography weights and sizes?\n' +
+    '- Accessibility (WCAG): Color contrast ratios (4.5:1 minimum for text), focus indicators on interactive elements, aria-labels on icon-only buttons, keyboard navigability, screen reader support\n' +
+    '- Interaction patterns: Hover states, loading states, disabled states, transition animations. Do interactions feel responsive? Are click targets at least 44x44px on touch?\n' +
+    '- Responsive behavior: Will the layout break or look odd at different panel widths? Are text elements properly truncated with ellipsis?\n' +
+    '- AI slop detection: Generic placeholder text that reads like AI output (e.g., "Unlock the power of...", "Seamlessly integrate..."). Overly verbose tooltip text. Inconsistent capitalization or tone.\n' +
+    '- Component reuse: Are new components reinventing existing primitives? Should an existing Button, Badge, Tooltip, or Dialog variant be used instead?\n' +
+    '- Dark mode: If the app supports dark mode, are new color values using theme tokens (e.g., `text-foreground`, `bg-surface-1`) rather than hardcoded colors?\n\n' +
+    'Severity guidance:\n' +
+    '- error: Accessibility violations (missing aria-labels, no keyboard support, insufficient contrast), broken layouts, unusable interactions\n' +
+    '- warning: Inconsistent styling vs existing patterns, missing states (hover, loading, error), hardcoded colors instead of theme tokens\n' +
+    '- suggestion: Improved spacing, better copy, animation polish, component reuse opportunities\n\n' +
+    'Do NOT flag: Business logic bugs (that\'s for deep review), performance concerns, backend changes with no UI impact. Stay in the design lane. ' +
+    REVIEW_SUMMARY + MARKDOWN_INSTRUCTION,
 };
 
 const REVIEW_TYPE_META: { key: string; label: string; placeholder: string }[] = [
@@ -164,6 +209,8 @@ const REVIEW_TYPE_META: { key: string; label: string; placeholder: string }[] = 
   { key: 'performance', label: 'Performance', placeholder: 'e.g., Check IPC overhead and main thread blocking' },
   { key: 'architecture', label: 'Architecture', placeholder: 'e.g., Verify new hooks follow the existing store pattern' },
   { key: 'premerge', label: 'Pre-merge Check', placeholder: 'e.g., Ensure all TODO comments reference a ticket number' },
+  { key: 'product', label: 'Product Review', placeholder: 'e.g., Check for scope creep and missing user edge cases' },
+  { key: 'design', label: 'Design Review', placeholder: 'e.g., Verify dark mode tokens and accessibility compliance' },
 ];
 
 const REVIEW_TYPE_LABELS: Record<string, string> = Object.fromEntries(

@@ -46,6 +46,7 @@ import {
   ExternalLink,
   FolderGit2,
   Unlink,
+  Layers,
 } from 'lucide-react';
 import { resolveWorkspaceColor } from '@/lib/workspace-colors';
 import { updateSession as apiUpdateSession } from '@/lib/api';
@@ -85,6 +86,8 @@ const REVIEW_TYPES = [
   { icon: Gauge, title: 'Performance', key: 'performance', description: 'Check for regressions, memory leaks, and slow paths', color: 'green', shortcut: '4' },
   { icon: Boxes, title: 'Architecture', key: 'architecture', description: 'Evaluate design patterns, coupling, and separation of concerns', color: 'purple', shortcut: '5' },
   { icon: GitMerge, title: 'Pre-merge Check', key: 'premerge', description: 'Final review before merge — verify tests, conflicts, and coverage', color: 'teal', shortcut: '6' },
+  { icon: Layers, title: 'Product Review', key: 'product', description: 'Check for scope creep, user value, and requirement alignment', color: 'amber', shortcut: '7' },
+  { icon: Eye, title: 'Design Review', key: 'design', description: 'Evaluate UX consistency, accessibility, and visual quality', color: 'pink', shortcut: '8' },
 ] as const;
 
 const REVIEW_COLOR_CLASSES: Record<string, { icon: string; bg: string; hoverBg: string }> = {
@@ -94,6 +97,7 @@ const REVIEW_COLOR_CLASSES: Record<string, { icon: string; bg: string; hoverBg: 
   green:  { icon: 'text-green-500',  bg: 'bg-green-500/10',  hoverBg: 'group-hover:bg-green-500/20' },
   purple: { icon: 'text-purple-500', bg: 'bg-purple-500/10', hoverBg: 'group-hover:bg-purple-500/20' },
   teal:   { icon: 'text-teal-500',   bg: 'bg-teal-500/10',   hoverBg: 'group-hover:bg-teal-500/20' },
+  pink:   { icon: 'text-pink-500',   bg: 'bg-pink-500/10',   hoverBg: 'group-hover:bg-pink-500/20' },
 };
 
 // Auto-sync sprint phase → taskStatus so sidebar grouping stays consistent.
@@ -449,6 +453,16 @@ export function SessionToolbarContent() {
     } else if (!prevPhase) {
       setSprintToolbarOpen(true);
     }
+
+    // Phase-mode auto-linking: sync plan mode and thinking with sprint phase
+    if (value === 'plan' && prevPhase !== 'plan') {
+      dispatchAppEvent('set-plan-mode', { active: true });
+    } else if (prevPhase === 'plan' && value !== 'plan') {
+      dispatchAppEvent('set-plan-mode', { active: false });
+    }
+    if (value === 'think' && prevPhase !== 'think') {
+      dispatchAppEvent('set-thinking-level', { level: 'high' });
+    }
   }, [selectedSession, selectedWorkspaceId, storeUpdateSession, showError, setSprintToolbarOpen]);
 
   // Listen for toggle-sprint events from slash command
@@ -471,6 +485,66 @@ export function SessionToolbarContent() {
       handleSprintPhaseChange('build');
     }
   }, [selectedSession, handleSprintPhaseChange]);
+
+  // /ship command: commit, push, create PR + advance to Ship phase
+  useAppEventListener('sprint-ship', () => {
+    if (isAgentWorking) return;
+    handleActionWithBubbleAndTemplate(
+      'Ship it — commit, push, and create a pull request',
+      ACTION_TEMPLATES['ship'],
+      'ship',
+    );
+    if (selectedSession?.sprintPhase && selectedSession.sprintPhase !== 'ship' && selectedSession.sprintPhase !== 'reflect') {
+      handleSprintPhaseChange('ship');
+    }
+  }, [isAgentWorking, selectedSession, handleActionWithBubbleAndTemplate, handleSprintPhaseChange]);
+
+  // /deploy command: merge PR + monitor CI + advance to Reflect phase
+  useAppEventListener('sprint-deploy', () => {
+    if (isAgentWorking) return;
+    handleActionWithBubbleAndTemplate(
+      'Deploy — merge the PR and monitor CI',
+      ACTION_TEMPLATES['deploy'],
+      'deploy',
+    );
+    if (selectedSession?.sprintPhase && selectedSession.sprintPhase !== 'reflect') {
+      handleSprintPhaseChange('reflect');
+    }
+  }, [isAgentWorking, selectedSession, handleActionWithBubbleAndTemplate, handleSprintPhaseChange]);
+
+  // /investigate command: structured 5-phase debugging
+  useAppEventListener('investigate', () => {
+    if (isAgentWorking) return;
+    handleActionWithBubbleAndTemplate(
+      'Investigate — structured debugging with root cause analysis',
+      ACTION_TEMPLATES['investigate'],
+      'investigate',
+    );
+  }, [isAgentWorking, handleActionWithBubbleAndTemplate]);
+
+  // /autoplan command: orchestrated review pipeline + advance to Review phase
+  useAppEventListener('autoplan', () => {
+    if (isAgentWorking) return;
+    handleActionWithBubbleAndTemplate(
+      'Auto Review Pipeline — product, design, code, and architecture reviews',
+      ACTION_TEMPLATES['autoplan'],
+      'autoplan',
+    );
+    // Auto-advance to review phase if sprint is active and currently before review
+    if (selectedSession?.sprintPhase && !['review', 'test', 'ship', 'reflect'].includes(selectedSession.sprintPhase)) {
+      handleSprintPhaseChange('review');
+    }
+  }, [isAgentWorking, selectedSession, handleActionWithBubbleAndTemplate, handleSprintPhaseChange]);
+
+  // /document-release command: post-ship documentation audit
+  useAppEventListener('document-release', () => {
+    if (isAgentWorking) return;
+    handleActionWithBubbleAndTemplate(
+      'Document Release — audit and update documentation',
+      ACTION_TEMPLATES['document-release'],
+      'document-release',
+    );
+  }, [isAgentWorking, handleActionWithBubbleAndTemplate]);
 
   const toolbarConfig = useMemo(() => {
     if (!selectedWorkspace || !selectedSession) return {};
@@ -573,11 +647,14 @@ export function SessionToolbarContent() {
               <Button
                 variant="secondary"
                 size="sm"
-                className="h-6 px-2 gap-1.5 text-xs rounded-r-none rounded-l-sm border-r-0 transition-none"
-                onClick={() => dispatchReview('quick')}
+                className={cn(
+                  "h-6 px-2 gap-1.5 text-xs rounded-r-none rounded-l-sm border-r-0 transition-none",
+                  selectedSession.sprintPhase === 'review' && "ring-1 ring-purple-500/30",
+                )}
+                onClick={() => dispatchReview(selectedSession.sprintPhase === 'review' ? 'deep' : 'quick')}
               >
-                <Eye className="h-3.5 w-3.5" />
-                Review
+                <Eye className={cn("h-3.5 w-3.5", selectedSession.sprintPhase === 'review' && "text-purple-500")} />
+                {selectedSession.sprintPhase === 'review' ? 'Deep Review' : 'Review'}
               </Button>
               <Popover open={reviewPopoverOpen} onOpenChange={setReviewPopoverOpen}>
                 <PopoverTrigger asChild>
@@ -594,7 +671,7 @@ export function SessionToolbarContent() {
                   className="w-80 p-1.5"
                   onKeyDown={(e) => {
                     const idx = parseInt(e.key, 10);
-                    if (idx >= 1 && idx <= 6) {
+                    if (idx >= 1 && idx <= REVIEW_TYPES.length) {
                       e.preventDefault();
                       dispatchReview(REVIEW_TYPES[idx - 1].key);
                       setReviewPopoverOpen(false);

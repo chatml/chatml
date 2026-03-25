@@ -182,6 +182,8 @@ func NewRouter(ctx context.Context, s *store.SQLiteStore, hub *Hub, agentMgr *ag
 		r.Get("/{id}/sessions/{sessionId}/comments", h.ListReviewComments)
 		r.With(commentRateLimiter).Post("/{id}/sessions/{sessionId}/comments", h.CreateReviewComment)
 		r.Get("/{id}/sessions/{sessionId}/comments/stats", h.GetReviewCommentStats)
+		r.Post("/{id}/sessions/{sessionId}/review-scorecards", h.CreateReviewScorecard)
+		r.Get("/{id}/sessions/{sessionId}/review-scorecards", h.ListReviewScorecards)
 		r.Patch("/{id}/sessions/{sessionId}/comments/{commentId}", h.UpdateReviewComment)
 		r.Delete("/{id}/sessions/{sessionId}/comments/{commentId}", h.DeleteReviewComment)
 		// CI/Actions endpoints
@@ -263,6 +265,7 @@ func NewRouter(ctx context.Context, s *store.SQLiteStore, hub *Hub, agentMgr *ag
 		r.Post("/{convId}/approve-tool", h.ApproveTool)
 		r.Post("/{convId}/answer-question", h.AnswerConversationQuestion)
 		r.Post("/{convId}/answer-sprint-phase", h.AnswerSprintPhaseProposal)
+		r.Post("/{convId}/answer-qa-handoff", h.AnswerQAHandoff)
 		r.Post("/{convId}/resume-agent", h.ResumeAgent)
 		r.Post("/{convId}/clear-snapshot", h.ClearStreamingSnapshot)
 		r.Delete("/{convId}", h.DeleteConversation)

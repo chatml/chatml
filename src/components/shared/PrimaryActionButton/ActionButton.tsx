@@ -17,6 +17,7 @@ const DROPDOWN_COLOR_CLASSES: Record<DropdownColor, { icon: string; bg: string; 
   green:  { icon: 'text-green-500',  bg: 'bg-green-500/10',  hoverBg: 'group-hover:bg-green-500/20' },
   amber:  { icon: 'text-amber-500',  bg: 'bg-amber-500/10',  hoverBg: 'group-hover:bg-amber-500/20' },
   red:    { icon: 'text-red-500',    bg: 'bg-red-500/10',    hoverBg: 'group-hover:bg-red-500/20' },
+  pink:   { icon: 'text-pink-500',   bg: 'bg-pink-500/10',   hoverBg: 'group-hover:bg-pink-500/20' },
 };
 
 export function ActionButton({

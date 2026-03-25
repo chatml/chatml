@@ -7,6 +7,7 @@ import { createCommentTools } from "./tools/comments.js";
 import { createPRTools } from "./tools/pr.js";
 import { createScriptTools } from "./tools/scripts.js";
 import { createSprintTools } from "./tools/sprint.js";
+import { createQATools } from "./tools/qa.js";
 import { buildHeaders, BACKEND_URL } from "./tools/fetch-utils.js";
 
 function sessionApiUrl(context: WorkspaceContext, path: string): string {
@@ -265,6 +266,9 @@ export function createChatMLMcpServer(options: McpServerOptions) {
 
       // Sprint phase tools
       ...createSprintTools(context),
+
+      // QA browser handoff tools
+      ...createQATools(context),
     ],
   });
 }

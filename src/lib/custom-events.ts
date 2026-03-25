@@ -20,6 +20,20 @@ export interface AppCustomEventMap {
   'toggle-sprint': void;
   /** Plan was approved (dispatched by ChatInput so toolbar can auto-advance sprint phase) */
   'plan-approved': void;
+  /** Set plan mode to a specific state (dispatched by sprint phase auto-linking) */
+  'set-plan-mode': { active: boolean };
+  /** Set thinking level to a specific value (dispatched by sprint phase auto-linking) */
+  'set-thinking-level': { level: string };
+  /** Ship workflow: commit, push, create PR */
+  'sprint-ship': void;
+  /** Deploy workflow: merge PR, monitor CI */
+  'sprint-deploy': void;
+  /** Investigate: structured 5-phase debugging with root cause analysis */
+  'investigate': void;
+  /** Autoplan: orchestrated product/design/code/architecture review pipeline */
+  'autoplan': void;
+  /** Document-release: post-ship documentation audit */
+  'document-release': void;
 }
 
 type EventDetail<K extends keyof AppCustomEventMap> =

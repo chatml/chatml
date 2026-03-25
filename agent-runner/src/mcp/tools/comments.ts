@@ -250,5 +250,64 @@ export function createCommentTools(context: WorkspaceContext) {
       },
       { annotations: { readOnlyHint: true } }
     ),
+
+    // Submit a structured review scorecard with dimension scores
+    tool(
+      "submit_review_scorecard",
+      "Submit a structured review scorecard with dimension scores. Use after completing a product, design, or other review to provide quantitative scoring across multiple dimensions.",
+      {
+        reviewType: z.string().describe("Type of review (e.g., 'product', 'design', 'security', 'performance')"),
+        scores: z.array(z.object({
+          dimension: z.string().describe("What is being scored (e.g., 'UX Consistency', 'Accessibility', 'Scope Alignment')"),
+          score: z.coerce.number().min(0).max(10).describe("Score from 0 to 10"),
+          maxScore: z.coerce.number().min(1).max(10).optional().describe("Maximum possible score (default 10)"),
+          notes: z.string().optional().describe("Brief explanation for this score"),
+        })).min(1).describe("Array of dimension scores"),
+        summary: z.string().describe("Overall summary of the review findings"),
+      },
+      async ({ reviewType, scores, summary }) => {
+        try {
+          const response = await fetchWithRetry(
+            `${BACKEND_URL}/api/repos/${context.workspaceId}/sessions/${context.sessionId}/review-scorecards`,
+            {
+              method: "POST",
+              headers: buildHeaders(true),
+              body: JSON.stringify({ reviewType, scores, summary }),
+            }
+          );
+
+          if (!response.ok) {
+            const error = await response.text();
+            return {
+              content: [{
+                type: "text" as const,
+                text: `Failed to submit review scorecard: ${response.status} ${error}`,
+              }],
+            };
+          }
+
+          const scorecard = await response.json();
+          const avgScore = scores.reduce((sum, s) => sum + s.score, 0) / scores.length;
+          const formatted = scores.map(s =>
+            `  ${s.dimension}: ${s.score}/${s.maxScore || 10}${s.notes ? ` — ${s.notes}` : ''}`
+          ).join("\n");
+
+          return {
+            content: [{
+              type: "text" as const,
+              text: `Review scorecard submitted (id: ${scorecard.id})\n\nType: ${reviewType}\nAverage: ${avgScore.toFixed(1)}/10\n\nScores:\n${formatted}\n\nSummary: ${summary}`,
+            }],
+          };
+        } catch (error) {
+          return {
+            content: [{
+              type: "text" as const,
+              text: `Error submitting review scorecard: ${formatFetchError(error)}`,
+            }],
+          };
+        }
+      },
+      { annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true } }
+    ),
   ];
 }

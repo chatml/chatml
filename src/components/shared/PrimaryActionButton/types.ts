@@ -15,13 +15,15 @@ export type PrimaryActionType =
   // Sprint phase actions
   | 'sprint-think'
   | 'sprint-review'
-  | 'sprint-test';
+  | 'sprint-test'
+  | 'sprint-ship'
+  | 'sprint-deploy';
 
 export type ButtonVariant = 'default' | 'destructive' | 'success' | 'warning';
 
 export type ActionTier = 'alert' | 'action' | 'complete';
 
-export type DropdownColor = 'blue' | 'purple' | 'teal' | 'green' | 'amber' | 'red';
+export type DropdownColor = 'blue' | 'purple' | 'teal' | 'green' | 'amber' | 'red' | 'pink';
 
 export interface DropdownAction {
   label: string;

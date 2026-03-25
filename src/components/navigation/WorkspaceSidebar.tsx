@@ -92,7 +92,7 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
 import { getWorkspaceColor, WORKSPACE_COLORS } from '@/lib/workspace-colors';
-import { TASK_STATUS_OPTIONS, getPRStatusInfo } from '@/lib/session-fields';
+import { TASK_STATUS_OPTIONS, getPRStatusInfo, getSprintPhaseOption } from '@/lib/session-fields';
 import { TaskStatusIcon } from '@/components/icons/TaskStatusIcon';
 import { useToast } from '@/components/ui/toast';
 import {
@@ -1879,12 +1879,26 @@ function SessionRow({
                     )}
                   </div>
                 </div>
-                {/* Second line: project indicator · PR info · status (only when there's meaningful content) */}
-                {sidebarShowSessionMeta && (hasPR || (showProjectIndicator && workspaceName)) && (
+                {/* Second line: sprint phase · project indicator · PR info · status */}
+                {sidebarShowSessionMeta && (hasPR || (showProjectIndicator && workspaceName) || session.sprintPhase) && (
                   <div className="flex items-center gap-1 mt-0.5 pl-1 text-sm text-muted-foreground">
+                    {/* Sprint phase pill */}
+                    {session.sprintPhase && (() => {
+                      const phaseOpt = getSprintPhaseOption(session.sprintPhase);
+                      const PhaseIcon = phaseOpt.icon;
+                      return (
+                        <span className={cn('inline-flex items-center gap-0.5 shrink-0 text-[10px] font-medium rounded px-1 py-px', phaseOpt.activeClass)}>
+                          <PhaseIcon className="h-2.5 w-2.5" />
+                          {phaseOpt.label}
+                        </span>
+                      );
+                    })()}
                     {/* Project indicator for non-project grouping modes */}
                     {showProjectIndicator && workspaceColor && (
-                      <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: workspaceColor }} />
+                      <>
+                        {session.sprintPhase && <span className="text-muted-foreground/50">·</span>}
+                        <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: workspaceColor }} />
+                      </>
                     )}
                     {showProjectIndicator && workspaceName && (
                       <span className="shrink-0 text-muted-foreground/70">{workspaceName}</span>
@@ -1892,7 +1906,7 @@ function SessionRow({
                     {/* PR badge if applicable */}
                     {hasPR && session.prNumber && (
                       <>
-                        {showProjectIndicator && workspaceName && <span className="text-muted-foreground/50">·</span>}
+                        {(showProjectIndicator && workspaceName || session.sprintPhase) && <span className="text-muted-foreground/50">·</span>}
                         <PRNumberBadge
                           prNumber={session.prNumber}
                           prStatus={session.prStatus as 'open' | 'merged' | 'closed'}
@@ -1905,7 +1919,7 @@ function SessionRow({
                     )}
                     {hasPR && !session.prNumber && (
                       <>
-                        {showProjectIndicator && workspaceName && <span className="text-muted-foreground/50">·</span>}
+                        {(showProjectIndicator && workspaceName || session.sprintPhase) && <span className="text-muted-foreground/50">·</span>}
                         <GitPullRequest className="h-3 w-3 shrink-0 text-nav-icon-prs" />
                       </>
                     )}

@@ -477,3 +477,20 @@ export async function answerSprintPhaseProposal(
     throw new ApiError(text || `HTTP ${res.status}`, res.status, text);
   }
 }
+
+export async function answerQAHandoff(
+  convId: string,
+  requestId: string,
+  completed: boolean,
+  notes?: string
+): Promise<void> {
+  const res = await fetchWithAuth(`${getApiBase()}/api/conversations/${convId}/answer-qa-handoff`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ requestId, completed, notes }),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new ApiError(text || `HTTP ${res.status}`, res.status, text);
+  }
+}

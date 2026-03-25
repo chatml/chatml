@@ -511,6 +511,24 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
     }
   }, [planModeActive, planModeEnabled, isStreaming, pendingPlanApproval, selectedConversationId, setPlanModeActive]);
 
+  // Sprint phase auto-linking: set plan mode to a specific state
+  useAppEventListener('set-plan-mode', (detail) => {
+    if (detail?.active !== undefined && detail.active !== planModeEnabled) {
+      setPlanModeEnabled(detail.active);
+      if (selectedConversationId) {
+        setPlanModeActive(selectedConversationId, detail.active);
+        setConversationPlanMode(selectedConversationId, detail.active).catch(() => {});
+      }
+    }
+  }, [planModeEnabled, selectedConversationId, setPlanModeActive]);
+
+  // Sprint phase auto-linking: set thinking level to a specific value
+  useAppEventListener('set-thinking-level', (detail) => {
+    if (detail?.level) {
+      setThinkingLevel(detail.level as ThinkingLevel);
+    }
+  }, [setThinkingLevel]);
+
   // Restore per-session toggle states when switching sessions
   const prevSessionRef = useRef<string | null>(null);
   useEffect(() => {
