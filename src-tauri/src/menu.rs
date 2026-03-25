@@ -1,7 +1,4 @@
-use tauri::menu::{
-    IconMenuItemBuilder, Menu, MenuBuilder, MenuItemBuilder, NativeIcon, PredefinedMenuItem,
-    SubmenuBuilder,
-};
+use tauri::menu::{Menu, MenuBuilder, MenuItemBuilder, PredefinedMenuItem, SubmenuBuilder};
 
 /// Create the application menu.
 ///
@@ -16,8 +13,7 @@ pub fn create_menu(app: &tauri::AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
         .item(&MenuItemBuilder::with_id("check_for_updates", "Check for Updates...").build(app)?)
         .separator()
         .item(
-            &IconMenuItemBuilder::with_id("settings", "Settings...")
-                .native_icon(NativeIcon::PreferencesGeneral)
+            &MenuItemBuilder::with_id("settings", "Settings...")
                 .accelerator("CmdOrCtrl+,")
                 .build(app)?,
         )
@@ -58,11 +54,7 @@ pub fn create_menu(app: &tauri::AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
                 .build(app)?,
         )
         .separator()
-        .item(
-            &IconMenuItemBuilder::with_id("add_workspace", "Add Repository...")
-                .native_icon(NativeIcon::Folder)
-                .build(app)?,
-        )
+        .item(&MenuItemBuilder::with_id("add_workspace", "Add Repository...").build(app)?)
         .separator()
         .item(
             &MenuItemBuilder::with_id("save_file", "Save")
@@ -121,14 +113,12 @@ pub fn create_menu(app: &tauri::AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
     // 4. View menu
     let view_menu = SubmenuBuilder::new(app, "View")
         .item(
-            &IconMenuItemBuilder::with_id("toggle_left_sidebar", "Left Sidebar")
-                .native_icon(NativeIcon::ColumnView)
+            &MenuItemBuilder::with_id("toggle_left_sidebar", "Left Sidebar")
                 .accelerator("CmdOrCtrl+B")
                 .build(app)?,
         )
         .item(
-            &IconMenuItemBuilder::with_id("toggle_right_sidebar", "Right Sidebar")
-                .native_icon(NativeIcon::ColumnView)
+            &MenuItemBuilder::with_id("toggle_right_sidebar", "Right Sidebar")
                 .accelerator("CmdOrCtrl+Alt+B")
                 .enabled(false)
                 .build(app)?,
@@ -179,8 +169,7 @@ pub fn create_menu(app: &tauri::AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
         )
         .separator()
         .item(
-            &IconMenuItemBuilder::with_id("enter_full_screen", "Enter Full Screen")
-                .native_icon(NativeIcon::EnterFullScreen)
+            &MenuItemBuilder::with_id("enter_full_screen", "Enter Full Screen")
                 .accelerator("Ctrl+Super+F")
                 .build(app)?,
         )
@@ -189,15 +178,13 @@ pub fn create_menu(app: &tauri::AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
     // 5. Go menu
     let go_menu = SubmenuBuilder::new(app, "Go")
         .item(
-            &IconMenuItemBuilder::with_id("navigate_back", "Back")
-                .native_icon(NativeIcon::GoLeft)
+            &MenuItemBuilder::with_id("navigate_back", "Back")
                 .accelerator("CmdOrCtrl+[")
                 .enabled(false)
                 .build(app)?,
         )
         .item(
-            &IconMenuItemBuilder::with_id("navigate_forward", "Forward")
-                .native_icon(NativeIcon::GoRight)
+            &MenuItemBuilder::with_id("navigate_forward", "Forward")
                 .accelerator("CmdOrCtrl+]")
                 .enabled(false)
                 .build(app)?,
@@ -216,8 +203,7 @@ pub fn create_menu(app: &tauri::AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
         )
         .separator()
         .item(
-            &IconMenuItemBuilder::with_id("search_workspaces", "Search Workspaces")
-                .native_icon(NativeIcon::QuickLook)
+            &MenuItemBuilder::with_id("search_workspaces", "Search Workspaces")
                 .accelerator("CmdOrCtrl+Shift+F")
                 .build(app)?,
         )
@@ -309,14 +295,12 @@ pub fn create_menu(app: &tauri::AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
         .item(&review_submenu)
         .separator()
         .item(
-            &IconMenuItemBuilder::with_id("open_in_vscode", "Open in VS Code")
-                .native_icon(NativeIcon::Share)
+            &MenuItemBuilder::with_id("open_in_vscode", "Open in VS Code")
                 .enabled(false)
                 .build(app)?,
         )
         .item(
-            &IconMenuItemBuilder::with_id("open_terminal", "Open in Terminal")
-                .native_icon(NativeIcon::Computer)
+            &MenuItemBuilder::with_id("open_terminal", "Open in Terminal")
                 .enabled(false)
                 .build(app)?,
         )
@@ -325,27 +309,23 @@ pub fn create_menu(app: &tauri::AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
     // 7. Git menu - all items start disabled
     let git_menu = SubmenuBuilder::new(app, "Git")
         .item(
-            &IconMenuItemBuilder::with_id("git_commit", "Commit Changes...")
-                .native_icon(NativeIcon::MenuOnState)
+            &MenuItemBuilder::with_id("git_commit", "Commit Changes...")
                 .enabled(false)
                 .build(app)?,
         )
         .item(
-            &IconMenuItemBuilder::with_id("git_create_pr", "Create Pull Request...")
-                .native_icon(NativeIcon::Share)
+            &MenuItemBuilder::with_id("git_create_pr", "Create Pull Request...")
                 .enabled(false)
                 .build(app)?,
         )
         .item(
-            &IconMenuItemBuilder::with_id("git_sync", "Sync with Main")
-                .native_icon(NativeIcon::Refresh)
+            &MenuItemBuilder::with_id("git_sync", "Sync with Main")
                 .enabled(false)
                 .build(app)?,
         )
         .separator()
         .item(
-            &IconMenuItemBuilder::with_id("git_copy_branch", "Copy Branch Name")
-                .native_icon(NativeIcon::MultipleDocuments)
+            &MenuItemBuilder::with_id("git_copy_branch", "Copy Branch Name")
                 .enabled(false)
                 .build(app)?,
         )
@@ -369,28 +349,15 @@ pub fn create_menu(app: &tauri::AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
 
     // 9. Help menu
     let help_menu = SubmenuBuilder::new(app, "Help")
+        .item(&MenuItemBuilder::with_id("help", "ChatML Help").build(app)?)
         .item(
-            &IconMenuItemBuilder::with_id("help", "ChatML Help")
-                .native_icon(NativeIcon::Info)
-                .build(app)?,
-        )
-        .item(
-            &IconMenuItemBuilder::with_id("keyboard_shortcuts", "Keyboard Shortcuts")
-                .native_icon(NativeIcon::Bookmarks)
+            &MenuItemBuilder::with_id("keyboard_shortcuts", "Keyboard Shortcuts")
                 .accelerator("CmdOrCtrl+/")
                 .build(app)?,
         )
         .separator()
-        .item(
-            &IconMenuItemBuilder::with_id("release_notes", "Release Notes")
-                .native_icon(NativeIcon::Bookmarks)
-                .build(app)?,
-        )
-        .item(
-            &IconMenuItemBuilder::with_id("report_issue", "Report an Issue...")
-                .native_icon(NativeIcon::Caution)
-                .build(app)?,
-        )
+        .item(&MenuItemBuilder::with_id("release_notes", "Release Notes").build(app)?)
+        .item(&MenuItemBuilder::with_id("report_issue", "Report an Issue...").build(app)?)
         .build()?;
 
     // Build the full menu bar

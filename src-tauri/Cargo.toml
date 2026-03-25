@@ -46,8 +46,8 @@ base64 = "0.22"
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.6"
 block2 = "0.6"
-objc2-app-kit = { version = "0.3", features = ["NSWorkspace", "NSImage", "NSBitmapImageRep", "NSGraphicsContext", "NSGraphics"] }
-objc2-foundation = { version = "0.3", features = ["NSString", "NSData", "NSArray", "NSDictionary", "NSError", "NSLocale"] }
+objc2-app-kit = { version = "0.3", features = ["NSWorkspace", "NSImage", "NSBitmapImageRep", "NSGraphicsContext", "NSGraphics", "NSMenu", "NSMenuItem", "NSApplication"] }
+objc2-foundation = { version = "0.3", features = ["NSString", "NSData", "NSArray", "NSDictionary", "NSError", "NSLocale", "NSProcessInfo"] }
 
 [dev-dependencies]
 serial_test = "3.1"
