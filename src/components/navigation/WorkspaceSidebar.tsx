@@ -1853,6 +1853,16 @@ function SessionRow({
                     )}>
                       {session.branch || session.name}
                     </span>
+                    {/* Always-visible status indicators */}
+                    {session.hasMergeConflict && (
+                      <span className="w-2 h-2 rounded-full bg-orange-500 shrink-0" title="Merge conflict" />
+                    )}
+                    {session.hasCheckFailures && !session.hasMergeConflict && session.prStatus !== 'merged' && (
+                      <span className="w-2 h-2 rounded-full bg-red-500 shrink-0" title="Checks failing" />
+                    )}
+                    {session.prStatus === 'merged' && (
+                      <span className="w-2 h-2 rounded-full bg-purple-500 shrink-0" title="PR merged" />
+                    )}
                   </div>
                   {/* Git line stats badge and actions container */}
                   <div className="shrink-0 flex items-center">
