@@ -94,6 +94,7 @@ import { cn } from '@/lib/utils';
 import { getWorkspaceColor, WORKSPACE_COLORS } from '@/lib/workspace-colors';
 import { TASK_STATUS_OPTIONS, getPRStatusInfo } from '@/lib/session-fields';
 import { TaskStatusIcon } from '@/components/icons/TaskStatusIcon';
+import { GitStatusIcon } from '@/components/icons/GitStatusIcon';
 import { useToast } from '@/components/ui/toast';
 import {
   Dialog,
@@ -1844,6 +1845,13 @@ function SessionRow({
                       </DropdownMenuContent>
                     </DropdownMenu>
                   )}
+                  {/* Git/PR status icon */}
+                  <GitStatusIcon
+                    prStatus={session.prStatus}
+                    checkStatus={session.checkStatus}
+                    hasMergeConflict={session.hasMergeConflict}
+                    className="w-3.5 h-3.5 shrink-0"
+                  />
                   {/* Branch name container - grows and truncates */}
                   <div className="flex items-center gap-1.5 flex-1 min-w-0 overflow-hidden">
                     <span className={cn(
@@ -1853,16 +1861,6 @@ function SessionRow({
                     )}>
                       {session.branch || session.name}
                     </span>
-                    {/* Always-visible status indicators */}
-                    {session.hasMergeConflict && (
-                      <span className="w-2 h-2 rounded-full bg-orange-500 shrink-0" title="Merge conflict" />
-                    )}
-                    {session.hasCheckFailures && !session.hasMergeConflict && session.prStatus !== 'merged' && (
-                      <span className="w-2 h-2 rounded-full bg-red-500 shrink-0" title="Checks failing" />
-                    )}
-                    {session.prStatus === 'merged' && (
-                      <span className="w-2 h-2 rounded-full bg-purple-500 shrink-0" title="PR merged" />
-                    )}
                   </div>
                   {/* Git line stats badge and actions container */}
                   <div className="shrink-0 flex items-center">
