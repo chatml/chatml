@@ -2,16 +2,20 @@
 
 import { forwardRef, useCallback, useState } from 'react';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Check } from 'lucide-react';
 import {
   ContextMenu,
   ContextMenuContent,
   ContextMenuItem,
   ContextMenuSeparator,
   ContextMenuShortcut,
+  ContextMenuSub,
+  ContextMenuSubContent,
+  ContextMenuSubTrigger,
   ContextMenuTrigger,
 } from '@/components/ui/context-menu';
 import { cn } from '@/lib/utils';
-import type { DataTableRowProps, Column } from './types';
+import type { DataTableRowProps, Column, ContextMenuItem as ContextMenuItemType } from './types';
 
 // Helper to get cell value
 function getCellValue<T>(row: T, column: Column<T>): unknown {
@@ -25,6 +29,43 @@ function getCellValue<T>(row: T, column: Column<T>): unknown {
     return row[column.accessorKey];
   }
   return null;
+}
+
+// Render a single context menu item (recursive for sub-menus)
+function renderMenuItem(item: ContextMenuItemType, idx: number): React.ReactElement | null {
+  if (item.separator) {
+    return <ContextMenuSeparator key={`sep-${idx}`} />;
+  }
+
+  if (item.children && item.children.length > 0) {
+    return (
+      <ContextMenuSub key={item.label}>
+        <ContextMenuSubTrigger disabled={item.disabled}>
+          {item.icon}
+          <span>{item.label}</span>
+        </ContextMenuSubTrigger>
+        <ContextMenuSubContent>
+          {item.children.map((child, childIdx) => renderMenuItem(child, childIdx))}
+        </ContextMenuSubContent>
+      </ContextMenuSub>
+    );
+  }
+
+  return (
+    <ContextMenuItem
+      key={item.label}
+      onClick={item.onClick}
+      disabled={item.disabled}
+      variant={item.variant}
+    >
+      {item.icon}
+      <span>{item.label}</span>
+      {item.shortcut && (
+        <ContextMenuShortcut>{item.shortcut}</ContextMenuShortcut>
+      )}
+      {item.checked && <Check className="ml-auto size-3.5 text-muted-foreground" />}
+    </ContextMenuItem>
+  );
 }
 
 // Helper to render cell alignment
@@ -170,24 +211,7 @@ function DataTableRowComponent<T>(
       <ContextMenu>
         <ContextMenuTrigger asChild>{rowContent}</ContextMenuTrigger>
         <ContextMenuContent>
-          {contextMenuItems.map((item, idx) =>
-            item.separator ? (
-              <ContextMenuSeparator key={`sep-${idx}`} />
-            ) : (
-              <ContextMenuItem
-                key={item.label}
-                onClick={item.onClick}
-                disabled={item.disabled}
-                variant={item.variant}
-              >
-                {item.icon}
-                <span>{item.label}</span>
-                {item.shortcut && (
-                  <ContextMenuShortcut>{item.shortcut}</ContextMenuShortcut>
-                )}
-              </ContextMenuItem>
-            )
-          )}
+          {contextMenuItems.map((item, idx) => renderMenuItem(item, idx))}
         </ContextMenuContent>
       </ContextMenu>
     );

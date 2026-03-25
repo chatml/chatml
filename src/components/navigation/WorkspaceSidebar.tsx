@@ -237,7 +237,7 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onGitHubRepos,
   }, [sessions]);
 
   // Sidebar grouping/sorting — only operates on non-scheduled sessions
-  const { groups: sidebarGroups, flatSessions, baseSessions, effectiveGroupBy } = useSidebarSessions({
+  const { groups: sidebarGroups, flatSessions, baseSessions, pinnedSessions, effectiveGroupBy } = useSidebarSessions({
     sessions: regularSessions,
     workspaces,
     groupBy: sidebarGroupBy,
@@ -980,6 +980,43 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onGitHubRepos,
                         {activeWorkspaceGroup && <GroupHeaderOverlay label={activeWorkspaceGroup.label} count={activeWorkspaceGroup.count} color={activeWorkspaceGroup.color} />}
                       </DragOverlay>
                     </DndContext>
+                  )}
+
+                  {/* Pinned sessions section */}
+                  {!isReorderMode && pinnedSessions.length > 0 && (
+                    <>
+                      <div className="px-3 pt-2 pb-1">
+                        <span className="text-[10px] font-semibold uppercase text-muted-foreground/60 tracking-wider">
+                          Pinned
+                        </span>
+                      </div>
+                      {pinnedSessions.map((session) => {
+                        const ws = workspaces.find((w) => w.id === session.workspaceId);
+                        return (
+                          <ErrorBoundary
+                            key={session.id}
+                            section="SessionRow"
+                            fallback={<CardErrorFallback message="Error loading session" />}
+                          >
+                            <SessionRow
+                              session={session}
+                              contentView={contentView}
+                              selectedSessionId={selectedSessionId}
+                              onSelectSession={(id, e) => handleSelectSession(session.workspaceId, id, e)}
+                              onArchiveSession={handleArchiveSession}
+                              onTaskStatusChange={handleTaskStatusChange}
+                              onOpenBranches={(e) => navigateToBranches(session.workspaceId, e)}
+                              onOpenPRs={(e) => navigateToPRs(session.workspaceId, e)}
+                              formatTimeAgo={formatTimeAgo}
+                              showProjectIndicator={hasMultipleWorkspaces && !sidebarProjectFilter}
+                              workspaceColor={workspaceColors[session.workspaceId] || getWorkspaceColor(session.workspaceId)}
+                              workspaceName={ws?.name}
+                            />
+                          </ErrorBoundary>
+                        );
+                      })}
+                      <div className="mx-2 my-1.5 border-t border-border/40" />
+                    </>
                   )}
 
                   {/* Scheduled task runs section */}

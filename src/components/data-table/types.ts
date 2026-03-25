@@ -66,14 +66,18 @@ export interface ContextMenuItem {
   icon?: ReactNode;
   /** Keyboard shortcut hint */
   shortcut?: string;
-  /** Click handler */
-  onClick: () => void;
+  /** Click handler (optional for separators and sub-menu parents) */
+  onClick?: () => void;
   /** Visual variant */
   variant?: 'default' | 'destructive';
   /** Whether this is a separator (renders a divider) */
   separator?: boolean;
   /** Whether this item is disabled */
   disabled?: boolean;
+  /** Sub-menu items — renders as a sub-trigger with chevron when present */
+  children?: ContextMenuItem[];
+  /** Whether this item shows a checkmark (for current-state indicators) */
+  checked?: boolean;
 }
 
 // Display options for the table

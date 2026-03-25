@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useCallback } from 'react';
-import { Layers, Archive, ExternalLink, Copy, FolderOpen, Eye } from 'lucide-react';
+import { Layers, Archive, ExternalLink, Copy, FolderOpen, Eye, Pin, PinOff, CircleDot } from 'lucide-react';
 import type { WorktreeSession, Workspace, SessionTaskStatus } from '@/lib/types';
 import { DataTable, type Column, type ContextMenuItem, type DisplayOptionsConfig } from '@/components/data-table';
 import {
@@ -12,7 +12,8 @@ import {
   ActionsCell,
 } from './cells';
 import { TaskStatusSelector } from '@/components/shared/TaskStatusSelector';
-import { getTaskStatusOption } from '@/lib/session-fields';
+import { getTaskStatusOption, TASK_STATUS_OPTIONS } from '@/lib/session-fields';
+import { TaskStatusIcon } from '@/components/icons/TaskStatusIcon';
 import { useAppStore } from '@/stores/appStore';
 import { updateSession as apiUpdateSession } from '@/lib/api';
 import { copyToClipboard } from '@/lib/tauri';
@@ -172,15 +173,49 @@ export function SessionsDataTable({
   // Context menu generator
   const handleContextMenu = useCallback(
     (row: SessionTableRow): ContextMenuItem[] => {
+      // Archived sessions: reduced menu
+      if (row.session.archived) {
+        const items: ContextMenuItem[] = [];
+        if (onPreviewSession) {
+          items.push(
+            {
+              label: 'Preview',
+              icon: <Eye className="h-4 w-4" />,
+              shortcut: '↩',
+              onClick: () => onPreviewSession(row.session.id),
+            },
+            { label: '', separator: true },
+          );
+        }
+        items.push(
+          {
+            label: 'Restore',
+            icon: <Archive className="h-4 w-4" />,
+            onClick: () => onUnarchiveSession(row.session.id),
+          },
+          {
+            label: 'Copy branch name',
+            icon: <Copy className="h-4 w-4" />,
+            shortcut: 'C',
+            onClick: async () => {
+              const success = await copyToClipboard(row.session.branch);
+              if (!success) showError('Failed to copy to clipboard');
+            },
+          },
+        );
+        return items;
+      }
+
+      // Active sessions: full menu
       const items: ContextMenuItem[] = [
         {
           label: 'Open session',
           icon: <FolderOpen className="h-4 w-4" />,
+          shortcut: '↩',
           onClick: () => onSelectSession(row.workspace.id, row.session.id),
         },
       ];
 
-      // Add PR link if exists
       if (row.session.prUrl) {
         items.push({
           label: 'View PR on GitHub',
@@ -189,47 +224,67 @@ export function SessionsDataTable({
         });
       }
 
-      items.push({
-        label: '',
-        separator: true,
-        onClick: () => {},
-      });
+      items.push(
+        { label: '', separator: true },
+        {
+          label: 'Set status',
+          icon: <CircleDot className="h-4 w-4" />,
+          children: TASK_STATUS_OPTIONS.map((option) => ({
+            label: option.label,
+            icon: <TaskStatusIcon status={option.value} className="h-4 w-4" />,
+            checked: row.session.taskStatus === option.value,
+            onClick: () => {
+              const prev = row.session.taskStatus;
+              storeUpdateSession(row.session.id, { taskStatus: option.value });
+              apiUpdateSession(row.workspace.id, row.session.id, { taskStatus: option.value }).catch(() => {
+                storeUpdateSession(row.session.id, { taskStatus: prev });
+                showError('Failed to update status');
+              });
+            },
+          })),
+        },
+      );
 
-      // Archive/Unarchive + archived-specific actions
-      if (row.session.archived) {
-        if (onPreviewSession) {
-          items.push({
-            label: 'Preview',
-            icon: <Eye className="h-4 w-4" />,
-            onClick: () => onPreviewSession(row.session.id),
-          });
-        }
+      // Pin/unpin only available for non-base sessions (base sessions have their own sidebar treatment)
+      if (row.session.sessionType !== 'base') {
         items.push({
-          label: 'Restore',
-          icon: <Archive className="h-4 w-4" />,
-          onClick: () => onUnarchiveSession(row.session.id),
-        });
-      } else {
-        items.push({
-          label: 'Archive',
-          icon: <Archive className="h-4 w-4" />,
-          onClick: () => onArchiveSession(row.session.id),
-          variant: 'destructive',
+          label: row.session.pinned ? 'Unpin' : 'Pin',
+          icon: row.session.pinned ? <PinOff className="h-4 w-4" /> : <Pin className="h-4 w-4" />,
+          shortcut: 'P',
+          onClick: () => {
+            const newPinned = !row.session.pinned;
+            storeUpdateSession(row.session.id, { pinned: newPinned });
+            apiUpdateSession(row.workspace.id, row.session.id, { pinned: newPinned }).catch(() => {
+              storeUpdateSession(row.session.id, { pinned: !newPinned });
+              showError('Failed to update pin status');
+            });
+          },
         });
       }
 
-      items.push({
-        label: 'Copy branch name',
-        icon: <Copy className="h-4 w-4" />,
-        onClick: async () => {
-          const success = await copyToClipboard(row.session.branch);
-          if (!success) toast.error('Failed to copy to clipboard');
+      items.push(
+        {
+          label: 'Copy branch name',
+          icon: <Copy className="h-4 w-4" />,
+          shortcut: 'C',
+          onClick: async () => {
+            const success = await copyToClipboard(row.session.branch);
+            if (!success) showError('Failed to copy to clipboard');
+          },
         },
-      });
+        { label: '', separator: true },
+        {
+          label: 'Archive',
+          icon: <Archive className="h-4 w-4" />,
+          shortcut: '⌘⇧A',
+          onClick: () => onArchiveSession(row.session.id),
+          variant: 'destructive',
+        },
+      );
 
       return items;
     },
-    [onSelectSession, onArchiveSession, onUnarchiveSession, onPreviewSession, toast]
+    [onSelectSession, onArchiveSession, onUnarchiveSession, onPreviewSession, showError, storeUpdateSession]
   );
 
   // Display options configuration
