@@ -12,7 +12,12 @@ export type ActionTemplateKey =
   | 'continue-operation'
   | 'sync-branch'
   | 'create-pr'
-  | 'merge-pr';
+  | 'merge-pr'
+  | 'ship'
+  | 'deploy'
+  | 'investigate'
+  | 'autoplan'
+  | 'document-release';
 
 export type OverrideMode = 'replace' | 'append';
 
@@ -138,6 +143,330 @@ export const ACTION_TEMPLATES: Record<ActionTemplateKey, string> = {
 8. If the merge is blocked by branch protection, enable auto-merge: \`gh pr merge --auto\` with the same strategy
 9. If the repo uses a merge queue, \`gh pr merge\` will enqueue — confirm this to the user
 10. Confirm the merge was successful or that auto-merge has been enabled` + SAFETY_FOOTER,
+
+  'ship': `## Ship — Full Ship Workflow
+
+### Step 1: Pre-flight
+- Verify you are on a feature branch (NOT main/master). If on a protected branch, abort immediately.
+- Detect the base branch: try \`gh pr view --json baseRefName -q .baseRefName\`, fall back to \`gh repo view --json defaultBranchRef -q .defaultBranchRef.name\`, then fall back to \`main\`.
+- Run \`git status\` to see all uncommitted changes.
+
+### Step 2: Sync with base branch
+- Fetch and merge the base branch BEFORE running tests: \`git fetch origin <base> && git merge origin/<base> --no-edit\`
+- This catches integration conflicts early. If merge conflicts arise, resolve them before proceeding.
+
+### Step 3: Run tests
+- Detect the test command: check \`package.json\` scripts for "test", check for a \`Makefile\` with "test" target, check CLAUDE.md for test instructions.
+- Run the full test suite against the merged state. If tests fail, stop and report the failures — do not ship with failing tests.
+- If no test framework is detected, note this and proceed.
+
+### Step 4: Lint and type-check
+- Run available lint commands (\`npm run lint\`, \`make lint\`, etc.)
+- Run type-check if available (\`npm run typecheck\`, \`tsc --noEmit\`, \`make typecheck\`)
+- Fix auto-fixable issues. For non-auto-fixable issues, report them but continue.
+
+### Step 5: Review readiness
+- Call the \`get_review_comment_stats\` MCP tool to check for unresolved review comments.
+- If there are unresolved comments with severity "error" or "warning", warn the user: "There are N unresolved review comments. Consider addressing them before shipping."
+- This is a warning, not a blocker — proceed if the user has already invoked /ship.
+
+### Step 6: Commit
+- If there are uncommitted changes, stage and commit them.
+- Match the repo's commit message conventions (read \`git log --oneline -5\` for style).
+- Write a clear, descriptive commit message summarizing the changes.
+
+### Step 7: Push
+- Push to remote: \`git push -u origin HEAD\`
+
+### Step 8: Create PR
+- Check if a PR already exists: \`gh pr view 2>/dev/null\`. If one exists, return its URL.
+- Check for a PR template at \`.github/PULL_REQUEST_TEMPLATE.md\` or \`.github/pull_request_template.md\`.
+- Create the PR with \`gh pr create\`:
+  - Title: concise, under 72 characters
+  - Description: what changed, why, and how to test. Use the PR template if found. Link related issues with "Closes #N".
+- Return the PR URL.` + SAFETY_FOOTER,
+
+  'deploy': `## Deploy — Merge PR, Monitor CI, and Verify
+
+### Step 1: Pre-flight
+- Verify GitHub CLI is authenticated: \`gh auth status\`
+- Get PR details: \`gh pr view --json number,state,title,url,mergeStateStatus,mergeable,baseRefName,headRefName\`
+- If no PR exists for this branch, abort: "No PR found. Run /ship first."
+- If PR is already merged, report: "PR is already merged."
+- If PR is closed (not merged), abort: "PR is closed. Reopen it first."
+
+### Step 2: Pre-merge CI checks
+- Check CI status: \`gh pr checks --json name,state,status,conclusion\`
+- If any required checks are FAILING, abort and show the failures. Do NOT merge with failing CI.
+- If checks are PENDING, wait: \`gh pr checks --watch --fail-fast\` (max 15 minutes).
+- Check for merge conflicts: if \`mergeable\` is "CONFLICTING", abort: "PR has merge conflicts. Resolve them first."
+
+### Step 3: Review readiness gate
+- Call the \`get_review_comment_stats\` MCP tool.
+- If there are unresolved review comments with severity "error" or "warning", warn the user with the count and ask whether to proceed or address them first.
+
+### Step 4: Merge
+- Auto-detect merge method: try \`gh pr merge --auto --squash\` first (respects repo settings and merge queues).
+- If \`--auto\` is not available, merge directly: \`gh pr merge --squash\`
+- Do NOT use \`--delete-branch\` — it corrupts worktree sessions.
+- If merge queue is active, \`gh pr merge\` will enqueue automatically. Confirm this to the user.
+- If merge fails with a permission error, report: "You don't have merge permissions."
+
+### Step 5: Verify merge
+- Confirm merge completed: \`gh pr view --json state -q .state\`
+- Capture the merge commit SHA for tracking.
+
+### Step 6: Deploy monitoring
+- Check for deployment workflows: \`gh run list --branch <base> --limit 5 --json name,status,conclusion,headSha,workflowName\`
+- Look for workflow names containing "deploy", "release", "production", or "cd".
+- If a deploy workflow is detected, poll its status: \`gh run view <run-id> --json status,conclusion\` every 30 seconds.
+- Report progress: "Deploy in progress..." with elapsed time.
+- If deploy succeeds, continue to verification. If it fails, warn and suggest investigating logs or creating a revert PR.
+
+### Step 7: Canary verification (optional)
+- If Tauri webview MCP tools are available and a production URL is known:
+  - Use \`mcp__tauri__webview_screenshot\` to capture the deployed page
+  - Use \`mcp__tauri__webview_dom_snapshot\` to check for error elements or blank pages
+  - Report: page loads correctly / has errors / is blank
+- If canary detects issues, suggest creating a revert PR: "Production may be degraded. Consider reverting."
+
+### Step 8: Deploy report
+Present a structured summary:
+\`\`\`
+DEPLOY REPORT
+═══════════════════
+PR:        #<number> — <title>
+Merged:    <timestamp> (squash)
+CI:        PASSED / FAILED
+Deploy:    HEALTHY / DEGRADED / NO WORKFLOW
+Canary:    VERIFIED / SKIPPED
+═══════════════════
+\`\`\`` + SAFETY_FOOTER,
+
+  'investigate': `## Investigate — Structured Debugging with Root Cause Analysis
+
+You are following a systematic 5-phase debugging methodology. The Iron Law: NO FIXES WITHOUT ROOT CAUSE INVESTIGATION FIRST. Fixing symptoms creates whack-a-mole debugging.
+
+### Phase 1: Root Cause Investigation
+
+Gather context before forming any hypothesis.
+
+1. **Collect symptoms**: Read error messages, stack traces, logs, and reproduction steps. If the user hasn't provided enough context, ask ONE clarifying question.
+2. **Read the code**: Trace the code path from the symptom back to potential causes. Use Grep to find all references, Read to understand the logic.
+3. **Check recent changes**: \`git log --oneline -20 -- <affected-files>\`. Was this working before? If so, the root cause is likely in the diff.
+4. **Reproduce**: Can you trigger the bug deterministically? If not, gather more evidence before proceeding.
+5. **Output**: State your root cause hypothesis — a specific, testable claim about what is wrong and why.
+
+### Phase 2: Pattern Analysis
+
+Classify the bug against known patterns:
+
+| Pattern | Signature | Where to look |
+|---------|-----------|---------------|
+| Race condition | Intermittent, timing-dependent | Concurrent access to shared state |
+| Nil/undefined propagation | TypeError, Cannot read property | Missing guards on optional values |
+| State corruption | Inconsistent data, partial updates | Transactions, callbacks, hooks |
+| Integration failure | Timeout, unexpected response | External API calls, service boundaries |
+| Configuration drift | Works locally, fails in CI/prod | Env vars, feature flags, DB state |
+| Stale cache | Shows old data, fixes on reload | Redis, CDN, browser cache, memoization |
+| Off-by-one | Wrong count, missing first/last item | Loop boundaries, array indexing, pagination |
+| Type coercion | Unexpected string/number behavior | Implicit conversions, comparisons |
+
+Also check \`git log\` for prior fixes in the same area — recurring bugs in the same files are an architectural smell, not a coincidence.
+
+### Phase 3: Hypothesis Testing
+
+Before writing ANY fix, verify your hypothesis.
+
+1. **Confirm**: Add a temporary log statement, assertion, or debug output at the suspected root cause. Run the reproduction. Does the evidence match?
+2. **If wrong**: Return to Phase 1 with more evidence. Do NOT guess.
+3. **3-strike rule**: If 3 hypotheses fail, STOP. Report to the user:
+   - What was tried and what was observed
+   - This may be an architectural issue rather than a simple bug
+   - Recommendation: continue investigating with a new approach, escalate for human review, or add instrumentation to catch it next time
+
+### Phase 4: Implementation
+
+Once root cause is confirmed:
+
+1. **Scope lock**: Restrict edits to the affected module/directory. Do not refactor adjacent code, add features, or "improve" unrelated things.
+2. **Minimal diff**: Fix only the root cause, not symptoms. Fewest files touched, fewest lines changed.
+3. **Regression test**: Write a test that FAILS without the fix and PASSES with it. This proves both that the test is meaningful and the fix works.
+4. **Run the full test suite**. No regressions allowed.
+5. **Blast radius check**: If the fix touches more than 5 files, flag this to the user and explain why the scope is that large.
+
+### Phase 5: Verification & Report
+
+1. **Fresh verification**: Reproduce the original bug scenario and confirm it is fixed. This is not optional.
+2. **Run the test suite** and show the output.
+3. **Structured debug report**:
+
+\`\`\`
+DEBUG REPORT
+════════════════════════════════════════
+Symptom:         [what the user observed]
+Root cause:      [what was actually wrong]
+Fix:             [what was changed, with file:line references]
+Evidence:        [test output, reproduction showing fix works]
+Regression test: [file:line of the new test]
+Status:          DONE | DONE_WITH_CONCERNS | BLOCKED
+════════════════════════════════════════
+\`\`\`
+
+### Important Rules
+- Never say "this should fix it." Verify and prove it. Run the tests.
+- Never apply a fix you cannot verify. If you can't reproduce and confirm, don't ship it.
+- 3+ failed fix attempts → STOP and question the architecture.
+- If fix touches >5 files → explain the blast radius before proceeding.` + SAFETY_FOOTER,
+
+  'autoplan': `## Auto Review Pipeline — Orchestrated Multi-Pass Review
+
+Run a comprehensive automated review pipeline covering product, design, code quality, and architecture. File review comments for each finding using MCP tools.
+
+### Step 1: Context Gathering
+- Call \`get_workspace_diff\` to understand all changes on this branch.
+- Read the plan file if one exists (check for plan mode context).
+- Identify the scope: which files changed, what features were added/modified, any UI changes.
+
+### Step 2: Product Review Pass
+Evaluate from a product perspective. For each finding, call \`add_review_comment\` with \`reviewType: 'product'\`.
+
+Check for:
+- **Scope creep**: Does the implementation exceed what was planned? Are there unnecessary additions?
+- **User value**: Does every change serve a clear user need?
+- **Requirement alignment**: Does the implementation match the stated requirements?
+- **Feature completeness**: Are there half-implemented features or missing edge cases from a user perspective?
+- **Unnecessary complexity**: Could the same user value be delivered with less code?
+
+### Step 3: Design Review Pass (skip if no UI changes)
+Evaluate UI/UX quality. For each finding, call \`add_review_comment\` with \`reviewType: 'design'\`.
+
+Check for:
+- **UX consistency**: Do interactions match existing patterns in the app?
+- **Accessibility**: WCAG compliance — keyboard navigation, screen reader support, color contrast, ARIA attributes
+- **Visual hierarchy**: Is the most important content most prominent?
+- **Interaction patterns**: Are hover states, loading states, error states, and empty states handled?
+- **Dark mode**: Do new components work in both themes?
+- **AI slop detection**: Generic, placeholder-like text ("Lorem ipsum", "Click here", "Welcome to our platform") that suggests generated content
+
+### Step 4: Deep Code Review Pass
+Examine every changed file. For each finding, call \`add_review_comment\` with \`reviewType: 'deep'\`.
+
+Check for:
+- **Correctness**: Logic errors, off-by-one, null checks, type safety
+- **Error handling**: Are errors caught, logged, and surfaced appropriately?
+- **Edge cases**: Empty arrays, null values, concurrent access, boundary conditions
+- **Naming**: Are variables, functions, and types named clearly and consistently?
+- **DRY violations**: Duplicated code that should be extracted
+- **Dead code**: Unused imports, unreachable branches, commented-out code
+
+### Step 5: Architecture Review Pass
+Evaluate structural quality. For each finding, call \`add_review_comment\` with \`reviewType: 'architecture'\`.
+
+Check for:
+- **Pattern consistency**: Does the code follow established patterns in the codebase?
+- **Separation of concerns**: Is business logic mixed with UI? Are layers properly separated?
+- **Coupling**: Are components tightly coupled when they should be independent?
+- **API design**: Are interfaces clean, minimal, and well-typed?
+- **Scalability**: Will this approach work at 10x the current load/data?
+
+### Step 6: Auto-Decision Principles
+When evaluating borderline findings, apply these principles:
+1. **Completeness over speed** — prefer the thorough approach
+2. **Pragmatic over perfect** — if two options fix the same thing, pick the cleaner one
+3. **DRY** — flag duplicated functionality
+4. **Explicit over clever** — 10-line obvious fix > 200-line abstraction
+5. **Bias toward action** — flag concerns but don't block unnecessarily
+6. **Minimal scope** — don't expand scope beyond the current change
+
+### Step 7: Summary Gate
+- Call \`get_review_comment_stats\` to get the final tally.
+- Present a structured summary:
+
+\`\`\`
+REVIEW PIPELINE SUMMARY
+═══════════════════════════════
+Passes completed: Product, Design, Deep Code, Architecture
+Findings by severity:
+  Error:      N (must fix before shipping)
+  Warning:    N (should fix)
+  Suggestion: N (nice to have)
+  Info:       N (informational)
+
+Verdict: CLEARED / NEEDS ATTENTION / BLOCKED
+═══════════════════════════════
+\`\`\`
+
+- If CLEARED: "All clear — no blocking findings. Ready to ship."
+- If NEEDS ATTENTION: list the warning-level findings and recommend addressing them.
+- If BLOCKED: list the error-level findings that must be fixed.` + SAFETY_FOOTER,
+
+  'document-release': `## Document Release — Post-Ship Documentation Audit
+
+Audit and update all documentation files to ensure they accurately reflect the current state of the code after shipping changes.
+
+### Step 1: Pre-flight
+- Verify you are on a feature branch (not main/master).
+- Gather the diff: \`git diff main...HEAD --stat\` and \`git log main..HEAD --oneline\`
+- List all changed files: \`git diff main...HEAD --name-only\`
+- Discover documentation files: find all \`.md\` files in the repo (exclude node_modules, .git, vendor)
+
+### Step 2: Classify Changes
+Categorize the code changes into documentation-relevant groups:
+- **New features**: new files, new commands, new capabilities, new API endpoints
+- **Changed behavior**: modified services, updated APIs, configuration changes, renamed functions
+- **Removed functionality**: deleted files, removed commands, deprecated features
+- **Infrastructure**: build system, test infrastructure, CI, dependencies
+
+### Step 3: Per-File Documentation Audit
+For each documentation file found, cross-reference it against the diff:
+
+**README.md:**
+- Are all new features/capabilities described?
+- Are installation and setup instructions still accurate?
+- Are usage examples and demos still valid?
+- Are screenshots or diagrams still current?
+
+**ARCHITECTURE.md / DESIGN.md:**
+- Do component descriptions match the current code structure?
+- Are data flow diagrams still accurate?
+- Be conservative — only update things clearly contradicted by the diff.
+
+**CONTRIBUTING.md:**
+- Are development workflow instructions still accurate?
+- Are build/test/lint commands correct?
+- Are code style guidelines still applicable?
+
+**CLAUDE.md:**
+- Are listed patterns and conventions still correct?
+- Are test commands and build commands accurate?
+- Are file path references still valid?
+
+**CHANGELOG.md (if maintained):**
+- Is the current change logged?
+- If not, add an entry under the appropriate version/section.
+- Match the existing CHANGELOG format and voice.
+
+### Step 4: Auto-Update Rules
+- **Auto-update** (do not ask): factual corrections — wrong file paths, renamed functions, changed CLI flags, updated version numbers, corrected counts, fixed broken cross-references.
+- **Ask the user** before changing: narrative descriptions, architectural rationale, philosophical statements, rewording of existing explanations, removing sections.
+- **Never overwrite or regenerate**: existing CHANGELOG entries. Polish wording only.
+
+### Step 5: Report
+Present a summary of what was checked and changed:
+
+\`\`\`
+DOCUMENTATION AUDIT
+═══════════════════
+File                  Status
+─────────────────────────────
+README.md             Updated (3 sections)
+ARCHITECTURE.md       Up to date
+CONTRIBUTING.md       Not found
+CLAUDE.md             Updated (test command)
+CHANGELOG.md          Added entry
+═══════════════════
+\`\`\`` + SAFETY_FOOTER,
 };
 
 /**
@@ -150,6 +479,11 @@ export const ACTION_TEMPLATE_META: { key: ActionTemplateKey; label: string; plac
   { key: 'sync-branch', label: 'Sync Branch', placeholder: 'e.g., Use merge instead of rebase for this repo' },
   { key: 'create-pr', label: 'Create PR', placeholder: 'e.g., Always create as draft first' },
   { key: 'merge-pr', label: 'Merge PR', placeholder: 'e.g., Default to squash and merge' },
+  { key: 'ship', label: 'Ship', placeholder: 'e.g., Always run tests before creating PR' },
+  { key: 'deploy', label: 'Deploy', placeholder: 'e.g., Use rebase and merge instead of squash' },
+  { key: 'investigate', label: 'Investigate', placeholder: 'e.g., Focus on state management bugs only' },
+  { key: 'autoplan', label: 'Auto Review Pipeline', placeholder: 'e.g., Skip design review for backend-only changes' },
+  { key: 'document-release', label: 'Document Release', placeholder: 'e.g., Also update API docs in docs/ folder' },
 ];
 
 /**
@@ -168,6 +502,8 @@ const ACTION_TYPE_TO_TEMPLATE: Record<string, ActionTemplateKey> = {
   'sync-branch': 'sync-branch',
   'create-pr': 'create-pr',
   'merge-pr': 'merge-pr',
+  'sprint-ship': 'ship',
+  'sprint-deploy': 'deploy',
 };
 
 export function getTemplateKey(actionType: string): ActionTemplateKey | null {
@@ -184,6 +520,11 @@ export const ACTION_TEMPLATE_NAMES: Record<ActionTemplateKey, string> = {
   'sync-branch': 'Sync Branch Instructions',
   'create-pr': 'Create PR Instructions',
   'merge-pr': 'Merge PR Instructions',
+  'ship': 'Ship Instructions',
+  'deploy': 'Deploy Instructions',
+  'investigate': 'Investigate Instructions',
+  'autoplan': 'Auto Review Pipeline Instructions',
+  'document-release': 'Document Release Instructions',
 };
 
 const VALID_MODES: Set<string> = new Set<string>(['append', 'replace']);

@@ -642,6 +642,7 @@ type UpdateSessionRequest struct {
 	Priority         *int    `json:"priority,omitempty"`
 	TaskStatus       *string `json:"taskStatus,omitempty"`
 	SprintPhase      *string `json:"sprintPhase,omitempty"`
+	DeployStatus     *string `json:"deployStatus,omitempty"`
 }
 
 func (h *Handlers) UpdateSession(w http.ResponseWriter, r *http.Request) {
@@ -682,6 +683,10 @@ func (h *Handlers) UpdateSession(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.SprintPhase != nil && !models.ValidSprintPhases[*req.SprintPhase] {
 		writeValidationError(w, "invalid sprintPhase value")
+		return
+	}
+	if req.DeployStatus != nil && !models.ValidDeployStatuses[*req.DeployStatus] {
+		writeValidationError(w, "invalid deployStatus value")
 		return
 	}
 	if req.TargetBranch != nil && *req.TargetBranch != "" {
@@ -768,6 +773,9 @@ func (h *Handlers) UpdateSession(w http.ResponseWriter, r *http.Request) {
 		}
 		if req.SprintPhase != nil {
 			s.SprintPhase = *req.SprintPhase
+		}
+		if req.DeployStatus != nil {
+			s.DeployStatus = *req.DeployStatus
 		}
 		s.UpdatedAt = time.Now()
 	}); err != nil {
@@ -1016,4 +1024,55 @@ func (h *Handlers) DeleteSession(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// ==================== Review Scorecards ====================
+
+func (h *Handlers) CreateReviewScorecard(w http.ResponseWriter, r *http.Request) {
+	sessionID := chi.URLParam(r, "sessionId")
+
+	var req struct {
+		ReviewType string          `json:"reviewType"`
+		Scores     json.RawMessage `json:"scores"`
+		Summary    string          `json:"summary"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeValidationError(w, "invalid request body")
+		return
+	}
+	if req.ReviewType == "" || len(req.Scores) == 0 {
+		writeValidationError(w, "reviewType and scores are required")
+		return
+	}
+
+	scorecard := &models.ReviewScorecard{
+		ID:         uuid.New().String(),
+		SessionID:  sessionID,
+		ReviewType: req.ReviewType,
+		Scores:     string(req.Scores),
+		Summary:    req.Summary,
+		CreatedAt:  time.Now(),
+	}
+
+	if err := h.store.CreateReviewScorecard(r.Context(), scorecard); err != nil {
+		writeDBError(w, err)
+		return
+	}
+
+	writeJSONStatus(w, http.StatusCreated, scorecard)
+}
+
+func (h *Handlers) ListReviewScorecards(w http.ResponseWriter, r *http.Request) {
+	sessionID := chi.URLParam(r, "sessionId")
+
+	scorecards, err := h.store.ListReviewScorecards(r.Context(), sessionID)
+	if err != nil {
+		writeDBError(w, err)
+		return
+	}
+	if scorecards == nil {
+		scorecards = []*models.ReviewScorecard{}
+	}
+
+	writeJSON(w, scorecards)
 }

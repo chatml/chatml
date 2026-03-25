@@ -26,6 +26,7 @@ export interface SessionDTO {
   sessionType?: 'worktree' | 'base';
   scheduledTaskId?: string;
   sprintPhase?: string | null;
+  deployStatus?: string | null;
   pinned?: boolean;
   archived?: boolean;
   archiveSummary?: string;
@@ -58,6 +59,7 @@ export function mapSessionDTO(session: SessionDTO): import('@/lib/types').Worktr
     sessionType: session.sessionType,
     scheduledTaskId: session.scheduledTaskId,
     sprintPhase: (session.sprintPhase || null) as import('@/lib/types').SprintPhase | null,
+    deployStatus: (session.deployStatus || null) as import('@/lib/types').DeployStatus | null,
     pinned: session.pinned,
     archived: session.archived,
     archiveSummary: session.archiveSummary,
@@ -224,4 +226,27 @@ export async function sendSessionMessage(
     const text = await res.text();
     throw new ApiError(text || `HTTP ${res.status}`, res.status, text);
   }
+}
+
+// ==================== Review Scorecards ====================
+
+export interface ReviewScorecardDTO {
+  id: string;
+  sessionId: string;
+  reviewType: string;
+  scores: string; // JSON string of score array
+  summary: string;
+  createdAt: string;
+}
+
+export interface ReviewScore {
+  dimension: string;
+  score: number;
+  maxScore: number;
+  notes?: string;
+}
+
+export async function listReviewScorecards(workspaceId: string, sessionId: string): Promise<ReviewScorecardDTO[]> {
+  const res = await fetchWithAuth(`${getApiBase()}/api/repos/${workspaceId}/sessions/${sessionId}/review-scorecards`);
+  return handleResponse<ReviewScorecardDTO[]>(res);
 }

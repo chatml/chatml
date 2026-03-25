@@ -88,11 +88,11 @@ describe('getAllCommands', () => {
 
   it('includes user commands', () => {
     useSlashCommandStore.getState().setUserCommands([
-      makeUserCommand({ name: 'deploy', description: 'Deploy to prod' }),
+      makeUserCommand({ name: 'my-deploy', description: 'Deploy to prod' }),
     ]);
 
     const commands = useSlashCommandStore.getState().getAllCommands(withSession);
-    const cmd = commands.find((c) => c.trigger === 'deploy');
+    const cmd = commands.find((c) => c.trigger === 'my-deploy');
     expect(cmd).toBeDefined();
     expect(cmd!.source).toBe('user');
   });
@@ -154,14 +154,14 @@ describe('getAllCommands', () => {
 
   it('uses rich SDK metadata description when available', () => {
     const richMeta: SdkCommandInfo[] = [
-      { name: 'deploy', description: 'Deploy to production server' },
+      { name: 'release', description: 'Deploy to production server' },
     ];
     useSlashCommandStore.getState().setSdkCommandsRich(richMeta);
 
     const commands = useSlashCommandStore.getState().getAllCommands(withSession);
-    const deploy = commands.find((c) => c.trigger === 'deploy');
-    expect(deploy).toBeDefined();
-    expect(deploy!.description).toBe('Deploy to production server');
+    const release = commands.find((c) => c.trigger === 'release');
+    expect(release).toBeDefined();
+    expect(release!.description).toBe('Deploy to production server');
   });
 
   it('falls back to generic description for SDK commands without metadata', () => {

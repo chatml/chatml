@@ -611,6 +611,46 @@ func (h *Handlers) AnswerSprintPhaseProposal(w http.ResponseWriter, r *http.Requ
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// ==================== QA Browser Handoff ====================
+
+type AnswerQAHandoffRequest struct {
+	RequestID string `json:"requestId"`
+	Completed bool   `json:"completed"`
+	Notes     string `json:"notes,omitempty"`
+}
+
+func (h *Handlers) AnswerQAHandoff(w http.ResponseWriter, r *http.Request) {
+	convID := chi.URLParam(r, "convId")
+	if convID == "" {
+		writeValidationError(w, "conversation ID required")
+		return
+	}
+
+	var req AnswerQAHandoffRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeValidationError(w, "invalid request body")
+		return
+	}
+
+	if req.RequestID == "" {
+		writeValidationError(w, "requestId is required")
+		return
+	}
+
+	proc := h.agentManager.GetConversationProcess(convID)
+	if proc == nil {
+		writeNotFound(w, "no active process for conversation")
+		return
+	}
+
+	if err := proc.SendQAHandoffResponse(req.RequestID, req.Completed, req.Notes); err != nil {
+		writeInternalError(w, "failed to send QA handoff response", err)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func (h *Handlers) DeleteConversation(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	convID := chi.URLParam(r, "convId")

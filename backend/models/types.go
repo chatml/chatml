@@ -36,7 +36,8 @@ type Session struct {
 	CheckStatus      string        `json:"checkStatus,omitempty"` // none, pending, success, failure
 	Priority         int           `json:"priority"`             // 0=None, 1=Urgent, 2=High, 3=Medium, 4=Low
 	TaskStatus       string        `json:"taskStatus"`           // backlog, in_progress, in_review, done, cancelled
-	SprintPhase      string        `json:"sprintPhase,omitempty"` // think, plan, build, review, test, ship, reflect (empty = no sprint)
+	SprintPhase      string        `json:"sprintPhase,omitempty"`  // think, plan, build, review, test, ship, reflect (empty = no sprint)
+	DeployStatus     string        `json:"deployStatus,omitempty"` // none, shipping, deploying, monitoring, verified, failed (empty = none)
 	Pinned           bool          `json:"pinned,omitempty"`
 	Archived             bool   `json:"archived,omitempty"`
 	ArchiveSummary       string `json:"archiveSummary,omitempty"`
@@ -352,6 +353,35 @@ var ValidSprintPhases = map[string]bool{
 	SprintPhaseTest:    true,
 	SprintPhaseShip:    true,
 	SprintPhaseReflect: true,
+}
+
+// DeployStatus constants (deploy lifecycle)
+const (
+	DeployStatusShipping   = "shipping"
+	DeployStatusDeploying  = "deploying"
+	DeployStatusMonitoring = "monitoring"
+	DeployStatusVerified   = "verified"
+	DeployStatusFailed     = "failed"
+)
+
+// ValidDeployStatuses is the set of valid deploy status values (empty string = no deploy)
+var ValidDeployStatuses = map[string]bool{
+	"":                     true, // no deploy active
+	DeployStatusShipping:   true,
+	DeployStatusDeploying:  true,
+	DeployStatusMonitoring: true,
+	DeployStatusVerified:   true,
+	DeployStatusFailed:     true,
+}
+
+// ReviewScorecard represents a structured review scorecard with dimension scores
+type ReviewScorecard struct {
+	ID         string    `json:"id"`
+	SessionID  string    `json:"sessionId"`
+	ReviewType string    `json:"reviewType"`
+	Scores     string    `json:"scores"`   // JSON array of {dimension, score, maxScore, notes}
+	Summary    string    `json:"summary"`
+	CreatedAt  time.Time `json:"createdAt"`
 }
 
 // Summary represents a generated summary of a conversation

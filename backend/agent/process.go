@@ -119,6 +119,8 @@ type InputMessage struct {
 	FastMode *bool `json:"fastMode,omitempty"`
 	// Sprint phase response fields (for update_sprint_phase tool)
 	Approved *bool `json:"approved,omitempty"`
+	// QA handoff response fields
+	Notes string `json:"notes,omitempty"`
 	// Tool approval response fields (for non-bypass permission modes)
 	ToolApprovalRequestID    string          `json:"toolApprovalRequestId,omitempty"`
 	ToolApprovalAction       string          `json:"toolApprovalAction,omitempty"`
@@ -715,6 +717,16 @@ func (p *Process) SendSprintPhaseResponse(requestId string, approved bool) error
 		Type:              "sprint_phase_response",
 		QuestionRequestID: requestId,
 		Approved:          &approved,
+	})
+}
+
+// SendQAHandoffResponse sends the user's response to a QA browser handoff request.
+func (p *Process) SendQAHandoffResponse(requestId string, completed bool, notes string) error {
+	return p.sendInput(InputMessage{
+		Type:              "qa_handoff_response",
+		QuestionRequestID: requestId,
+		Approved:          &completed,
+		Notes:             notes,
 	})
 }
 

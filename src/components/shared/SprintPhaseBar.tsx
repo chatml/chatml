@@ -1,11 +1,15 @@
 'use client';
 
+import { useState, useCallback } from 'react';
 import { SPRINT_PHASE_OPTIONS } from '@/lib/session-fields';
 import type { SprintPhase } from '@/lib/types';
 import { cn } from '@/lib/utils';
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
+import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 import { Play } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+
+const ONBOARDING_KEY = 'chatml:sprint-onboarded';
 
 interface SprintPhaseBarProps {
   phase: SprintPhase | null | undefined;
@@ -16,24 +20,72 @@ interface SprintPhaseBarProps {
 }
 
 export function SprintPhaseBar({ phase, onChange, disabled, onOpenToolbar }: SprintPhaseBarProps) {
-  // No sprint active — show compact start button
+  const [showOnboarding, setShowOnboarding] = useState(false);
+
+  const handleStartClick = useCallback(() => {
+    const onboarded = localStorage.getItem(ONBOARDING_KEY);
+    if (!onboarded) {
+      setShowOnboarding(true);
+      return;
+    }
+    if (onOpenToolbar) onOpenToolbar();
+    else onChange('think');
+  }, [onOpenToolbar, onChange]);
+
+  const handleConfirmStart = useCallback(() => {
+    localStorage.setItem(ONBOARDING_KEY, '1');
+    setShowOnboarding(false);
+    if (onOpenToolbar) onOpenToolbar();
+    else onChange('think');
+  }, [onOpenToolbar, onChange]);
+
+  // No sprint active — show compact start button with optional onboarding popover
   if (!phase) {
     return (
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-6 px-2 gap-1 text-xs text-muted-foreground hover:text-foreground"
-            onClick={() => onOpenToolbar ? onOpenToolbar() : onChange('think')}
-            disabled={disabled}
-          >
-            <Play className="h-3 w-3" />
-            Sprint
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent side="bottom">Start a sprint workflow (Think → Plan → Build → Review → Test → Ship → Reflect)</TooltipContent>
-      </Tooltip>
+      <Popover open={showOnboarding} onOpenChange={setShowOnboarding}>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <PopoverTrigger asChild>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-6 px-2 gap-1 text-xs text-muted-foreground hover:text-foreground"
+                onClick={handleStartClick}
+                disabled={disabled}
+              >
+                <Play className="h-3 w-3" />
+                Sprint
+              </Button>
+            </PopoverTrigger>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">Start a sprint workflow (Think → Plan → Build → Review → Test → Ship → Reflect)</TooltipContent>
+        </Tooltip>
+        <PopoverContent side="bottom" align="start" className="w-72 p-3">
+          <div className="space-y-2">
+            <p className="text-sm font-medium">Sprint Workflow</p>
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              A sprint guides you through 7 phases:
+            </p>
+            <div className="flex flex-wrap gap-1">
+              {SPRINT_PHASE_OPTIONS.map((opt) => {
+                const Icon = opt.icon;
+                return (
+                  <span key={opt.value} className={cn('inline-flex items-center gap-0.5 text-[10px] font-medium rounded px-1.5 py-0.5', opt.activeClass)}>
+                    <Icon className="h-2.5 w-2.5" />
+                    {opt.label}
+                  </span>
+                );
+              })}
+            </div>
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              Each phase auto-configures your environment (plan mode, thinking level) and the primary action button adapts to what you need next.
+            </p>
+            <Button size="sm" className="w-full h-7 text-xs" onClick={handleConfirmStart}>
+              Start Sprint
+            </Button>
+          </div>
+        </PopoverContent>
+      </Popover>
     );
   }
 
