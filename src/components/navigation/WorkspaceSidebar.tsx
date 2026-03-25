@@ -577,7 +577,7 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onGitHubRepos,
         >
           <Layers className={cn(
             "w-4 h-4",
-            contentView.type === 'session-manager' ? "text-nav-icon-sessions" : "text-nav-icon-sessions/70"
+            contentView.type === 'session-manager' ? "text-foreground" : "text-foreground/70"
           )} />
           <span className={cn(
             "text-base font-medium",
@@ -665,7 +665,7 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onGitHubRepos,
         >
           <Sparkles className={cn(
             "w-4 h-4",
-            contentView.type === 'skills-store' ? "text-nav-icon-skills" : "text-nav-icon-skills/70"
+            contentView.type === 'skills-store' ? "text-foreground" : "text-foreground/70"
           )} />
           <span className={cn(
             "text-base font-medium",
@@ -687,7 +687,7 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onGitHubRepos,
         >
           <Clock className={cn(
             "w-4 h-4",
-            contentView.type === 'scheduled-tasks' ? "text-muted-foreground" : "text-muted-foreground/70"
+            contentView.type === 'scheduled-tasks' ? "text-foreground" : "text-foreground/70"
           )} />
           <span className={cn(
             "text-base font-medium",
