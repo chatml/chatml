@@ -151,33 +151,48 @@ func (sc *Scheduler) dispatchTask(ctx context.Context, task *models.ScheduledTas
 		return nil, fmt.Errorf("failed to create run: %w", err)
 	}
 
-	// Create session for this run.
-	// Scheduled tasks always create base sessions — worktree setup requires
-	// branch creation and git operations that are handled by the session_handlers
-	// create flow. UseWorktree is stored on the task for future support.
-	sessionID := uuid.New().String()[:8]
-	sessionName := fmt.Sprintf("%s – %s", now.Format("Jan 2"), task.Name)
-
-	session := &models.Session{
-		ID:              sessionID,
-		WorkspaceID:     task.WorkspaceID,
-		Name:            sessionName,
-		SessionType:     models.SessionTypeBase,
-		Status:          models.SessionStatusIdle,
-		TaskStatus:      models.TaskStatusInProgress,
-		ScheduledTaskID: task.ID,
-		CreatedAt:       now,
-		UpdatedAt:       now,
-	}
-	if err := sc.store.AddSession(ctx, session); err != nil {
-		logger.Main.Errorf("Scheduler: failed to create session for task %q: %v", task.Name, err)
+	// Create or reuse a base session for this run.
+	// A workspace can only have one base session (enforced by unique index).
+	// If one already exists, reuse it; otherwise create a new one.
+	existing, err := sc.store.GetBaseSessionForWorkspace(ctx, task.WorkspaceID)
+	if err != nil {
+		logger.Main.Errorf("Scheduler: failed to check existing session for task %q: %v", task.Name, err)
 		_ = sc.store.UpdateScheduledTaskRun(ctx, runID, func(r *models.ScheduledTaskRun) {
 			r.Status = models.RunStatusFailed
-			r.ErrorMessage = fmt.Sprintf("failed to create session: %v", err)
+			r.ErrorMessage = fmt.Sprintf("failed to check existing session: %v", err)
 			completedAt := time.Now()
 			r.CompletedAt = &completedAt
 		})
-		return run, fmt.Errorf("failed to create session: %w", err)
+		return run, fmt.Errorf("failed to check existing session: %w", err)
+	}
+
+	var sessionID string
+	if existing != nil {
+		sessionID = existing.ID
+	} else {
+		sessionID = uuid.New().String()[:8]
+		sessionName := fmt.Sprintf("%s – %s", now.Format("Jan 2"), task.Name)
+		session := &models.Session{
+			ID:              sessionID,
+			WorkspaceID:     task.WorkspaceID,
+			Name:            sessionName,
+			SessionType:     models.SessionTypeBase,
+			Status:          models.SessionStatusIdle,
+			TaskStatus:      models.TaskStatusInProgress,
+			ScheduledTaskID: task.ID,
+			CreatedAt:       now,
+			UpdatedAt:       now,
+		}
+		if err := sc.store.AddSession(ctx, session); err != nil {
+			logger.Main.Errorf("Scheduler: failed to create session for task %q: %v", task.Name, err)
+			_ = sc.store.UpdateScheduledTaskRun(ctx, runID, func(r *models.ScheduledTaskRun) {
+				r.Status = models.RunStatusFailed
+				r.ErrorMessage = fmt.Sprintf("failed to create session: %v", err)
+				completedAt := time.Now()
+				r.CompletedAt = &completedAt
+			})
+			return run, fmt.Errorf("failed to create session: %w", err)
+		}
 	}
 
 	// Start conversation with the task prompt
@@ -189,7 +204,7 @@ func (sc *Scheduler) dispatchTask(ctx context.Context, task *models.ScheduledTas
 		}
 	}
 
-	_, err := sc.agentMgr.StartConversation(ctx, sessionID, "task", task.Prompt, opts)
+	_, err = sc.agentMgr.StartConversation(ctx, sessionID, "task", task.Prompt, opts)
 	if err != nil {
 		logger.Main.Errorf("Scheduler: failed to start conversation for task %q: %v", task.Name, err)
 		_ = sc.store.UpdateScheduledTaskRun(ctx, runID, func(r *models.ScheduledTaskRun) {
