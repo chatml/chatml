@@ -13,6 +13,7 @@ export interface UseBaseSessionGitStatusResult {
 /**
  * Lightweight git status hook for base session cards in the sidebar.
  * Calls getGitStatus (not the full snapshot) and polls at 2x the normal interval.
+ * Also detects external branch changes via the currentBranch field in the response.
  */
 export function useBaseSessionGitStatus(
   workspaceId: string | null,
@@ -39,6 +40,19 @@ export function useBaseSessionGitStatus(
       if (isMountedRef.current) {
         setGitStatus(status);
         setLoading(false);
+
+        // If backend reports a different branch, update both branch and name in the store.
+        // This acts as a fallback for when the WebSocket broadcast is missed.
+        if (status.currentBranch) {
+          const session = useAppStore.getState().sessions.find(s => s.id === sessionId);
+          if (session && session.branch !== status.currentBranch) {
+            const updates: { branch: string; name?: string } = { branch: status.currentBranch };
+            if (status.currentSessionName) {
+              updates.name = status.currentSessionName;
+            }
+            useAppStore.getState().updateSession(sessionId, updates);
+          }
+        }
       }
     } catch (err) {
       if (isMountedRef.current) {
@@ -101,6 +115,20 @@ export function useBaseSessionGitStatus(
       debouncedRefetch();
     }
   }, [active, lastFileChange, workspaceId, debouncedRefetch]);
+
+  // Refetch immediately when the app becomes visible (e.g., user tabs back from terminal)
+  useEffect(() => {
+    if (!active || !workspaceId || !sessionId) return;
+
+    const handleVisibilityChange = () => {
+      if (!document.hidden && isMountedRef.current) {
+        fetchStatus();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, [active, workspaceId, sessionId, fetchStatus]);
 
   return { gitStatus, loading };
 }
