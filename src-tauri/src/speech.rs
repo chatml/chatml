@@ -87,6 +87,10 @@ mod platform {
         task_generation: Arc<AtomicU64>,
         /// Confirmed text accumulated from completed recognition tasks.
         accumulated_text: Arc<Mutex<String>>,
+        /// Last `formattedString` seen within the current task generation.
+        /// Used to detect Apple's mid-task transcript reset (macOS 15 bug)
+        /// where `formattedString` silently drops pre-pause text.
+        last_task_text: Arc<Mutex<String>>,
         /// Channel sender to signal the restart thread.
         /// Dropped during teardown to terminate the restart thread.
         restart_tx: Option<mpsc::Sender<()>>,
@@ -206,6 +210,7 @@ mod platform {
         recognizer: &Retained<AnyObject>,
         app: &AppHandle,
         accumulated_text: Arc<Mutex<String>>,
+        last_task_text: Arc<Mutex<String>>,
         stopped: Arc<AtomicBool>,
         task_generation: Arc<AtomicU64>,
         my_generation: u64,
@@ -214,9 +219,32 @@ mod platform {
         let request = objc_new(class!(SFSpeechAudioBufferRecognitionRequest));
         let _: () = msg_send![&request, setShouldReportPartialResults: Bool::YES];
         let _: () = msg_send![&request, setRequiresOnDeviceRecognition: Bool::YES];
+        // Hint: expect natural speech with pauses (dictation = 1)
+        let _: () = msg_send![&request, setTaskHint: 1isize];
+        // Auto-punctuation requires macOS 13+ (Ventura); our minimumSystemVersion is 10.15.
+        // Calling an unrecognized selector on older macOS raises NSInvalidArgumentException.
+        // isOperatingSystemAtLeastVersion: is available since macOS 10.10.
+        #[repr(C)]
+        struct NSOperatingSystemVersion {
+            major: isize,
+            minor: isize,
+            patch: isize,
+        }
+        let process_info: *mut AnyObject = msg_send![class!(NSProcessInfo), processInfo];
+        let ventura = NSOperatingSystemVersion {
+            major: 13,
+            minor: 0,
+            patch: 0,
+        };
+        let at_least_ventura: Bool =
+            msg_send![process_info, isOperatingSystemAtLeastVersion: ventura];
+        if at_least_ventura.as_bool() {
+            let _: () = msg_send![&request, setAddsPunctuation: Bool::YES];
+        }
 
         let app_for_transcript = app.clone();
         let accumulated_for_result = Arc::clone(&accumulated_text);
+        let last_task_text_for_result = Arc::clone(&last_task_text);
         let stopped_for_result = Arc::clone(&stopped);
         let generation_for_result = Arc::clone(&task_generation);
 
@@ -249,15 +277,61 @@ mod platform {
                             let is_final: Bool = msg_send![result, isFinal];
                             let is_final = is_final.as_bool();
 
-                            // Build full text: accumulated prefix + current task text.
-                            // Hold the lock for the entire read-modify-write to avoid
-                            // a stale prefix if another code path ever writes between
-                            // the read and write.
+                            // --- macOS 15 transcript-reset workaround ---
+                            // Apple's SFSpeechRecognizer on macOS 15 (Sequoia) silently
+                            // resets `formattedString` after a speech pause, dropping all
+                            // pre-pause text. Detect this by comparing against the last
+                            // seen text for this task: if the new text is significantly
+                            // shorter and is NOT a prefix of what we had, Apple reset
+                            // the transcript. Promote the last known text into
+                            // accumulated_text so it isn't lost.
+                            //
+                            // We require a minimum char-count delta (20) to distinguish
+                            // Apple's full reset from normal mid-recognition corrections
+                            // where the recognizer drops/replaces a few words.
+                            //
+                            // Lock ordering: accumulated_text → last_task_text (always).
+                            // No other code path holds both locks, but maintaining a
+                            // consistent order prevents future deadlocks.
                             let mut acc_guard = accumulated_for_result
                                 .lock()
                                 .unwrap_or_else(|e| e.into_inner());
+                            {
+                                let mut last_guard = last_task_text_for_result
+                                    .lock()
+                                    .unwrap_or_else(|e| e.into_inner());
+
+                                let current_chars = current_text.chars().count();
+                                let last_chars = last_guard.chars().count();
+                                // Require a significant drop (>20 chars) to filter out
+                                // normal mid-recognition word corrections/revisions.
+                                const RESET_CHAR_THRESHOLD: usize = 20;
+                                if !last_guard.is_empty()
+                                    && current_chars + RESET_CHAR_THRESHOLD < last_chars
+                                    && !last_guard.starts_with(&current_text)
+                                {
+                                    // Apple reset — promote last known task text to accumulated
+                                    log::info!(
+                                        "Detected Apple transcript reset (gen={}): had {} chars, now {} chars. Promoting to accumulated.",
+                                        my_generation, last_chars, current_chars
+                                    );
+                                    if acc_guard.is_empty() {
+                                        *acc_guard = last_guard.clone();
+                                    } else if acc_guard.ends_with(' ') {
+                                        *acc_guard = format!("{}{}", *acc_guard, *last_guard);
+                                    } else {
+                                        *acc_guard = format!("{} {}", *acc_guard, *last_guard);
+                                    }
+                                }
+                                // Update last seen text for this task
+                                *last_guard = current_text.clone();
+                            }
+
+                            // Build full text: accumulated prefix + current task text.
                             let full_text = if acc_guard.is_empty() {
                                 current_text.clone()
+                            } else if acc_guard.ends_with(' ') {
+                                format!("{}{}", *acc_guard, current_text)
                             } else {
                                 format!("{} {}", *acc_guard, current_text)
                             };
@@ -275,8 +349,13 @@ mod platform {
 
                             // When this task's segment is finalized (pause or timeout),
                             // save the full accumulated text and signal a task restart.
+                            // Clear last_task_text so stale text cannot bleed through
+                            // if the restart thread's clear is skipped on error.
                             if is_final {
                                 *acc_guard = full_text; // move, no clone needed
+                                *last_task_text_for_result
+                                    .lock()
+                                    .unwrap_or_else(|e| e.into_inner()) = String::new();
                                 drop(acc_guard);
                                 log::info!(
                                     "Dictation segment finalized (gen={}), accumulated {} chars, requesting restart",
@@ -384,6 +463,7 @@ mod platform {
             let stopped = Arc::new(AtomicBool::new(false));
             let task_generation = Arc::new(AtomicU64::new(0));
             let accumulated_text = Arc::new(Mutex::new(String::new()));
+            let last_task_text = Arc::new(Mutex::new(String::new()));
             let (restart_tx, restart_rx) = mpsc::channel::<()>();
 
             // Create the initial recognition task
@@ -391,6 +471,7 @@ mod platform {
                 &recognizer,
                 app,
                 Arc::clone(&accumulated_text),
+                Arc::clone(&last_task_text),
                 Arc::clone(&stopped),
                 Arc::clone(&task_generation),
                 0, // initial generation
@@ -468,6 +549,7 @@ mod platform {
                 stopped: Arc::clone(&stopped),
                 task_generation: Arc::clone(&task_generation),
                 accumulated_text: Arc::clone(&accumulated_text),
+                last_task_text: Arc::clone(&last_task_text),
                 restart_tx: Some(restart_tx),
                 _old_objects: Vec::new(),
             });
@@ -525,6 +607,10 @@ mod platform {
                     state._old_objects.push(old_request);
                     state._old_objects.push(old_task);
 
+                    // Reset last_task_text for the new generation — the new task
+                    // starts with a clean slate for regression detection.
+                    *state.last_task_text.lock().unwrap_or_else(|e| e.into_inner()) = String::new();
+
                     // Create a fresh recognition task
                     let restart_tx = match &state.restart_tx {
                         Some(tx) => tx.clone(),
@@ -535,6 +621,7 @@ mod platform {
                         &state.recognizer,
                         &app_for_restart,
                         Arc::clone(&state.accumulated_text),
+                        Arc::clone(&state.last_task_text),
                         Arc::clone(&state.stopped),
                         Arc::clone(&state.task_generation),
                         new_gen,
