@@ -69,7 +69,7 @@ fn parse_port_line(line: &str) -> Option<u16> {
 /// Generate a cryptographically secure authentication token
 /// Returns a URL-safe base64-encoded 32-byte random token
 pub(crate) fn generate_auth_token() -> String {
-    let token_bytes: [u8; 32] = rand::thread_rng().gen();
+    let token_bytes: [u8; 32] = rand::rng().random();
     URL_SAFE_NO_PAD.encode(token_bytes)
 }
 

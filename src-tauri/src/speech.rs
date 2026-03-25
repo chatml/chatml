@@ -230,6 +230,16 @@ mod platform {
             minor: isize,
             patch: isize,
         }
+        unsafe impl objc2::encode::Encode for NSOperatingSystemVersion {
+            const ENCODING: objc2::encode::Encoding = objc2::encode::Encoding::Struct(
+                "NSOperatingSystemVersion",
+                &[
+                    isize::ENCODING,
+                    isize::ENCODING,
+                    isize::ENCODING,
+                ],
+            );
+        }
         let process_info: *mut AnyObject = msg_send![class!(NSProcessInfo), processInfo];
         let ventura = NSOperatingSystemVersion {
             major: 13,
