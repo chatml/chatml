@@ -1072,7 +1072,7 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onGitHubRepos,
                                 onOpenBranches={(e) => navigateToBranches(session.workspaceId, e)}
                                 onOpenPRs={(e) => navigateToPRs(session.workspaceId, e)}
                                 formatTimeAgo={formatTimeAgo}
-                                showProjectIndicator={hasMultipleWorkspaces}
+                                showProjectIndicator={hasMultipleWorkspaces && !sidebarProjectFilter}
                                 workspaceColor={workspaceColors[session.workspaceId] || getWorkspaceColor(session.workspaceId)}
                                 workspaceName={ws?.name}
                               />
@@ -1125,7 +1125,7 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onGitHubRepos,
                             onOpenBranches={navigateToBranches}
                             onOpenPRs={navigateToPRs}
                             formatTimeAgo={formatTimeAgo}
-                            showProjectIndicator={hasMultipleWorkspaces}
+                            showProjectIndicator={hasMultipleWorkspaces && !sidebarProjectFilter}
                           />
                         ))
                       )}
