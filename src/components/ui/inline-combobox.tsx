@@ -397,7 +397,12 @@ const InlineComboboxItem = ({
     <ComboboxItem
       className={cn(comboboxItemVariants(), className)}
       onClick={(event) => {
-        removeInput(onClick ? false : focusEditor);
+        try {
+          removeInput(onClick ? false : focusEditor);
+        } catch {
+          // Element path may be stale if the editor was reset before removeInput completed.
+          // Safe to ignore: the subsequent onClick handler will clean up the editor state.
+        }
         onClick?.(event);
       }}
       {...props}
