@@ -2,7 +2,9 @@
 
 import * as React from 'react';
 import { createContext, useContext, useState, useCallback, useEffect, useMemo, useRef } from 'react';
-import { AlertCircle, AlertTriangle, CheckCircle2, Info, X } from 'lucide-react';
+import { AlertCircle, AlertTriangle, CheckCircle2, Copy, Check, Info, X } from 'lucide-react';
+import { copyToClipboard } from '@/lib/tauri';
+import { COPY_FEEDBACK_DURATION_MS } from '@/lib/constants';
 import { cn } from '@/lib/utils';
 
 // Toast types
@@ -135,7 +137,9 @@ const toastStyles: Record<ToastType, string> = {
 
 function ToastItem({ toast, onRemove }: { toast: Toast; onRemove: () => void }) {
   const [isLeaving, setIsLeaving] = useState(false);
+  const [copied, setCopied] = useState(false);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const copyTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     const duration = toast.duration ?? DEFAULT_DURATION[toast.type];
@@ -146,6 +150,7 @@ function ToastItem({ toast, onRemove }: { toast: Toast; onRemove: () => void }) 
 
     return () => {
       if (timerRef.current) clearTimeout(timerRef.current);
+      if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
     };
   }, [toast, onRemove]);
 
@@ -153,6 +158,16 @@ function ToastItem({ toast, onRemove }: { toast: Toast; onRemove: () => void }) 
     if (timerRef.current) clearTimeout(timerRef.current);
     setIsLeaving(true);
     setTimeout(onRemove, 200);
+  };
+
+  const handleCopy = async () => {
+    const text = [toast.title, toast.message].filter(Boolean).join(': ');
+    const success = await copyToClipboard(text);
+    if (success) {
+      setCopied(true);
+      if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
+      copyTimerRef.current = setTimeout(() => setCopied(false), COPY_FEEDBACK_DURATION_MS);
+    }
   };
 
   const Icon = ToastIcon[toast.type];
@@ -177,13 +192,24 @@ function ToastItem({ toast, onRemove }: { toast: Toast; onRemove: () => void }) 
           {toast.message}
         </p>
       </div>
-      <button
-        onClick={handleDismiss}
-        className="shrink-0 rounded-sm opacity-70 hover:opacity-100 transition-opacity"
-        aria-label="Dismiss notification"
-      >
-        <X className="w-4 h-4" />
-      </button>
+      <div className="flex items-center gap-1 shrink-0">
+        {(toast.type === 'error' || toast.type === 'warning') && (
+          <button
+            onClick={handleCopy}
+            className="rounded-sm opacity-70 hover:opacity-100 transition-opacity"
+            aria-label="Copy message"
+          >
+            {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+          </button>
+        )}
+        <button
+          onClick={handleDismiss}
+          className="rounded-sm opacity-70 hover:opacity-100 transition-opacity"
+          aria-label="Dismiss notification"
+        >
+          <X className="w-4 h-4" />
+        </button>
+      </div>
     </div>
   );
 }
