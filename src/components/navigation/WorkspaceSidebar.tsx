@@ -1779,6 +1779,7 @@ function SessionRow({
   showProjectIndicator,
   workspaceColor,
   workspaceName,
+  hideStatusIcon,
 }: {
   session: WorktreeSession;
   contentView: ContentView;
@@ -1792,6 +1793,7 @@ function SessionRow({
   showProjectIndicator?: boolean;
   workspaceColor?: string;
   workspaceName?: string;
+  hideStatusIcon?: boolean;
 }) {
   const isSessionSelected = contentView.type === 'conversation' && selectedSessionId === session.id;
   const hasPR = session.prStatus && session.prStatus !== 'none';
@@ -1856,7 +1858,7 @@ function SessionRow({
                     <div className="w-4 shrink-0 flex items-center justify-center">
                       <FolderGit2 className="w-3.5 h-3.5 text-blue-500" />
                     </div>
-                  ) : (
+                  ) : hideStatusIcon ? null : (
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
                         <button
@@ -2190,6 +2192,7 @@ function StatusGroupSection({
                   showProjectIndicator={showProjectIndicator}
                   workspaceColor={workspaceColors[session.workspaceId] || getWorkspaceColor(session.workspaceId)}
                   workspaceName={ws?.name}
+                  hideStatusIcon
                 />
               </ErrorBoundary>
             );
@@ -2452,6 +2455,7 @@ function SortableProjectStatusItem({
                                 onOpenBranches={onOpenBranches}
                                 onOpenPRs={onOpenPRs}
                                 formatTimeAgo={formatTimeAgo}
+                                hideStatusIcon
                               />
                             </ErrorBoundary>
                           ))}
