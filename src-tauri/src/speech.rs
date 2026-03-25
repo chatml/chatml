@@ -609,7 +609,10 @@ mod platform {
 
                     // Reset last_task_text for the new generation — the new task
                     // starts with a clean slate for regression detection.
-                    *state.last_task_text.lock().unwrap_or_else(|e| e.into_inner()) = String::new();
+                    *state
+                        .last_task_text
+                        .lock()
+                        .unwrap_or_else(|e| e.into_inner()) = String::new();
 
                     // Create a fresh recognition task
                     let restart_tx = match &state.restart_tx {
