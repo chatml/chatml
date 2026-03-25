@@ -147,10 +147,10 @@ describe('appStore - queued message ordering', () => {
     const queued = useAppStore.getState().queuedMessages[conversationId] ?? [];
     expect(queued).toHaveLength(0);
 
-    // keepStreaming is computed before the queue is drained, so isStreaming
-    // remains true (queue had 1 message → hasQueuedMessages was true, non-terminal).
+    // keepStreaming now uses post-commit remaining count. With 1 queued message
+    // committed, remaining is empty, so isStreaming should be false.
     const streaming = useAppStore.getState().streamingState[conversationId];
-    expect(streaming?.isStreaming).toBe(true);
+    expect(streaming?.isStreaming).toBe(false);
   });
 
   it('places queued user message AFTER assistant message on terminal event', () => {
@@ -382,6 +382,123 @@ describe('appStore - queued message ordering', () => {
     expect(messages[1].content).toBe('Already finalized response.');
     expect(messages[2].role).toBe('user');
     expect(messages[2].content).toBe('Second user message');
+  });
+
+  it('keeps streaming when multiple queued messages exist (commits first, preserves rest)', () => {
+    useAppStore.setState({
+      messagesByConversation: {
+        [conversationId]: [
+          {
+            id: 'msg-user1',
+            conversationId,
+            role: 'user',
+            content: 'First user message',
+            timestamp: '2025-07-01T12:00:00Z',
+          },
+        ],
+      },
+      streamingState: {
+        [conversationId]: {
+          text: 'Assistant response.',
+          segments: [],
+          currentSegmentId: null,
+          isStreaming: true,
+          error: null,
+          thinking: null,
+          isThinking: false,
+          planModeActive: false,
+          pendingPlanApproval: null,
+        },
+      },
+      queuedMessages: {
+        [conversationId]: [
+          {
+            id: 'msg-user2',
+            content: 'Second user message',
+            attachments: [],
+            timestamp: '2025-07-01T12:00:05Z',
+          },
+          {
+            id: 'msg-user3',
+            content: 'Third user message',
+            attachments: [],
+            timestamp: '2025-07-01T12:00:10Z',
+          },
+        ],
+      },
+    });
+
+    useAppStore.getState().finalizeStreamingMessage(conversationId, {
+      durationMs: 5000,
+      commitQueued: true,
+    });
+
+    const messages = useAppStore.getState().messagesByConversation[conversationId] ?? [];
+    expect(messages).toHaveLength(3);
+    expect(messages[2].role).toBe('user');
+    expect(messages[2].content).toBe('Second user message');
+
+    // With 2 queued messages, committing first leaves 1 remaining → keepStreaming = true
+    const streaming = useAppStore.getState().streamingState[conversationId];
+    expect(streaming?.isStreaming).toBe(true);
+
+    // Queue should have 1 remaining
+    const queued = useAppStore.getState().queuedMessages[conversationId] ?? [];
+    expect(queued).toHaveLength(1);
+    expect(queued[0].content).toBe('Third user message');
+  });
+
+  it('keeps streaming in no-text path with multiple queued messages', () => {
+    useAppStore.setState({
+      streamingState: {
+        [conversationId]: {
+          text: '',
+          segments: [],
+          currentSegmentId: null,
+          isStreaming: false,
+          error: null,
+          thinking: null,
+          isThinking: false,
+          planModeActive: false,
+          pendingPlanApproval: null,
+        },
+      },
+      queuedMessages: {
+        [conversationId]: [
+          {
+            id: 'msg-user2',
+            content: 'Second user message',
+            attachments: [],
+            timestamp: '2025-07-01T12:00:05Z',
+          },
+          {
+            id: 'msg-user3',
+            content: 'Third user message',
+            attachments: [],
+            timestamp: '2025-07-01T12:00:10Z',
+          },
+        ],
+      },
+    });
+
+    useAppStore.getState().finalizeStreamingMessage(conversationId, {
+      commitQueued: true,
+    });
+
+    // No-text early-return path should still commit first queued message
+    const messages = useAppStore.getState().messagesByConversation[conversationId] ?? [];
+    expect(messages).toHaveLength(1);
+    expect(messages[0].role).toBe('user');
+    expect(messages[0].content).toBe('Second user message');
+
+    // With 2 queued messages, committing first leaves 1 remaining → keepStreaming = true
+    const streaming = useAppStore.getState().streamingState[conversationId];
+    expect(streaming?.isStreaming).toBe(true);
+
+    // Queue should have 1 remaining
+    const queued = useAppStore.getState().queuedMessages[conversationId] ?? [];
+    expect(queued).toHaveLength(1);
+    expect(queued[0].content).toBe('Third user message');
   });
 
   it('does not add queued message when none exists', () => {

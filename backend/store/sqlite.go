@@ -2029,6 +2029,121 @@ func (s *SQLiteStore) AddMessageToConversation(ctx context.Context, convID strin
 	})
 }
 
+// preparedMessage holds pre-serialized fields for a message insert.
+type preparedMessage struct {
+	msg             models.Message
+	setupInfoJSON   sql.NullString
+	runSummaryJSON  sql.NullString
+	toolUsageJSON   sql.NullString
+	timelineJSON    sql.NullString
+	thinkingContent sql.NullString
+	planContent     sql.NullString
+	checkpointUuid  sql.NullString
+	durationMs      sql.NullInt64
+}
+
+func prepareMessage(msg models.Message) (preparedMessage, error) {
+	p := preparedMessage{msg: msg}
+
+	if msg.SetupInfo != nil {
+		data, err := json.Marshal(msg.SetupInfo)
+		if err != nil {
+			return p, fmt.Errorf("marshal setupInfo: %w", err)
+		}
+		p.setupInfoJSON = sql.NullString{String: string(data), Valid: true}
+	}
+	if msg.RunSummary != nil {
+		data, err := json.Marshal(msg.RunSummary)
+		if err != nil {
+			return p, fmt.Errorf("marshal runSummary: %w", err)
+		}
+		p.runSummaryJSON = sql.NullString{String: string(data), Valid: true}
+	}
+	if len(msg.ToolUsage) > 0 {
+		data, err := json.Marshal(msg.ToolUsage)
+		if err != nil {
+			return p, fmt.Errorf("marshal toolUsage: %w", err)
+		}
+		p.toolUsageJSON = sql.NullString{String: string(data), Valid: true}
+	}
+	if len(msg.Timeline) > 0 {
+		data, err := json.Marshal(msg.Timeline)
+		if err != nil {
+			return p, fmt.Errorf("marshal timeline: %w", err)
+		}
+		p.timelineJSON = sql.NullString{String: string(data), Valid: true}
+	}
+
+	p.thinkingContent = nullString(msg.ThinkingContent)
+	p.planContent = nullString(msg.PlanContent)
+	p.checkpointUuid = nullString(msg.CheckpointUuid)
+	if msg.DurationMs > 0 {
+		p.durationMs = sql.NullInt64{Int64: int64(msg.DurationMs), Valid: true}
+	}
+	return p, nil
+}
+
+func insertPreparedMessage(ctx context.Context, tx *sql.Tx, convID string, p preparedMessage, pos int) error {
+	_, err := tx.ExecContext(ctx, `
+		INSERT INTO messages (id, conversation_id, role, content, setup_info, run_summary,
+			tool_usage, thinking_content, duration_ms, timeline,
+			plan_content, checkpoint_uuid, timestamp, position)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		p.msg.ID, convID, p.msg.Role, p.msg.Content, p.setupInfoJSON, p.runSummaryJSON,
+		p.toolUsageJSON, p.thinkingContent, p.durationMs, p.timelineJSON,
+		p.planContent, p.checkpointUuid, p.msg.Timestamp, pos)
+	return err
+}
+
+// AddMessagesToConversation inserts multiple messages atomically in a single transaction.
+// Messages are inserted in slice order with sequential positions.
+func (s *SQLiteStore) AddMessagesToConversation(ctx context.Context, convID string, msgs []models.Message) error {
+	if len(msgs) == 0 {
+		return nil
+	}
+	// Fast path: single message delegates to existing method
+	if len(msgs) == 1 {
+		return s.AddMessageToConversation(ctx, convID, msgs[0])
+	}
+
+	// Pre-serialize all messages outside the retry loop (deterministic)
+	prepared := make([]preparedMessage, len(msgs))
+	for i, msg := range msgs {
+		p, err := prepareMessage(msg)
+		if err != nil {
+			return fmt.Errorf("AddMessagesToConversation[%d]: %w", i, err)
+		}
+		prepared[i] = p
+	}
+
+	return RetryDBExec(ctx, "AddMessagesToConversation", DefaultRetryConfig(), func(ctx context.Context) error {
+		tx, err := s.db.BeginTx(ctx, nil)
+		if err != nil {
+			return fmt.Errorf("begin: %w", err)
+		}
+
+		// Get next position within transaction
+		var maxPos sql.NullInt64
+		if err := tx.QueryRowContext(ctx, `SELECT MAX(position) FROM messages WHERE conversation_id = ?`, convID).Scan(&maxPos); err != nil && err != sql.ErrNoRows {
+			tx.Rollback()
+			return fmt.Errorf("get position: %w", err)
+		}
+		nextPos := 0
+		if maxPos.Valid {
+			nextPos = int(maxPos.Int64) + 1
+		}
+
+		for i, p := range prepared {
+			if err := insertPreparedMessage(ctx, tx, convID, p, nextPos+i); err != nil {
+				tx.Rollback()
+				return err
+			}
+		}
+
+		return tx.Commit()
+	})
+}
+
 func (s *SQLiteStore) AddToolActionToConversation(ctx context.Context, convID string, action models.ToolAction) error {
 	return RetryDBExec(ctx, "AddToolActionToConversation", DefaultRetryConfig(), func(ctx context.Context) error {
 		// Use transaction to make position query + insert atomic
