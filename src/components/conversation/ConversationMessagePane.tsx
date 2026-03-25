@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback, useMemo, useDeferredValue, startTransition } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo, useDeferredValue } from 'react';
 import { useAppStore, type QueuedMessage } from '@/stores/appStore';
 import {
   useMessages,
@@ -242,19 +242,23 @@ export function ConversationMessagePane({
     isStreamingRef.current = selectedStreaming.isStreaming;
   }, [selectedStreaming.isStreaming]);
 
-  // Force Virtuoso remount when pane re-activates after being hidden.
-  // Virtuoso's internal size cache (keyed by virtual index) becomes stale when
-  // firstItemIndex drifts or messages change while the pane is inactive. A scroll
-  // nudge cannot fix stale size ranges — only a fresh mount clears them.
-  // The remount uses initialTopMostItemIndex: LAST to scroll to the latest messages.
-  const [virtuosoGeneration, setVirtuosoGeneration] = useState(0);
+  // Scroll to latest messages when pane re-activates after being hidden.
+  // The pane uses visibility:hidden (not display:none) while inactive, so
+  // Virtuoso's ResizeObserver continues firing and its size cache stays warm.
+  // A full remount is unnecessary — scrollToBottom is sufficient. We defer
+  // to a rAF to ensure the browser has processed the visibility change.
   const prevIsActiveRef = useRef(false);
   useEffect(() => {
-    if (isActive && !prevIsActiveRef.current && hasMessages) {
-      resetFollowState();
-      startTransition(() => setVirtuosoGeneration(g => g + 1));
-    }
+    const wasActive = prevIsActiveRef.current;
     prevIsActiveRef.current = isActive;
+
+    if (isActive && !wasActive && hasMessages) {
+      resetFollowState();
+      const rafId = requestAnimationFrame(() => {
+        messageListRef.current?.scrollToBottom('auto');
+      });
+      return () => cancelAnimationFrame(rafId);
+    }
   }, [isActive, hasMessages, resetFollowState]);
 
   const handleAtBottomStateChange = useCallback((atBottom: boolean) => {
@@ -483,7 +487,6 @@ export function ConversationMessagePane({
         isSearchPending={searchQuery !== debouncedSearchQuery}
       />
       <VirtualizedMessageList
-        key={virtuosoGeneration}
         ref={messageListRef}
         messages={conversationMessages}
         worktreePath={worktreePath}
