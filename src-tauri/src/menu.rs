@@ -8,7 +8,7 @@ pub fn create_menu(app: &tauri::AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
     // 1. App menu (macOS shows as the app name; on other platforms it's a regular menu)
     #[allow(unused_mut)]
     let mut app_menu_builder = SubmenuBuilder::new(app, "ChatML")
-        .item(&PredefinedMenuItem::about(app, Some("About ChatML"), None)?)
+        .item(&MenuItemBuilder::with_id("about", "About ChatML").build(app)?)
         .separator()
         .item(&MenuItemBuilder::with_id("check_for_updates", "Check for Updates...").build(app)?)
         .separator()
