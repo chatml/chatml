@@ -462,6 +462,25 @@ export const useTerminalPanelVisible = (sessionId: string | null) =>
   useAppStore((s) => (sessionId ? s.terminalPanelVisible[sessionId] ?? false : false));
 
 // ============================================================================
+// Background Tasks State
+// ============================================================================
+
+const EMPTY_BACKGROUND_TASKS: import('@/lib/types').BackgroundTask[] = [];
+
+/**
+ * Background tasks scoped to a conversation.
+ */
+export const useBackgroundTasks = (conversationId: string | null) =>
+  useAppStore((s) => (conversationId ? s.backgroundTasks[conversationId] ?? EMPTY_BACKGROUND_TASKS : EMPTY_BACKGROUND_TASKS));
+
+/**
+ * Bottom panel active tab for a specific session.
+ * Returns 'terminal' by default.
+ */
+export const useBottomPanelActiveTab = (sessionId: string | null) =>
+  useAppStore((s) => (sessionId ? s.bottomPanelActiveTab[sessionId] ?? 'terminal' : 'terminal'));
+
+// ============================================================================
 // Script Output State
 // ============================================================================
 

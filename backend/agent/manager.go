@@ -2172,6 +2172,17 @@ func (m *Manager) StopConversation(ctx context.Context, convID string) {
 	}
 }
 
+// StopTask stops a specific background task (sub-agent) within a conversation
+func (m *Manager) StopTask(convID string, taskId string) error {
+	m.mu.RLock()
+	proc, ok := m.convProcesses[convID]
+	m.mu.RUnlock()
+	if !ok {
+		return fmt.Errorf("conversation not running: %s", convID)
+	}
+	return proc.StopTask(taskId)
+}
+
 // CompleteConversation marks a conversation as completed
 func (m *Manager) CompleteConversation(ctx context.Context, convID string) {
 	m.StopConversation(ctx, convID)
