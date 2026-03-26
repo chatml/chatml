@@ -40,7 +40,7 @@ export function InlineCommentInput({ onSubmit, onCancel }: InlineCommentInputPro
   );
 
   return (
-    <div className="border-l-4 border-l-blue-500 bg-muted/60 backdrop-blur-sm p-3 my-1 rounded-r text-sm shadow-sm">
+    <div className="border-l-4 border-l-blue-500 bg-muted/60 backdrop-blur-sm p-3 my-1 rounded-r text-sm font-sans shadow-sm">
       <textarea
         ref={textareaRef}
         value={text}

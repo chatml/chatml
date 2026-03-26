@@ -135,7 +135,7 @@ export const CommentThread = memo(function CommentThread({
   return (
     <div
       className={cn(
-        'border-l-4 bg-muted/60 backdrop-blur-sm p-3 my-1 rounded-r text-sm',
+        'border-l-4 bg-muted/60 backdrop-blur-sm p-3 my-1 rounded-r text-sm font-sans',
         'shadow-sm',
         borderClass,
         comment.resolved && 'opacity-60'
