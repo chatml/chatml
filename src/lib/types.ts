@@ -498,6 +498,11 @@ export interface AgentEvent {
 
   // Query response fields (SDK 0.2.72)
   result?: unknown;
+
+  // Background task fields (SDK 0.2.84)
+  taskId?: string;
+  lastToolName?: string;
+  taskUsage?: { total_tokens?: number; tool_uses?: number; duration_ms?: number };
 }
 
 // Rate limit info from claude.ai subscription (SDK 0.2.72)
@@ -765,6 +770,18 @@ export interface TerminalInstance {
   slotNumber: number;   // 1-5
   status: 'active' | 'exited';
   workspacePath: string; // cwd for this terminal's PTY
+}
+
+// Background task spawned by the Agent tool with run_in_background: true
+export interface BackgroundTask {
+  taskId: string;
+  toolUseId?: string;
+  description?: string;
+  status: 'running' | 'stopped';
+  startTime: number;
+  endTime?: number;
+  lastToolName?: string;
+  usage?: { totalTokens: number; toolUses: number; durationMs: number };
 }
 
 // Review comment for code review inline comments
