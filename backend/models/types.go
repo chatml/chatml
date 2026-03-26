@@ -20,7 +20,7 @@ type Session struct {
 	Name             string        `json:"name"`
 	Branch           string        `json:"branch"`
 	WorktreePath     string        `json:"worktreePath"`
-	SessionType      string        `json:"sessionType"`              // "worktree" or "base"
+	SessionType      string        `json:"sessionType"`              // "worktree", "base", or "scheduled"
 	BaseCommitSHA    string        `json:"baseCommitSha,omitempty"`    // Commit SHA the session was created from
 	TargetBranch     string        `json:"targetBranch,omitempty"`    // Per-session target branch override (e.g. "origin/develop")
 	Task             string        `json:"task,omitempty"`
@@ -270,13 +270,20 @@ const (
 
 // SessionType constants
 const (
-	SessionTypeWorktree = "worktree"
-	SessionTypeBase     = "base"
+	SessionTypeWorktree  = "worktree"
+	SessionTypeBase      = "base"
+	SessionTypeScheduled = "scheduled"
 )
 
 // IsBaseSession returns true if this session operates directly on the repo checkout.
 func (s *Session) IsBaseSession() bool {
 	return s.SessionType == SessionTypeBase
+}
+
+// IsMainRepoSession returns true if this session operates on the main repo directory
+// (not a worktree). Both base and scheduled sessions share this property.
+func (s *Session) IsMainRepoSession() bool {
+	return s.SessionType == SessionTypeBase || s.SessionType == SessionTypeScheduled
 }
 
 // SessionStatus constants

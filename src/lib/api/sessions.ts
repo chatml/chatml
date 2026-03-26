@@ -23,7 +23,7 @@ export interface SessionDTO {
   hasCheckFailures?: boolean;
   checkStatus?: 'none' | 'pending' | 'success' | 'failure';
   targetBranch?: string;
-  sessionType?: 'worktree' | 'base';
+  sessionType?: 'worktree' | 'base' | 'scheduled';
   scheduledTaskId?: string;
   sprintPhase?: string | null;
   deployStatus?: string | null;
@@ -87,7 +87,7 @@ export async function listAllSessions(includeArchived?: boolean): Promise<Sessio
 
 export async function createSession(
   workspaceId: string,
-  data: { name?: string; branch?: string; branchPrefix?: string; worktreePath?: string; task?: string; checkoutExisting?: boolean; systemMessage?: string; sessionType?: 'worktree' | 'base' } = {}
+  data: { name?: string; branch?: string; branchPrefix?: string; worktreePath?: string; task?: string; checkoutExisting?: boolean; systemMessage?: string; sessionType?: 'worktree' | 'base' | 'scheduled' } = {}
 ): Promise<SessionDTO> {
   const res = await fetchWithAuth(`${getApiBase()}/api/repos/${workspaceId}/sessions`, {
     method: 'POST',
