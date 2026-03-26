@@ -20,6 +20,9 @@ import { useToast } from '@/components/ui/toast';
 import { McpServersPanel } from '@/components/panels/McpServersPanel';
 import { ReviewPanel } from '@/components/panels/ReviewPanel';
 import { FileHistoryPanel } from '@/components/panels/FileHistoryPanel';
+import { BackgroundTasksPanel } from '@/components/panels/BackgroundTasksPanel';
+import { useBackgroundTasks } from '@/stores/selectors';
+import { useAppEventListener } from '@/lib/custom-events';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -445,6 +448,10 @@ export function ChangesPanel() {
   // Calculate todo counts for badge
   const totalPendingTodos = agentTodos.filter((t) => t.status !== 'completed').length;
 
+  // Calculate running background task count for badge
+  const backgroundTasks = useBackgroundTasks(selectedConversationId);
+  const runningTaskCount = backgroundTasks.filter((t) => t.status === 'running').length;
+
   // Callback for GitStatusSection to send messages to the agent
   const handleGitActionMessage = useCallback((content: string) => {
     if (!selectedConversationId) {
@@ -599,6 +606,15 @@ export function ChangesPanel() {
       setSidebarBottomPanelMinimized(false);
     }
   }, [sidebarBottomPanelMinimized, setSidebarBottomPanelMinimized]);
+
+  // Listen for programmatic tab switch (e.g. when a background task starts).
+  // Only switch if the event targets the currently selected session and the tab is visible.
+  const hiddenBottomTabs = useSettingsStore((s) => s.hiddenBottomTabs);
+  useAppEventListener('sidebar-switch-bottom-tab', (detail) => {
+    if (detail.sessionId !== selectedSessionId) return;
+    if (hiddenBottomTabs.includes(detail.tab as BottomPanelTab)) return;
+    handleBottomTabClick(detail.tab);
+  }, [handleBottomTabClick, selectedSessionId, hiddenBottomTabs]);
 
   // Sync imperative panel collapse/expand with the persisted minimized state
   useEffect(() => {
@@ -760,6 +776,7 @@ export function ChangesPanel() {
               bottomTab={bottomTab}
               setBottomTab={handleBottomTabClick}
               totalPendingTodos={totalPendingTodos}
+              runningTaskCount={runningTaskCount}
               isMinimized={sidebarBottomPanelMinimized}
               onToggleMinimize={toggleSidebarBottomPanel}
             />
@@ -786,6 +803,11 @@ export function ChangesPanel() {
                   <FileHistoryPanel isVisible={bottomTab === 'file-history'} />
                 </ErrorBoundary>
               </div>
+              <div className={cn("h-full", bottomTab !== 'background' && 'hidden')}>
+                <ErrorBoundary section="BackgroundTasks" fallback={<InlineErrorFallback message="Unable to display background tasks" />}>
+                  <BackgroundTasksPanel conversationId={selectedConversationId} />
+                </ErrorBoundary>
+              </div>
             </div>
           </div>
         </ResizablePanel>
@@ -808,6 +830,7 @@ const BOTTOM_TABS_CONFIG: Record<AllBottomPanelTab, { label: string; alwaysVisib
   'file-history': { label: 'File History' },
   budget: { label: 'Usage' },
   mcp: { label: 'MCP' },
+  background: { label: 'Background' },
   // TODO: Re-add scripts tab when the feature is reintroduced: scripts: { label: 'Scripts' },
 };
 
@@ -903,12 +926,14 @@ function BottomPanelTabs({
   bottomTab,
   setBottomTab,
   totalPendingTodos,
+  runningTaskCount,
   isMinimized,
   onToggleMinimize,
 }: {
   bottomTab: string;
   setBottomTab: (tab: string) => void;
   totalPendingTodos: number;
+  runningTaskCount: number;
   isMinimized: boolean;
   onToggleMinimize: () => void;
 }) {
@@ -969,7 +994,7 @@ function BottomPanelTabs({
                   label={BOTTOM_TABS_CONFIG[tabId].label}
                   isActive={bottomTab === tabId}
                   onClick={() => setBottomTab(tabId)}
-                  badge={tabId === 'todos' ? totalPendingTodos : undefined}
+                  badge={tabId === 'todos' ? totalPendingTodos : tabId === 'background' ? runningTaskCount : undefined}
                 />
               ))}
             </div>

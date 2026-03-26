@@ -62,7 +62,7 @@ import { SessionToolbarContent } from '@/components/navigation/SessionToolbarCon
 import { ConversationArea } from '@/components/conversation/ConversationArea';
 import { ChatInput } from '@/components/conversation/ChatInput';
 import { ChangesPanel } from '@/components/panels/ChangesPanel';
-import { BottomPanel } from '@/components/layout/BottomPanel';
+import { BottomTerminal } from '@/components/layout/BottomTerminal';
 import { MainToolbar, ContentActionBar } from '@/components/layout/MainToolbar';
 import { SidebarToolbar } from '@/components/layout/SidebarToolbar';
 import { ContentRouter } from '@/components/layout/ContentRouter';
@@ -741,9 +741,8 @@ export default function Home() {
                         >
                           <div className="h-full">
                             <ErrorBoundary section="Terminal">
-                              <BottomPanel
+                              <BottomTerminal
                                 currentSessionId={selectedSessionId}
-                                currentConversationId={selectedConversationId}
                                 currentWorkspacePath={selectedSession?.worktreePath ?? null}
                                 isExpanded={layout.showBottomTerminal}
                                 onHide={layout.hideBottomTerminal}
