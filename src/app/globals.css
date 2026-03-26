@@ -154,8 +154,12 @@ code.hljs { padding: 3px 5px; }
 }
 
 :root {
-  /* Menu Colors */
-  --menu-hover: oklch(0.90 0.025 280); /* Light mode menu hover - visible against surface-1 */
+  /* Menu Colors — macOS vibrancy style */
+  --menu-bg: oklch(0.98 0 0 / 0.92);
+  --menu-hover: oklch(0.50 0 0 / 0.08);
+  --menu-border: oklch(0.80 0 0 / 0.35);
+  --menu-separator: oklch(0.50 0 0 / 0.20);
+  --shadow-popover: 0 0 0 0.5px rgba(0, 0, 0, 0.06), 0 4px 16px rgba(0, 0, 0, 0.12), 0 12px 40px rgba(0, 0, 0, 0.08);
 
   /* Status Text Colors */
   --text-success: #22c55e;   /* green-500 */
@@ -265,8 +269,12 @@ code.hljs { padding: 3px 5px; }
   --accent: oklch(0.269 0.006 286.033);     /* Neutral dark */
   --accent-foreground: oklch(0.985 0 0);
 
-  /* Menu Colors */
-  --menu-hover: oklch(0.28 0 0);            /* Neutral menu hover */
+  /* Menu Colors — macOS vibrancy style */
+  --menu-bg: oklch(0.20 0 0 / 0.72);
+  --menu-hover: oklch(0.55 0 0 / 0.14);
+  --menu-border: oklch(0.50 0 0 / 0.25);
+  --menu-separator: oklch(0.60 0 0 / 0.25);
+  --shadow-popover: 0 0 0 0.5px rgba(0, 0, 0, 0.3), 0 4px 16px rgba(0, 0, 0, 0.4), 0 12px 40px rgba(0, 0, 0, 0.25);
 
   --destructive: oklch(0.704 0.191 22.216);
 
@@ -330,7 +338,10 @@ code.hljs { padding: 3px 5px; }
   --color-muted-foreground: var(--muted-foreground);
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
+  --color-menu-bg: var(--menu-bg);
   --color-menu-hover: var(--menu-hover);
+  --color-menu-border: var(--menu-border);
+  --color-menu-separator: var(--menu-separator);
   --color-destructive: var(--destructive);
   --color-border: var(--border);
   --color-input: var(--input);
@@ -1147,9 +1158,9 @@ html:not(.dark) .xterm .scrollbar .slider:hover {
   }
 }
 
-/* Custom shadow for popovers - even shadow all around */
+/* Custom shadow for popovers — macOS native menu style */
 @utility shadow-popover {
-  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.08), 0 8px 24px rgba(0, 0, 0, 0.35);
+  box-shadow: var(--shadow-popover);
 }
 
 /* Dialog markdown — compact styling for markdown rendered inside dialogs */
