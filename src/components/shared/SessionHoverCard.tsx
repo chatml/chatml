@@ -1,6 +1,7 @@
 'use client';
 
-import { FolderGit2, GitBranch, GitPullRequest } from 'lucide-react';
+import type { ReactNode } from 'react';
+import { FolderGit2, GitBranch } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { TaskStatusIcon } from '@/components/icons/TaskStatusIcon';
 import { getTaskStatusOption, getPRStatusInfo, getSprintPhaseOption } from '@/lib/session-fields';
@@ -12,7 +13,7 @@ interface SessionHoverCardBodyProps {
   session: WorktreeSession;
   formatTimeAgo: (date: string) => string;
   lastAgentCompletedAt?: number;
-  onCreatePR?: () => void;
+  actionSlot?: ReactNode;
   gitStatus?: { data: GitStatusDTO | null; loading: boolean };
 }
 
@@ -20,7 +21,7 @@ export function SessionHoverCardBody({
   session,
   formatTimeAgo,
   lastAgentCompletedAt,
-  onCreatePR,
+  actionSlot,
   gitStatus,
 }: SessionHoverCardBodyProps) {
   const hasStats = session.stats && (session.stats.additions > 0 || session.stats.deletions > 0);
@@ -132,30 +133,16 @@ export function SessionHoverCardBody({
         </div>
       )}
 
-      {/* Footer: stats + Create PR */}
-      {hasStats && (
+      {/* Footer: stats + primary action */}
+      {(hasStats || actionSlot) && (
         <div className="border-t border-border/50 px-3 py-2 flex items-center gap-2">
-          <span className="text-xs font-mono tabular-nums">
-            <span className="text-text-success">+{session.stats!.additions}</span>
-            <span className="text-text-error ml-1.5">-{session.stats!.deletions}</span>
-          </span>
-          {!hasPR && onCreatePR && (
-            <button
-              type="button"
-              className={cn(
-                'ml-auto flex items-center gap-1 text-xs px-2 py-1 rounded',
-                'border border-border/50 text-muted-foreground',
-                'hover:bg-surface-1 hover:text-foreground transition-colors',
-              )}
-              onClick={(e) => {
-                e.stopPropagation();
-                onCreatePR();
-              }}
-            >
-              <GitPullRequest className="h-3 w-3" />
-              Create PR
-            </button>
+          {hasStats && (
+            <span className="text-xs font-mono tabular-nums">
+              <span className="text-text-success">+{session.stats!.additions}</span>
+              <span className="text-text-error ml-1.5">-{session.stats!.deletions}</span>
+            </span>
           )}
+          {actionSlot && <div className="ml-auto">{actionSlot}</div>}
         </div>
       )}
     </>

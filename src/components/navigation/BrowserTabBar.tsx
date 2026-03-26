@@ -32,6 +32,7 @@ import { useNavigationStore } from '@/stores/navigationStore';
 import { useAppStore } from '@/stores/appStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { buildNavigationLabel } from '@/lib/navigation';
+import { expandGroupsForSession } from '@/hooks/useSidebarSessions';
 import { cn } from '@/lib/utils';
 
 /**
@@ -69,6 +70,11 @@ export function switchToTab(tabId: string) {
         appStore.selectConversation(newTab.selectedConversationId);
       }
       settingsStore.setContentView(newTab.contentView);
+      // Auto-expand collapsed sidebar groups so the selected session is visible
+      if (newTab.selectedSessionId) {
+        const session = appStore.sessions.find(s => s.id === newTab.selectedSessionId && !s.archived);
+        if (session) expandGroupsForSession(session);
+      }
     });
     useNavigationStore.getState().setActiveTabId(tabId);
   }

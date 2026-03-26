@@ -979,6 +979,48 @@ export function useWebSocket(enabled: boolean = true) {
         }
         break;
 
+      // ── SDK 0.2.84+ background task events ──────────────────────
+
+      case 'task_started':
+        if (event?.taskId) {
+          store.addBackgroundTask(conversationId, {
+            taskId: event.taskId!,
+            toolUseId: event.toolUseId,
+            description: event.description,
+            status: 'running',
+            startTime: Date.now(),
+          });
+          // Auto-show bottom panel and switch to tasks tab for the event's own session
+          const eventSessionId = data.sessionId;
+          if (eventSessionId) {
+            store.setTerminalPanelVisible(eventSessionId, true);
+            store.setBottomPanelActiveTab(eventSessionId, 'tasks');
+          }
+        }
+        break;
+
+      case 'task_progress':
+        if (event?.taskId) {
+          const taskUsage = event.taskUsage;
+          store.updateBackgroundTask(conversationId, event.taskId as string, {
+            lastToolName: event.lastToolName,
+            ...(taskUsage ? {
+              usage: {
+                totalTokens: taskUsage.total_tokens ?? 0,
+                toolUses: taskUsage.tool_uses ?? 0,
+                durationMs: taskUsage.duration_ms ?? 0,
+              },
+            } : {}),
+          });
+        }
+        break;
+
+      case 'task_stopped':
+        if (event?.taskId) {
+          store.stopBackgroundTask(conversationId, event.taskId as string);
+        }
+        break;
+
       // ── SDK 0.2.72+ event types ──────────────────────────────────
 
       case 'prompt_suggestion':

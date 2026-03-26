@@ -405,6 +405,28 @@ func (h *Handlers) StopConversation(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+func (h *Handlers) StopTask(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	convID := chi.URLParam(r, "convId")
+	taskID := chi.URLParam(r, "taskId")
+
+	conv, err := h.store.GetConversationMeta(ctx, convID)
+	if err != nil {
+		writeDBError(w, err)
+		return
+	}
+	if conv == nil {
+		writeNotFound(w, "conversation")
+		return
+	}
+
+	// Best-effort stop — succeed even if the task/conversation already stopped (idempotent).
+	if err := h.agentManager.StopTask(convID, taskID); err != nil {
+		logger.Handlers.Debugf("StopTask %s/%s: %v (may be expected if already stopped)", convID, taskID, err)
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func (h *Handlers) GetConversationDropStats(w http.ResponseWriter, r *http.Request) {
 	convID := chi.URLParam(r, "convId")
 	stats := h.agentManager.GetConversationDropStats(convID)

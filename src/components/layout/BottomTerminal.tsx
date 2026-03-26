@@ -84,9 +84,9 @@ export function BottomTerminal({ currentSessionId, currentWorkspacePath, isExpan
   };
 
   return (
-    <div className="flex flex-col h-full bg-background border-t">
-      {/* Header with tabs - shows current session's terminals */}
-      <div className="flex items-center gap-1 px-2 py-1 border-b bg-muted/30 shrink-0">
+    <div className="flex flex-col h-full bg-background">
+      {/* Header with terminal instance tabs */}
+      <div className="flex items-center gap-1 px-2 py-0.5 border-b bg-muted/20 shrink-0">
         {/* Terminal tabs */}
         <div role="tablist" aria-label="Terminal tabs" className="flex items-center gap-1 flex-1 min-w-0 overflow-x-auto">
           {instances.map((terminal) => (
@@ -136,17 +136,6 @@ export function BottomTerminal({ currentSessionId, currentWorkspacePath, isExpan
           </Button>
         </div>
 
-        {/* Hide panel button */}
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-6 w-6 shrink-0"
-          onClick={onHide}
-          title="Hide terminal panel"
-          aria-label="Hide terminal panel"
-        >
-          <X className="h-3 w-3" />
-        </Button>
       </div>
 
       {/* Terminal content - render ALL sessions' terminals for persistence */}

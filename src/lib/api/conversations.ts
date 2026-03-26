@@ -290,6 +290,11 @@ export async function stopConversation(convId: string): Promise<void> {
   await handleVoidResponse(res, 'Failed to stop conversation');
 }
 
+export async function stopBackgroundTask(convId: string, taskId: string): Promise<void> {
+  const res = await fetchWithAuth(`${getApiBase()}/api/conversations/${convId}/tasks/${taskId}/stop`, { method: 'POST' });
+  await handleVoidResponse(res, 'Failed to stop background task');
+}
+
 export async function getConversationDropStats(convId: string): Promise<{ droppedMessages: number }> {
   const res = await fetchWithAuth(`${getApiBase()}/api/conversations/${convId}/drop-stats`);
   return handleResponse(res);

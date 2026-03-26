@@ -91,6 +91,9 @@ export function useMenuHandlers(options: MenuHandlersOptions) {
     safeListen<string>('menu-event', (menuId) => {
       switch (menuId) {
         // App menu
+        case 'about':
+          window.dispatchEvent(new CustomEvent('show-about'));
+          break;
         case 'check_for_updates':
           useUpdateStore.getState().checkForUpdates().then((result) => {
             if (result === 'up-to-date') {

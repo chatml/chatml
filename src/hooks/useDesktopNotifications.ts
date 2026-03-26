@@ -5,6 +5,7 @@ import { sendNotification } from '@/lib/tauri';
 import { playSound } from '@/lib/sounds';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useAppStore } from '@/stores/appStore';
+import { expandGroupsForSession } from '@/hooks/useSidebarSessions';
 
 const DEBOUNCE_MS = 5000;
 // Short window so only actual notification clicks (near-instant focus) trigger navigation,
@@ -85,6 +86,8 @@ function navigateToConversation(conversationId: string): void {
     }
 
     state.selectSession(session.id);
+    // Auto-expand collapsed sidebar groups so the selected session is visible
+    expandGroupsForSession(session);
   }
   state.selectConversation(conversationId);
 }

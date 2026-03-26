@@ -141,6 +141,7 @@ export const BATCHABLE_EVENTS = new Set([
   // SDK 0.2.84+ events
   'api_retry', 'session_state_changed', 'stop_failure',
   'cwd_changed', 'file_changed', 'task_created',
+  'task_started', 'task_progress', 'task_stopped',
 ]);
 
 // Content event types that should be suppressed during reconciliation.
@@ -149,6 +150,7 @@ export const RECONCILIATION_SUPPRESSED_EVENTS = new Set([
   'assistant_text', 'tool_start', 'tool_end', 'thinking_start', 'thinking_delta',
   'thinking', 'subagent_started', 'subagent_stopped', 'subagent_output',
   'ghost_text', 'todo_update', 'tool_progress',
+  'task_started', 'task_progress', 'task_stopped',
 ]);
 
 // Map backend status to frontend session status
