@@ -137,7 +137,6 @@ export function ToolApprovalPrompt({ conversationId }: ToolApprovalPromptProps) 
     setPrevRequestId(pending?.requestId);
     if (pending) {
       setSubmitting(false);
-      submittingRef.current = false;
       setError(null);
       setElapsed(0);
       if (pending.toolName === 'Bash') {
@@ -146,9 +145,10 @@ export function ToolApprovalPrompt({ conversationId }: ToolApprovalPromptProps) 
     }
   }
 
-  // Reset autoDeniedRef when request changes (refs must be updated in effects, not during render)
+  // Reset refs when request changes (refs must be updated in effects, not during render)
   useEffect(() => {
     if (pending) {
+      submittingRef.current = false;
       autoDeniedRef.current = false;
     }
   }, [pending?.requestId, pending]);
