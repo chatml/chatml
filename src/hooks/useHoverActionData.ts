@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { getSessionSnapshot, getPRStatus, getGlobalActionTemplates, getWorkspaceActionTemplates } from '@/lib/api';
 import { getSessionData } from '@/lib/sessionDataCache';
 import { fetchMergedActionTemplates, ACTION_TEMPLATES } from '@/lib/action-templates';
@@ -19,6 +19,9 @@ interface UseHoverActionDataResult {
  *
  * Fires when `enabled` becomes true (hover card opens). No polling.
  * Uses sessionDataCache for instant stale display while fresh data loads.
+ *
+ * Note: HoverCardContent unmounts when closed (no forceMount), so this hook
+ * remounts on every hover. Cross-hover caching comes from sessionDataCache.
  */
 export function useHoverActionData(
   workspaceId: string,
@@ -30,29 +33,24 @@ export function useHoverActionData(
   const [prDetails, setPRDetails] = useState<PRDetails | null>(null);
   const [templates, setTemplates] = useState<Record<ActionTemplateKey, string> | null>(null);
   const [loading, setLoading] = useState(false);
+  const [fetched, setFetched] = useState(false);
 
-  // Track whether we've already fetched for this mount.
-  // Note: this ref resets on every mount because HoverCardContent unmounts
-  // when the hover card closes (no forceMount). The cross-hover cache is
-  // provided by sessionDataCache (getSessionData below), not this ref.
-  const fetchedRef = useRef(false);
-
-  // Reset when session identity changes — uses the React "adjust state during
-  // render" pattern to avoid synchronous setState inside an effect.
+  // Reset all state when session identity changes — React's recommended
+  // "adjust state during render" pattern (no refs, no effects).
+  const [prevKey, setPrevKey] = useState(`${workspaceId}:${sessionId}`);
   const sessionKey = `${workspaceId}:${sessionId}`;
-  const prevKeyRef = useRef(sessionKey);
-  if (prevKeyRef.current !== sessionKey) {
-    prevKeyRef.current = sessionKey;
-    fetchedRef.current = false;
+  if (prevKey !== sessionKey) {
+    setPrevKey(sessionKey);
+    setFetched(false);
     setGitStatus(null);
     setPRDetails(null);
     setTemplates(null);
+    setLoading(false);
   }
 
-  // Seed with cached data and set loading during render (not inside an effect)
-  // to avoid the react-hooks/set-state-in-effect lint rule and to show
-  // stale-while-revalidate content on the first paint without a flash.
-  const willFetch = enabled && !fetchedRef.current && !!workspaceId && !!sessionId;
+  // Seed with cached data and set loading during render so the first paint
+  // shows stale-while-revalidate content without a flash.
+  const willFetch = enabled && !fetched && !!workspaceId && !!sessionId;
   if (willFetch && !gitStatus) {
     const cached = getSessionData(workspaceId, sessionId);
     if (cached?.gitStatus) {
@@ -64,8 +62,7 @@ export function useHoverActionData(
   }
 
   useEffect(() => {
-    if (!enabled || !workspaceId || !sessionId) return;
-    if (fetchedRef.current) return;
+    if (!enabled || !workspaceId || !sessionId || fetched) return;
 
     let cancelled = false;
 
@@ -100,15 +97,14 @@ export function useHoverActionData(
     Promise.all([snapshotPromise, prPromise, templatesPromise]).then(() => {
       if (!cancelled) {
         setLoading(false);
-        fetchedRef.current = true;
+        setFetched(true);
       }
     });
 
     return () => {
       cancelled = true;
-      setLoading(false);
     };
-  }, [enabled, workspaceId, sessionId, prStatus]);
+  }, [enabled, workspaceId, sessionId, prStatus, fetched]);
 
   return { gitStatus, prDetails, templates, loading };
 }
