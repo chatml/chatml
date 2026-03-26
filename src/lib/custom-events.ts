@@ -34,6 +34,8 @@ export interface AppCustomEventMap {
   'autoplan': void;
   /** Document-release: post-ship documentation audit */
   'document-release': void;
+  /** Execute a primary action from the session hover card (select session first, then dispatch) */
+  'primary-action-execute': { message: string; templateKey?: string | null; templateContent?: string; workspaceId: string };
 }
 
 type EventDetail<K extends keyof AppCustomEventMap> =

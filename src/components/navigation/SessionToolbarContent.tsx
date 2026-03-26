@@ -256,6 +256,24 @@ export function SessionToolbarContent() {
     return () => window.removeEventListener('git-sync', handleSync);
   }, [handleActionWithBubble]);
 
+  // Listen for primary-action-execute events from session hover card.
+  // Uses workspaceId from the event payload (not selectedWorkspaceId) to avoid a
+  // timing gap: the event fires via rAF before useEffect re-registers the listener
+  // with the new selectedWorkspaceId after session selection.
+  // Templates are pre-fetched eagerly in useHoverActionData (on hover open), so
+  // templateContent is already resolved — no async fetch needed on the critical path.
+  useAppEventListener('primary-action-execute', (detail) => {
+    if (!detail) return;
+    const { message, templateKey, templateContent } = detail;
+    if (templateKey) {
+      const key = templateKey as ActionTemplateKey;
+      const content = templateContent ?? ACTION_TEMPLATES[key];
+      handleActionWithBubbleAndTemplate(message, content, key);
+    } else {
+      handleActionWithBubble(message);
+    }
+  }, [handleActionWithBubble, handleActionWithBubbleAndTemplate]);
+
   // Shared handler for branch-sync events (rebase & merge)
   const handleBranchSyncEvent = useCallback((baseBranch: string, message: string) => {
     if (isAgentWorking || !selectedConversationId || !selectedWorkspaceId) {

@@ -17,10 +17,10 @@ import {
 } from '@/components/ui/context-menu';
 import { HoverCard, HoverCardTrigger, HoverCardContent } from '@/components/ui/hover-card';
 import { SessionHoverCardBody } from '@/components/shared/SessionHoverCard';
+import { HoverCardPrimaryAction } from '@/components/shared/HoverCardPrimaryAction';
 import { useSessionActivityState, useIsSessionUnread } from '@/stores/selectors';
 import { useAppStore } from '@/stores/appStore';
 import { useBaseSessionGitStatus } from '@/hooks/useBaseSessionGitStatus';
-import { dispatchAppEvent } from '@/lib/custom-events';
 import type { WorktreeSession } from '@/lib/types';
 import type { ContentView } from '@/stores/settingsStore';
 
@@ -115,11 +115,14 @@ export function BaseSessionCard({
               formatTimeAgo={formatTimeAgo}
               lastAgentCompletedAt={lastAgentCompletedAt}
               gitStatus={{ data: gitStatus, loading }}
-              onCreatePR={() => {
-                setHoverOpen(false);
-                onSelectSession(session.id);
-                requestAnimationFrame(() => dispatchAppEvent('git-create-pr'));
-              }}
+              actionSlot={session.sessionType !== 'base' ? (
+                <HoverCardPrimaryAction
+                  session={session}
+                  hoverOpen={hoverOpen}
+                  onClose={() => setHoverOpen(false)}
+                  onSelectSession={onSelectSession}
+                />
+              ) : undefined}
             />
           </HoverCardContent>
         </HoverCard>
