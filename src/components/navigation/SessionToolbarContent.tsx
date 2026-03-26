@@ -256,6 +256,28 @@ export function SessionToolbarContent() {
     return () => window.removeEventListener('git-sync', handleSync);
   }, [handleActionWithBubble]);
 
+  // Listen for primary-action-execute events from session hover card.
+  // Uses workspaceId from the event payload (not selectedWorkspaceId) to avoid a
+  // timing gap: the event fires via rAF before useEffect re-registers the listener
+  // with the new selectedWorkspaceId after session selection.
+  useAppEventListener('primary-action-execute', (detail) => {
+    if (!detail) return;
+    const { message, templateKey, workspaceId } = detail;
+    if (templateKey && workspaceId) {
+      fetchMergedActionTemplates(workspaceId, getGlobalActionTemplates, getWorkspaceActionTemplates)
+        .then((templates) => {
+          const key = templateKey as ActionTemplateKey;
+          handleActionWithBubbleAndTemplate(message, templates[key] ?? ACTION_TEMPLATES[key], key);
+        })
+        .catch(() => {
+          const key = templateKey as ActionTemplateKey;
+          handleActionWithBubbleAndTemplate(message, ACTION_TEMPLATES[key], key);
+        });
+    } else {
+      handleActionWithBubble(message);
+    }
+  }, [handleActionWithBubble, handleActionWithBubbleAndTemplate]);
+
   // Shared handler for branch-sync events (rebase & merge)
   const handleBranchSyncEvent = useCallback((baseBranch: string, message: string) => {
     if (isAgentWorking || !selectedConversationId || !selectedWorkspaceId) {

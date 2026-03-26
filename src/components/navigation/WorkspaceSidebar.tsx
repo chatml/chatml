@@ -117,7 +117,7 @@ import { ErrorBoundary } from '@/components/shared/ErrorBoundary';
 import { CardErrorFallback } from '@/components/shared/ErrorFallbacks';
 import { HoverCard, HoverCardTrigger, HoverCardContent } from '@/components/ui/hover-card';
 import { SessionHoverCardBody } from '@/components/shared/SessionHoverCard';
-import { dispatchAppEvent } from '@/lib/custom-events';
+import { HoverCardPrimaryAction } from '@/components/shared/HoverCardPrimaryAction';
 import { BaseSessionCard } from '@/components/navigation/BaseSessionCard';
 
 interface WorkspaceSidebarProps {
@@ -1916,12 +1916,15 @@ function SessionRow({
               session={session}
               formatTimeAgo={formatTimeAgo}
               lastAgentCompletedAt={lastAgentCompletedAt}
-              onCreatePR={() => {
-                setHoverOpen(false);
-                onSelectSession(session.id);
-                // Dispatch after a frame to let session selection settle
-                requestAnimationFrame(() => dispatchAppEvent('git-create-pr'));
-              }}
+              actionSlot={session.sessionType !== 'base' ? (
+                <HoverCardPrimaryAction
+                  session={session}
+                  hoverOpen={hoverOpen}
+                  onClose={() => setHoverOpen(false)}
+                  onSelectSession={onSelectSession}
+                  onArchiveSession={onArchiveSession}
+                />
+              ) : undefined}
             />
           </HoverCardContent>
         </HoverCard>
