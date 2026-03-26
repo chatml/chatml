@@ -377,6 +377,9 @@ interface AppState {
   // File watcher: last file change event (for reactive subscriptions)
   lastFileChange: { workspaceId: string; path: string; fullPath: string; timestamp: number } | null;
 
+  // Git index change signal from branch watcher (via WebSocket session_stats_update)
+  lastStatsInvalidation: { sessionId: string; timestamp: number } | null;
+
   // Query responses from agent (dynamic model info from SDK)
   supportedModels: Array<{
     value: string;
@@ -656,6 +659,7 @@ interface AppState {
 
   // File watcher actions
   setLastFileChange: (event: { workspaceId: string; path: string; fullPath: string }) => void;
+  setLastStatsInvalidation: (sessionId: string) => void;
 }
 
 /** Build a sessionId → Conversation[] lookup from a flat conversations array. */
@@ -721,6 +725,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   toolUseSummaries: {},
   summaries: {},
   lastFileChange: null,
+  lastStatsInvalidation: null,
   messagePagination: {},
 
   // Query responses
@@ -2836,6 +2841,9 @@ updateFileTabContent: (id, content) => set((state) => ({
   // File watcher actions
   setLastFileChange: (event) => set({
     lastFileChange: { ...event, timestamp: Date.now() },
+  }),
+  setLastStatsInvalidation: (sessionId) => set({
+    lastStatsInvalidation: { sessionId, timestamp: Date.now() },
   }),
 
 }));

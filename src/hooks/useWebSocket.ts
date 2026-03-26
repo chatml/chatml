@@ -1339,6 +1339,8 @@ export function useWebSocket(enabled: boolean = true) {
           const payload = data.payload as Record<string, unknown> | undefined;
           const stats = payload?.stats as { additions: number; deletions: number } | null | undefined;
           getStore().updateSession(data.sessionId, { stats: stats ?? undefined });
+          // Signal git status hooks to refetch (branch watcher detected index change)
+          getStore().setLastStatsInvalidation(data.sessionId);
           return;
         }
 
