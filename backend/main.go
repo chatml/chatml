@@ -282,13 +282,25 @@ func main() {
 
 				// Get session and workspace data to recompute stats
 				sess, err := s.GetSession(ctx, sessionID)
-				if err != nil || sess == nil || sess.WorktreePath == "" {
+				if err != nil || sess == nil {
 					return
 				}
 
 				// Get workspace for branch info
 				repo, err := s.GetRepo(ctx, sess.WorkspaceID)
-				if err != nil {
+				if err != nil || repo == nil {
+					return
+				}
+
+				// Resolve working path: worktree path for worktree sessions,
+				// workspace path for base sessions
+				workingPath := sess.WorktreePath
+				// Defensive fallback for legacy base sessions created before
+				// WorktreePath was populated. Current creation paths always set it.
+				if workingPath == "" && sess.IsBaseSession() {
+					workingPath = repo.Path
+				}
+				if workingPath == "" {
 					return
 				}
 
@@ -309,7 +321,7 @@ func main() {
 					}
 					remoteRef = remote + "/" + branch
 				}
-				baseRef, mbErr := repoManager.GetMergeBase(ctx, sess.WorktreePath, remoteRef, "HEAD")
+				baseRef, mbErr := repoManager.GetMergeBase(ctx, workingPath, remoteRef, "HEAD")
 				if mbErr != nil || baseRef == "" {
 					baseRef = sess.BaseCommitSHA
 					if baseRef == "" && repo != nil {
@@ -321,11 +333,11 @@ func main() {
 				}
 
 				// Compute stats
-				changes, err := repoManager.GetChangedFilesWithStats(ctx, sess.WorktreePath, baseRef)
+				changes, err := repoManager.GetChangedFilesWithStats(ctx, workingPath, baseRef)
 				if err != nil {
 					return
 				}
-				untracked, _ := repoManager.GetUntrackedFiles(ctx, sess.WorktreePath)
+				untracked, _ := repoManager.GetUntrackedFiles(ctx, workingPath)
 
 				var additions, deletions int
 				for _, c := range changes {
@@ -366,8 +378,12 @@ func main() {
 					continue
 				}
 				for _, sess := range sessions {
-					if sess.WorktreePath != "" {
-						if watchErr := branchWatcher.WatchSession(sess.ID, sess.WorktreePath, sess.Branch); watchErr != nil {
+					watchPath := sess.WorktreePath
+					if watchPath == "" && sess.IsBaseSession() {
+						watchPath = repo.Path // Base sessions use workspace path
+					}
+					if watchPath != "" {
+						if watchErr := branchWatcher.WatchSession(sess.ID, watchPath, sess.Branch); watchErr != nil {
 							logger.BranchWatcher.Warnf("Failed to watch existing session %s: %v", sess.ID, watchErr)
 						}
 					}

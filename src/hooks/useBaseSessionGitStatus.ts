@@ -24,6 +24,7 @@ export function useBaseSessionGitStatus(
   const [loading, setLoading] = useState(true);
 
   const lastFileChange = useAppStore((s) => s.lastFileChange);
+  const lastStatsInvalidation = useAppStore((s) => s.lastStatsInvalidation);
 
   const isMountedRef = useRef(false);
   const debounceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -115,6 +116,14 @@ export function useBaseSessionGitStatus(
       debouncedRefetch();
     }
   }, [active, lastFileChange, workspaceId, debouncedRefetch]);
+
+  // React to git index changes (commits, staging) detected by the backend branch watcher
+  useEffect(() => {
+    if (!active || !sessionId || !lastStatsInvalidation) return;
+    if (lastStatsInvalidation.sessionId === sessionId) {
+      debouncedRefetch();
+    }
+  }, [active, lastStatsInvalidation, sessionId, debouncedRefetch]);
 
   // Refetch immediately when the app becomes visible (e.g., user tabs back from terminal)
   useEffect(() => {

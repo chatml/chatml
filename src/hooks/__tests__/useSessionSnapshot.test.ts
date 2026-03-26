@@ -77,7 +77,7 @@ describe('useSessionSnapshot', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     vi.clearAllMocks();
-    useAppStore.setState({ lastFileChange: null });
+    useAppStore.setState({ lastFileChange: null, lastStatsInvalidation: null });
     mockedGetSessionSnapshot.mockResolvedValue(makeSnapshot());
     mockedGetSessionData.mockReturnValue(null);
   });
@@ -167,6 +167,37 @@ describe('useSessionSnapshot', () => {
     await flushAndAdvance(600);
 
     expect(mockedGetSessionSnapshot).toHaveBeenCalledTimes(2);
+  });
+
+  it('refetches on matching session stats invalidation', async () => {
+    renderHook(() => useSessionSnapshot('ws-1', 'session-1'));
+    await flushAndAdvance();
+
+    expect(mockedGetSessionSnapshot).toHaveBeenCalledTimes(1);
+
+    act(() => {
+      useAppStore.getState().setLastStatsInvalidation('session-1');
+    });
+
+    // Advance past 500ms debounce
+    await flushAndAdvance(600);
+
+    expect(mockedGetSessionSnapshot).toHaveBeenCalledTimes(2);
+  });
+
+  it('ignores stats invalidation for different session', async () => {
+    renderHook(() => useSessionSnapshot('ws-1', 'session-1'));
+    await flushAndAdvance();
+
+    expect(mockedGetSessionSnapshot).toHaveBeenCalledTimes(1);
+
+    act(() => {
+      useAppStore.getState().setLastStatsInvalidation('session-OTHER');
+    });
+
+    await flushAndAdvance(600);
+
+    expect(mockedGetSessionSnapshot).toHaveBeenCalledTimes(1);
   });
 
   it('ignores file change for different workspace', async () => {

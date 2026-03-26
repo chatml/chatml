@@ -68,3 +68,50 @@ describe('appStore - lastFileChange', () => {
     expect(result!.timestamp).toBeLessThanOrEqual(after);
   });
 });
+
+describe('appStore - lastStatsInvalidation', () => {
+  beforeEach(() => {
+    useAppStore.setState({ lastStatsInvalidation: null });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('initial value is null', () => {
+    expect(useAppStore.getState().lastStatsInvalidation).toBeNull();
+  });
+
+  it('setLastStatsInvalidation sets sessionId with timestamp', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2025-06-15T12:00:00Z'));
+
+    useAppStore.getState().setLastStatsInvalidation('session-1');
+
+    const result = useAppStore.getState().lastStatsInvalidation;
+    expect(result).toEqual({
+      sessionId: 'session-1',
+      timestamp: Date.now(),
+    });
+  });
+
+  it('setLastStatsInvalidation overwrites previous value', () => {
+    useAppStore.getState().setLastStatsInvalidation('session-1');
+    useAppStore.getState().setLastStatsInvalidation('session-2');
+
+    const result = useAppStore.getState().lastStatsInvalidation;
+    expect(result?.sessionId).toBe('session-2');
+  });
+
+  it('setLastStatsInvalidation adds timestamp automatically', () => {
+    const before = Date.now();
+
+    useAppStore.getState().setLastStatsInvalidation('session-1');
+
+    const after = Date.now();
+    const result = useAppStore.getState().lastStatsInvalidation;
+    expect(result).not.toBeNull();
+    expect(result!.timestamp).toBeGreaterThanOrEqual(before);
+    expect(result!.timestamp).toBeLessThanOrEqual(after);
+  });
+});

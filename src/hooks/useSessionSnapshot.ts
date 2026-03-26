@@ -56,6 +56,7 @@ export function useSessionSnapshot(
   const [errorCode, setErrorCode] = useState<string | null>(null);
 
   const lastFileChange = useAppStore((s) => s.lastFileChange);
+  const lastStatsInvalidation = useAppStore((s) => s.lastStatsInvalidation);
 
   const hasBeenActiveRef = useRef(active);
   useEffect(() => {
@@ -224,6 +225,17 @@ export function useSessionSnapshot(
       debouncedRefetch();
     }
   }, [active, lastFileChange, workspaceId, debouncedRefetch]);
+
+  // The session_stats_update WebSocket event updates the stats badge immediately
+  // via updateSession(), but does not carry the full file-change list or branch
+  // commits. This refetch ensures the detailed snapshot stays in sync after a
+  // commit, stage, or index change.
+  useEffect(() => {
+    if (!active || !sessionId || !lastStatsInvalidation) return;
+    if (lastStatsInvalidation.sessionId === sessionId) {
+      debouncedRefetch();
+    }
+  }, [active, lastStatsInvalidation, sessionId, debouncedRefetch]);
 
   return {
     gitStatus,
