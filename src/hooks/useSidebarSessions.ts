@@ -19,6 +19,11 @@ export interface SidebarGroup {
   subGroups?: SidebarGroup[];
 }
 
+/** Returns true for sessions that operate on the main repo directory (not a worktree). */
+function isMainRepoSession(s: WorktreeSession): boolean {
+  return s.sessionType === 'base' || s.sessionType === 'scheduled';
+}
+
 // Status display order and weights
 const STATUS_ORDER: SessionTaskStatus[] = ['in_progress', 'in_review', 'backlog', 'done', 'cancelled'];
 const STATUS_WEIGHT: Record<SessionTaskStatus, number> = {
@@ -216,13 +221,13 @@ export function useSidebarSessions({
     // their own sidebar treatment. The pin menu item is hidden for base sessions in
     // SessionsDataTable. Note: pinned sessions honour the search filter since they
     // are derived from `filtered` (which applies searchTerm).
-    const pinned = filtered.filter(s => s.pinned && s.sessionType !== 'base');
-    const unpinned = filtered.filter(s => !s.pinned || s.sessionType === 'base');
+    const pinned = filtered.filter(s => s.pinned && !isMainRepoSession(s));
+    const unpinned = filtered.filter(s => !s.pinned || isMainRepoSession(s));
     const pinnedSessions = sortSessions(pinned, sortBy);
 
     if (effectiveGroupBy === 'none') {
-      const base = sortSessions(unpinned.filter(s => s.sessionType === 'base'), sortBy);
-      const regular = unpinned.filter(s => s.sessionType !== 'base');
+      const base = sortSessions(unpinned.filter(isMainRepoSession), sortBy);
+      const regular = unpinned.filter(s => !isMainRepoSession(s));
       return {
         groups: [],
         flatSessions: sortSessions(regular, sortBy),
@@ -233,8 +238,8 @@ export function useSidebarSessions({
     }
 
     if (effectiveGroupBy === 'status') {
-      const base = sortSessions(unpinned.filter(s => s.sessionType === 'base'), sortBy);
-      const regular = unpinned.filter(s => s.sessionType !== 'base');
+      const base = sortSessions(unpinned.filter(isMainRepoSession), sortBy);
+      const regular = unpinned.filter(s => !isMainRepoSession(s));
       return {
         groups: applyStatusGroupOrder(buildStatusGroups(regular, sortBy), statusGroupOrder),
         flatSessions: [],
@@ -245,8 +250,8 @@ export function useSidebarSessions({
     }
 
     if (effectiveGroupBy === 'sprint') {
-      const base = sortSessions(unpinned.filter(s => s.sessionType === 'base'), sortBy);
-      const regular = unpinned.filter(s => s.sessionType !== 'base');
+      const base = sortSessions(unpinned.filter(isMainRepoSession), sortBy);
+      const regular = unpinned.filter(s => !isMainRepoSession(s));
       return {
         groups: buildSprintPhaseGroups(regular, sortBy),
         flatSessions: [],
@@ -270,8 +275,8 @@ export function useSidebarSessions({
         const wsSessions = byWorkspace.get(ws.id) ?? [];
         if (wsSessions.length === 0 && filters.searchTerm) continue;
         const color = workspaceColors[ws.id] || getDefaultColor(ws.id);
-        const base = wsSessions.filter(s => s.sessionType === 'base');
-        const regular = wsSessions.filter(s => s.sessionType !== 'base');
+        const base = wsSessions.filter(isMainRepoSession);
+        const regular = wsSessions.filter(s => !isMainRepoSession(s));
         groups.push({
           key: `project:${ws.id}`,
           label: ws.name,
@@ -294,8 +299,8 @@ export function useSidebarSessions({
         const wsSessions = byWorkspace.get(ws.id) ?? [];
         if (wsSessions.length === 0 && filters.searchTerm) continue;
         const color = workspaceColors[ws.id] || getDefaultColor(ws.id);
-        const base = wsSessions.filter(s => s.sessionType === 'base');
-        const regular = wsSessions.filter(s => s.sessionType !== 'base');
+        const base = wsSessions.filter(isMainRepoSession);
+        const regular = wsSessions.filter(s => !isMainRepoSession(s));
         const subGroups = applyStatusGroupOrder(buildStatusGroups(regular, sortBy, `project:${ws.id}`), statusGroupOrder);
         groups.push({
           key: `project:${ws.id}`,
@@ -320,8 +325,8 @@ export function useSidebarSessions({
         const wsSessions = byWorkspace.get(ws.id) ?? [];
         if (wsSessions.length === 0 && filters.searchTerm) continue;
         const color = workspaceColors[ws.id] || getDefaultColor(ws.id);
-        const base = wsSessions.filter(s => s.sessionType === 'base');
-        const regular = wsSessions.filter(s => s.sessionType !== 'base');
+        const base = wsSessions.filter(isMainRepoSession);
+        const regular = wsSessions.filter(s => !isMainRepoSession(s));
         const subGroups = buildSprintPhaseGroups(regular, sortBy, `project:${ws.id}`);
         groups.push({
           key: `project:${ws.id}`,
@@ -374,7 +379,7 @@ export function expandGroupsForSession(session: WorktreeSession): void {
 
   // Base sessions live outside status/sprint groups in the sidebar.
   // For project-based grouping they sit at the project level, so only expand the workspace.
-  if (session.sessionType === 'base') {
+  if (isMainRepoSession(session)) {
     if (sidebarGroupBy === 'project' || sidebarGroupBy === 'project-status' || sidebarGroupBy === 'project-sprint') {
       expandWorkspace(session.workspaceId);
     }

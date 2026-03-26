@@ -56,7 +56,7 @@ export interface WorktreeSession {
   hasCheckFailures?: boolean;
   checkStatus?: 'none' | 'pending' | 'success' | 'failure';
   targetBranch?: string; // Per-session target branch override (e.g. "origin/develop")
-  sessionType?: 'worktree' | 'base'; // "base" = operates on repo directly, no worktree
+  sessionType?: 'worktree' | 'base' | 'scheduled'; // "base" = operates on repo directly, "scheduled" = per-run session for scheduled tasks
   scheduledTaskId?: string; // FK to scheduled_tasks if created by scheduler
   sprintPhase?: SprintPhase | null; // Current sprint workflow phase (null = no sprint active)
   deployStatus?: DeployStatus | null; // Deploy lifecycle status
@@ -222,7 +222,7 @@ export interface SetupInfo {
   branchName: string;
   originBranch: string;
   fileCount?: number;
-  sessionType?: 'worktree' | 'base';
+  sessionType?: 'worktree' | 'base' | 'scheduled';
 }
 
 // Attachment = File attached to a message

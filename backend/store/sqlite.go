@@ -350,6 +350,9 @@ func (s *SQLiteStore) runMigrations() error {
 	)`)
 	// Add scheduled_task_id column to sessions (ignore error if already exists)
 	_, _ = s.db.Exec(`ALTER TABLE sessions ADD COLUMN scheduled_task_id TEXT DEFAULT NULL`)
+	// Migrate existing scheduled-task sessions from 'base' to 'scheduled' type
+	// so they don't conflict with the unique base-session-per-workspace index
+	_, _ = s.db.Exec(`UPDATE sessions SET session_type = 'scheduled' WHERE scheduled_task_id IS NOT NULL AND session_type = 'base'`)
 	// Create scheduled_tasks table
 	_, _ = s.db.Exec(`CREATE TABLE IF NOT EXISTS scheduled_tasks (
 		id TEXT PRIMARY KEY,
