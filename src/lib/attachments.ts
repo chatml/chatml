@@ -4,6 +4,7 @@
 
 import type { Attachment } from './types';
 import { readFileMetadata, readFileAsBase64, countFileLines, getImageDimensions } from './tauri';
+import { toBase64 } from './utils';
 
 // ============================================================================
 // Constants
@@ -359,7 +360,7 @@ export function buildContextAttachment(opts: {
   markdownBody: string;
   meta: Attachment['contextMeta'];
 }): Attachment {
-  const encoded = btoa(String.fromCharCode(...new TextEncoder().encode(opts.markdownBody)));
+  const encoded = toBase64(opts.markdownBody);
   return {
     id: generateAttachmentId(),
     type: 'file',

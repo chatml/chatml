@@ -36,11 +36,15 @@ function shouldShowError(message: string): boolean {
     return false;
   }
   recentErrors.set(message, now);
-  // Clean old entries
+  // Clean expired entries, then evict oldest if still over capacity
   for (const [key, time] of recentErrors) {
     if (now - time > DEDUP_WINDOW_MS) {
       recentErrors.delete(key);
     }
+  }
+  if (recentErrors.size > 100) {
+    const oldest = [...recentErrors.entries()].reduce((a, b) => a[1] < b[1] ? a : b);
+    recentErrors.delete(oldest[0]);
   }
   return true;
 }

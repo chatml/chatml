@@ -23,6 +23,9 @@ const GITHUB_REDIRECT_URI = 'chatml://oauth/callback';
 const GITHUB_SCOPES = 'repo,read:user';
 
 // Stronghold configuration
+// NOTE: The vault password is hardcoded because Stronghold here provides tamper-detection
+// and structured storage, not confidentiality against local file-system access. For true
+// secret protection, consider deriving the password from the OS keychain or a hardware ID.
 const STRONGHOLD_VAULT_FILE = 'chatml.vault';
 const STRONGHOLD_PASSWORD = 'chatml-secure-storage';
 const STRONGHOLD_CLIENT_NAME = 'auth';
@@ -166,7 +169,7 @@ export async function handleOAuthCallback(url: string): Promise<{ token: string;
 
   console.log('[OAuth] State validation - received:', state, 'pending:', pendingOAuthState, 'stored:', storedState);
 
-  if (state !== pendingOAuthState && state !== storedState) {
+  if (!state || (state !== pendingOAuthState && state !== storedState)) {
     // Save expected values BEFORE clearing for accurate logging
     const expectedPending = pendingOAuthState;
     pendingOAuthState = null;
@@ -524,21 +527,29 @@ export async function listenForOAuthCallback(
 
   // Poll for pending callback when window gains focus (fallback for when events don't work)
   const focusHandler = async () => {
-    console.log('[OAuth] Window focused, checking for pending callback...');
-    const pendingUrl = await checkPendingOAuthCallback();
-    if (pendingUrl) {
-      console.log('[OAuth] Found pending callback URL');
-      await processCallback(pendingUrl);
+    try {
+      console.log('[OAuth] Window focused, checking for pending callback...');
+      const pendingUrl = await checkPendingOAuthCallback();
+      if (pendingUrl) {
+        console.log('[OAuth] Found pending callback URL');
+        await processCallback(pendingUrl);
+      }
+    } catch (err) {
+      console.error('[OAuth] Error checking pending callback on focus:', err);
     }
   };
   window.addEventListener('focus', focusHandler);
 
   // Also check immediately in case there's already a pending callback
   setTimeout(async () => {
-    const pendingUrl = await checkPendingOAuthCallback();
-    if (pendingUrl) {
-      console.log('[OAuth] Found pending callback URL on init');
-      await processCallback(pendingUrl);
+    try {
+      const pendingUrl = await checkPendingOAuthCallback();
+      if (pendingUrl) {
+        console.log('[OAuth] Found pending callback URL on init');
+        await processCallback(pendingUrl);
+      }
+    } catch (err) {
+      console.error('[OAuth] Error checking pending callback on init:', err);
     }
   }, 100);
 

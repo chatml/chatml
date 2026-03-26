@@ -39,7 +39,7 @@ function getItemTime(item: TimelineItem): number {
     case 'status': return item.timestamp;
     case 'compact': return item.timestamp;
     case 'subagent': return item.agent.startTime;
-    case 'subagent_group': return item.agents[0].startTime;
+    case 'subagent_group': return item.agents[0]?.startTime ?? 0;
     default: return item.startTime;
   }
 }
@@ -541,7 +541,7 @@ export function StreamingMessage({ conversationId, worktreePath }: StreamingMess
                   worktreePath={worktreePath}
                 />
               );
-            } else if (item.tool === 'ExitPlanMode') {
+            } else if (item.type === 'tool' && item.tool === 'ExitPlanMode') {
               return (
                 <div key={item.id} data-tool-id="exit-plan-mode">
                   <ToolUsageBlock
@@ -560,7 +560,7 @@ export function StreamingMessage({ conversationId, worktreePath }: StreamingMess
                   />
                 </div>
               );
-            } else {
+            } else if (item.type === 'tool') {
               return (
                 <ToolUsageBlock
                   key={item.id}
@@ -578,6 +578,8 @@ export function StreamingMessage({ conversationId, worktreePath }: StreamingMess
                   metadata={item.metadata}
                 />
               );
+            } else {
+              return null;
             }
           });
           })()}

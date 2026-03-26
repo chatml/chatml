@@ -87,7 +87,8 @@ interface FlatFile {
 }
 
 // Helper to flatten file tree for mentions (excludes hidden directories)
-function flattenFileTree(nodes: FileNodeDTO[], parentPath: string = ''): FlatFile[] {
+function flattenFileTree(nodes: FileNodeDTO[], parentPath: string = '', depth: number = 0): FlatFile[] {
+  if (depth >= 15) return [];
   const result: FlatFile[] = [];
   for (const node of nodes) {
     // Skip hidden files and directories (starting with .)
@@ -95,7 +96,7 @@ function flattenFileTree(nodes: FileNodeDTO[], parentPath: string = ''): FlatFil
 
     if (node.isDir) {
       if (node.children) {
-        result.push(...flattenFileTree(node.children, node.path));
+        result.push(...flattenFileTree(node.children, node.path, depth + 1));
       }
     } else {
       const directory = parentPath || node.path.split('/').slice(0, -1).join('/');
