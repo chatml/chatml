@@ -504,8 +504,7 @@ export interface AgentEvent {
   lastToolName?: string;
   taskUsage?: { total_tokens?: number; tool_uses?: number; duration_ms?: number };
 
-  // API retry fields (SDK 0.2.84)
-  attempt?: number;
+  // API retry fields (SDK 0.2.84) — `attempt` reuses existing field above
   maxRetries?: number;
   retryDelayMs?: number;
   errorStatus?: number;
