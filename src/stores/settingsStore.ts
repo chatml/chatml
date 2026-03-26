@@ -109,7 +109,6 @@ export const SETTINGS_DEFAULTS = {
   // Sidebar
   sidebarGroupBy: 'project' as SidebarGroupBy,
   sidebarSortBy: 'recent' as SidebarSortBy,
-  sidebarShowSessionMeta: true,
   sidebarProjectFilter: null as string | null,
   // Dictation
   dictationShortcut: 'cmd-shift-d' as DictationShortcutPreset,
@@ -192,7 +191,6 @@ interface SettingsState {
   // Sidebar grouping/sorting
   sidebarGroupBy: SidebarGroupBy;
   sidebarSortBy: SidebarSortBy;
-  sidebarShowSessionMeta: boolean; // Whether to show the second line (PR status) in session cells
   sidebarProjectFilter: string | null; // null = all projects, or a workspaceId to filter
   collapsedSidebarGroups: string[]; // composite keys toggled from default, e.g. "status:done"
   workspaceOrder: string[]; // Persisted workspace display order (array of workspace IDs)
@@ -266,7 +264,6 @@ interface SettingsState {
   resetAllSettings: () => void;
   setSidebarGroupBy: (value: SidebarGroupBy) => void;
   setSidebarSortBy: (value: SidebarSortBy) => void;
-  setSidebarShowSessionMeta: (value: boolean) => void;
   setSidebarProjectFilter: (id: string | null) => void;
   toggleSidebarGroupCollapsed: (key: string) => void;
   ensureSidebarGroupExpanded: (key: string, defaultCollapsed: boolean) => void;
@@ -449,7 +446,6 @@ export const useSettingsStore = create<SettingsState>()(
       resetAllSettings: () => set({ ...SETTINGS_DEFAULTS, statusGroupOrder: [], workspaceOrder: [] }),
       setSidebarGroupBy: (value) => set({ sidebarGroupBy: value }),
       setSidebarSortBy: (value) => set({ sidebarSortBy: value }),
-      setSidebarShowSessionMeta: (value) => set({ sidebarShowSessionMeta: value }),
       setSidebarProjectFilter: (id) => set({ sidebarProjectFilter: id }),
       setLastRepoDashboardWorkspaceId: (id) => set({ lastRepoDashboardWorkspaceId: id }),
       setWorkspaceOrder: (order) => set({ workspaceOrder: order }),

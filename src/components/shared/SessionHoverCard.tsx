@@ -3,7 +3,7 @@
 import { FolderGit2, GitBranch, GitPullRequest } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { TaskStatusIcon } from '@/components/icons/TaskStatusIcon';
-import { getTaskStatusOption, getPRStatusInfo } from '@/lib/session-fields';
+import { getTaskStatusOption, getPRStatusInfo, getSprintPhaseOption } from '@/lib/session-fields';
 import { PRNumberBadge } from '@/components/shared/PRNumberBadge';
 import type { WorktreeSession } from '@/lib/types';
 import type { GitStatusDTO } from '@/lib/api';
@@ -27,6 +27,8 @@ export function SessionHoverCardBody({
   const hasPR = session.prStatus && session.prStatus !== 'none';
   const statusOption = getTaskStatusOption(session.taskStatus);
   const prStatusInfo = getPRStatusInfo(session);
+  const sprintPhaseOpt = session.sprintPhase ? getSprintPhaseOption(session.sprintPhase) : null;
+  const SprintPhaseIcon = sprintPhaseOpt?.icon;
 
   return (
     <>
@@ -89,6 +91,16 @@ export function SessionHoverCardBody({
           )}
         </span>
       </div>
+
+      {/* Sprint phase */}
+      {sprintPhaseOpt && SprintPhaseIcon && (
+        <div className="px-3 pb-1.5">
+          <span className={cn('inline-flex items-center gap-1 text-[11px] font-medium rounded px-1.5 py-0.5', sprintPhaseOpt.activeClass)}>
+            <SprintPhaseIcon className="h-3 w-3" />
+            {sprintPhaseOpt.label}
+          </span>
+        </div>
+      )}
 
       {/* PR row */}
       {hasPR && session.prNumber && (

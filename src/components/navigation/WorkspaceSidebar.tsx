@@ -92,7 +92,7 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
 import { getWorkspaceColor, WORKSPACE_COLORS } from '@/lib/workspace-colors';
-import { TASK_STATUS_OPTIONS, getPRStatusInfo, getSprintPhaseOption } from '@/lib/session-fields';
+import { TASK_STATUS_OPTIONS } from '@/lib/session-fields';
 import { TaskStatusIcon } from '@/components/icons/TaskStatusIcon';
 import { GitStatusIcon } from '@/components/icons/GitStatusIcon';
 import { useToast } from '@/components/ui/toast';
@@ -114,7 +114,6 @@ import { useSessionActivityState, useIsSessionUnread, useWorkspaceSelection, use
 import { ArchiveSessionDialog } from '@/components/dialogs/ArchiveSessionDialog';
 import { useArchiveSession } from '@/hooks/useArchiveSession';
 import { ErrorBoundary } from '@/components/shared/ErrorBoundary';
-import { PRNumberBadge } from '@/components/shared/PRNumberBadge';
 import { CardErrorFallback } from '@/components/shared/ErrorFallbacks';
 import { HoverCard, HoverCardTrigger, HoverCardContent } from '@/components/ui/hover-card';
 import { SessionHoverCardBody } from '@/components/shared/SessionHoverCard';
@@ -1008,9 +1007,6 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onGitHubRepos,
                               onOpenBranches={(e) => navigateToBranches(session.workspaceId, e)}
                               onOpenPRs={(e) => navigateToPRs(session.workspaceId, e)}
                               formatTimeAgo={formatTimeAgo}
-                              showProjectIndicator={hasMultipleWorkspaces && !sidebarProjectFilter}
-                              workspaceColor={workspaceColors[session.workspaceId] || getWorkspaceColor(session.workspaceId)}
-                              workspaceName={ws?.name}
                             />
                           </ErrorBoundary>
                         );
@@ -1053,7 +1049,6 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onGitHubRepos,
                                   onOpenBranches={(e) => navigateToBranches(session.workspaceId, e)}
                                   onOpenPRs={(e) => navigateToPRs(session.workspaceId, e)}
                                   formatTimeAgo={formatTimeAgo}
-                                  showProjectIndicator={false}
                                 />
                               </ErrorBoundary>
                             ))}
@@ -1110,9 +1105,6 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onGitHubRepos,
                                 onOpenBranches={(e) => navigateToBranches(session.workspaceId, e)}
                                 onOpenPRs={(e) => navigateToPRs(session.workspaceId, e)}
                                 formatTimeAgo={formatTimeAgo}
-                                showProjectIndicator={hasMultipleWorkspaces && !sidebarProjectFilter}
-                                workspaceColor={workspaceColors[session.workspaceId] || getWorkspaceColor(session.workspaceId)}
-                                workspaceName={ws?.name}
                               />
                             </ErrorBoundary>
                           );
@@ -1163,7 +1155,6 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onGitHubRepos,
                             onOpenBranches={navigateToBranches}
                             onOpenPRs={navigateToPRs}
                             formatTimeAgo={formatTimeAgo}
-                            showProjectIndicator={hasMultipleWorkspaces && !sidebarProjectFilter}
                           />
                         ))
                       )}
@@ -1776,9 +1767,6 @@ function SessionRow({
   onOpenBranches,
   onOpenPRs,
   formatTimeAgo,
-  showProjectIndicator,
-  workspaceColor,
-  workspaceName,
   hideStatusIcon,
 }: {
   session: WorktreeSession;
@@ -1790,15 +1778,10 @@ function SessionRow({
   onOpenBranches?: (event?: React.MouseEvent) => void;
   onOpenPRs?: (event?: React.MouseEvent) => void;
   formatTimeAgo: (date: string) => string;
-  showProjectIndicator?: boolean;
-  workspaceColor?: string;
-  workspaceName?: string;
   hideStatusIcon?: boolean;
 }) {
   const isSessionSelected = contentView.type === 'conversation' && selectedSessionId === session.id;
-  const hasPR = session.prStatus && session.prStatus !== 'none';
   const hasStats = session.stats && (session.stats.additions > 0 || session.stats.deletions > 0);
-  const sidebarShowSessionMeta = useSettingsStore((s) => s.sidebarShowSessionMeta);
 
   // Derive activity state from streaming, pending questions, and plan approvals
   const sessionId = session.id;
@@ -1806,7 +1789,6 @@ function SessionRow({
   const isSessionUnread = useIsSessionUnread(sessionId);
   const lastAgentCompletedAt = useAppStore((s) => s.lastTurnCompletedAt[sessionId]);
 
-  const prStatusInfo = getPRStatusInfo(session);
   const [hoverOpen, setHoverOpen] = useState(false);
   const { success: showRowSuccess, warning: showRowWarning } = useToast();
 
@@ -1926,60 +1908,6 @@ function SessionRow({
                     )}
                   </div>
                 </div>
-                {/* Second line: sprint phase · project indicator · PR info · status */}
-                {sidebarShowSessionMeta && (hasPR || (showProjectIndicator && workspaceName) || session.sprintPhase) && (
-                  <div className="flex items-center gap-1 mt-0.5 pl-1 text-sm text-muted-foreground">
-                    {/* Sprint phase pill */}
-                    {session.sprintPhase && (() => {
-                      const phaseOpt = getSprintPhaseOption(session.sprintPhase);
-                      const PhaseIcon = phaseOpt.icon;
-                      return (
-                        <span className={cn('inline-flex items-center gap-0.5 shrink-0 text-[10px] font-medium rounded px-1 py-px', phaseOpt.activeClass)}>
-                          <PhaseIcon className="h-2.5 w-2.5" />
-                          {phaseOpt.label}
-                        </span>
-                      );
-                    })()}
-                    {/* Project indicator for non-project grouping modes */}
-                    {showProjectIndicator && workspaceColor && (
-                      <>
-                        {session.sprintPhase && <span className="text-muted-foreground/50">·</span>}
-                        <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: workspaceColor }} />
-                      </>
-                    )}
-                    {showProjectIndicator && workspaceName && (
-                      <span className="shrink-0 text-muted-foreground/70">{workspaceName}</span>
-                    )}
-                    {/* PR badge if applicable */}
-                    {hasPR && session.prNumber && (
-                      <>
-                        {(showProjectIndicator && workspaceName || session.sprintPhase) && <span className="text-muted-foreground/50">·</span>}
-                        <PRNumberBadge
-                          prNumber={session.prNumber}
-                          prStatus={session.prStatus as 'open' | 'merged' | 'closed'}
-                          checkStatus={session.checkStatus}
-                          hasMergeConflict={session.hasMergeConflict}
-                          prUrl={session.prUrl}
-                          size="sm"
-                        />
-                      </>
-                    )}
-                    {hasPR && !session.prNumber && (
-                      <>
-                        {(showProjectIndicator && workspaceName || session.sprintPhase) && <span className="text-muted-foreground/50">·</span>}
-                        <GitPullRequest className="h-3 w-3 shrink-0 text-nav-icon-prs" />
-                      </>
-                    )}
-                    {prStatusInfo && (
-                      <>
-                        <span className="text-muted-foreground/50">·</span>
-                        <span className={cn('shrink-0', prStatusInfo.color)}>
-                          {prStatusInfo.text}
-                        </span>
-                      </>
-                    )}
-                  </div>
-                )}
               </div>
             </div>
           </HoverCardTrigger>
@@ -2137,7 +2065,6 @@ function StatusGroupSection({
   onOpenBranches,
   onOpenPRs,
   formatTimeAgo,
-  showProjectIndicator,
 }: {
   group: SidebarGroup;
   isExpanded: boolean;
@@ -2152,7 +2079,6 @@ function StatusGroupSection({
   onOpenBranches: (workspaceId: string, event?: React.MouseEvent) => void;
   onOpenPRs: (workspaceId: string, event?: React.MouseEvent) => void;
   formatTimeAgo: (date: string) => string;
-  showProjectIndicator?: boolean;
 }) {
   return (
     <Collapsible open={isExpanded} onOpenChange={onToggle}>
@@ -2189,9 +2115,6 @@ function StatusGroupSection({
                   onOpenBranches={(e) => onOpenBranches(session.workspaceId, e)}
                   onOpenPRs={(e) => onOpenPRs(session.workspaceId, e)}
                   formatTimeAgo={formatTimeAgo}
-                  showProjectIndicator={showProjectIndicator}
-                  workspaceColor={workspaceColors[session.workspaceId] || getWorkspaceColor(session.workspaceId)}
-                  workspaceName={ws?.name}
                   hideStatusIcon
                 />
               </ErrorBoundary>

@@ -105,8 +105,6 @@ export function AppearanceSettings() {
   const setFontSize = useSettingsStore((s) => s.setFontSize);
   const zenMode = useSettingsStore((s) => s.zenMode);
   const setZenMode = useSettingsStore((s) => s.setZenMode);
-  const sidebarShowSessionMeta = useSettingsStore((s) => s.sidebarShowSessionMeta);
-  const setSidebarShowSessionMeta = useSettingsStore((s) => s.setSidebarShowSessionMeta);
   const showTokenUsage = useSettingsStore((s) => s.showTokenUsage);
   const setShowTokenUsage = useSettingsStore((s) => s.setShowTokenUsage);
   const showChatCost = useSettingsStore((s) => s.showChatCost);
@@ -173,18 +171,6 @@ export function AppearanceSettings() {
           onReset={() => setZenMode(SETTINGS_DEFAULTS.zenMode)}
         >
           <Switch checked={zenMode} onCheckedChange={setZenMode} aria-label="Zen mode" />
-        </SettingsRow>
-      </SettingsGroup>
-
-      <SettingsGroup label="Sidebar">
-        <SettingsRow
-          settingId="sidebarShowSessionMeta"
-          title="Show session status line"
-          description="Display PR status (Merged, Ready for Merge, etc.) below session names in the sidebar"
-          isModified={sidebarShowSessionMeta !== SETTINGS_DEFAULTS.sidebarShowSessionMeta}
-          onReset={() => setSidebarShowSessionMeta(SETTINGS_DEFAULTS.sidebarShowSessionMeta)}
-        >
-          <Switch checked={sidebarShowSessionMeta} onCheckedChange={setSidebarShowSessionMeta} aria-label="Show session status line" />
         </SettingsRow>
       </SettingsGroup>
 
