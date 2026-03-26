@@ -260,19 +260,15 @@ export function SessionToolbarContent() {
   // Uses workspaceId from the event payload (not selectedWorkspaceId) to avoid a
   // timing gap: the event fires via rAF before useEffect re-registers the listener
   // with the new selectedWorkspaceId after session selection.
+  // Templates are pre-fetched eagerly in useHoverActionData (on hover open), so
+  // templateContent is already resolved — no async fetch needed on the critical path.
   useAppEventListener('primary-action-execute', (detail) => {
     if (!detail) return;
-    const { message, templateKey, workspaceId } = detail;
-    if (templateKey && workspaceId) {
-      fetchMergedActionTemplates(workspaceId, getGlobalActionTemplates, getWorkspaceActionTemplates)
-        .then((templates) => {
-          const key = templateKey as ActionTemplateKey;
-          handleActionWithBubbleAndTemplate(message, templates[key] ?? ACTION_TEMPLATES[key], key);
-        })
-        .catch(() => {
-          const key = templateKey as ActionTemplateKey;
-          handleActionWithBubbleAndTemplate(message, ACTION_TEMPLATES[key], key);
-        });
+    const { message, templateKey, templateContent } = detail;
+    if (templateKey) {
+      const key = templateKey as ActionTemplateKey;
+      const content = templateContent ?? ACTION_TEMPLATES[key];
+      handleActionWithBubbleAndTemplate(message, content, key);
     } else {
       handleActionWithBubble(message);
     }

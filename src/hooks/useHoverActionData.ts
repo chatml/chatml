@@ -1,13 +1,16 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { getSessionSnapshot, getPRStatus } from '@/lib/api';
+import { getSessionSnapshot, getPRStatus, getGlobalActionTemplates, getWorkspaceActionTemplates } from '@/lib/api';
 import { getSessionData } from '@/lib/sessionDataCache';
+import { fetchMergedActionTemplates, ACTION_TEMPLATES } from '@/lib/action-templates';
 import type { GitStatusDTO, PRDetails } from '@/lib/api';
+import type { ActionTemplateKey } from '@/lib/action-templates';
 
 interface UseHoverActionDataResult {
   gitStatus: GitStatusDTO | null;
   prDetails: PRDetails | null;
+  templates: Record<ActionTemplateKey, string> | null;
   loading: boolean;
 }
 
@@ -25,39 +28,48 @@ export function useHoverActionData(
 ): UseHoverActionDataResult {
   const [gitStatus, setGitStatus] = useState<GitStatusDTO | null>(null);
   const [prDetails, setPRDetails] = useState<PRDetails | null>(null);
+  const [templates, setTemplates] = useState<Record<ActionTemplateKey, string> | null>(null);
   const [loading, setLoading] = useState(false);
 
-  // Track fetch per session to avoid re-fetching on rapid re-hover
-  const fetchedRef = useRef<string | null>(null);
+  // Track whether we've already fetched for this mount.
+  // Note: this ref resets on every mount because HoverCardContent unmounts
+  // when the hover card closes (no forceMount). The cross-hover cache is
+  // provided by sessionDataCache (getSessionData below), not this ref.
+  const fetchedRef = useRef(false);
 
-  // Reset when session identity changes
-  useEffect(() => {
-    const key = `${workspaceId}:${sessionId}`;
-    if (fetchedRef.current !== key) {
-      fetchedRef.current = null;
-      setGitStatus(null);
-      setPRDetails(null);
-    }
-  }, [workspaceId, sessionId]);
+  // Reset when session identity changes — uses the React "adjust state during
+  // render" pattern to avoid synchronous setState inside an effect.
+  const sessionKey = `${workspaceId}:${sessionId}`;
+  const prevKeyRef = useRef(sessionKey);
+  if (prevKeyRef.current !== sessionKey) {
+    prevKeyRef.current = sessionKey;
+    fetchedRef.current = false;
+    setGitStatus(null);
+    setPRDetails(null);
+    setTemplates(null);
+  }
 
-  useEffect(() => {
-    if (!enabled || !workspaceId || !sessionId) return;
-
-    const key = `${workspaceId}:${sessionId}`;
-    // Already fetched for this session — skip
-    if (fetchedRef.current === key) return;
-
-    let cancelled = false;
-
-    // Immediately show cached data if available
+  // Seed with cached data and set loading during render (not inside an effect)
+  // to avoid the react-hooks/set-state-in-effect lint rule and to show
+  // stale-while-revalidate content on the first paint without a flash.
+  const willFetch = enabled && !fetchedRef.current && !!workspaceId && !!sessionId;
+  if (willFetch && !gitStatus) {
     const cached = getSessionData(workspaceId, sessionId);
     if (cached?.gitStatus) {
       setGitStatus(cached.gitStatus);
     }
-
+  }
+  if (willFetch && !loading) {
     setLoading(true);
+  }
 
-    // Fetch fresh data in parallel
+  useEffect(() => {
+    if (!enabled || !workspaceId || !sessionId) return;
+    if (fetchedRef.current) return;
+
+    let cancelled = false;
+
+    // Fetch git status, PR details, and action templates in parallel
     const snapshotPromise = getSessionSnapshot(workspaceId, sessionId)
       .then((snapshot) => {
         if (!cancelled) {
@@ -74,10 +86,21 @@ export function useHoverActionData(
           .catch(() => { /* keep null */ })
       : Promise.resolve();
 
-    Promise.all([snapshotPromise, prPromise]).then(() => {
+    const templatesPromise = fetchMergedActionTemplates(
+      workspaceId, getGlobalActionTemplates, getWorkspaceActionTemplates,
+    )
+      .then((merged) => {
+        if (!cancelled) setTemplates(merged);
+      })
+      .catch(() => {
+        // Fall back to built-in defaults
+        if (!cancelled) setTemplates({ ...ACTION_TEMPLATES });
+      });
+
+    Promise.all([snapshotPromise, prPromise, templatesPromise]).then(() => {
       if (!cancelled) {
         setLoading(false);
-        fetchedRef.current = key;
+        fetchedRef.current = true;
       }
     });
 
@@ -87,5 +110,5 @@ export function useHoverActionData(
     };
   }, [enabled, workspaceId, sessionId, prStatus]);
 
-  return { gitStatus, prDetails, loading };
+  return { gitStatus, prDetails, templates, loading };
 }

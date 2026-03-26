@@ -5,7 +5,7 @@ import { useHoverActionData } from '@/hooks/useHoverActionData';
 import { useActionState } from '@/components/shared/PrimaryActionButton/useActionState';
 import { ActionButton } from '@/components/shared/PrimaryActionButton/ActionButton';
 import { dispatchAppEvent } from '@/lib/custom-events';
-import { getTemplateKey } from '@/lib/action-templates';
+import { getTemplateKey, ACTION_TEMPLATES } from '@/lib/action-templates';
 import type { WorktreeSession } from '@/lib/types';
 import type { PrimaryActionType } from '@/components/shared/PrimaryActionButton/types';
 
@@ -24,7 +24,7 @@ export function HoverCardPrimaryAction({
   onSelectSession,
   onArchiveSession,
 }: HoverCardPrimaryActionProps) {
-  const { gitStatus, prDetails, loading } = useHoverActionData(
+  const { gitStatus, prDetails, templates, loading } = useHoverActionData(
     session.workspaceId,
     session.id,
     session.prStatus,
@@ -34,16 +34,22 @@ export function HoverCardPrimaryAction({
   const action = useActionState(gitStatus, session, prDetails);
 
   const handleSendMessage = useCallback((content: string, actionType: PrimaryActionType) => {
+    const templateKey = getTemplateKey(actionType);
+    // Resolve template content eagerly — templates were pre-fetched on hover open
+    const templateContent = templateKey
+      ? (templates?.[templateKey] ?? ACTION_TEMPLATES[templateKey])
+      : undefined;
     onClose();
     onSelectSession(session.id);
     requestAnimationFrame(() => {
       dispatchAppEvent('primary-action-execute', {
         message: content,
-        templateKey: getTemplateKey(actionType),
+        templateKey,
+        templateContent,
         workspaceId: session.workspaceId,
       });
     });
-  }, [onClose, onSelectSession, session.id, session.workspaceId]);
+  }, [onClose, onSelectSession, session.id, session.workspaceId, templates]);
 
   const handleArchive = useCallback((sessionId: string) => {
     onClose();
