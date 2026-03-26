@@ -372,6 +372,15 @@ export function expandGroupsForSession(session: WorktreeSession): void {
 
   if (sidebarGroupBy === 'none') return;
 
+  // Base sessions live outside status/sprint groups in the sidebar.
+  // For project-based grouping they sit at the project level, so only expand the workspace.
+  if (session.sessionType === 'base') {
+    if (sidebarGroupBy === 'project' || sidebarGroupBy === 'project-status' || sidebarGroupBy === 'project-sprint') {
+      expandWorkspace(session.workspaceId);
+    }
+    return;
+  }
+
   if (sidebarGroupBy === 'status') {
     const key = `status:${session.taskStatus}`;
     const defaultCollapsed = DEFAULT_COLLAPSED_STATUSES.has(session.taskStatus);
