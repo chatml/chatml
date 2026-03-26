@@ -39,7 +39,7 @@ export type DictationShortcutPreset = 'capslock' | 'cmd-shift-d' | 'custom';
 export type BranchPrefixType = 'github' | 'custom' | 'none';
 
 // Sidebar grouping options
-export type SidebarGroupBy = 'none' | 'project' | 'status' | 'project-status';
+export type SidebarGroupBy = 'none' | 'project' | 'status' | 'project-status' | 'sprint' | 'project-sprint';
 
 // Sidebar sorting options
 export type SidebarSortBy = 'recent' | 'status' | 'priority' | 'name';
