@@ -257,6 +257,10 @@ export function useWebSocket(enabled: boolean = true) {
         if (event?.content) {
           batcher.batchText(conversationId, event.content);
         }
+        // Clear API retry indicator — streaming resumed successfully
+        if (store.streamingState[conversationId]?.apiRetryStatus) {
+          store.setApiRetryStatus(conversationId, null);
+        }
         break;
 
       case 'thinking_start':
@@ -817,7 +821,7 @@ export function useWebSocket(enabled: boolean = true) {
         break;
 
       case 'hook_tool_failure':
-        console.warn(`[Hook] Tool failure: ${event?.tool} — ${event?.error}`);
+        console.debug(`[Hook] Tool failure: ${event?.tool} — ${event?.error}`);
         break;
 
       case 'hook_pre_tool':
@@ -1062,8 +1066,58 @@ export function useWebSocket(enabled: boolean = true) {
       case 'initialization_result':
       case 'session_forked':
       case 'message_cancelled':
+      case 'file_changed':
+      case 'task_created':
         // Informational events — no frontend state changes needed
         break;
+
+      // SDK 0.2.84+ events
+
+      case 'api_retry': {
+        const attempt = event.attempt as number;
+        const maxRetries = event.maxRetries as number;
+        const retryDelayMs = event.retryDelayMs as number;
+        const error = event.error as string;
+        store.setApiRetryStatus(conversationId, { attempt, maxRetries, retryDelayMs, error });
+        break;
+      }
+
+      case 'session_state_changed': {
+        const state = event.state as string;
+        if (state === 'idle') {
+          store.updateConversation(conversationId, { status: 'idle' });
+        } else if (state === 'running') {
+          store.updateConversation(conversationId, { status: 'active' });
+        }
+        // 'requires_action' is already handled by permission/question request events
+        break;
+      }
+
+      case 'stop_failure': {
+        const errorType = event.error as string;
+        const errorDetails = event.errorDetails as string | undefined;
+        window.dispatchEvent(new CustomEvent('agent-notification', {
+          detail: {
+            title: 'Agent error',
+            message: errorDetails || `API error: ${errorType}`,
+            type: 'error',
+            conversationId,
+          },
+        }));
+        break;
+      }
+
+      case 'cwd_changed': {
+        // Working directory changed — dispatch custom event for file tree refresh
+        window.dispatchEvent(new CustomEvent('cwd-changed', {
+          detail: {
+            conversationId,
+            oldCwd: event.oldCwd as string,
+            newCwd: event.newCwd as string,
+          },
+        }));
+        break;
+      }
 
     }
   // getStore is a stable reference (useAppStore.getState), no deps needed

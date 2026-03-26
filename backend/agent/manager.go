@@ -1092,6 +1092,17 @@ outer:
 			case EventTypeMessageCancelled:
 				logger.Manager.Debugf("[%s] Message cancelled", convID)
 
+			// ── SDK 0.2.84+ event types ──────────────────────────────────
+
+			case EventTypeStopFailure:
+				logger.Manager.Warnf("[%s] Stop failure: %s", convID, event.Error)
+
+			case EventTypeAPIRetry:
+				logger.Manager.Debugf("[%s] API retry attempt %d/%d (status %d, delay %dms)", convID, event.Attempt, event.MaxRetries, event.ErrorStatus, event.RetryDelayMs)
+
+			case EventTypeCwdChanged, EventTypeFileChanged, EventTypeTaskCreated, EventTypeSessionStateChanged:
+				// Informational — no state tracking needed
+
 			case EventTypeTurnComplete, EventTypeComplete, EventTypeResult:
 				// Atomically clear the active turn flag and take any deferred
 				// user message. When an assistant message exists, both are

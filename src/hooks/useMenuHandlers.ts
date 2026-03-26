@@ -13,6 +13,15 @@ import { switchToTab } from '@/components/navigation/BrowserTabBar';
 import { refreshClaudeAuthStatus } from '@/hooks/useClaudeAuthStatus';
 import { safeListen, openInVSCode, copyToClipboard, openUrlInBrowser, getCurrentWindow } from '@/lib/tauri';
 
+// Lazy-loaded clipboard module — survives HMR by caching at module scope
+let clipboardModule: typeof import('@tauri-apps/plugin-clipboard-manager') | null = null;
+async function getClipboard() {
+  if (!clipboardModule) {
+    clipboardModule = await import('@tauri-apps/plugin-clipboard-manager');
+  }
+  return clipboardModule;
+}
+
 interface MenuHandlersOptions {
   handleNewSession: () => void;
   handleNewConversation: () => void;
@@ -136,7 +145,7 @@ export function useMenuHandlers(options: MenuHandlersOptions) {
           (async () => {
             try {
               // Try text paste first (most common case)
-              const { readText } = await import('@tauri-apps/plugin-clipboard-manager');
+              const { readText } = await getClipboard();
               const text = await readText().catch(() => '');
               if (text) {
                 // If an xterm terminal is focused, paste directly to PTY
@@ -159,7 +168,7 @@ export function useMenuHandlers(options: MenuHandlersOptions) {
 
             try {
               // No text — try image paste via Tauri clipboard plugin
-              const { readImage } = await import('@tauri-apps/plugin-clipboard-manager');
+              const { readImage } = await getClipboard();
               const img = await readImage();
               const { width, height } = await img.size();
 

@@ -15,13 +15,16 @@ import {
   type SDKTaskStartedMessage,
   type SDKTaskProgressMessage,
   type SDKFilesPersistedEvent,
-  // New message types (SDK 0.2.72)
+  // Message types (SDK 0.2.72)
   type SDKRateLimitEvent,
   type SDKPromptSuggestionMessage,
   type SDKToolUseSummaryMessage,
   type SDKElicitationCompleteMessage,
   type SDKHookProgressMessage,
   type SDKHookStartedMessage,
+  // Message types (SDK 0.2.84)
+  type SDKAPIRetryMessage,
+  type SDKSessionStateChangedMessage,
   // Core types
   type AgentDefinition,
   type Query,
@@ -41,12 +44,17 @@ import {
   type StopHookInput,
   type PreCompactHookInput,
   type PostCompactHookInput,
-  // New hook input types (SDK 0.2.72)
+  // Hook input types (SDK 0.2.72)
   type InstructionsLoadedHookInput,
   type WorktreeCreateHookInput,
   type WorktreeRemoveHookInput,
   type ElicitationHookInput,
   type ElicitationResultHookInput,
+  // Hook input types (SDK 0.2.84)
+  type StopFailureHookInput,
+  type CwdChangedHookInput,
+  type FileChangedHookInput,
+  type TaskCreatedHookInput,
 } from "@anthropic-ai/claude-agent-sdk";
 import * as readline from "readline";
 import * as fs from "fs";
@@ -1580,6 +1588,60 @@ const elicitationResultHook: HookCallback = async (input) => {
   return {};
 };
 
+// New hooks (SDK 0.2.84)
+
+const stopFailureHook: HookCallback = async (input) => {
+  const hookInput = input as StopFailureHookInput;
+  emit({
+    type: "stop_failure",
+    error: hookInput.error,
+    errorDetails: hookInput.error_details,
+    lastAssistantMessage: hookInput.last_assistant_message,
+    sessionId: hookInput.session_id,
+    ...extractAgentFields(input),
+  });
+  return {};
+};
+
+const cwdChangedHook: HookCallback = async (input) => {
+  const hookInput = input as CwdChangedHookInput;
+  emit({
+    type: "cwd_changed",
+    oldCwd: hookInput.old_cwd,
+    newCwd: hookInput.new_cwd,
+    sessionId: hookInput.session_id,
+    ...extractAgentFields(input),
+  });
+  return {};
+};
+
+const fileChangedHook: HookCallback = async (input) => {
+  const hookInput = input as FileChangedHookInput;
+  emit({
+    type: "file_changed",
+    filePath: hookInput.file_path,
+    event: hookInput.event,
+    sessionId: hookInput.session_id,
+    ...extractAgentFields(input),
+  });
+  return {};
+};
+
+const taskCreatedHook: HookCallback = async (input) => {
+  const hookInput = input as TaskCreatedHookInput;
+  emit({
+    type: "task_created",
+    taskId: hookInput.task_id,
+    taskSubject: hookInput.task_subject,
+    taskDescription: hookInput.task_description,
+    teammateName: hookInput.teammate_name,
+    teamName: hookInput.team_name,
+    sessionId: hookInput.session_id,
+    ...extractAgentFields(input),
+  });
+  return {};
+};
+
 // ============================================================================
 // ASK USER QUESTION - PreToolUse Hook Handler
 // ============================================================================
@@ -2009,16 +2071,21 @@ const hooks = {
   SessionStart: [{ hooks: [sessionStartHook] }],
   SessionEnd: [{ hooks: [sessionEndHook] }],
   Stop: [{ hooks: [stopHook] }],
+  StopFailure: [{ hooks: [stopFailureHook] }],
   PreCompact: [{ hooks: [preCompactHook] }],
   PostCompact: [{ hooks: [postCompactHook] }],
   SubagentStart: [{ hooks: [subagentStartHook] }],
   SubagentStop: [{ hooks: [subagentStopHook] }],
-  // New hooks (SDK 0.2.72)
+  // Hooks (SDK 0.2.72)
   InstructionsLoaded: [{ hooks: [instructionsLoadedHook] }],
   WorktreeCreate: [{ hooks: [worktreeCreateHook] }],
   WorktreeRemove: [{ hooks: [worktreeRemoveHook] }],
   Elicitation: [{ hooks: [elicitationHook] }],
   ElicitationResult: [{ hooks: [elicitationResultHook] }],
+  // Hooks (SDK 0.2.84)
+  CwdChanged: [{ hooks: [cwdChangedHook] }],
+  FileChanged: [{ hooks: [fileChangedHook] }],
+  TaskCreated: [{ hooks: [taskCreatedHook] }],
 };
 
 // ============================================================================
@@ -2831,7 +2898,7 @@ function handleMessage(message: SDKMessage): void {
     }
 
     case "system": {
-      const sysMsg = message as SDKSystemMessage | SDKCompactBoundaryMessage | SDKStatusMessage | SDKHookResponseMessage | SDKTaskNotificationMessage | SDKTaskStartedMessage | SDKTaskProgressMessage | SDKFilesPersistedEvent | SDKElicitationCompleteMessage | SDKHookProgressMessage | SDKHookStartedMessage;
+      const sysMsg = message as SDKSystemMessage | SDKCompactBoundaryMessage | SDKStatusMessage | SDKHookResponseMessage | SDKTaskNotificationMessage | SDKTaskStartedMessage | SDKTaskProgressMessage | SDKFilesPersistedEvent | SDKElicitationCompleteMessage | SDKHookProgressMessage | SDKHookStartedMessage | SDKAPIRetryMessage | SDKSessionStateChangedMessage;
 
       if (sysMsg.subtype === "init") {
         const initMsg = sysMsg as SDKSystemMessage;
@@ -2983,6 +3050,26 @@ function handleMessage(message: SDKMessage): void {
           hookName: hookMsg.hook_name,
           hookEvent: hookMsg.hook_event,
           sessionId: hookMsg.session_id,
+        });
+      } else if (sysMsg.subtype === "api_retry") {
+        // API retry in progress (SDK 0.2.84)
+        const retryMsg = sysMsg as SDKAPIRetryMessage;
+        emit({
+          type: "api_retry",
+          attempt: retryMsg.attempt,
+          maxRetries: retryMsg.max_retries,
+          retryDelayMs: retryMsg.retry_delay_ms,
+          errorStatus: retryMsg.error_status,
+          error: retryMsg.error,
+          sessionId: retryMsg.session_id,
+        });
+      } else if (sysMsg.subtype === "session_state_changed") {
+        // Session state change (SDK 0.2.84)
+        const stateMsg = sysMsg as SDKSessionStateChangedMessage;
+        emit({
+          type: "session_state_changed",
+          state: stateMsg.state,
+          sessionId: stateMsg.session_id,
         });
       }
       break;

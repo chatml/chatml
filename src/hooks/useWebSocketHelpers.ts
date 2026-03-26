@@ -138,7 +138,9 @@ export const BATCHABLE_EVENTS = new Set([
   'hook_started', 'hook_progress', 'worktree_created', 'worktree_removed',
   'instructions_loaded', 'supported_agents', 'mcp_servers_updated',
   'initialization_result', 'session_forked', 'message_cancelled',
-  // SDK 0.2.84+ background task events
+  // SDK 0.2.84+ events
+  'api_retry', 'session_state_changed', 'stop_failure',
+  'cwd_changed', 'file_changed', 'task_created',
   'task_started', 'task_progress', 'task_stopped',
 ]);
 
