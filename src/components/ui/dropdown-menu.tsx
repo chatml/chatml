@@ -232,15 +232,17 @@ function DropdownMenuSubContent({
   sideOffset?: number
 }) {
   return (
-    <DropdownMenuPrimitive.SubContent
-      data-slot="dropdown-menu-sub-content"
-      sideOffset={sideOffset}
-      className={cn(
-        "bg-(--menu-bg) backdrop-blur-xl backdrop-saturate-150 text-popover-foreground z-50 min-w-[8rem] overflow-hidden rounded-lg border border-(--menu-border) p-[5px] shadow-popover",
-        className
-      )}
-      {...props}
-    />
+    <DropdownMenuPrimitive.Portal>
+      <DropdownMenuPrimitive.SubContent
+        data-slot="dropdown-menu-sub-content"
+        sideOffset={sideOffset}
+        className={cn(
+          "bg-(--menu-bg) backdrop-blur-xl backdrop-saturate-150 text-popover-foreground z-50 min-w-[8rem] overflow-hidden rounded-lg border border-(--menu-border) p-[5px] shadow-popover",
+          className
+        )}
+        {...props}
+      />
+    </DropdownMenuPrimitive.Portal>
   )
 }
 
