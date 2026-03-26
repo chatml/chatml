@@ -13,6 +13,7 @@ import { GitHubReposDialog } from '@/components/dialogs/GitHubReposDialog';
 import { CloseTabConfirmDialog } from '@/components/dialogs/CloseTabConfirmDialog';
 import { CloseFileConfirmDialog } from '@/components/dialogs/CloseFileConfirmDialog';
 import { KeyboardShortcutsDialog } from '@/components/dialogs/KeyboardShortcutsDialog';
+import { AboutDialog } from '@/components/dialogs/AboutDialog';
 import { DotMcpTrustDialog } from '@/components/dialogs/DotMcpTrustDialog';
 import { FilePicker } from '@/components/dialogs/FilePicker';
 import { WorkspaceSearch } from '@/components/dialogs/WorkspaceSearch';
@@ -91,6 +92,14 @@ export const DialogManager = forwardRef<DialogManagerHandles, DialogManagerProps
     const handleShowShortcuts = () => setShowShortcuts(true);
     window.addEventListener('show-shortcuts', handleShowShortcuts);
     return () => window.removeEventListener('show-shortcuts', handleShowShortcuts);
+  }, []);
+
+  // About dialog
+  const [showAbout, setShowAbout] = useState(false);
+  useEffect(() => {
+    const handleShowAbout = () => setShowAbout(true);
+    window.addEventListener('show-about', handleShowAbout);
+    return () => window.removeEventListener('show-about', handleShowAbout);
   }, []);
 
   useShortcut('createSession', useCallback(() => {
@@ -231,6 +240,9 @@ export const DialogManager = forwardRef<DialogManagerHandles, DialogManagerProps
 
       {/* Command Palette (Cmd+K) */}
       <CommandPalette />
+
+      {/* About Dialog */}
+      <AboutDialog open={showAbout} onOpenChange={setShowAbout} />
 
       {/* .mcp.json Trust Dialog */}
       <DotMcpTrustDialog
