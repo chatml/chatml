@@ -63,6 +63,8 @@ release:
 	git checkout main && git pull origin main --tags
 	@git branch -D release/v$(VERSION) 2>/dev/null || true
 	@git push origin --delete release/v$(VERSION) 2>/dev/null || true
+	@echo "Generating changelog..."
+	./scripts/changelog.sh $(VERSION)
 	git checkout -b release/v$(VERSION)
 	@echo "Bumping version to $(VERSION)..."
 	@sed -i '' 's/"version": "[^"]*"/"version": "$(VERSION)"/' package.json
@@ -70,11 +72,11 @@ release:
 	@sed -i '' '/^\[package\]/,/^\[/{s/^version = "[^"]*"/version = "$(VERSION)"/;}' src-tauri/Cargo.toml
 	pnpm install --lockfile-only
 	cd src-tauri && cargo update --workspace
-	git add package.json pnpm-lock.yaml src-tauri/tauri.conf.json src-tauri/Cargo.toml src-tauri/Cargo.lock
+	git add package.json pnpm-lock.yaml src-tauri/tauri.conf.json src-tauri/Cargo.toml src-tauri/Cargo.lock releases/
 	git diff --cached --quiet && echo "Version already at $(VERSION)" || true
 	git commit --allow-empty -m "release: v$(VERSION)"
 	git push -u origin release/v$(VERSION)
-	gh pr create --title "release: v$(VERSION)" --body "$$(./scripts/changelog.sh)"
+	gh pr create --title "release: v$(VERSION)" --body "$$(awk '/^---/{c++;next} c>=2' releases/v$(VERSION).md)"
 	@echo "PR created. Merge it to trigger the release build."
 
 # Initialize fresh worktree - explicit setup command
