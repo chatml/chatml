@@ -12,6 +12,7 @@ import { useSettingsStore, type ContentView } from '@/stores/settingsStore';
 import { useNavigationStore, type NavigationEntry } from '@/stores/navigationStore';
 import { useTabStore } from '@/stores/tabStore';
 import { ENABLE_BROWSER_TABS } from '@/lib/constants';
+import { expandGroupsForSession } from '@/hooks/useSidebarSessions';
 
 /**
  * Check if a session's target conversation has messages cached in the store.
@@ -202,6 +203,9 @@ function applyEntry(entry: NavigationEntry): void {
     // But if we have a specific conversationId, override after
     if (entry.sessionId !== undefined) {
       appStore.selectSession(entry.sessionId);
+      // Auto-expand collapsed sidebar groups so the selected session is visible
+      const session = appStore.sessions.find(s => s.id === entry.sessionId && !s.archived);
+      if (session) expandGroupsForSession(session);
     }
     if (entry.conversationId !== undefined) {
       appStore.selectConversation(entry.conversationId);
@@ -240,9 +244,11 @@ export function navigate(params: NavigateParams): void {
 
   // Auto-clear unread when navigating into a workspace or session
   if (params.sessionId) {
-    const session = useAppStore.getState().sessions.find(s => s.id === params.sessionId);
+    const session = useAppStore.getState().sessions.find(s => s.id === params.sessionId && !s.archived);
     if (session) {
       useSettingsStore.getState().markWorkspaceRead(session.workspaceId);
+      // Auto-expand collapsed sidebar groups so the selected session is visible
+      expandGroupsForSession(session);
     }
     useSettingsStore.getState().markSessionRead(params.sessionId);
   } else if (params.workspaceId) {
