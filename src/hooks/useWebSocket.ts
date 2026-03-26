@@ -13,6 +13,7 @@ import {
 import { getAuthToken } from '@/lib/auth-token';
 import { getBackendPort } from '@/lib/backend-port';
 import { useConnectionStore } from '@/stores/connectionStore';
+import { dispatchAppEvent } from '@/lib/custom-events';
 import { getConversationDropStats, getActiveStreamingConversations, getInterruptedConversations, getConversationMessages, getStreamingSnapshot, toStoreMessage, updateSession as updateSessionApi, refreshPRStatus, addSystemMessage, listAllSessions, mapSessionDTO } from '@/lib/api';
 import { useScheduledTaskStore } from '@/stores/scheduledTaskStore';
 import { useSettingsStore } from '@/stores/settingsStore';
@@ -990,11 +991,9 @@ export function useWebSocket(enabled: boolean = true) {
             status: 'running',
             startTime: Date.now(),
           });
-          // Auto-show bottom panel and switch to tasks tab for the event's own session
-          const eventSessionId = data.sessionId;
-          if (eventSessionId) {
-            store.setTerminalPanelVisible(eventSessionId, true);
-            store.setBottomPanelActiveTab(eventSessionId, 'tasks');
+          // Auto-switch sidebar bottom panel to Background tab (only for the task's own session)
+          if (data.sessionId) {
+            dispatchAppEvent('sidebar-switch-bottom-tab', { tab: 'background', sessionId: data.sessionId });
           }
         }
         break;

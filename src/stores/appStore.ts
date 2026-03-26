@@ -320,7 +320,6 @@ interface AppState {
   terminalInstances: Record<string, TerminalInstance[]>; // keyed by sessionId
   activeTerminalId: Record<string, string | null>;       // keyed by sessionId
   terminalPanelVisible: Record<string, boolean>;         // keyed by sessionId
-  bottomPanelActiveTab: Record<string, 'terminal' | 'tasks'>; // keyed by sessionId
 
   // MCP servers state
   mcpServers: McpServerStatus[];
@@ -541,7 +540,6 @@ interface AppState {
   updateBackgroundTask: (conversationId: string, taskId: string, update: Partial<import('@/lib/types').BackgroundTask>) => void;
   stopBackgroundTask: (conversationId: string, taskId: string) => void;
   clearBackgroundTasks: (conversationId: string) => void;
-  setBottomPanelActiveTab: (sessionId: string, tab: 'terminal' | 'tasks') => void;
 
   restoreStreamingFromSnapshot: (conversationId: string, snapshot: {
     text: string;
@@ -700,7 +698,6 @@ export const useAppStore = create<AppState>((set, get) => ({
   terminalInstances: {},
   activeTerminalId: {},
   terminalPanelVisible: {},
-  bottomPanelActiveTab: {},
   mcpServers: [],
   mcpServerConfigs: [],
   mcpConfigLoading: false,
@@ -838,7 +835,6 @@ export const useAppStore = create<AppState>((set, get) => ({
     const cleanedTerminalInstances = { ...state.terminalInstances };
     const cleanedActiveTerminalId = { ...state.activeTerminalId };
     const cleanedTerminalPanelVisible = { ...state.terminalPanelVisible };
-    const cleanedBottomPanelActiveTab = { ...state.bottomPanelActiveTab };
     const cleanedTerminalSessions = { ...state.terminalSessions };
     const cleanedLastActive = { ...state.lastActiveConversationPerSession };
     for (const sessionId of workspaceSessionIds) {
@@ -847,7 +843,6 @@ export const useAppStore = create<AppState>((set, get) => ({
       delete cleanedTerminalInstances[sessionId];
       delete cleanedActiveTerminalId[sessionId];
       delete cleanedTerminalPanelVisible[sessionId];
-      delete cleanedBottomPanelActiveTab[sessionId];
       delete cleanedTerminalSessions[sessionId];
       delete cleanedLastActive[sessionId];
     }
@@ -879,7 +874,6 @@ export const useAppStore = create<AppState>((set, get) => ({
       terminalInstances: cleanedTerminalInstances,
       activeTerminalId: cleanedActiveTerminalId,
       terminalPanelVisible: cleanedTerminalPanelVisible,
-      bottomPanelActiveTab: cleanedBottomPanelActiveTab,
       terminalSessions: cleanedTerminalSessions,
       lastActiveConversationPerSession: cleanedLastActive,
       selectedFileTabId: null,
@@ -968,8 +962,6 @@ export const useAppStore = create<AppState>((set, get) => ({
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
       const { [id]: _panelVisible, ...remainingTerminalPanelVisible } = state.terminalPanelVisible;
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
-      const { [id]: _bottomTab, ...remainingBottomPanelActiveTab } = state.bottomPanelActiveTab;
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
       const { [id]: _convsBySession, ...remainingConversationsBySession } = state.conversationsBySession;
       const cleanedScriptOutputVersions = Object.fromEntries(
         Object.entries(state.scriptOutputVersions).filter(([k]) => !k.startsWith(`${id}:`))
@@ -1002,7 +994,6 @@ export const useAppStore = create<AppState>((set, get) => ({
         terminalInstances: remainingTerminalInstances,
         activeTerminalId: remainingActiveTerminalId,
         terminalPanelVisible: remainingTerminalPanelVisible,
-        bottomPanelActiveTab: remainingBottomPanelActiveTab,
         scriptOutputVersions: cleanedScriptOutputVersions,
         selectedFileTabId: null,
         fileTabs: [],
@@ -1121,8 +1112,6 @@ export const useAppStore = create<AppState>((set, get) => ({
     const { [id]: _activeTerminal, ...remainingActiveTerminalId } = state.activeTerminalId;
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { [id]: _panelVisible, ...remainingTerminalPanelVisible } = state.terminalPanelVisible;
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { [id]: _bottomTab, ...remainingBottomPanelActiveTab } = state.bottomPanelActiveTab;
 
     return {
       sessions: updatedSessions,
@@ -1131,7 +1120,6 @@ export const useAppStore = create<AppState>((set, get) => ({
       terminalInstances: remainingTerminalInstances,
       activeTerminalId: remainingActiveTerminalId,
       terminalPanelVisible: remainingTerminalPanelVisible,
-      bottomPanelActiveTab: remainingBottomPanelActiveTab,
     };
   }),
   unarchiveSession: (id) => set((state) => {
@@ -2098,10 +2086,6 @@ updateFileTabContent: (id, content) => set((state) => ({
       [conversationId]: [],
     },
   })),
-  setBottomPanelActiveTab: (sessionId, tab) => set((state) => ({
-    bottomPanelActiveTab: { ...state.bottomPanelActiveTab, [sessionId]: tab },
-  })),
-
   restoreStreamingFromSnapshot: (conversationId, snapshot) => {
     // Restore streaming state from a backend snapshot after WebSocket reconnection.
     // When textSegments are available, restore individual segments to preserve

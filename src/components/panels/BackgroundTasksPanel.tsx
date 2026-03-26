@@ -7,6 +7,7 @@ import { cn } from '@/lib/utils';
 import { useBackgroundTasks } from '@/stores/selectors';
 import { useAppStore } from '@/stores/appStore';
 import { stopBackgroundTask } from '@/lib/api/conversations';
+import { useToast } from '@/components/ui/toast';
 import type { BackgroundTask } from '@/lib/types';
 
 function formatTokensCompact(tokens: number): string {
@@ -50,6 +51,7 @@ interface TaskRowProps {
 
 const TaskRow = memo(function TaskRow({ task, conversationId }: TaskRowProps) {
   const isRunning = task.status === 'running';
+  const { error: showError } = useToast();
 
   const handleStop = useCallback(async (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -58,9 +60,9 @@ const TaskRow = memo(function TaskRow({ task, conversationId }: TaskRowProps) {
       // Optimistically reflect stopped state; task_stopped WS event will confirm
       useAppStore.getState().stopBackgroundTask(conversationId, task.taskId);
     } catch {
-      // Stop failed — task_stopped event won't arrive, but that's OK
+      showError('Failed to stop background task');
     }
-  }, [conversationId, task.taskId]);
+  }, [conversationId, task.taskId, showError]);
 
   return (
     <div className="flex items-center gap-2 px-3 py-1.5 text-sm hover:bg-surface-2 transition-colors">

@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import type { Attachment, SprintPhase } from '@/lib/types';
+import type { AllBottomPanelTab } from '@/stores/settingsStore';
 
 /**
  * Typed custom event map. Add new events here for compile-time safety
@@ -36,6 +37,8 @@ export interface AppCustomEventMap {
   'document-release': void;
   /** Execute a primary action from the session hover card (select session first, then dispatch) */
   'primary-action-execute': { message: string; templateKey?: string | null; templateContent?: string; workspaceId: string };
+  /** Switch the sidebar bottom panel to a specific tab (e.g. 'background' when a task starts) */
+  'sidebar-switch-bottom-tab': { tab: AllBottomPanelTab; sessionId: string };
 }
 
 type EventDetail<K extends keyof AppCustomEventMap> =

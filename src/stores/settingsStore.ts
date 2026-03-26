@@ -6,13 +6,13 @@ import type { ThinkingLevel } from '@/lib/thinkingLevels';
 
 // Bottom panel tab IDs that can be toggled (Tasks is always visible)
 // TODO: Re-add 'scripts' to BottomPanelTab when the Scripts feature is reintroduced (see ScriptsPanel.tsx)
-export type BottomPanelTab = 'budget' | 'mcp' | 'file-history';
+export type BottomPanelTab = 'budget' | 'mcp' | 'file-history' | 'background';
 
 // All bottom panel tabs including the always-visible Tasks
 export type AllBottomPanelTab = 'todos' | BottomPanelTab;
 
 // Default tab order
-export const DEFAULT_BOTTOM_TAB_ORDER: AllBottomPanelTab[] = ['todos', 'file-history', 'budget', 'mcp'];
+export const DEFAULT_BOTTOM_TAB_ORDER: AllBottomPanelTab[] = ['todos', 'background', 'file-history', 'budget', 'mcp'];
 
 // Top panel (right sidebar) tab IDs - Changes is always visible
 export type TopPanelTab = 'review' | 'checks' | 'files';
