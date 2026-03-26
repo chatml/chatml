@@ -14,6 +14,7 @@ import { initAuth, listenForOAuthCallback, validateStoredToken, OAUTH_TIMEOUT_MS
 import { getLinearAuthStatus } from '@/lib/linearAuth';
 import { registerSession, getSessionDirName } from '@/lib/tauri';
 import { navigate } from '@/lib/navigation';
+import { expandGroupsForSession } from '@/hooks/useSidebarSessions';
 import { useToast } from '@/components/ui/toast';
 import {
   listRepos, listAllSessions, listConversations, listWorkspaceConversations,
@@ -296,6 +297,13 @@ export function useAppInitialization() {
           if (targetSessionId) {
             selectSession(targetSessionId);
           }
+        }
+
+        // Auto-expand collapsed sidebar groups so the restored session is visible
+        const selectedId = useAppStore.getState().selectedSessionId;
+        if (selectedId) {
+          const selectedSession = allSessions.find(s => s.id === selectedId && !s.archived);
+          if (selectedSession) expandGroupsForSession(selectedSession);
         }
 
         // Shell is ready — sidebar, toolbar, and layout chrome can render
