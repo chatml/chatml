@@ -215,6 +215,30 @@ type AgentEvent struct {
 	// Message cancellation fields (SDK 0.2.76)
 	MessageUuid string `json:"messageUuid,omitempty"`
 
+	// Stop failure fields (SDK 0.2.84)
+	LastAssistantMessage string `json:"lastAssistantMessage,omitempty"`
+
+	// CwdChanged fields (SDK 0.2.84)
+	OldCwd string `json:"oldCwd,omitempty"`
+	NewCwd string `json:"newCwd,omitempty"`
+
+	// FileChanged fields (SDK 0.2.84)
+	FileEvent string `json:"event,omitempty"`
+
+	// TaskCreated fields (SDK 0.2.84)
+	TaskSubject     string `json:"taskSubject,omitempty"`
+	TaskDescription string `json:"taskDescription,omitempty"`
+	TeammateName    string `json:"teammateName,omitempty"`
+	TeamName        string `json:"teamName,omitempty"`
+
+	// API retry fields (SDK 0.2.84)
+	MaxRetries   int    `json:"maxRetries,omitempty"`
+	RetryDelayMs int    `json:"retryDelayMs,omitempty"`
+	ErrorStatus  int    `json:"errorStatus,omitempty"`
+
+	// Session state changed fields (SDK 0.2.84)
+	State string `json:"state,omitempty"`
+
 	// Query response fields (SDK 0.2.72)
 	Result interface{} `json:"result,omitempty"`
 
@@ -403,6 +427,14 @@ const (
 	// New event types from SDK 0.2.76 (pass-through only — no backend-specific handling yet)
 	EventTypeSessionForked    = "session_forked"
 	EventTypeMessageCancelled = "message_cancelled"
+
+	// New event types from SDK 0.2.84
+	EventTypeStopFailure         = "stop_failure"
+	EventTypeCwdChanged          = "cwd_changed"
+	EventTypeFileChanged         = "file_changed"
+	EventTypeTaskCreated         = "task_created"
+	EventTypeAPIRetry            = "api_retry"
+	EventTypeSessionStateChanged = "session_state_changed"
 )
 
 // TodoItem represents a single todo item from the agent's TodoWrite tool

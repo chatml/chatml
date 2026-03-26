@@ -260,6 +260,7 @@ interface StreamingState {
   recovery?: { attempt: number; maxAttempts: number }; // Agent crash recovery in progress
   turnStartMeta?: { model?: string; effort?: string; permissionMode?: string; fastModeState?: 'off' | 'cooldown' | 'on' }; // Turn-start config from init event
   compactBoundary?: { timestamp: number; trigger?: string; summary?: string; label: string }; // Auto-compact boundary from SDK
+  apiRetryStatus?: { attempt: number; maxRetries: number; retryDelayMs: number; error: string } | null; // API retry in progress (SDK 0.2.84)
 }
 
 // Info about a conversation interrupted by app shutdown, detected on restart
@@ -505,6 +506,7 @@ interface AppState {
   setTurnStartMeta: (conversationId: string, meta: { model?: string; effort?: string; permissionMode?: string; fastModeState?: 'off' | 'cooldown' | 'on' }) => void;
   setCompactBoundary: (conversationId: string, boundary: { timestamp: number; trigger?: string }) => void;
   setCompactSummary: (conversationId: string, summary: string) => void;
+  setApiRetryStatus: (conversationId: string, status: { attempt: number; maxRetries: number; retryDelayMs: number; error: string } | null) => void;
   clearStreamingText: (conversationId: string) => void;
   clearStreamingContent: (conversationId: string) => void;
   appendThinkingText: (conversationId: string, text: string) => void;
@@ -1775,6 +1777,11 @@ updateFileTabContent: (id, content) => set((state) => ({
       }),
     };
   }),
+  setApiRetryStatus: (conversationId, status) => set((state) => ({
+    streamingState: updateStreamingConv(state.streamingState, conversationId, {
+      apiRetryStatus: status,
+    }),
+  })),
   clearStreamingText: (conversationId) => set((state) => ({
     streamingState: updateStreamingConv(state.streamingState, conversationId, {
       text: '',

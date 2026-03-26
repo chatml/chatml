@@ -144,6 +144,9 @@ export function ConversationArea({ children }: ConversationAreaProps) {
   const streamingRecovery = useAppStore(
     (s) => selectedConversationId ? s.streamingState[selectedConversationId]?.recovery ?? null : null
   );
+  const apiRetryStatus = useAppStore(
+    (s) => selectedConversationId ? s.streamingState[selectedConversationId]?.apiRetryStatus ?? null : null
+  );
   const claudeAuthStatus = useClaudeAuthStatus();
   const claudeAuthConfigured = claudeAuthStatus?.configured ?? null;
 
@@ -823,6 +826,18 @@ export function ConversationArea({ children }: ConversationAreaProps) {
             <div className="h-2 w-2 rounded-full bg-amber-500 animate-pulse shrink-0" />
             <span className="text-xs text-amber-200/90">
               Agent reconnecting... (attempt {streamingRecovery.attempt}/{streamingRecovery.maxAttempts})
+            </span>
+          </div>
+        </div>
+      )}
+
+      {/* API retry banner — shown when the SDK is retrying after a transient API error */}
+      {apiRetryStatus && (
+        <div className="bg-amber-500/10 border-b border-amber-500/20 px-3 py-2 animate-fade-in">
+          <div className="flex items-center gap-2">
+            <div className="h-2 w-2 rounded-full bg-amber-500 animate-pulse shrink-0" />
+            <span className="text-xs text-amber-200/90">
+              Retrying API call... (attempt {apiRetryStatus.attempt}/{apiRetryStatus.maxRetries}, waiting {Math.round(apiRetryStatus.retryDelayMs / 1000)}s) — {apiRetryStatus.error}
             </span>
           </div>
         </div>
