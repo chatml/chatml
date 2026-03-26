@@ -21,8 +21,8 @@ export function SprintPhaseToolbar({ onClose }: SprintPhaseToolbarProps) {
   const phase = selectedSession?.sprintPhase;
   const currentIndex = phase ? SPRINT_PHASES.indexOf(phase) : -1;
   const totalPhases = SPRINT_PHASE_OPTIONS.length;
-  const progressPercent = currentIndex >= 0 && totalPhases > 1
-    ? (currentIndex / (totalPhases - 1)) * 100
+  const progressFraction = currentIndex >= 0 && totalPhases > 1
+    ? currentIndex / (totalPhases - 1)
     : 0;
 
   // Delegate phase changes to SessionToolbarContent via the existing event bus,
@@ -36,9 +36,9 @@ export function SprintPhaseToolbar({ onClose }: SprintPhaseToolbarProps) {
 
   return (
     <div className="shrink-0 border-b border-border/60 bg-background animate-in slide-in-from-top-1 fade-in duration-150">
-      <div className="flex items-center h-9 px-3 gap-2">
+      <div className="flex items-center h-10 px-3 gap-2">
         {/* Left: Sprint label */}
-        <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/50 shrink-0 select-none">
+        <span className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground/60 shrink-0 select-none">
           Sprint
         </span>
 
@@ -50,10 +50,10 @@ export function SprintPhaseToolbar({ onClose }: SprintPhaseToolbarProps) {
             {/* Background rail (full width, muted) */}
             <div className="absolute inset-x-3 top-1/2 -translate-y-1/2 h-[2px] bg-border/50 rounded-full" />
 
-            {/* Completed rail (fills from left to active phase) */}
+            {/* Completed rail (fills from first node center to active node center) */}
             <div
               className="absolute left-3 top-1/2 -translate-y-1/2 h-[2px] rounded-full bg-muted-foreground/30 transition-all duration-300 ease-out"
-              style={{ width: `calc(${progressPercent}% - ${progressPercent > 0 ? '24px' : '0px'})` }}
+              style={{ width: `calc(${progressFraction} * (100% - 24px))` }}
             />
 
             {/* Phase nodes */}
@@ -72,43 +72,44 @@ export function SprintPhaseToolbar({ onClose }: SprintPhaseToolbarProps) {
                         aria-label={opt.label}
                         aria-pressed={isActive}
                         className={cn(
-                          'relative flex items-center gap-1.5 group transition-all duration-200',
+                          'relative flex items-center gap-1.5 rounded-full transition-all duration-200 group',
+                          'before:absolute before:inset-[-6px] before:content-[""]',
+                          isActive && [opt.color, 'bg-current/10 px-2.5 py-1'],
+                          !isActive && 'px-1 py-1',
                           isAgentWorking && 'opacity-50',
                         )}
                       >
                         {/* Node circle */}
                         <div className={cn(
-                          'flex items-center justify-center h-5 w-5 rounded-full border-[1.5px] transition-all duration-200',
+                          'flex items-center justify-center h-6 w-6 rounded-full border-[1.5px] transition-all duration-200',
                           isActive && [
                             opt.color,
-                            'border-current bg-current/15 scale-110 shadow-[0_0_8px_-2px_currentColor]',
+                            'border-current bg-current/15 scale-[1.15] shadow-[0_0_10px_-2px_currentColor]',
                           ],
                           isCompleted && [
-                            'border-muted-foreground/40 bg-muted-foreground/10 text-muted-foreground/70',
-                            'group-hover:border-muted-foreground/60 group-hover:bg-muted-foreground/20',
+                            'border-muted-foreground/40 bg-muted-foreground/15 text-muted-foreground/70',
+                            'group-hover:border-muted-foreground/60 group-hover:bg-muted-foreground/25',
                           ],
                           !isActive && !isCompleted && [
-                            'border-border bg-transparent text-muted-foreground/50',
+                            'border-muted-foreground/25 bg-transparent text-muted-foreground/55',
                             'group-hover:border-muted-foreground/40 group-hover:bg-accent/30 group-hover:text-muted-foreground/70',
                           ],
                         )}>
                           {isCompleted
-                            ? <Check className="h-2.5 w-2.5" />
-                            : <Icon className={cn('h-2.5 w-2.5', isActive && opt.color)} />
+                            ? <Check className="h-3 w-3" />
+                            : <Icon className={cn('h-3 w-3', isActive && opt.color)} />
                           }
                         </div>
 
-                        {/* Label */}
-                        <span className={cn(
-                          'text-[10px] font-medium leading-none transition-colors duration-200',
-                          isActive && [opt.color, 'font-semibold'],
-                          isCompleted && 'text-muted-foreground/60 group-hover:text-muted-foreground/80',
-                          !isActive && !isCompleted && 'text-muted-foreground/45 group-hover:text-muted-foreground/70',
-                          'hidden sm:inline',
-                          isActive && '!inline',
-                        )}>
-                          {opt.label}
-                        </span>
+                        {/* Label — only shown for active phase to avoid overflow at narrow widths */}
+                        {isActive && (
+                          <span className={cn(
+                            'text-[11px] font-semibold leading-none',
+                            opt.color,
+                          )}>
+                            {opt.label}
+                          </span>
+                        )}
                       </button>
                     </TooltipTrigger>
                     <TooltipContent side="bottom">{opt.description}</TooltipContent>
