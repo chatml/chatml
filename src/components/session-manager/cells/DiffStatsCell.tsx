@@ -16,7 +16,7 @@ export function DiffStatsCell({ session }: DiffStatsCellProps) {
 
   return (
     <span className={cn(
-      'text-xs px-1.5 py-0.5 rounded border font-mono tabular-nums',
+      'text-2xs px-1 py-px rounded border font-mono tabular-nums',
       session.archived
         ? 'border-border/50 text-muted-foreground/60'
         : 'border-text-success/40'

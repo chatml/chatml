@@ -103,7 +103,7 @@ export function SessionRow({ session, workspace, onSelect, onUnarchive, onPrevie
 
       {/* Diff stats */}
       {hasStats && (
-        <span className="text-xs px-1.5 py-0.5 rounded border border-text-success/40 font-mono tabular-nums shrink-0">
+        <span className="text-2xs px-1 py-px rounded border border-text-success/40 font-mono tabular-nums shrink-0">
           <span className="text-text-success">+{session.stats!.additions}</span>
           <span className="text-text-error ml-1">-{session.stats!.deletions}</span>
         </span>
