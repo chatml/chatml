@@ -503,6 +503,32 @@ export interface AgentEvent {
   taskId?: string;
   lastToolName?: string;
   taskUsage?: { total_tokens?: number; tool_uses?: number; duration_ms?: number };
+
+  // API retry fields (SDK 0.2.84)
+  attempt?: number;
+  maxRetries?: number;
+  retryDelayMs?: number;
+  errorStatus?: number;
+
+  // Stop failure fields (SDK 0.2.84)
+  errorDetails?: string;
+  lastAssistantMessage?: string;
+
+  // CwdChanged fields (SDK 0.2.84)
+  oldCwd?: string;
+  newCwd?: string;
+
+  // FileChanged fields (SDK 0.2.84)
+  fileEvent?: string;
+
+  // TaskCreated fields (SDK 0.2.84)
+  taskSubject?: string;
+  taskDescription?: string;
+  teammateName?: string;
+  teamName?: string;
+
+  // Session state changed fields (SDK 0.2.84)
+  state?: string;
 }
 
 // Rate limit info from claude.ai subscription (SDK 0.2.72)
