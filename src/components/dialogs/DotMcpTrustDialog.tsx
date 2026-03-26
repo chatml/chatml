@@ -47,7 +47,7 @@ export function DotMcpTrustDialog({
 
   // Build description of which config files were found
   const configFiles: string[] = [];
-  if (hasMcpJson || (!hasMcpJson && !hasClaudeSettings)) configFiles.push('.mcp.json');
+  if (hasMcpJson || !hasClaudeSettings) configFiles.push('.mcp.json');
   if (hasClaudeSettings) configFiles.push('.claude/settings.json');
 
   return (

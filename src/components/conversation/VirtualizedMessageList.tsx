@@ -70,6 +70,7 @@ export const VirtualizedMessageList = forwardRef<VirtualizedMessageListHandle, V
     const messageOffsetsRef = useRef(searchMatches.messageOffsets);
     const messageHasMatchesRef = useRef(messageHasMatches);
     const worktreePathRef = useRef(worktreePath);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally runs every render to keep refs fresh without retriggering itemContent memo
     useEffect(() => {
       messageOffsetsRef.current = searchMatches.messageOffsets;
       messageHasMatchesRef.current = messageHasMatches;

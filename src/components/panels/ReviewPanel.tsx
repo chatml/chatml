@@ -150,15 +150,19 @@ export function ReviewPanel({ workspaceId, sessionId, onFileSelect, onSendFeedba
     return groups;
   }, [filteredComments]);
 
-  // Count by severity for filter badges
-  const unresolvedComments = comments.filter((c) => !c.resolved);
-  const counts = {
-    all: unresolvedComments.length,
-    error: unresolvedComments.filter((c) => c.severity === 'error').length,
-    warning: unresolvedComments.filter((c) => c.severity === 'warning').length,
-    info: unresolvedComments.filter((c) => c.severity === 'info').length,
-    suggestion: unresolvedComments.filter((c) => c.severity === 'suggestion').length,
-  };
+  // Count by severity for filter badges (single pass)
+  const KNOWN_SEVERITIES = new Set(['error', 'warning', 'info', 'suggestion'] as const);
+  type Severity = typeof KNOWN_SEVERITIES extends Set<infer T> ? T : never;
+  const counts = useMemo(() => {
+    const c = { all: 0, error: 0, warning: 0, info: 0, suggestion: 0 };
+    for (const comment of comments) {
+      if (comment.resolved) continue;
+      c.all++;
+      const sev = comment.severity || 'info';
+      if (KNOWN_SEVERITIES.has(sev as Severity)) c[sev as Severity]++;
+    }
+    return c;
+  }, [comments]);
 
   const handleResolveAs = useCallback(
     async (commentId: string, resolutionType: 'fixed' | 'ignored') => {
@@ -225,6 +229,7 @@ export function ReviewPanel({ workspaceId, sessionId, onFileSelect, onSendFeedba
     });
   }, []);
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- handleAddToChat and setAddedToChatIds are stable module-level/setter refs
   const handleAddToChatTracked = useCallback((comment: ReviewComment) => {
     handleAddToChat(comment);
     setAddedToChatIds((prev) => new Set(prev).add(comment.id));
@@ -319,7 +324,7 @@ export function ReviewPanel({ workspaceId, sessionId, onFileSelect, onSendFeedba
         <div className="border-b px-2 py-2 space-y-2">
           {scorecards.map((sc) => {
             let scores: ReviewScore[] = [];
-            try { scores = JSON.parse(sc.scores); } catch {}
+            try { scores = JSON.parse(sc.scores); } catch (e) { console.warn('Failed to parse scorecard scores:', e); }
             const avg = scores.length > 0
               ? scores.reduce((s, d) => s + d.score, 0) / scores.length
               : 0;

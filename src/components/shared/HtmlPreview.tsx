@@ -34,6 +34,7 @@ function buildSrcdoc(code: string, theme: 'dark' | 'light'): string {
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src 'none'; img-src data: blob:; font-src data:; object-src 'none'; base-uri 'none';">
 <style>
 *, *::before, *::after { box-sizing: border-box; }
 html, body {

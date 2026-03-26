@@ -27,7 +27,11 @@ export function UserQuestionPrompt({ conversationId }: UserQuestionPromptProps) 
   const autoSubmitTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const otherSelectedRef = useRef(otherSelected);
-  otherSelectedRef.current = otherSelected;
+
+  // Keep ref in sync via effect (react-hooks/refs disallows render-time ref mutation)
+  useEffect(() => {
+    otherSelectedRef.current = otherSelected;
+  }, [otherSelected]);
 
   // Clear auto-submit timeout on unmount
   useEffect(() => {

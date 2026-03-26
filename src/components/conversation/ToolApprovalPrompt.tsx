@@ -122,6 +122,7 @@ export function ToolApprovalPrompt({ conversationId }: ToolApprovalPromptProps) 
   const [error, setError] = useState<string | null>(null);
   const [elapsed, setElapsed] = useState(0);
   const [submitting, setSubmitting] = useState(false);
+  const submittingRef = useRef(false);
   const [editedCommand, setEditedCommand] = useState('');
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const autoDeniedRef = useRef(false);
@@ -144,9 +145,10 @@ export function ToolApprovalPrompt({ conversationId }: ToolApprovalPromptProps) 
     }
   }
 
-  // Reset autoDeniedRef when request changes (refs must be updated in effects, not during render)
+  // Reset refs when request changes (refs must be updated in effects, not during render)
   useEffect(() => {
     if (pending) {
+      submittingRef.current = false;
       autoDeniedRef.current = false;
     }
   }, [pending?.requestId, pending]);
@@ -162,8 +164,9 @@ export function ToolApprovalPrompt({ conversationId }: ToolApprovalPromptProps) 
   }, [isBash, pending?.requestId]);
 
   const handleAction = useCallback(async (action: 'allow_once' | 'allow_session' | 'allow_always' | 'deny_once' | 'deny_always') => {
-    if (!pending || submitting) return;
+    if (!pending || submittingRef.current) return;
     setSubmitting(true);
+    submittingRef.current = true;
     try {
       setError(null);
       // Build updatedInput if user edited the Bash command
@@ -175,9 +178,10 @@ export function ToolApprovalPrompt({ conversationId }: ToolApprovalPromptProps) 
       clearPendingToolApproval(conversationId);
     } catch (err) {
       setSubmitting(false);
+      submittingRef.current = false;
       setError(err instanceof Error ? err.message : 'Failed to send tool approval');
     }
-  }, [conversationId, pending, clearPendingToolApproval, submitting, isBash, editedCommand]);
+  }, [conversationId, pending, clearPendingToolApproval, isBash, editedCommand]);
 
   // Keep ref in sync so the interval callback always has the latest handleAction
   useEffect(() => {

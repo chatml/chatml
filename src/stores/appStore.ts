@@ -132,11 +132,9 @@ export function getScriptOutputLines(sessionId: string, runId: string): string[]
 
 /** Clear script output buffers for a session */
 export function clearScriptOutputBuffers(sessionId: string) {
-  for (const key of scriptOutputBuffers.keys()) {
-    if (key.startsWith(`${sessionId}:`)) {
-      scriptOutputBuffers.delete(key);
-    }
-  }
+  const prefix = `${sessionId}:`;
+  const keysToDelete = [...scriptOutputBuffers.keys()].filter(k => k.startsWith(prefix));
+  for (const key of keysToDelete) scriptOutputBuffers.delete(key);
 }
 
 // Timeout tracking for orphaned tool cleanup
@@ -159,13 +157,16 @@ function clearToolTimeoutsForConversation(conversationId: string, tools: { id: s
 
 /** Clear all tool timeouts for conversations matching the given IDs */
 function clearToolTimeoutsForConversations(conversationIds: string[]) {
+  const convIdSet = new Set(conversationIds);
+  const keysToDelete: string[] = [];
   for (const [key, timeout] of toolTimeouts) {
     const convId = key.split(':')[0];
-    if (conversationIds.includes(convId)) {
+    if (convIdSet.has(convId)) {
       clearTimeout(timeout);
-      toolTimeouts.delete(key);
+      keysToDelete.push(key);
     }
   }
+  for (const key of keysToDelete) toolTimeouts.delete(key);
 }
 
 /** Clear all tool timeouts globally (for HMR, tests, or app teardown) */
