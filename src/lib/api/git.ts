@@ -40,8 +40,12 @@ export async function getSessionBranchCommits(workspaceId: string, sessionId: st
   return handleResponse<BranchChangesResponseDTO>(res);
 }
 
-// Git status types matching backend response
+// Git status types matching backend response.
+// currentBranch and currentSessionName are only populated by the /git-status
+// polling endpoint, not by /snapshot.
 export interface GitStatusDTO {
+  currentBranch?: string;
+  currentSessionName?: string;
   workingDirectory: {
     stagedCount: number;
     unstagedCount: number;

@@ -8,9 +8,12 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/chatml/chatml-backend/git"
 	"github.com/chatml/chatml-backend/logger"
+	"github.com/chatml/chatml-backend/models"
+	"github.com/chatml/chatml-backend/naming"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -33,11 +36,68 @@ func (h *Handlers) GetSessionGitStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Get comprehensive git status
-	status, err := h.repoManager.GetStatus(ctx, workingPath, baseRef)
-	if err != nil {
-		writeInternalError(w, "failed to get git status", err)
+	// Get comprehensive git status and current branch in parallel
+	var (
+		status        *git.GitStatus
+		currentBranch string
+		statusErr     error
+		branchErr     error
+		wg            sync.WaitGroup
+	)
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		status, statusErr = h.repoManager.GetStatus(ctx, workingPath, baseRef)
+	}()
+	go func() {
+		defer wg.Done()
+		currentBranch, branchErr = h.repoManager.GetCurrentBranch(ctx, workingPath)
+	}()
+	wg.Wait()
+
+	if statusErr != nil {
+		writeInternalError(w, "failed to get git status", statusErr)
 		return
+	}
+
+	// Include current branch in the response so polling can detect external branch changes.
+	// Skip detached HEAD state ("HEAD" or "") — the branch watcher handles this correctly
+	// via readCurrentBranch, but the subprocess fallback returns "HEAD" for detached state.
+	if branchErr == nil && currentBranch != "" && currentBranch != "HEAD" {
+		status.CurrentBranch = currentBranch
+		// If branch changed since last DB record, update DB (mirrors branch watcher behavior)
+		if currentBranch != session.Branch {
+			newName := naming.ExtractSessionNameFromBranch(currentBranch)
+			status.CurrentSessionName = newName
+			if newName == "" {
+				newName = currentBranch
+			}
+			if updateErr := h.store.UpdateSession(ctx, sessionID, func(s *models.Session) {
+				s.Branch = currentBranch
+				s.Name = newName
+				s.UpdatedAt = time.Now()
+			}); updateErr != nil {
+				logger.Handlers.Warnf("Failed to update branch in DB for session %s: %v", sessionID, updateErr)
+			} else if h.hub != nil {
+				// Broadcast WebSocket events to match branch watcher behavior
+				h.hub.Broadcast(Event{
+					Type:      "session_name_update",
+					SessionID: sessionID,
+					Payload: map[string]interface{}{
+						"type":   "session_name_update",
+						"name":   newName,
+						"branch": currentBranch,
+					},
+				})
+				h.hub.Broadcast(Event{
+					Type: "branch_dashboard_update",
+					Payload: map[string]interface{}{
+						"sessionId": sessionID,
+						"updatedAt": time.Now().Unix(),
+					},
+				})
+			}
+		}
 	}
 
 	// The baseRef used for ahead/behind may be a merge-base SHA.

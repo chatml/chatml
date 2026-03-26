@@ -618,7 +618,13 @@ func (rm *RepoManager) HasMergeConflicts(ctx context.Context, repoPath string) (
 
 // GitStatus represents the comprehensive git status of a worktree
 type GitStatus struct {
-	WorkingDirectory WorkingDirectoryStatus `json:"workingDirectory"`
+	// CurrentBranch is the actual checked-out branch name. Only populated by
+	// GetSessionGitStatus (polling endpoint), not by GetSessionSnapshot.
+	CurrentBranch      string                 `json:"currentBranch,omitempty"`
+	// CurrentSessionName is the derived display name for the session when a
+	// branch change is detected. Only populated alongside CurrentBranch.
+	CurrentSessionName string                 `json:"currentSessionName,omitempty"`
+	WorkingDirectory   WorkingDirectoryStatus `json:"workingDirectory"`
 	Sync             SyncStatus             `json:"sync"`
 	InProgress       InProgressStatus       `json:"inProgress"`
 	Conflicts        ConflictStatus         `json:"conflicts"`
