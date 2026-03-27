@@ -57,6 +57,7 @@ import { HEALTH_CHECK_MAX_RETRIES, HEALTH_CHECK_INITIAL_DELAY_MS } from '@/lib/c
 
 import { WorkspaceSidebar } from '@/components/navigation/WorkspaceSidebar';
 import { SessionToolbarContent } from '@/components/navigation/SessionToolbarContent';
+import { SprintPhaseBar } from '@/components/shared/SprintPhaseBar';
 import { ConversationArea } from '@/components/conversation/ConversationArea';
 import { ChatInput } from '@/components/conversation/ChatInput';
 import { ChangesPanel } from '@/components/panels/ChangesPanel';
@@ -673,6 +674,7 @@ export default function Home() {
                           {selectedSessionId ? (
                             <div className="flex flex-col h-full">
                               <SessionToolbarContent />
+                              <SprintPhaseBar />
                               <ErrorBoundary section="Conversation">
                                 <ConversationArea>
                                   <ChatInput />
