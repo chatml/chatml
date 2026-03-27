@@ -85,7 +85,7 @@ export function WorkspaceTreeItem({
                       <div className="flex items-center gap-1.5">
                         <TaskStatusIcon status={session.taskStatus} className="w-3 h-3 shrink-0" />
                         <span className="text-xs font-medium truncate">
-                          {session.branch || session.name}
+                          {session.scheduledTaskId ? session.name : (session.branch || session.name)}
                         </span>
                       </div>
 

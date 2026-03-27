@@ -18,7 +18,7 @@ export function SessionNameCell({ session }: SessionNameCellProps) {
         session.archived && 'text-muted-foreground'
       )}
     >
-      <BranchPill name={session.branch || session.name} muted={session.archived} />
+      <BranchPill name={session.scheduledTaskId ? session.name : (session.branch || session.name)} muted={session.archived} />
       {showPrTitle && (
         <>
           <span className="mx-1.5 text-muted-foreground/40 shrink-0">&middot;</span>

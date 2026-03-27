@@ -82,7 +82,7 @@ export function SessionRow({ session, workspace, onSelect, onUnarchive, onPrevie
       {/* Branch/session name - clickable area */}
       <div className="flex-1 min-w-0">
         <span className="text-sm font-medium truncate">
-          {session.branch || session.name}
+          {session.scheduledTaskId ? session.name : (session.branch || session.name)}
         </span>
       </div>
 
