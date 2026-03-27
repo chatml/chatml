@@ -530,7 +530,7 @@ func main() {
 	defer routerCleanup()
 
 	// Initialize and start the scheduled task scheduler
-	taskScheduler := scheduler.NewScheduler(ctx, s, agentMgr, func(eventType string, payload map[string]interface{}) {
+	taskScheduler := scheduler.NewScheduler(ctx, s, agentMgr, git.NewWorktreeManager(), func(eventType string, payload map[string]interface{}) {
 		hub.Broadcast(server.Event{
 			Type:    eventType,
 			Payload: payload,

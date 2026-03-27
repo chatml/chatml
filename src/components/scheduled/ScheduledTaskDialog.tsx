@@ -15,7 +15,6 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { Checkbox } from '@/components/ui/checkbox';
 import {
   Select,
   SelectContent,
@@ -66,7 +65,6 @@ export function ScheduledTaskDialog({ open, onOpenChange, editTask }: ScheduledT
   const [model, setModel] = useState('');
   const [permissionMode, setPermissionMode] = useState('default');
   const [workspaceId, setWorkspaceId] = useState('');
-  const [useWorktree, setUseWorktree] = useState(false);
   const [frequency, setFrequency] = useState<ScheduledTaskFrequency>('daily');
   const [scheduleHour, setScheduleHour] = useState(9);
   const [scheduleMinute, setScheduleMinute] = useState(0);
@@ -89,7 +87,6 @@ export function ScheduledTaskDialog({ open, onOpenChange, editTask }: ScheduledT
       setModel(editTask.model || '');
       setPermissionMode(editTask.permissionMode || 'default');
       setWorkspaceId(editTask.workspaceId);
-      setUseWorktree(editTask.useWorktree);
       setFrequency(editTask.frequency);
       setScheduleHour(editTask.scheduleHour);
       setScheduleMinute(editTask.scheduleMinute);
@@ -102,7 +99,6 @@ export function ScheduledTaskDialog({ open, onOpenChange, editTask }: ScheduledT
       setModel('');
       setPermissionMode('default');
       setWorkspaceId(workspaces[0]?.id || '');
-      setUseWorktree(false);
       setFrequency('daily');
       setScheduleHour(9);
       setScheduleMinute(0);
@@ -137,7 +133,6 @@ export function ScheduledTaskDialog({ open, onOpenChange, editTask }: ScheduledT
           prompt: prompt.trim(),
           model: model.trim() || undefined,
           permissionMode,
-          useWorktree,
           frequency,
           scheduleHour,
           scheduleMinute,
@@ -151,7 +146,6 @@ export function ScheduledTaskDialog({ open, onOpenChange, editTask }: ScheduledT
           prompt: prompt.trim(),
           model: model.trim() || undefined,
           permissionMode,
-          useWorktree,
           frequency,
           scheduleHour,
           scheduleMinute,
@@ -248,40 +242,25 @@ export function ScheduledTaskDialog({ open, onOpenChange, editTask }: ScheduledT
               </div>
             </div>
 
-            {/* Workspace & Worktree row */}
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <label className="text-sm font-medium">Workspace</label>
-                <Select
-                  value={workspaceId}
-                  onValueChange={setWorkspaceId}
-                  disabled={isEditing}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select workspace" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {workspaces.map((ws) => (
-                      <SelectItem key={ws.id} value={ws.id}>
-                        {ws.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1.5">
-                <label className="text-sm font-medium">&nbsp;</label>
-                <div className="flex items-center gap-2 h-9 px-3">
-                  <Checkbox
-                    id="worktree"
-                    checked={useWorktree}
-                    onCheckedChange={(checked) => setUseWorktree(checked === true)}
-                  />
-                  <label htmlFor="worktree" className="text-sm cursor-pointer">
-                    worktree
-                  </label>
-                </div>
-              </div>
+            {/* Workspace */}
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Workspace</label>
+              <Select
+                value={workspaceId}
+                onValueChange={setWorkspaceId}
+                disabled={isEditing}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select workspace" />
+                </SelectTrigger>
+                <SelectContent>
+                  {workspaces.map((ws) => (
+                    <SelectItem key={ws.id} value={ws.id}>
+                      {ws.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
 
             {/* Frequency section */}

@@ -282,9 +282,10 @@ func (s *Session) IsBaseSession() bool {
 }
 
 // IsMainRepoSession returns true if this session operates on the main repo directory
-// (not a worktree). Both base and scheduled sessions share this property.
+// (not a worktree). Only base sessions have this property.
+// Deprecated: Identical to IsBaseSession. Prefer IsBaseSession for new code.
 func (s *Session) IsMainRepoSession() bool {
-	return s.SessionType == SessionTypeBase || s.SessionType == SessionTypeScheduled
+	return s.IsBaseSession()
 }
 
 // SessionStatus constants
@@ -608,7 +609,6 @@ type ScheduledTask struct {
 	Prompt             string     `json:"prompt"`
 	Model              string     `json:"model,omitempty"`
 	PermissionMode     string     `json:"permissionMode"`
-	UseWorktree        bool       `json:"useWorktree"`
 	Frequency          string     `json:"frequency"`                    // hourly, daily, weekly, monthly
 	CronExpression     string     `json:"cronExpression,omitempty"`     // reserved for future cron support
 	ScheduleHour       int        `json:"scheduleHour"`                 // 0-23

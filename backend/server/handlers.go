@@ -738,11 +738,11 @@ func (h *Handlers) getSessionAndWorkspace(ctx context.Context, sessionID string)
 		workingPath = session.WorkspacePath
 	}
 
-	// For sessions operating on the main repo (base and scheduled), dynamically
-	// read the current branch from git. The DB branch field may be stale if the
-	// user switched branches externally.
+	// For base sessions, dynamically read the current branch from git.
+	// The DB branch field may be stale if the user switched branches externally.
+	// Worktree sessions (including scheduled) have fixed branches set at creation time.
 	// Use a short TTL cache to avoid spawning a git subprocess on every call.
-	if session.IsMainRepoSession() {
+	if session.IsBaseSession() {
 		const baseBranchTTL = 2 * time.Second
 		usedCache := false
 		if cached, ok := h.baseBranchCache.Load(session.ID); ok {
