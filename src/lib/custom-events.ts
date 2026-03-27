@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import type { Attachment, SprintPhase } from '@/lib/types';
+import type { SprintArtifact } from '@/lib/sprint-config';
 import type { AllBottomPanelTab } from '@/stores/settingsStore';
 
 /**
@@ -35,6 +36,10 @@ export interface AppCustomEventMap {
   'autoplan': void;
   /** Document-release: post-ship documentation audit */
   'document-release': void;
+  /** Sprint artifact was created (dispatched by agent or phase completion logic) */
+  'sprint-artifact-created': { artifact: SprintArtifact };
+  /** User clicked a slash command from the sprint phase command menu */
+  'sprint-phase-command': { command: string };
   /** Execute a primary action from the session hover card (select session first, then dispatch) */
   'primary-action-execute': { message: string; templateKey?: string | null; templateContent?: string; workspaceId: string };
   /** Switch the sidebar bottom panel to a specific tab (e.g. 'background' when a task starts) */

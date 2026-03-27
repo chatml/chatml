@@ -7,6 +7,7 @@ import { TaskStatusIcon } from '@/components/icons/TaskStatusIcon';
 import { getTaskStatusOption, getPRStatusInfo, getSprintPhaseOption } from '@/lib/session-fields';
 import { PRNumberBadge } from '@/components/shared/PRNumberBadge';
 import type { WorktreeSession } from '@/lib/types';
+import { SPRINT_PHASES } from '@/lib/types';
 import type { GitStatusDTO } from '@/lib/api';
 
 interface SessionHoverCardBodyProps {
@@ -93,12 +94,18 @@ export function SessionHoverCardBody({
         </span>
       </div>
 
-      {/* Sprint phase */}
+      {/* Sprint phase — prominent pill with progress */}
       {sprintPhaseOpt && SprintPhaseIcon && (
-        <div className="px-3 pb-1.5">
-          <span className={cn('inline-flex items-center gap-1 text-[11px] font-medium rounded px-1.5 py-0.5', sprintPhaseOpt.activeClass)}>
-            <SprintPhaseIcon className="h-3 w-3" />
+        <div className="px-3 pb-1.5 flex items-center gap-2">
+          <span className={cn(
+            'inline-flex items-center gap-1.5 text-xs font-semibold rounded-md px-2 py-1',
+            sprintPhaseOpt.activeClass,
+          )}>
+            <SprintPhaseIcon className="h-3.5 w-3.5" />
             {sprintPhaseOpt.label}
+          </span>
+          <span className="text-[10px] text-muted-foreground/60 tabular-nums">
+            {SPRINT_PHASES.indexOf(sprintPhaseOpt.value) + 1}/{SPRINT_PHASES.length}
           </span>
         </div>
       )}

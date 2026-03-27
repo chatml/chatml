@@ -36,8 +36,9 @@ type Session struct {
 	CheckStatus      string        `json:"checkStatus,omitempty"` // none, pending, success, failure
 	Priority         int           `json:"priority"`             // 0=None, 1=Urgent, 2=High, 3=Medium, 4=Low
 	TaskStatus       string        `json:"taskStatus"`           // backlog, in_progress, in_review, done, cancelled
-	SprintPhase      string        `json:"sprintPhase,omitempty"`  // think, plan, build, review, test, ship, reflect (empty = no sprint)
-	DeployStatus     string        `json:"deployStatus,omitempty"` // none, shipping, deploying, monitoring, verified, failed (empty = none)
+	SprintPhase      string        `json:"sprintPhase,omitempty"`      // think, plan, build, review, test, ship, reflect (empty = no sprint)
+	SprintArtifacts  string        `json:"sprintArtifacts,omitempty"`  // JSON-encoded array of sprint artifacts
+	DeployStatus     string        `json:"deployStatus,omitempty"`     // none, shipping, deploying, monitoring, verified, failed (empty = none)
 	Pinned           bool          `json:"pinned,omitempty"`
 	Archived             bool   `json:"archived,omitempty"`
 	ArchiveSummary       string `json:"archiveSummary,omitempty"`
