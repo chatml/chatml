@@ -698,7 +698,7 @@ func (h *Handlers) UpdateSession(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Block archiving of sessions that operate on the main repo directory
-	if req.Archived != nil && *req.Archived && session.IsMainRepoSession() {
+	if req.Archived != nil && *req.Archived && session.IsBaseSession() {
 		writeValidationError(w, "this session cannot be archived")
 		return
 	}

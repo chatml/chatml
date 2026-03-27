@@ -3240,12 +3240,12 @@ func (s *SQLiteStore) AddScheduledTask(ctx context.Context, task *models.Schedul
 	return RetryDBExec(ctx, "AddScheduledTask", DefaultRetryConfig(), func(ctx context.Context) error {
 		_, err := s.db.ExecContext(ctx, `
 			INSERT INTO scheduled_tasks (id, workspace_id, name, description, prompt, model,
-				permission_mode, use_worktree, frequency, cron_expression,
+				permission_mode, frequency, cron_expression,
 				schedule_hour, schedule_minute, schedule_day_of_week, schedule_day_of_month,
 				enabled, last_run_at, next_run_at, created_at, updated_at)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			task.ID, task.WorkspaceID, task.Name, task.Description, task.Prompt, task.Model,
-			task.PermissionMode, boolToInt(task.UseWorktree), task.Frequency, task.CronExpression,
+			task.PermissionMode, task.Frequency, task.CronExpression,
 			task.ScheduleHour, task.ScheduleMinute, task.ScheduleDayOfWeek, task.ScheduleDayOfMonth,
 			boolToInt(task.Enabled), task.LastRunAt, task.NextRunAt, task.CreatedAt, task.UpdatedAt)
 		return err
@@ -3254,17 +3254,17 @@ func (s *SQLiteStore) AddScheduledTask(ctx context.Context, task *models.Schedul
 
 func (s *SQLiteStore) GetScheduledTask(ctx context.Context, id string) (*models.ScheduledTask, error) {
 	var task models.ScheduledTask
-	var enabled, useWorktree int
+	var enabled int
 	var lastRunAt, nextRunAt sql.NullTime
 
 	err := s.db.QueryRowContext(ctx, `
 		SELECT id, workspace_id, name, description, prompt, model,
-			permission_mode, use_worktree, frequency, cron_expression,
+			permission_mode, frequency, cron_expression,
 			schedule_hour, schedule_minute, schedule_day_of_week, schedule_day_of_month,
 			enabled, last_run_at, next_run_at, created_at, updated_at
 		FROM scheduled_tasks WHERE id = ?`, id).Scan(
 		&task.ID, &task.WorkspaceID, &task.Name, &task.Description, &task.Prompt, &task.Model,
-		&task.PermissionMode, &useWorktree, &task.Frequency, &task.CronExpression,
+		&task.PermissionMode, &task.Frequency, &task.CronExpression,
 		&task.ScheduleHour, &task.ScheduleMinute, &task.ScheduleDayOfWeek, &task.ScheduleDayOfMonth,
 		&enabled, &lastRunAt, &nextRunAt, &task.CreatedAt, &task.UpdatedAt)
 	if err == sql.ErrNoRows {
@@ -3275,7 +3275,6 @@ func (s *SQLiteStore) GetScheduledTask(ctx context.Context, id string) (*models.
 	}
 
 	task.Enabled = intToBool(enabled)
-	task.UseWorktree = intToBool(useWorktree)
 	if lastRunAt.Valid {
 		task.LastRunAt = &lastRunAt.Time
 	}
@@ -3288,7 +3287,7 @@ func (s *SQLiteStore) GetScheduledTask(ctx context.Context, id string) (*models.
 func (s *SQLiteStore) ListAllScheduledTasks(ctx context.Context) ([]*models.ScheduledTask, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT id, workspace_id, name, description, prompt, model,
-			permission_mode, use_worktree, frequency, cron_expression,
+			permission_mode, frequency, cron_expression,
 			schedule_hour, schedule_minute, schedule_day_of_week, schedule_day_of_month,
 			enabled, last_run_at, next_run_at, created_at, updated_at
 		FROM scheduled_tasks ORDER BY created_at DESC`)
@@ -3302,7 +3301,7 @@ func (s *SQLiteStore) ListAllScheduledTasks(ctx context.Context) ([]*models.Sche
 func (s *SQLiteStore) ListScheduledTasks(ctx context.Context, workspaceID string) ([]*models.ScheduledTask, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT id, workspace_id, name, description, prompt, model,
-			permission_mode, use_worktree, frequency, cron_expression,
+			permission_mode, frequency, cron_expression,
 			schedule_hour, schedule_minute, schedule_day_of_week, schedule_day_of_month,
 			enabled, last_run_at, next_run_at, created_at, updated_at
 		FROM scheduled_tasks WHERE workspace_id = ? ORDER BY created_at DESC`, workspaceID)
@@ -3317,19 +3316,18 @@ func (s *SQLiteStore) scanScheduledTasks(rows *sql.Rows) ([]*models.ScheduledTas
 	tasks := []*models.ScheduledTask{}
 	for rows.Next() {
 		var task models.ScheduledTask
-		var enabled, useWorktree int
+		var enabled int
 		var lastRunAt, nextRunAt sql.NullTime
 
 		if err := rows.Scan(
 			&task.ID, &task.WorkspaceID, &task.Name, &task.Description, &task.Prompt, &task.Model,
-			&task.PermissionMode, &useWorktree, &task.Frequency, &task.CronExpression,
+			&task.PermissionMode, &task.Frequency, &task.CronExpression,
 			&task.ScheduleHour, &task.ScheduleMinute, &task.ScheduleDayOfWeek, &task.ScheduleDayOfMonth,
 			&enabled, &lastRunAt, &nextRunAt, &task.CreatedAt, &task.UpdatedAt); err != nil {
 			return nil, fmt.Errorf("scanScheduledTasks: %w", err)
 		}
 
 		task.Enabled = intToBool(enabled)
-		task.UseWorktree = intToBool(useWorktree)
 		if lastRunAt.Valid {
 			task.LastRunAt = &lastRunAt.Time
 		}
@@ -3359,12 +3357,12 @@ func (s *SQLiteStore) UpdateScheduledTask(ctx context.Context, id string, update
 		_, err := s.db.ExecContext(ctx, `
 			UPDATE scheduled_tasks SET
 				name = ?, description = ?, prompt = ?, model = ?,
-				permission_mode = ?, use_worktree = ?, frequency = ?, cron_expression = ?,
+				permission_mode = ?, frequency = ?, cron_expression = ?,
 				schedule_hour = ?, schedule_minute = ?, schedule_day_of_week = ?, schedule_day_of_month = ?,
 				enabled = ?, last_run_at = ?, next_run_at = ?, updated_at = ?
 			WHERE id = ?`,
 			task.Name, task.Description, task.Prompt, task.Model,
-			task.PermissionMode, boolToInt(task.UseWorktree), task.Frequency, task.CronExpression,
+			task.PermissionMode, task.Frequency, task.CronExpression,
 			task.ScheduleHour, task.ScheduleMinute, task.ScheduleDayOfWeek, task.ScheduleDayOfMonth,
 			boolToInt(task.Enabled), task.LastRunAt, task.NextRunAt, task.UpdatedAt, id)
 		return err
@@ -3389,7 +3387,7 @@ func (s *SQLiteStore) DeleteScheduledTask(ctx context.Context, id string) error 
 func (s *SQLiteStore) ListDueScheduledTasks(ctx context.Context, before time.Time) ([]*models.ScheduledTask, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT id, workspace_id, name, description, prompt, model,
-			permission_mode, use_worktree, frequency, cron_expression,
+			permission_mode, frequency, cron_expression,
 			schedule_hour, schedule_minute, schedule_day_of_week, schedule_day_of_month,
 			enabled, last_run_at, next_run_at, created_at, updated_at
 		FROM scheduled_tasks

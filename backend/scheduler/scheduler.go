@@ -2,14 +2,18 @@ package scheduler
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math/rand"
+	"os"
 	"sync"
 	"time"
 
 	"github.com/chatml/chatml-backend/agent"
+	"github.com/chatml/chatml-backend/git"
 	"github.com/chatml/chatml-backend/logger"
 	"github.com/chatml/chatml-backend/models"
+	"github.com/chatml/chatml-backend/naming"
 	"github.com/chatml/chatml-backend/store"
 	"github.com/google/uuid"
 )
@@ -25,22 +29,24 @@ type BroadcastFunc func(eventType string, payload map[string]interface{})
 
 // Scheduler polls for due scheduled tasks and triggers session creation
 type Scheduler struct {
-	store     *store.SQLiteStore
-	agentMgr  *agent.Manager
-	broadcast BroadcastFunc
-	ctx       context.Context
-	cancel    context.CancelFunc
-	wg        sync.WaitGroup
+	store           *store.SQLiteStore
+	agentMgr        *agent.Manager
+	worktreeManager *git.WorktreeManager
+	broadcast       BroadcastFunc
+	ctx             context.Context
+	cancel          context.CancelFunc
+	wg              sync.WaitGroup
 }
 
-func NewScheduler(ctx context.Context, s *store.SQLiteStore, agentMgr *agent.Manager, broadcast BroadcastFunc) *Scheduler {
+func NewScheduler(ctx context.Context, s *store.SQLiteStore, agentMgr *agent.Manager, wm *git.WorktreeManager, broadcast BroadcastFunc) *Scheduler {
 	ctx, cancel := context.WithCancel(ctx)
 	return &Scheduler{
-		store:     s,
-		agentMgr:  agentMgr,
-		broadcast: broadcast,
-		ctx:       ctx,
-		cancel:    cancel,
+		store:           s,
+		agentMgr:        agentMgr,
+		worktreeManager: wm,
+		broadcast:       broadcast,
+		ctx:             ctx,
+		cancel:          cancel,
 	}
 }
 
@@ -151,14 +157,102 @@ func (sc *Scheduler) dispatchTask(ctx context.Context, task *models.ScheduledTas
 		return nil, fmt.Errorf("failed to create run: %w", err)
 	}
 
-	// Create a new session for each run. Scheduled sessions use their own type
-	// to avoid conflicting with the unique base-session-per-workspace index.
+	failRun := func(sessionID, msg string) {
+		_ = sc.store.UpdateScheduledTaskRun(ctx, runID, func(r *models.ScheduledTaskRun) {
+			r.Status = models.RunStatusFailed
+			r.SessionID = sessionID
+			r.ErrorMessage = msg
+			completedAt := time.Now()
+			r.CompletedAt = &completedAt
+		})
+	}
+
+	// ── Create a proper worktree session (same as regular session creation) ──
+
+	// Look up workspace/repo
+	repo, err := sc.store.GetRepo(ctx, task.WorkspaceID)
+	if err != nil {
+		failRun("", fmt.Sprintf("failed to get workspace: %v", err))
+		return run, fmt.Errorf("failed to get workspace: %w", err)
+	}
+	if repo == nil {
+		failRun("", fmt.Sprintf("workspace not found: %s", task.WorkspaceID))
+		return run, fmt.Errorf("workspace not found: %s", task.WorkspaceID)
+	}
+
+	// Resolve workspaces base directory
+	workspacesDir, err := git.WorkspacesBaseDir()
+	if err != nil {
+		failRun("", fmt.Sprintf("failed to get workspaces dir: %v", err))
+		return run, fmt.Errorf("failed to get workspaces dir: %w", err)
+	}
+	if err := os.MkdirAll(workspacesDir, 0755); err != nil {
+		failRun("", fmt.Sprintf("failed to create workspaces dir: %v", err))
+		return run, fmt.Errorf("failed to create workspaces dir: %w", err)
+	}
+
+	// Resolve target branch (same logic as CreateSession handler)
+	remote := repo.Remote
+	if remote == "" {
+		remote = "origin"
+	}
+	targetBranch := remote + "/" + repo.Branch
+	if targetBranch == remote+"/" {
+		targetBranch = remote + "/main"
+	}
+
+	// Generate session name and create worktree with retry on collisions
+	const maxRetries = 5
+	var sessionName, branchName, worktreePath, baseCommitSHA string
+	for attempt := 0; attempt < maxRetries; attempt++ {
+		candidateName := naming.GenerateUniqueSessionName(nil)
+		candidateBranch := fmt.Sprintf("session/%s", candidateName)
+
+		sessionPath, dirErr := git.CreateSessionDirectoryAtomic(workspacesDir, candidateName)
+		if dirErr != nil {
+			if errors.Is(dirErr, git.ErrDirectoryExists) {
+				continue // Name collision — retry
+			}
+			failRun("", fmt.Sprintf("failed to create session directory: %v", dirErr))
+			return run, fmt.Errorf("failed to create session directory: %w", dirErr)
+		}
+
+		wtPath, wtBranch, wtCommit, wtErr := sc.worktreeManager.CreateInExistingDir(ctx, repo.Path, sessionPath, candidateBranch, targetBranch)
+		if wtErr == nil {
+			sessionName = candidateName
+			branchName = wtBranch
+			worktreePath = wtPath
+			baseCommitSHA = wtCommit
+			break
+		}
+
+		// Branch collision — clean up directory and retry
+		if errors.Is(wtErr, git.ErrLocalBranchExists) || errors.Is(wtErr, git.ErrBranchAlreadyCheckedOut) {
+			_ = os.RemoveAll(sessionPath)
+			logger.Main.Infof("Scheduler: branch collision on %q, retrying (attempt %d/%d)", candidateBranch, attempt+1, maxRetries)
+			continue
+		}
+
+		// Non-collision error — clean up and fail
+		_ = os.RemoveAll(sessionPath)
+		failRun("", fmt.Sprintf("failed to create worktree: %v", wtErr))
+		return run, fmt.Errorf("failed to create worktree: %w", wtErr)
+	}
+
+	if sessionName == "" {
+		failRun("", "failed to generate unique session name after retries")
+		return run, fmt.Errorf("failed to generate unique session name after %d retries", maxRetries)
+	}
+
+	// Create session with full worktree info
 	sessionID := uuid.New().String()[:8]
-	sessionName := fmt.Sprintf("%s – %s", now.Format("Jan 2"), task.Name)
 	session := &models.Session{
 		ID:              sessionID,
 		WorkspaceID:     task.WorkspaceID,
 		Name:            sessionName,
+		Branch:          branchName,
+		WorktreePath:    worktreePath,
+		BaseCommitSHA:   baseCommitSHA,
 		SessionType:     models.SessionTypeScheduled,
 		Status:          models.SessionStatusIdle,
 		TaskStatus:      models.TaskStatusInProgress,
@@ -168,12 +262,9 @@ func (sc *Scheduler) dispatchTask(ctx context.Context, task *models.ScheduledTas
 	}
 	if err := sc.store.AddSession(ctx, session); err != nil {
 		logger.Main.Errorf("Scheduler: failed to create session for task %q: %v", task.Name, err)
-		_ = sc.store.UpdateScheduledTaskRun(ctx, runID, func(r *models.ScheduledTaskRun) {
-			r.Status = models.RunStatusFailed
-			r.ErrorMessage = fmt.Sprintf("failed to create session: %v", err)
-			completedAt := time.Now()
-			r.CompletedAt = &completedAt
-		})
+		// Clean up worktree on failure
+		sc.worktreeManager.RemoveAtPath(context.Background(), repo.Path, worktreePath, branchName)
+		failRun("", fmt.Sprintf("failed to create session: %v", err))
 		return run, fmt.Errorf("failed to create session: %w", err)
 	}
 
@@ -186,16 +277,12 @@ func (sc *Scheduler) dispatchTask(ctx context.Context, task *models.ScheduledTas
 		}
 	}
 
-	_, err := sc.agentMgr.StartConversation(ctx, sessionID, "task", task.Prompt, opts)
+	_, err = sc.agentMgr.StartConversation(ctx, sessionID, "task", task.Prompt, opts)
 	if err != nil {
 		logger.Main.Errorf("Scheduler: failed to start conversation for task %q: %v", task.Name, err)
-		_ = sc.store.UpdateScheduledTaskRun(ctx, runID, func(r *models.ScheduledTaskRun) {
-			r.Status = models.RunStatusFailed
-			r.SessionID = sessionID
-			r.ErrorMessage = fmt.Sprintf("failed to start conversation: %v", err)
-			completedAt := time.Now()
-			r.CompletedAt = &completedAt
-		})
+		// Clean up worktree on failure (use background ctx so cleanup isn't cancelled)
+		sc.worktreeManager.RemoveAtPath(context.Background(), repo.Path, worktreePath, branchName)
+		failRun(sessionID, fmt.Sprintf("failed to start conversation: %v", err))
 		return run, fmt.Errorf("failed to start conversation: %w", err)
 	}
 
@@ -226,7 +313,7 @@ func (sc *Scheduler) dispatchTask(ctx context.Context, task *models.ScheduledTas
 		})
 	}
 
-	logger.Main.Infof("Scheduler: triggered task %q → session %s (run %s)", task.Name, sessionID, runID)
+	logger.Main.Infof("Scheduler: triggered task %q → session %s (run %s, branch %s)", task.Name, sessionID, runID, branchName)
 
 	run.Status = models.RunStatusRunning
 	run.SessionID = sessionID

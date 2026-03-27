@@ -20,7 +20,6 @@ type CreateScheduledTaskRequest struct {
 	Prompt             string `json:"prompt"`
 	Model              string `json:"model"`
 	PermissionMode     string `json:"permissionMode"`
-	UseWorktree        bool   `json:"useWorktree"`
 	Frequency          string `json:"frequency"`
 	CronExpression     string `json:"cronExpression"`
 	ScheduleHour       int    `json:"scheduleHour"`
@@ -36,7 +35,6 @@ type UpdateScheduledTaskRequest struct {
 	Prompt             *string `json:"prompt,omitempty"`
 	Model              *string `json:"model,omitempty"`
 	PermissionMode     *string `json:"permissionMode,omitempty"`
-	UseWorktree        *bool   `json:"useWorktree,omitempty"`
 	Frequency          *string `json:"frequency,omitempty"`
 	CronExpression     *string `json:"cronExpression,omitempty"`
 	ScheduleHour       *int    `json:"scheduleHour,omitempty"`
@@ -137,7 +135,6 @@ func (h *Handlers) CreateScheduledTask(w http.ResponseWriter, r *http.Request) {
 		Prompt:             req.Prompt,
 		Model:              req.Model,
 		PermissionMode:     req.PermissionMode,
-		UseWorktree:        req.UseWorktree,
 		Frequency:          req.Frequency,
 		CronExpression:     req.CronExpression,
 		ScheduleHour:       req.ScheduleHour,
@@ -226,9 +223,6 @@ func (h *Handlers) UpdateScheduledTask(w http.ResponseWriter, r *http.Request) {
 		}
 		if req.PermissionMode != nil {
 			task.PermissionMode = *req.PermissionMode
-		}
-		if req.UseWorktree != nil {
-			task.UseWorktree = *req.UseWorktree
 		}
 		if req.Frequency != nil {
 			task.Frequency = *req.Frequency

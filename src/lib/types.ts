@@ -915,7 +915,6 @@ export interface ScheduledTask {
   prompt: string;
   model: string;
   permissionMode: string;
-  useWorktree: boolean;
   frequency: ScheduledTaskFrequency;
   cronExpression?: string;
   scheduleHour: number;

@@ -21,7 +21,7 @@ export interface SidebarGroup {
 
 /** Returns true for sessions that operate on the main repo directory (not a worktree). */
 function isMainRepoSession(s: WorktreeSession): boolean {
-  return s.sessionType === 'base' || s.sessionType === 'scheduled';
+  return s.sessionType === 'base';
 }
 
 // Status display order and weights
