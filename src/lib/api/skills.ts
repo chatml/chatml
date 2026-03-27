@@ -1,7 +1,7 @@
 import { getApiBase, fetchWithAuth, handleResponse, handleVoidResponse } from './base';
 
 // Skills
-export type SkillCategory = 'development' | 'documentation' | 'security' | 'version-control';
+export type SkillCategory = 'development' | 'documentation' | 'security' | 'version-control' | 'planning' | 'deployment' | 'quality';
 
 export interface SkillDTO {
   id: string;

@@ -10,6 +10,9 @@ const (
 	SkillCategoryDocumentation  SkillCategory = "documentation"
 	SkillCategorySecurity       SkillCategory = "security"
 	SkillCategoryVersionControl SkillCategory = "version-control"
+	SkillCategoryPlanning       SkillCategory = "planning"
+	SkillCategoryDeployment     SkillCategory = "deployment"
+	SkillCategoryQuality        SkillCategory = "quality"
 )
 
 // ValidSkillCategories is the set of valid skill category values
@@ -18,6 +21,9 @@ var ValidSkillCategories = map[SkillCategory]bool{
 	SkillCategoryDocumentation:  true,
 	SkillCategorySecurity:       true,
 	SkillCategoryVersionControl: true,
+	SkillCategoryPlanning:       true,
+	SkillCategoryDeployment:     true,
+	SkillCategoryQuality:        true,
 }
 
 // Skill represents a skill definition in the catalog
