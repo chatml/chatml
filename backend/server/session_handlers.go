@@ -642,6 +642,7 @@ type UpdateSessionRequest struct {
 	Priority         *int    `json:"priority,omitempty"`
 	TaskStatus       *string `json:"taskStatus,omitempty"`
 	SprintPhase      *string `json:"sprintPhase,omitempty"`
+	SprintArtifacts  *string `json:"sprintArtifacts,omitempty"`
 	DeployStatus     *string `json:"deployStatus,omitempty"`
 }
 
@@ -773,6 +774,9 @@ func (h *Handlers) UpdateSession(w http.ResponseWriter, r *http.Request) {
 		}
 		if req.SprintPhase != nil {
 			s.SprintPhase = *req.SprintPhase
+		}
+		if req.SprintArtifacts != nil {
+			s.SprintArtifacts = *req.SprintArtifacts
 		}
 		if req.DeployStatus != nil {
 			s.DeployStatus = *req.DeployStatus

@@ -13,6 +13,9 @@ export const SPRINT_PHASES: SprintPhase[] = ['think', 'plan', 'build', 'review',
 
 export type DeployStatus = 'shipping' | 'deploying' | 'monitoring' | 'verified' | 'failed';
 
+// Re-export sprint artifact types from sprint-config for convenience
+export type { SprintArtifactType, SprintArtifact } from './sprint-config';
+
 // Session activity state (derived from agent process state for sidebar indicators)
 export type SessionActivityState = 'working' | 'awaiting_input' | 'awaiting_approval' | 'idle';
 
@@ -59,6 +62,7 @@ export interface WorktreeSession {
   sessionType?: 'worktree' | 'base'; // "base" = operates on repo directly, no worktree
   scheduledTaskId?: string; // FK to scheduled_tasks if created by scheduler
   sprintPhase?: SprintPhase | null; // Current sprint workflow phase (null = no sprint active)
+  sprintArtifacts?: SprintArtifact[]; // Artifacts produced during sprint phases
   deployStatus?: DeployStatus | null; // Deploy lifecycle status
   createdAt: string;
   updatedAt: string;

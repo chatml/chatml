@@ -17,6 +17,7 @@ import {
   getWorkspaceActionTemplates,
   type AttachmentDTO,
 } from '@/lib/api';
+import { addSystemMessage } from '@/lib/api/conversations';
 import { ACTION_TEMPLATES, ACTION_TEMPLATE_NAMES, fetchMergedActionTemplates } from '@/lib/action-templates';
 import type { ActionTemplateKey } from '@/lib/action-templates';
 import { dispatchAppEvent, useAppEventListener } from '@/lib/custom-events';
@@ -67,10 +68,10 @@ import type { SessionTaskStatus, SprintPhase } from '@/lib/types';
 import { TaskStatusSelector } from '@/components/shared/TaskStatusSelector';
 import { SprintPhaseBar } from '@/components/shared/SprintPhaseBar';
 import { TargetBranchSelector } from '@/components/shared/TargetBranchSelector';
+import { PHASE_TO_STATUS } from '@/lib/sprint-config';
 import { useInstalledApps } from '@/hooks/useInstalledApps';
 import type { InstalledApp } from '@/hooks/useInstalledApps';
 import { useSettingsStore } from '@/stores/settingsStore';
-import { useUIStore } from '@/stores/uiStore';
 import { getAppById, getAppName, CATEGORY_LABELS } from '@/lib/openApps';
 import type { AppCategory } from '@/lib/openApps';
 import { getAppIcon } from '@/components/icons/AppIcons';
@@ -100,17 +101,7 @@ const REVIEW_COLOR_CLASSES: Record<string, { icon: string; bg: string; hoverBg: 
   pink:   { icon: 'text-pink-500',   bg: 'bg-pink-500/10',   hoverBg: 'group-hover:bg-pink-500/20' },
 };
 
-// Auto-sync sprint phase → taskStatus so sidebar grouping stays consistent.
-// Note: this is a one-way override — changing sprint phase will overwrite any manually-set taskStatus.
-const PHASE_TO_STATUS: Record<SprintPhase, SessionTaskStatus> = {
-  think: 'in_progress',
-  plan: 'in_progress',
-  build: 'in_progress',
-  review: 'in_review',
-  test: 'in_review',
-  ship: 'in_progress',
-  reflect: 'done',
-};
+// PHASE_TO_STATUS imported from @/lib/sprint-config (centralized)
 
 function dispatchReview(type: string) {
   window.dispatchEvent(new CustomEvent('start-review', { detail: { type } }));
@@ -138,8 +129,6 @@ export function SessionToolbarContent() {
   const { installedApps } = useInstalledApps();
   const defaultOpenApp = useSettingsStore((s) => s.defaultOpenApp);
   const workspaceColors = useSettingsStore((s) => s.workspaceColors);
-  const toggleSprintToolbar = useUIStore((s) => s.toggleSprintToolbar);
-  const setSprintToolbarOpen = useUIStore((s) => s.setSprintToolbarOpen);
   const { requestArchive, dialogProps: archiveDialogProps } = useArchiveSession({
     onSuccess: () => showSuccess('Session archived'),
     onError: () => showError('Failed to archive session'),
@@ -229,11 +218,6 @@ export function SessionToolbarContent() {
       showError('Failed to send message to agent');
     });
   }, [selectedConversationId, showWarning, showError, addMessage, updateConversation, setStreaming, isAgentWorking]);
-
-  // Close sprint toolbar when session changes
-  useEffect(() => {
-    setSprintToolbarOpen(false);
-  }, [selectedSessionId, setSprintToolbarOpen]);
 
   // Listen for git-create-pr events from menu handler and command palette
   useEffect(() => {
@@ -461,16 +445,7 @@ export function SessionToolbarContent() {
     apiUpdateSession(selectedWorkspaceId, selectedSession.id, apiPayload).catch(() => {
       storeUpdateSession(selectedSession.id, { sprintPhase: prevPhase, taskStatus: prevStatus });
       showError('Failed to update sprint phase');
-      // Reopen toolbar if deactivation failed and sprint reverted to active
-      if (!value && prevPhase) setSprintToolbarOpen(true);
     });
-
-    // Open toolbar when sprint is first activated; close it when deactivated
-    if (!value) {
-      setSprintToolbarOpen(false);
-    } else if (!prevPhase) {
-      setSprintToolbarOpen(true);
-    }
 
     // Phase-mode auto-linking: sync plan mode and thinking with sprint phase
     if (value === 'plan' && prevPhase !== 'plan') {
@@ -481,7 +456,22 @@ export function SessionToolbarContent() {
     if (value === 'think' && prevPhase !== 'think') {
       dispatchAppEvent('set-thinking-level', { level: 'high' });
     }
-  }, [selectedSession, selectedWorkspaceId, storeUpdateSession, showError, setSprintToolbarOpen]);
+
+    // Inject sprint milestone card into conversation
+    if (value && selectedConversationId) {
+      const milestoneContent = !prevPhase
+        ? `sprint:started:${value}`
+        : `sprint:phase_change:${prevPhase}:${value}`;
+      addMessage({
+        id: crypto.randomUUID(),
+        conversationId: selectedConversationId,
+        role: 'system',
+        content: milestoneContent,
+        timestamp: new Date().toISOString(),
+      });
+      addSystemMessage(selectedConversationId, milestoneContent).catch(() => {});
+    }
+  }, [selectedSession, selectedWorkspaceId, selectedConversationId, storeUpdateSession, addMessage, showError]);
 
   // Listen for toggle-sprint events from slash command
   useAppEventListener('toggle-sprint', () => {
@@ -529,6 +519,25 @@ export function SessionToolbarContent() {
       handleSprintPhaseChange('reflect');
     }
   }, [isAgentWorking, selectedSession, handleActionWithBubbleAndTemplate, handleSprintPhaseChange]);
+
+  // Sprint phase command menu: user clicked a command from the phase popover
+  useAppEventListener('sprint-phase-command', (detail) => {
+    if (!detail?.command) return;
+    handleActionWithBubble(detail.command);
+  }, [handleActionWithBubble]);
+
+  // Sprint artifact created: persist to session
+  useAppEventListener('sprint-artifact-created', (detail) => {
+    if (!detail?.artifact || !selectedSession || !selectedWorkspaceId) return;
+    const existing = selectedSession.sprintArtifacts ?? [];
+    const updated = [...existing, detail.artifact];
+    storeUpdateSession(selectedSession.id, { sprintArtifacts: updated });
+    apiUpdateSession(selectedWorkspaceId, selectedSession.id, {
+      sprintArtifacts: JSON.stringify(updated),
+    }).catch(() => {
+      storeUpdateSession(selectedSession.id, { sprintArtifacts: existing });
+    });
+  }, [selectedSession, selectedWorkspaceId, storeUpdateSession]);
 
   // /investigate command: structured 5-phase debugging
   useAppEventListener('investigate', () => {
@@ -604,10 +613,9 @@ export function SessionToolbarContent() {
                   size="sm"
                 />
                 <SprintPhaseBar
-                  phase={selectedSession.sprintPhase}
-                  onChange={handleSprintPhaseChange}
+                  session={selectedSession}
+                  onStartSprint={() => handleSprintPhaseChange('think')}
                   disabled={isAgentWorking}
-                  onOpenToolbar={toggleSprintToolbar}
                 />
               </>
             )}

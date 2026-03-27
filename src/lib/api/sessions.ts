@@ -26,6 +26,7 @@ export interface SessionDTO {
   sessionType?: 'worktree' | 'base';
   scheduledTaskId?: string;
   sprintPhase?: string | null;
+  sprintArtifacts?: string | null; // JSON-encoded SprintArtifact[]
   deployStatus?: string | null;
   pinned?: boolean;
   archived?: boolean;
@@ -59,6 +60,7 @@ export function mapSessionDTO(session: SessionDTO): import('@/lib/types').Worktr
     sessionType: session.sessionType,
     scheduledTaskId: session.scheduledTaskId,
     sprintPhase: (session.sprintPhase || null) as import('@/lib/types').SprintPhase | null,
+    sprintArtifacts: (() => { if (!session.sprintArtifacts) return undefined; try { return JSON.parse(session.sprintArtifacts) as import('@/lib/sprint-config').SprintArtifact[]; } catch { return undefined; } })(),
     deployStatus: (session.deployStatus || null) as import('@/lib/types').DeployStatus | null,
     pinned: session.pinned,
     archived: session.archived,

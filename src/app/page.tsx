@@ -40,7 +40,6 @@ import { registerSession, getSessionDirName, openFolderDialog } from '@/lib/taur
 import { trackEvent } from '@/lib/telemetry';
 import { useBranchCacheStore } from '@/stores/branchCacheStore';
 import { useRecentlyClosedStore } from '@/stores/recentlyClosedStore';
-import { useUIStore } from '@/stores/uiStore';
 import { captureClosedConversation, useRestoreConversation } from '@/hooks/useRecentlyClosed';
 import { useShortcut } from '@/hooks/useShortcut';
 import type { SetupInfo } from '@/lib/types';
@@ -53,7 +52,6 @@ import { ErrorBoundary } from '@/components/shared/ErrorBoundary';
 import { StreamingWarningHandler } from '@/components/shared/StreamingWarningHandler';
 import { ConnectionStatusHandler } from '@/components/shared/ConnectionStatusHandler';
 import { ConnectionBanner } from '@/components/shared/ConnectionBanner';
-import { SprintPhaseToolbar } from '@/components/shared/SprintPhaseToolbar';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { HEALTH_CHECK_MAX_RETRIES, HEALTH_CHECK_INITIAL_DELAY_MS } from '@/lib/constants';
 
@@ -170,8 +168,7 @@ export default function Home() {
   const selectPreviousTab = useAppStore((s) => s.selectPreviousTab);
   const confirmCloseActiveTab = useSettingsStore((s) => s.confirmCloseActiveTab);
   const contentView = useSettingsStore((s) => s.contentView);
-  const sprintToolbarOpen = useUIStore((s) => s.sprintToolbarOpen);
-  const setSprintToolbarOpen = useUIStore((s) => s.setSprintToolbarOpen);
+  // Sprint phase bar visibility is derived from session state (no toggle needed)
 
   const { error: showError } = useToast();
   const { showWizard, showGuidedTour, completeWizard, completeTour, skipAll } = useOnboarding();
@@ -637,9 +634,6 @@ export default function Home() {
                 !layout.leftSidebarCollapsed && !layout.zenMode && "border-l rounded-tl-lg"
               )}>
               <ContentActionBar />
-              {sprintToolbarOpen && selectedSessionId && (
-                <SprintPhaseToolbar onClose={() => setSprintToolbarOpen(false)} />
-              )}
               <ConnectionBanner onReconnect={reconnect} onManualSidecarRestart={manualRestart} />
 
               {/* Content Area */}
