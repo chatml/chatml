@@ -139,9 +139,6 @@ type AgentEvent struct {
 	// Plan approval fields (ExitPlanMode tool)
 	PlanContent string `json:"planContent,omitempty"`
 
-	// Sprint phase proposal fields (update_sprint_phase tool)
-	Phase string `json:"phase,omitempty"`
-
 	// Tool approval fields (non-bypass permission modes)
 	ToolInput interface{} `json:"toolInput,omitempty"`
 	Specifier string     `json:"specifier,omitempty"`
@@ -381,8 +378,7 @@ const (
 	EventTypeUserQuestionTimeout = "user_question_timeout"
 
 	// Plan approval events (ExitPlanMode tool)
-	EventTypePlanApprovalRequest  = "plan_approval_request"
-	EventTypeSprintPhaseProposal = "sprint_phase_proposal"
+	EventTypePlanApprovalRequest = "plan_approval_request"
 
 	// Tool approval events (non-bypass permission modes)
 	EventTypeToolApprovalRequest = "tool_approval_request"

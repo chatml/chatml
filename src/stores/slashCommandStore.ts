@@ -13,7 +13,6 @@ import {
   Sparkles,
   FileText,
   Plug,
-  Play,
   Search,
   Layers,
   BarChart3,
@@ -208,32 +207,6 @@ const BUILTIN_COMMANDS: UnifiedSlashCommand[] = [
     execute: () => window.dispatchEvent(new CustomEvent('start-review', { detail: { type: 'design' } })),
   },
 
-  // Ship & deploy commands
-  {
-    id: 'builtin:ship',
-    trigger: 'ship',
-    label: 'Ship',
-    description: 'Commit, push, and create a pull request',
-    keywords: ['pr', 'push', 'commit', 'pull request', 'publish'],
-    icon: Play,
-    source: 'builtin',
-    executionType: 'action',
-    available: requiresSession,
-    execute: () => dispatchAppEvent('sprint-ship'),
-  },
-  {
-    id: 'builtin:deploy',
-    trigger: 'deploy',
-    label: 'Deploy',
-    description: 'Merge PR and monitor CI',
-    keywords: ['merge', 'release', 'ci', 'production'],
-    icon: Play,
-    source: 'builtin',
-    executionType: 'action',
-    available: requiresSession,
-    execute: () => dispatchAppEvent('sprint-deploy'),
-  },
-
   // QA command
   {
     id: 'builtin:qa',
@@ -298,19 +271,6 @@ const BUILTIN_COMMANDS: UnifiedSlashCommand[] = [
     execute: (ctx) => ctx.setMessage('Run an engineering retrospective for the last 7 days. Analyze git history on the default branch:\n1. Per-contributor: commits, lines added/removed, most active files\n2. Work sessions: detect coding sessions from commit timestamp gaps (>2hr gap = new session)\n3. File hotspots: most frequently changed files (churn analysis)\n4. PR throughput: count merged PRs, average time-to-merge\n5. Test health: test files changed, new test files added, test/production LOC ratio\n6. Compare: this period vs the prior same-length period (delta for each metric)\nPresent as a structured report with ASCII tables. Use git log, git shortlog, git diff --stat. '),
   },
 
-  // Sprint commands
-  {
-    id: 'builtin:sprint',
-    trigger: 'sprint',
-    label: 'Start Sprint',
-    description: 'Start a sprint workflow (Think → Plan → Build → Review → Test → Ship → Reflect)',
-    keywords: ['workflow', 'gstack', 'phases', 'lifecycle'],
-    icon: Play,
-    source: 'builtin',
-    executionType: 'action',
-    available: requiresSession,
-    execute: () => dispatchAppEvent('toggle-sprint'),
-  },
 ];
 
 // ============================================================================

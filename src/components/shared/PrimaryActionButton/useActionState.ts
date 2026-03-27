@@ -12,15 +12,12 @@ import {
   Combine,
   Rocket,
   Download,
-  Lightbulb,
-  Eye,
-  TestTube,
 } from 'lucide-react';
 import type { GitStatusDTO, PRDetails } from '@/lib/api';
-import type { WorktreeSession, SprintPhase } from '@/lib/types';
+import type { WorktreeSession } from '@/lib/types';
 import type { PrimaryAction } from './types';
 
-type Session = Pick<Partial<WorktreeSession>, 'id' | 'status' | 'prStatus' | 'prUrl' | 'checkStatus' | 'sprintPhase'>;
+type Session = Pick<Partial<WorktreeSession>, 'id' | 'status' | 'prStatus' | 'prUrl' | 'checkStatus'>;
 
 /**
  * Hook that determines the primary action based on git status, session state, and PR details.
@@ -287,84 +284,8 @@ export function useActionState(
       };
     }
 
-    // Sprint phase fallback — show phase-specific action when nothing urgent
-    const sprintPhase = session?.sprintPhase;
-    if (sprintPhase) {
-      const phaseAction = getSprintPhaseAction(sprintPhase, session?.id);
-      if (phaseAction) return phaseAction;
-    }
-
     // Clean state — nothing to do, hide button
     return null;
   }, [gitStatus, session, prDetails]);
 }
 
-/** Maps a sprint phase to a Primary Action button configuration */
-function getSprintPhaseAction(phase: SprintPhase, sessionId?: string): PrimaryAction | null {
-  switch (phase) {
-    case 'think':
-      return {
-        type: 'sprint-think',
-        tier: 'action',
-        label: 'Start Planning',
-        icon: Lightbulb,
-        variant: 'default',
-        message: 'Let\'s move from thinking to planning. Create a detailed implementation plan for the task.',
-        nextPhase: 'plan',
-        dropdownActions: [
-          { label: 'Skip to Build', message: 'Skip planning and start building.', nextPhase: 'build' },
-        ],
-      };
-    case 'plan':
-      // Plan phase ties into existing plan mode — no separate action needed
-      // (plan approval UI handles this)
-      return null;
-    case 'build':
-      // Build phase falls through to git flow (sync, commit, PR)
-      return null;
-    case 'review':
-      return {
-        type: 'sprint-review',
-        tier: 'action',
-        label: 'Run Review',
-        icon: Eye,
-        variant: 'default',
-        message: 'Run a deep code review on the changes',
-        nextPhase: 'test',
-        dropdownActions: [
-          { label: 'Skip to Test', message: 'Skip review and move to testing.', nextPhase: 'test' },
-        ],
-      };
-    case 'test':
-      return {
-        type: 'sprint-test',
-        tier: 'action',
-        label: 'Run Tests',
-        icon: TestTube,
-        variant: 'default',
-        message: 'Run the test suite and report results. Check for edge cases and verify coverage.',
-        nextPhase: 'ship',
-        dropdownActions: [
-          { label: 'Skip to Ship', message: 'Skip testing and prepare to ship.', nextPhase: 'ship' },
-        ],
-      };
-    case 'ship':
-      // Ship phase falls through to git flow (create PR, merge)
-      return null;
-    case 'reflect':
-      return {
-        type: 'archive-session',
-        tier: 'complete',
-        label: 'Archive Session',
-        icon: Archive,
-        variant: 'default',
-        sessionId,
-        nextPhase: null, // Clears sprint on archive
-        dropdownActions: [
-          { label: 'Summarize', message: 'Summarize what was accomplished, lessons learned, and potential follow-up work.' },
-        ],
-      };
-    default:
-      return null;
-  }
-}

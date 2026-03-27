@@ -16,7 +16,6 @@ import { AttachmentGrid } from './AttachmentGrid';
 import { AttachmentPreviewModal } from './AttachmentPreviewModal';
 import { loadAllAttachmentContents } from '@/lib/attachments';
 import { UserQuestionPrompt } from './UserQuestionPrompt';
-import { SprintPhaseProposalPrompt } from './SprintPhaseProposalPrompt';
 import { usePendingUserQuestion, useStreamingChatInput, useSelectedIds, useConversationState, useChatInputActions, useConversationHasMessages } from '@/stores/selectors';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { THINKING_LEVELS, type ThinkingLevel, resolveThinkingParams, clampThinkingLevel, canDisableThinking } from '@/lib/thinkingLevels';
@@ -570,11 +569,6 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
   // Check if there's a pending user question
   const pendingQuestion = usePendingUserQuestion(selectedConversationId);
 
-  // Check if there's a pending sprint phase proposal
-  const pendingSprintPhaseProposal = useAppStore((s) =>
-    selectedConversationId ? s.pendingSprintPhaseProposal[selectedConversationId] : null
-  );
-
   // Listen for compose-action events (e.g., Fix All review, Add to Chat)
   useAppEventListener('compose-action', ({ text, attachments: incoming }) => {
     if (text) {
@@ -1043,14 +1037,8 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
   };
 
   // If there's a pending question, show the question UI instead of the normal input.
-  // User questions block agent execution, so they take priority over sprint proposals.
   if (pendingQuestion && selectedConversationId) {
     return <UserQuestionPrompt conversationId={selectedConversationId} />;
-  }
-
-  // If there's a pending sprint phase proposal, show the proposal UI
-  if (pendingSprintPhaseProposal && selectedConversationId) {
-    return <SprintPhaseProposalPrompt conversationId={selectedConversationId} />;
   }
 
   // If there's a pending tool approval, replace the entire composer with the approval UI.

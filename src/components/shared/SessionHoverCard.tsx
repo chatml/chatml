@@ -4,10 +4,9 @@ import type { ReactNode } from 'react';
 import { Clock, FolderGit2, GitBranch } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { TaskStatusIcon } from '@/components/icons/TaskStatusIcon';
-import { getTaskStatusOption, getPRStatusInfo, getSprintPhaseOption } from '@/lib/session-fields';
+import { getTaskStatusOption, getPRStatusInfo } from '@/lib/session-fields';
 import { PRNumberBadge } from '@/components/shared/PRNumberBadge';
 import type { WorktreeSession } from '@/lib/types';
-import { SPRINT_PHASES } from '@/lib/types';
 import type { GitStatusDTO } from '@/lib/api';
 
 interface SessionHoverCardBodyProps {
@@ -33,9 +32,6 @@ export function SessionHoverCardBody({
   const hasPR = session.prStatus && session.prStatus !== 'none';
   const statusOption = getTaskStatusOption(session.taskStatus);
   const prStatusInfo = getPRStatusInfo(session);
-  const sprintPhaseOpt = session.sprintPhase ? getSprintPhaseOption(session.sprintPhase) : null;
-  const SprintPhaseIcon = sprintPhaseOpt?.icon;
-
   return (
     <>
       {/* Scheduled task origin — bordered header section */}
@@ -111,22 +107,6 @@ export function SessionHoverCardBody({
           )}
         </span>
       </div>
-
-      {/* Sprint phase — prominent pill with progress */}
-      {sprintPhaseOpt && SprintPhaseIcon && (
-        <div className="px-3 pb-1.5 flex items-center gap-2">
-          <span className={cn(
-            'inline-flex items-center gap-1.5 text-xs font-semibold rounded-md px-2 py-1',
-            sprintPhaseOpt.activeClass,
-          )}>
-            <SprintPhaseIcon className="h-3.5 w-3.5" />
-            {sprintPhaseOpt.label}
-          </span>
-          <span className="text-[10px] text-muted-foreground/60 tabular-nums">
-            {SPRINT_PHASES.indexOf(sprintPhaseOpt.value) + 1}/{SPRINT_PHASES.length}
-          </span>
-        </div>
-      )}
 
       {/* PR row */}
       {hasPR && session.prNumber && (

@@ -5,7 +5,6 @@ import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Loader2, ChevronDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { dispatchAppEvent } from '@/lib/custom-events';
 import type { ActionButtonProps, DropdownAction, DropdownColor } from './types';
 
 const PENDING_TIMEOUT_MS = 8000;
@@ -89,10 +88,6 @@ export function ActionButton({
       onSendMessage(action.message, action.type);
     }
 
-    // Auto-advance sprint phase if specified
-    if (action.nextPhase !== undefined) {
-      dispatchAppEvent('sprint-phase-advance', { phase: action.nextPhase });
-    }
   };
 
   const handleDropdownClick = (da: DropdownAction) => {
@@ -101,9 +96,6 @@ export function ActionButton({
     setPopoverOpen(false);
     if (da.message) {
       onSendMessage(da.message, action.type);
-    }
-    if (da.nextPhase !== undefined) {
-      dispatchAppEvent('sprint-phase-advance', { phase: da.nextPhase });
     }
   };
 

@@ -1013,12 +1013,6 @@ outer:
 				markSnapshotDirty()
 				flushSnapshot(ctx) // Force immediate flush — don't wait for debounce
 
-			case EventTypeSprintPhaseProposal:
-				// Sprint phase proposals are forwarded to the frontend via WebSocket.
-				// No snapshot tracking needed — if the app restarts, the agent
-				// will re-propose the transition.
-				logger.Manager.Debugf("[%s] Sprint phase proposal: %s (reason: %s)", convID, event.Phase, event.Reason)
-
 			case EventTypeCheckpointCreated:
 				if event.CheckpointUuid != "" {
 					pendingCheckpointUuid = event.CheckpointUuid

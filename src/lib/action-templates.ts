@@ -1203,8 +1203,6 @@ const ACTION_TYPE_TO_TEMPLATE: Record<string, ActionTemplateKey> = {
   'sync-branch': 'sync-branch',
   'create-pr': 'create-pr',
   'merge-pr': 'merge-pr',
-  'sprint-ship': 'ship',
-  'sprint-deploy': 'deploy',
 };
 
 export function getTemplateKey(actionType: string): ActionTemplateKey | null {

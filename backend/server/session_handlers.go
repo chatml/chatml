@@ -641,9 +641,6 @@ type UpdateSessionRequest struct {
 	DeleteBranch     *bool   `json:"deleteBranch,omitempty"`
 	Priority         *int    `json:"priority,omitempty"`
 	TaskStatus       *string `json:"taskStatus,omitempty"`
-	SprintPhase      *string `json:"sprintPhase,omitempty"`
-	SprintArtifacts  *string `json:"sprintArtifacts,omitempty"`
-	DeployStatus     *string `json:"deployStatus,omitempty"`
 }
 
 func (h *Handlers) UpdateSession(w http.ResponseWriter, r *http.Request) {
@@ -680,14 +677,6 @@ func (h *Handlers) UpdateSession(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.TaskStatus != nil && !models.ValidTaskStatuses[*req.TaskStatus] {
 		writeValidationError(w, "invalid taskStatus value")
-		return
-	}
-	if req.SprintPhase != nil && !models.ValidSprintPhases[*req.SprintPhase] {
-		writeValidationError(w, "invalid sprintPhase value")
-		return
-	}
-	if req.DeployStatus != nil && !models.ValidDeployStatuses[*req.DeployStatus] {
-		writeValidationError(w, "invalid deployStatus value")
 		return
 	}
 	if req.TargetBranch != nil && *req.TargetBranch != "" {
@@ -771,15 +760,6 @@ func (h *Handlers) UpdateSession(w http.ResponseWriter, r *http.Request) {
 		}
 		if req.TaskStatus != nil {
 			s.TaskStatus = *req.TaskStatus
-		}
-		if req.SprintPhase != nil {
-			s.SprintPhase = *req.SprintPhase
-		}
-		if req.SprintArtifacts != nil {
-			s.SprintArtifacts = *req.SprintArtifacts
-		}
-		if req.DeployStatus != nil {
-			s.DeployStatus = *req.DeployStatus
 		}
 		s.UpdatedAt = time.Now()
 	}); err != nil {
