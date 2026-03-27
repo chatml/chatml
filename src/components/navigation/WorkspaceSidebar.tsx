@@ -22,6 +22,7 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import { useAppStore } from '@/stores/appStore';
 import { useScheduledTaskStore } from '@/stores/scheduledTaskStore';
+import { useShallow } from 'zustand/react/shallow';
 import { navigate, navigateOrOpenTab } from '@/lib/navigation';
 import { useSettingsStore, getBranchPrefix, getWorkspaceBranchPrefix, type ContentView, type SidebarGroupBy } from '@/stores/settingsStore';
 import { useSidebarSessions, isSidebarGroupExpanded, type SidebarGroup } from '@/hooks/useSidebarSessions';
@@ -1892,10 +1893,23 @@ function SessionRow({
   const [hoverOpen, setHoverOpen] = useState(false);
   const { success: showRowSuccess, warning: showRowWarning } = useToast();
 
+  // Scheduled task info for hover card (single subscription)
+  const { scheduledTaskName, scheduledTaskTriggeredAt } = useScheduledTaskStore(useShallow((s) => {
+    if (!session.scheduledTaskId) return { scheduledTaskName: undefined, scheduledTaskTriggeredAt: undefined };
+    const task = s.tasks.find((t) => t.id === session.scheduledTaskId);
+    const run = s.runs[session.scheduledTaskId]?.find((r) => r.sessionId === session.id);
+    return { scheduledTaskName: task?.name, scheduledTaskTriggeredAt: run?.triggeredAt };
+  }));
+
   return (
     <ContextMenu onOpenChange={(open) => { if (open) setHoverOpen(false); }}>
       <ContextMenuTrigger asChild>
-        <HoverCard openDelay={500} open={hoverOpen} onOpenChange={setHoverOpen}>
+        <HoverCard openDelay={500} open={hoverOpen} onOpenChange={(open) => {
+              setHoverOpen(open);
+              if (open && session.scheduledTaskId) {
+                useScheduledTaskStore.getState().fetchRuns(session.scheduledTaskId);
+              }
+            }}>
           <HoverCardTrigger asChild>
             <div
               className={cn(
@@ -2016,6 +2030,8 @@ function SessionRow({
               session={session}
               formatTimeAgo={formatTimeAgo}
               lastAgentCompletedAt={lastAgentCompletedAt}
+              scheduledTaskName={scheduledTaskName}
+              scheduledTaskTriggeredAt={scheduledTaskTriggeredAt}
               actionSlot={session.sessionType !== 'base' ? (
                 <HoverCardPrimaryAction
                   session={session}
