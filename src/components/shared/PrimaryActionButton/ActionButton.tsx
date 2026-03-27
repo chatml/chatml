@@ -201,7 +201,7 @@ export function ActionButton({
               <ChevronDown className="size-2.5" />
             </Button>
           </PopoverTrigger>
-          <PopoverContent align="end" className="w-80 p-1.5" role="menu" onKeyDown={handleKeyDown}>
+          <PopoverContent align="end" className="w-fit min-w-48 p-1.5" role="menu" onKeyDown={handleKeyDown}>
             {/* Simple actions (e.g. "Push Latest Changes") rendered as plain items */}
             {simpleActions.map((da) => {
               const SimpleIcon = da.icon;
