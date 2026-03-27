@@ -1893,7 +1893,7 @@ function SessionRow({
   return (
     <ContextMenu onOpenChange={(open) => { if (open) setHoverOpen(false); }}>
       <ContextMenuTrigger asChild>
-        <HoverCard openDelay={500} closeDelay={100} open={hoverOpen} onOpenChange={setHoverOpen}>
+        <HoverCard openDelay={500} open={hoverOpen} onOpenChange={setHoverOpen}>
           <HoverCardTrigger asChild>
             <div
               className={cn(
