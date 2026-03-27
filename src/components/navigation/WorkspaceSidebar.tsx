@@ -112,6 +112,7 @@ import {
 } from '@/components/ui/tooltip';
 import type { Workspace, WorktreeSession, SessionTaskStatus } from '@/lib/types';
 import { useSessionActivityState, useIsSessionUnread, useWorkspaceSelection, useSidebarActions } from '@/stores/selectors';
+import { useSessionHoverGroup, INITIAL_OPEN_DELAY } from '@/hooks/useSessionHoverGroup';
 import { ArchiveSessionDialog } from '@/components/dialogs/ArchiveSessionDialog';
 import { useArchiveSession } from '@/hooks/useArchiveSession';
 import { ErrorBoundary } from '@/components/shared/ErrorBoundary';
@@ -1804,6 +1805,8 @@ function SessionRow({
   const lastAgentCompletedAt = useAppStore((s) => s.lastTurnCompletedAt[sessionId]);
 
   const [hoverOpen, setHoverOpen] = useState(false);
+  const { getOpenDelay, notifyOpen, notifyClose } = useSessionHoverGroup();
+  const [currentOpenDelay, setCurrentOpenDelay] = useState(INITIAL_OPEN_DELAY);
   const { success: showRowSuccess, warning: showRowWarning } = useToast();
 
   // Scheduled task info for hover card (single subscription)
@@ -1815,16 +1818,22 @@ function SessionRow({
   }));
 
   return (
-    <ContextMenu onOpenChange={(open) => { if (open) setHoverOpen(false); }}>
+    <ContextMenu onOpenChange={(open) => { if (open) { setHoverOpen(false); if (hoverOpen) notifyClose(); } }}>
       <ContextMenuTrigger asChild>
-        <HoverCard openDelay={500} closeDelay={150} open={hoverOpen} onOpenChange={(open) => {
+        <HoverCard openDelay={currentOpenDelay} closeDelay={150} open={hoverOpen} onOpenChange={(open) => {
               setHoverOpen(open);
-              if (open && session.scheduledTaskId) {
-                useScheduledTaskStore.getState().fetchRuns(session.scheduledTaskId);
+              if (open) {
+                notifyOpen();
+                if (session.scheduledTaskId) {
+                  useScheduledTaskStore.getState().fetchRuns(session.scheduledTaskId);
+                }
+              } else {
+                notifyClose();
               }
             }}>
           <HoverCardTrigger asChild>
             <div
+              onPointerEnter={() => setCurrentOpenDelay(getOpenDelay())}
               className={cn(
                 'group relative flex flex-row items-center py-2 rounded-md cursor-pointer my-0.5',
                 'px-2',
