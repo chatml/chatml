@@ -4,7 +4,7 @@ import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { useAppStore } from '@/stores/appStore';
 import { createConversation, sendConversationMessage, stopConversation, setConversationPlanMode, setConversationFastMode, setConversationPermissionMode, approvePlan } from '@/lib/api';
 import { markPlanModeExited } from '@/hooks/useWebSocket';
-import { dispatchAppEvent, useAppEventListener } from '@/lib/custom-events';
+import { useAppEventListener } from '@/lib/custom-events';
 import { useShortcut, useCustomShortcut } from '@/hooks/useShortcut';
 import { Sparkles, Upload, Link, FolderSymlink } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -511,24 +511,6 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
     }
   }, [planModeActive, planModeEnabled, isStreaming, pendingPlanApproval, selectedConversationId, setPlanModeActive]);
 
-  // Sprint phase auto-linking: set plan mode to a specific state
-  useAppEventListener('set-plan-mode', (detail) => {
-    if (detail?.active !== undefined && detail.active !== planModeEnabled) {
-      setPlanModeEnabled(detail.active);
-      if (selectedConversationId) {
-        setPlanModeActive(selectedConversationId, detail.active);
-        setConversationPlanMode(selectedConversationId, detail.active).catch(() => {});
-      }
-    }
-  }, [planModeEnabled, selectedConversationId, setPlanModeActive]);
-
-  // Sprint phase auto-linking: set thinking level to a specific value
-  useAppEventListener('set-thinking-level', (detail) => {
-    if (detail?.level) {
-      setThinkingLevel(detail.level as ThinkingLevel);
-    }
-  }, [setThinkingLevel]);
-
   // Restore per-session toggle states when switching sessions
   const prevSessionRef = useRef<string | null>(null);
   useEffect(() => {
@@ -654,7 +636,6 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
 
     try {
       await approvePlan(selectedConversationId, requestId, true);
-      dispatchAppEvent('plan-approved');
     } catch (error) {
       console.error('Failed to approve plan:', error);
       showError(error instanceof Error ? error.message : 'Failed to approve plan');
