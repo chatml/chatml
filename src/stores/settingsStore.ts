@@ -52,7 +52,8 @@ export type ContentView =
   | { type: 'repositories' }
   | { type: 'session-manager' }
   | { type: 'skills-store' }
-  | { type: 'scheduled-tasks' };
+  | { type: 'scheduled-tasks' }
+  | { type: 'scheduled-task-detail'; taskId: string };
 
 // Panel layout type - maps panel id to size (percentage)
 export type PanelLayout = Record<string, number>;

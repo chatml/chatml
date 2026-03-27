@@ -8,6 +8,7 @@ import { RepositoriesDashboard } from '@/components/dashboards/RepositoriesDashb
 import { SessionManager } from '@/components/session-manager';
 import { SkillsStore } from '@/components/skills/SkillsStore';
 import { ScheduledTasksDashboard } from '@/components/scheduled/ScheduledTasksDashboard';
+import { ScheduledTaskDetailView } from '@/components/scheduled/ScheduledTaskDetailView';
 import { EmptyView } from '@/components/shared/EmptyView';
 
 interface ContentRouterProps {
@@ -73,6 +74,9 @@ export function ContentRouter({
       )}
       {contentView.type === 'scheduled-tasks' && (
         <ScheduledTasksDashboard />
+      )}
+      {contentView.type === 'scheduled-task-detail' && (
+        <ScheduledTaskDetailView taskId={contentView.taskId} />
       )}
       {!selectedSessionId && contentView.type === 'conversation' && (
         <EmptyView
