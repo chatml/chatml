@@ -14,10 +14,10 @@ import { NextPhasePopover } from './sprint/NextPhasePopover';
 import { useWorkspaceSelection, useSessionActivityState } from '@/stores/selectors';
 
 /**
- * Dedicated Sprint Phase Bar — renders as its own full-width bar below the toolbar.
+ * Sprint Phase Bar — renders as its own full-width bar below the toolbar.
  * Only visible when a sprint is active. Reads session from store directly.
  */
-export function DedicatedSprintPhaseBar() {
+export function SprintPhaseBar() {
   const { sessions, selectedSessionId } = useWorkspaceSelection();
   const session = sessions.find((s) => s.id === selectedSessionId);
 
