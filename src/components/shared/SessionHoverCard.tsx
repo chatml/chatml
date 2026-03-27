@@ -1,7 +1,7 @@
 'use client';
 
 import type { ReactNode } from 'react';
-import { FolderGit2, GitBranch } from 'lucide-react';
+import { Clock, FolderGit2, GitBranch } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { TaskStatusIcon } from '@/components/icons/TaskStatusIcon';
 import { getTaskStatusOption, getPRStatusInfo, getSprintPhaseOption } from '@/lib/session-fields';
@@ -16,6 +16,8 @@ interface SessionHoverCardBodyProps {
   lastAgentCompletedAt?: number;
   actionSlot?: ReactNode;
   gitStatus?: { data: GitStatusDTO | null; loading: boolean };
+  scheduledTaskName?: string;
+  scheduledTaskTriggeredAt?: string;
 }
 
 export function SessionHoverCardBody({
@@ -24,6 +26,8 @@ export function SessionHoverCardBody({
   lastAgentCompletedAt,
   actionSlot,
   gitStatus,
+  scheduledTaskName,
+  scheduledTaskTriggeredAt,
 }: SessionHoverCardBodyProps) {
   const hasStats = session.stats && (session.stats.additions > 0 || session.stats.deletions > 0);
   const hasPR = session.prStatus && session.prStatus !== 'none';
@@ -34,6 +38,20 @@ export function SessionHoverCardBody({
 
   return (
     <>
+      {/* Scheduled task origin — bordered header section */}
+      {scheduledTaskName && (
+        <div className="border-b border-border/50 bg-muted/30 px-3 py-2 flex items-center gap-1.5 text-xs text-muted-foreground">
+          <Clock className="h-3 w-3 shrink-0" />
+          <span className="truncate font-medium text-foreground/80">{scheduledTaskName}</span>
+          {scheduledTaskTriggeredAt && (
+            <>
+              <span className="text-muted-foreground/40">&middot;</span>
+              <span className="shrink-0">Triggered {formatTimeAgo(scheduledTaskTriggeredAt)}</span>
+            </>
+          )}
+        </div>
+      )}
+
       {/* Header: branch icon + name */}
       <div className="flex items-center gap-1.5 px-3 pt-2.5 pb-1">
         {session.sessionType === 'base' ? (
