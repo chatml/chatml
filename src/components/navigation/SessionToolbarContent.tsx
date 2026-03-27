@@ -48,6 +48,7 @@ import {
   FolderGit2,
   Unlink,
   Layers,
+  Rocket,
 } from 'lucide-react';
 import { resolveWorkspaceColor } from '@/lib/workspace-colors';
 import { updateSession as apiUpdateSession } from '@/lib/api';
@@ -66,7 +67,6 @@ import {
 } from '@/components/ui/popover';
 import type { SessionTaskStatus, SprintPhase } from '@/lib/types';
 import { TaskStatusSelector } from '@/components/shared/TaskStatusSelector';
-import { SprintPhaseBar } from '@/components/shared/SprintPhaseBar';
 import { TargetBranchSelector } from '@/components/shared/TargetBranchSelector';
 import { PHASE_TO_STATUS } from '@/lib/sprint-config';
 import { useInstalledApps } from '@/hooks/useInstalledApps';
@@ -612,11 +612,19 @@ export function SessionToolbarContent() {
                   onChange={handleTaskStatusChange}
                   size="sm"
                 />
-                <SprintPhaseBar
-                  session={selectedSession}
-                  onStartSprint={() => handleSprintPhaseChange('think')}
-                  disabled={isAgentWorking}
-                />
+                {/* Start Sprint button — only when no sprint is active */}
+                {!selectedSession.sprintPhase && (
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    className="h-7 px-3 gap-1.5 text-xs font-medium"
+                    onClick={() => handleSprintPhaseChange('think')}
+                    disabled={isAgentWorking}
+                  >
+                    <Rocket className="h-3.5 w-3.5" />
+                    Start Sprint
+                  </Button>
+                )}
               </>
             )}
             {selectedSession.prStatus && selectedSession.prStatus !== 'none' && selectedSession.prNumber && selectedWorkspaceId && (
