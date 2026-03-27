@@ -13,8 +13,9 @@ export const SPRINT_PHASES: SprintPhase[] = ['think', 'plan', 'build', 'review',
 
 export type DeployStatus = 'shipping' | 'deploying' | 'monitoring' | 'verified' | 'failed';
 
-// Re-export sprint artifact types from sprint-config for convenience
-export type { SprintArtifactType, SprintArtifact } from './sprint-config';
+// Import + re-export sprint artifact types from sprint-config for convenience
+import type { SprintArtifactType, SprintArtifact } from './sprint-config';
+export type { SprintArtifactType, SprintArtifact };
 
 // Session activity state (derived from agent process state for sidebar indicators)
 export type SessionActivityState = 'working' | 'awaiting_input' | 'awaiting_approval' | 'idle';
