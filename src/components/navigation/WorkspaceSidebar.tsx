@@ -1035,6 +1035,7 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onGitHubRepos,
                             </span>
                           </CollapsibleTrigger>
                           <CollapsibleContent>
+                            <div className="ml-3">
                             {group.sessions.map((session) => (
                               <ErrorBoundary
                                 key={session.id}
@@ -1054,6 +1055,7 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onGitHubRepos,
                                 />
                               </ErrorBoundary>
                             ))}
+                            </div>
                           </CollapsibleContent>
                         </Collapsible>
                       ))}
