@@ -68,7 +68,7 @@ import type { SessionTaskStatus, SprintPhase } from '@/lib/types';
 import { TaskStatusSelector } from '@/components/shared/TaskStatusSelector';
 import { SprintPhaseBar } from '@/components/shared/SprintPhaseBar';
 import { TargetBranchSelector } from '@/components/shared/TargetBranchSelector';
-import { PHASE_TO_STATUS } from '@/lib/sprint-config';
+import { PHASE_TO_STATUS, PHASE_COMMANDS } from '@/lib/sprint-config';
 import { useInstalledApps } from '@/hooks/useInstalledApps';
 import type { InstalledApp } from '@/hooks/useInstalledApps';
 import { useSettingsStore } from '@/stores/settingsStore';
@@ -102,6 +102,18 @@ const REVIEW_COLOR_CLASSES: Record<string, { icon: string; bg: string; hoverBg: 
 };
 
 // PHASE_TO_STATUS imported from @/lib/sprint-config (centralized)
+
+/** Maps sprint phase command triggers to their action template keys. */
+const PHASE_TRIGGER_TO_TEMPLATE: Record<string, ActionTemplateKey> = {
+  'office-hours': 'office-hours',
+  'plan-ceo-review': 'plan-ceo-review',
+  'plan-eng-review': 'plan-eng-review',
+  'plan-design-review': 'plan-design-review',
+  'review': 'code-review',
+  'qa': 'qa',
+  'ship': 'ship',
+  'retro': 'retro',
+};
 
 function dispatchReview(type: string) {
   window.dispatchEvent(new CustomEvent('start-review', { detail: { type } }));
@@ -520,11 +532,31 @@ export function SessionToolbarContent() {
     }
   }, [isAgentWorking, selectedSession, handleActionWithBubbleAndTemplate, handleSprintPhaseChange]);
 
-  // Sprint phase command menu: user clicked a command from the phase popover
+  // Sprint phase command menu: user clicked a command from the phase popover.
+  // Routes through the action template system instead of sending raw /trigger text
+  // (which the agent would misinterpret as a skill invocation → "Unknown skill" error).
   useAppEventListener('sprint-phase-command', (detail) => {
-    if (!detail?.command) return;
-    handleActionWithBubble(detail.command);
-  }, [handleActionWithBubble]);
+    if (!detail?.command || isAgentWorking) return;
+    const trigger = detail.command.replace(/^\//, '');
+
+    // Build user-facing message from phase command metadata
+    const phaseCmd = Object.values(PHASE_COMMANDS).flat().find(c => c.trigger === trigger);
+    const message = phaseCmd ? `${phaseCmd.label} — ${phaseCmd.description}` : trigger;
+
+    // Look up template and send with rich instructions
+    const templateKey = PHASE_TRIGGER_TO_TEMPLATE[trigger];
+    if (templateKey) {
+      handleActionWithBubbleAndTemplate(message, ACTION_TEMPLATES[templateKey], templateKey);
+    } else {
+      handleActionWithBubble(message);
+    }
+
+    // Phase advancement for /ship
+    if (trigger === 'ship' && selectedSession?.sprintPhase &&
+        selectedSession.sprintPhase !== 'ship' && selectedSession.sprintPhase !== 'reflect') {
+      handleSprintPhaseChange('ship');
+    }
+  }, [isAgentWorking, selectedSession, handleActionWithBubble, handleActionWithBubbleAndTemplate, handleSprintPhaseChange]);
 
   // Sprint artifact created: persist to session
   useAppEventListener('sprint-artifact-created', (detail) => {
