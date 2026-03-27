@@ -18,7 +18,6 @@ import { cn } from '@/lib/utils';
 import type { Message, ToolUsage } from '@/lib/types';
 import { COPY_FEEDBACK_DURATION_MS, PROSE_CLASSES } from '@/lib/constants';
 import { copyToClipboard } from '@/lib/tauri';
-import { isSprintMilestone, SprintMilestoneCard } from './SprintMilestoneCard';
 import { ToolUsageBlock } from '@/components/conversation/ToolUsageBlock';
 import { ThinkingNode } from '@/components/conversation/ThinkingNode';
 import { VerificationBlock } from '@/components/conversation/VerificationBlock';
@@ -126,10 +125,6 @@ export const MessageBlock = memo(function MessageBlock({
           <SystemInfoCard setupInfo={message.setupInfo} />
         </div>
       );
-    }
-    // Sprint milestone cards
-    if (isSprintMilestone(message.content)) {
-      return <SprintMilestoneCard content={message.content} />;
     }
     // Fallback for system messages without setup info
     return (

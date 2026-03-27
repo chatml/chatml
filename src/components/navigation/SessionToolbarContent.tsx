@@ -17,7 +17,6 @@ import {
   getWorkspaceActionTemplates,
   type AttachmentDTO,
 } from '@/lib/api';
-import { addSystemMessage } from '@/lib/api/conversations';
 import { ACTION_TEMPLATES, ACTION_TEMPLATE_NAMES, fetchMergedActionTemplates } from '@/lib/action-templates';
 import type { ActionTemplateKey } from '@/lib/action-templates';
 import { dispatchAppEvent, useAppEventListener } from '@/lib/custom-events';
@@ -48,7 +47,6 @@ import {
   FolderGit2,
   Unlink,
   Layers,
-  Rocket,
 } from 'lucide-react';
 import { resolveWorkspaceColor } from '@/lib/workspace-colors';
 import { updateSession as apiUpdateSession } from '@/lib/api';
@@ -65,10 +63,9 @@ import {
   PopoverTrigger,
   PopoverContent,
 } from '@/components/ui/popover';
-import type { SessionTaskStatus, SprintPhase } from '@/lib/types';
+import type { SessionTaskStatus } from '@/lib/types';
 import { TaskStatusSelector } from '@/components/shared/TaskStatusSelector';
 import { TargetBranchSelector } from '@/components/shared/TargetBranchSelector';
-import { PHASE_TO_STATUS, PHASE_COMMANDS } from '@/lib/sprint-config';
 import { useInstalledApps } from '@/hooks/useInstalledApps';
 import type { InstalledApp } from '@/hooks/useInstalledApps';
 import { useSettingsStore } from '@/stores/settingsStore';
@@ -99,20 +96,6 @@ const REVIEW_COLOR_CLASSES: Record<string, { icon: string; bg: string; hoverBg: 
   purple: { icon: 'text-purple-500', bg: 'bg-purple-500/10', hoverBg: 'group-hover:bg-purple-500/20' },
   teal:   { icon: 'text-teal-500',   bg: 'bg-teal-500/10',   hoverBg: 'group-hover:bg-teal-500/20' },
   pink:   { icon: 'text-pink-500',   bg: 'bg-pink-500/10',   hoverBg: 'group-hover:bg-pink-500/20' },
-};
-
-// PHASE_TO_STATUS imported from @/lib/sprint-config (centralized)
-
-/** Maps sprint phase command triggers to their action template keys. */
-const PHASE_TRIGGER_TO_TEMPLATE: Record<string, ActionTemplateKey> = {
-  'office-hours': 'office-hours',
-  'plan-ceo-review': 'plan-ceo-review',
-  'plan-eng-review': 'plan-eng-review',
-  'plan-design-review': 'plan-design-review',
-  'review': 'code-review',
-  'qa': 'qa',
-  'ship': 'ship',
-  'retro': 'retro',
 };
 
 function dispatchReview(type: string) {
@@ -439,138 +422,6 @@ export function SessionToolbarContent() {
     });
   }, [selectedSession, selectedWorkspaceId, storeUpdateSession, showError]);
 
-  const handleSprintPhaseChange = useCallback((value: SprintPhase | null) => {
-    if (!selectedSession || !selectedWorkspaceId) return;
-    const prevPhase = selectedSession.sprintPhase;
-    const prevStatus = selectedSession.taskStatus;
-
-    // Build optimistic update: always update sprintPhase, conditionally sync taskStatus
-    const updates: Record<string, unknown> = { sprintPhase: value };
-    const apiPayload: Record<string, unknown> = { sprintPhase: value ?? '' };
-
-    if (value && PHASE_TO_STATUS[value] !== prevStatus) {
-      updates.taskStatus = PHASE_TO_STATUS[value];
-      apiPayload.taskStatus = PHASE_TO_STATUS[value];
-    }
-
-    storeUpdateSession(selectedSession.id, updates);
-    apiUpdateSession(selectedWorkspaceId, selectedSession.id, apiPayload).catch(() => {
-      storeUpdateSession(selectedSession.id, { sprintPhase: prevPhase, taskStatus: prevStatus });
-      showError('Failed to update sprint phase');
-    });
-
-    // Phase-mode auto-linking: sync plan mode and thinking with sprint phase
-    if (value === 'plan' && prevPhase !== 'plan') {
-      dispatchAppEvent('set-plan-mode', { active: true });
-    } else if (prevPhase === 'plan' && value !== 'plan') {
-      dispatchAppEvent('set-plan-mode', { active: false });
-    }
-    if (value === 'think' && prevPhase !== 'think') {
-      dispatchAppEvent('set-thinking-level', { level: 'high' });
-    }
-
-    // Inject sprint milestone card into conversation
-    if (value && selectedConversationId) {
-      const milestoneContent = !prevPhase
-        ? `sprint:started:${value}`
-        : `sprint:phase_change:${prevPhase}:${value}`;
-      addMessage({
-        id: crypto.randomUUID(),
-        conversationId: selectedConversationId,
-        role: 'system',
-        content: milestoneContent,
-        timestamp: new Date().toISOString(),
-      });
-      addSystemMessage(selectedConversationId, milestoneContent).catch(() => {});
-    }
-  }, [selectedSession, selectedWorkspaceId, selectedConversationId, storeUpdateSession, addMessage, showError]);
-
-  // Listen for toggle-sprint events from slash command
-  useAppEventListener('toggle-sprint', () => {
-    if (!selectedSession) return;
-    const newPhase = selectedSession.sprintPhase ? null : 'think' as SprintPhase;
-    handleSprintPhaseChange(newPhase);
-  }, [selectedSession, handleSprintPhaseChange]);
-
-  // Listen for sprint-phase-advance events from PrimaryActionButton
-  useAppEventListener('sprint-phase-advance', (detail) => {
-    if (detail?.phase !== undefined) {
-      handleSprintPhaseChange(detail.phase);
-    }
-  }, [handleSprintPhaseChange]);
-
-  // Auto-advance sprint phase: plan → build when plan is approved
-  useAppEventListener('plan-approved', () => {
-    if (selectedSession?.sprintPhase === 'plan') {
-      handleSprintPhaseChange('build');
-    }
-  }, [selectedSession, handleSprintPhaseChange]);
-
-  // /ship command: commit, push, create PR + advance to Ship phase
-  useAppEventListener('sprint-ship', () => {
-    if (isAgentWorking) return;
-    handleActionWithBubbleAndTemplate(
-      'Ship it — commit, push, and create a pull request',
-      ACTION_TEMPLATES['ship'],
-      'ship',
-    );
-    if (selectedSession?.sprintPhase && selectedSession.sprintPhase !== 'ship' && selectedSession.sprintPhase !== 'reflect') {
-      handleSprintPhaseChange('ship');
-    }
-  }, [isAgentWorking, selectedSession, handleActionWithBubbleAndTemplate, handleSprintPhaseChange]);
-
-  // /deploy command: merge PR + monitor CI + advance to Reflect phase
-  useAppEventListener('sprint-deploy', () => {
-    if (isAgentWorking) return;
-    handleActionWithBubbleAndTemplate(
-      'Deploy — merge the PR and monitor CI',
-      ACTION_TEMPLATES['deploy'],
-      'deploy',
-    );
-    if (selectedSession?.sprintPhase && selectedSession.sprintPhase !== 'reflect') {
-      handleSprintPhaseChange('reflect');
-    }
-  }, [isAgentWorking, selectedSession, handleActionWithBubbleAndTemplate, handleSprintPhaseChange]);
-
-  // Sprint phase command menu: user clicked a command from the phase popover.
-  // Routes through the action template system instead of sending raw /trigger text
-  // (which the agent would misinterpret as a skill invocation → "Unknown skill" error).
-  useAppEventListener('sprint-phase-command', (detail) => {
-    if (!detail?.command || isAgentWorking) return;
-    const trigger = detail.command.replace(/^\//, '');
-
-    // Build user-facing message from phase command metadata
-    const phaseCmd = Object.values(PHASE_COMMANDS).flat().find(c => c.trigger === trigger);
-    const message = phaseCmd ? `${phaseCmd.label} — ${phaseCmd.description}` : trigger;
-
-    // Look up template and send with rich instructions
-    const templateKey = PHASE_TRIGGER_TO_TEMPLATE[trigger];
-    if (templateKey) {
-      handleActionWithBubbleAndTemplate(message, ACTION_TEMPLATES[templateKey], templateKey);
-    } else {
-      handleActionWithBubble(message);
-    }
-
-    // Phase advancement for /ship
-    if (trigger === 'ship' && selectedSession?.sprintPhase &&
-        selectedSession.sprintPhase !== 'ship' && selectedSession.sprintPhase !== 'reflect') {
-      handleSprintPhaseChange('ship');
-    }
-  }, [isAgentWorking, selectedSession, handleActionWithBubble, handleActionWithBubbleAndTemplate, handleSprintPhaseChange]);
-
-  // Sprint artifact created: persist to session
-  useAppEventListener('sprint-artifact-created', (detail) => {
-    if (!detail?.artifact || !selectedSession || !selectedWorkspaceId) return;
-    const existing = selectedSession.sprintArtifacts ?? [];
-    const updated = [...existing, detail.artifact];
-    storeUpdateSession(selectedSession.id, { sprintArtifacts: updated });
-    apiUpdateSession(selectedWorkspaceId, selectedSession.id, {
-      sprintArtifacts: JSON.stringify(updated),
-    }).catch(() => {
-      storeUpdateSession(selectedSession.id, { sprintArtifacts: existing });
-    });
-  }, [selectedSession, selectedWorkspaceId, storeUpdateSession]);
-
   // /investigate command: structured 5-phase debugging
   useAppEventListener('investigate', () => {
     if (isAgentWorking) return;
@@ -589,11 +440,7 @@ export function SessionToolbarContent() {
       ACTION_TEMPLATES['autoplan'],
       'autoplan',
     );
-    // Auto-advance to review phase if sprint is active and currently before review
-    if (selectedSession?.sprintPhase && !['review', 'test', 'ship', 'reflect'].includes(selectedSession.sprintPhase)) {
-      handleSprintPhaseChange('review');
-    }
-  }, [isAgentWorking, selectedSession, handleActionWithBubbleAndTemplate, handleSprintPhaseChange]);
+  }, [isAgentWorking, handleActionWithBubbleAndTemplate]);
 
   // /document-release command: post-ship documentation audit
   useAppEventListener('document-release', () => {
@@ -644,19 +491,6 @@ export function SessionToolbarContent() {
                   onChange={handleTaskStatusChange}
                   size="sm"
                 />
-                {/* Start Sprint button — only when no sprint is active */}
-                {!selectedSession.sprintPhase && (
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    className="h-7 px-3 gap-1.5 text-xs font-medium"
-                    onClick={() => handleSprintPhaseChange('think')}
-                    disabled={isAgentWorking}
-                  >
-                    <Rocket className="h-3.5 w-3.5" />
-                    Start Sprint
-                  </Button>
-                )}
               </>
             )}
             {selectedSession.prStatus && selectedSession.prStatus !== 'none' && selectedSession.prNumber && selectedWorkspaceId && (
@@ -713,14 +547,11 @@ export function SessionToolbarContent() {
               <Button
                 variant="secondary"
                 size="sm"
-                className={cn(
-                  "h-6 px-2 gap-1.5 text-xs rounded-r-none rounded-l-sm border-r-0 transition-none",
-                  selectedSession.sprintPhase === 'review' && "ring-1 ring-purple-500/30",
-                )}
-                onClick={() => dispatchReview(selectedSession.sprintPhase === 'review' ? 'deep' : 'quick')}
+                className="h-6 px-2 gap-1.5 text-xs rounded-r-none rounded-l-sm border-r-0 transition-none"
+                onClick={() => dispatchReview('quick')}
               >
-                <Eye className={cn("h-3.5 w-3.5", selectedSession.sprintPhase === 'review' && "text-purple-500")} />
-                {selectedSession.sprintPhase === 'review' ? 'Deep Review' : 'Review'}
+                <Eye className="h-3.5 w-3.5" />
+                Review
               </Button>
               <Popover open={reviewPopoverOpen} onOpenChange={setReviewPopoverOpen}>
                 <PopoverTrigger asChild>
@@ -928,7 +759,7 @@ export function SessionToolbarContent() {
         ),
       },
     };
-  }, [selectedWorkspace, selectedSession, selectedWorkspaceId, selectedSessionId, handleGitActionMessage, handleActionWithBubble, handleActionWithBubbleAndTemplate, handleFixIssues, handleNewConversation, handleCopyBranch, handleArchive, requestArchive, handleTaskStatusChange, handleSprintPhaseChange, reviewPopoverOpen, openAppPopoverOpen, defaultOpenApp, installedApps, workspaceColors, showSuccess, showWarning, isAgentWorking]);
+  }, [selectedWorkspace, selectedSession, selectedWorkspaceId, selectedSessionId, handleGitActionMessage, handleActionWithBubble, handleActionWithBubbleAndTemplate, handleFixIssues, handleNewConversation, handleCopyBranch, handleArchive, requestArchive, handleTaskStatusChange, reviewPopoverOpen, openAppPopoverOpen, defaultOpenApp, installedApps, workspaceColors, showSuccess, showWarning, isAgentWorking]);
 
   useMainToolbarContent(toolbarConfig);
 

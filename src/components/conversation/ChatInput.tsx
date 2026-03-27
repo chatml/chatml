@@ -4,7 +4,7 @@ import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { useAppStore } from '@/stores/appStore';
 import { createConversation, sendConversationMessage, stopConversation, setConversationPlanMode, setConversationFastMode, setConversationPermissionMode, approvePlan } from '@/lib/api';
 import { markPlanModeExited } from '@/hooks/useWebSocket';
-import { dispatchAppEvent, useAppEventListener } from '@/lib/custom-events';
+import { useAppEventListener } from '@/lib/custom-events';
 import { useShortcut, useCustomShortcut } from '@/hooks/useShortcut';
 import { Sparkles, Upload, Link, FolderSymlink } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -16,7 +16,6 @@ import { AttachmentGrid } from './AttachmentGrid';
 import { AttachmentPreviewModal } from './AttachmentPreviewModal';
 import { loadAllAttachmentContents } from '@/lib/attachments';
 import { UserQuestionPrompt } from './UserQuestionPrompt';
-import { SprintPhaseProposalPrompt } from './SprintPhaseProposalPrompt';
 import { usePendingUserQuestion, useStreamingChatInput, useSelectedIds, useConversationState, useChatInputActions, useConversationHasMessages } from '@/stores/selectors';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { THINKING_LEVELS, type ThinkingLevel, resolveThinkingParams, clampThinkingLevel, canDisableThinking } from '@/lib/thinkingLevels';
@@ -512,24 +511,6 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
     }
   }, [planModeActive, planModeEnabled, isStreaming, pendingPlanApproval, selectedConversationId, setPlanModeActive]);
 
-  // Sprint phase auto-linking: set plan mode to a specific state
-  useAppEventListener('set-plan-mode', (detail) => {
-    if (detail?.active !== undefined && detail.active !== planModeEnabled) {
-      setPlanModeEnabled(detail.active);
-      if (selectedConversationId) {
-        setPlanModeActive(selectedConversationId, detail.active);
-        setConversationPlanMode(selectedConversationId, detail.active).catch(() => {});
-      }
-    }
-  }, [planModeEnabled, selectedConversationId, setPlanModeActive]);
-
-  // Sprint phase auto-linking: set thinking level to a specific value
-  useAppEventListener('set-thinking-level', (detail) => {
-    if (detail?.level) {
-      setThinkingLevel(detail.level as ThinkingLevel);
-    }
-  }, [setThinkingLevel]);
-
   // Restore per-session toggle states when switching sessions
   const prevSessionRef = useRef<string | null>(null);
   useEffect(() => {
@@ -569,11 +550,6 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
 
   // Check if there's a pending user question
   const pendingQuestion = usePendingUserQuestion(selectedConversationId);
-
-  // Check if there's a pending sprint phase proposal
-  const pendingSprintPhaseProposal = useAppStore((s) =>
-    selectedConversationId ? s.pendingSprintPhaseProposal[selectedConversationId] : null
-  );
 
   // Listen for compose-action events (e.g., Fix All review, Add to Chat)
   useAppEventListener('compose-action', ({ text, attachments: incoming }) => {
@@ -660,7 +636,6 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
 
     try {
       await approvePlan(selectedConversationId, requestId, true);
-      dispatchAppEvent('plan-approved');
     } catch (error) {
       console.error('Failed to approve plan:', error);
       showError(error instanceof Error ? error.message : 'Failed to approve plan');
@@ -1043,14 +1018,8 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
   };
 
   // If there's a pending question, show the question UI instead of the normal input.
-  // User questions block agent execution, so they take priority over sprint proposals.
   if (pendingQuestion && selectedConversationId) {
     return <UserQuestionPrompt conversationId={selectedConversationId} />;
-  }
-
-  // If there's a pending sprint phase proposal, show the proposal UI
-  if (pendingSprintPhaseProposal && selectedConversationId) {
-    return <SprintPhaseProposalPrompt conversationId={selectedConversationId} />;
   }
 
   // If there's a pending tool approval, replace the entire composer with the approval UI.

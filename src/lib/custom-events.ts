@@ -1,6 +1,5 @@
 import { useEffect } from 'react';
-import type { Attachment, SprintPhase } from '@/lib/types';
-import type { SprintArtifact } from '@/lib/sprint-config';
+import type { Attachment } from '@/lib/types';
 import type { AllBottomPanelTab } from '@/stores/settingsStore';
 
 /**
@@ -16,30 +15,12 @@ export interface AppCustomEventMap {
   'chat-message-submitted': void;
   /** Insert text and/or instruction attachments into the composer without auto-submitting */
   'compose-action': { text: string; attachments?: Attachment[] };
-  /** Auto-advance sprint phase (dispatched by Primary Action button click) */
-  'sprint-phase-advance': { phase: SprintPhase | null };
-  /** Toggle sprint on/off (dispatched by /sprint slash command) */
-  'toggle-sprint': void;
-  /** Plan was approved (dispatched by ChatInput so toolbar can auto-advance sprint phase) */
-  'plan-approved': void;
-  /** Set plan mode to a specific state (dispatched by sprint phase auto-linking) */
-  'set-plan-mode': { active: boolean };
-  /** Set thinking level to a specific value (dispatched by sprint phase auto-linking) */
-  'set-thinking-level': { level: string };
-  /** Ship workflow: commit, push, create PR */
-  'sprint-ship': void;
-  /** Deploy workflow: merge PR, monitor CI */
-  'sprint-deploy': void;
   /** Investigate: structured 5-phase debugging with root cause analysis */
   'investigate': void;
   /** Autoplan: orchestrated product/design/code/architecture review pipeline */
   'autoplan': void;
   /** Document-release: post-ship documentation audit */
   'document-release': void;
-  /** Sprint artifact was created (dispatched by agent or phase completion logic) */
-  'sprint-artifact-created': { artifact: SprintArtifact };
-  /** User clicked a slash command from the sprint phase command menu */
-  'sprint-phase-command': { command: string };
   /** Execute a primary action from the session hover card (select session first, then dispatch) */
   'primary-action-execute': { message: string; templateKey?: string | null; templateContent?: string; workspaceId: string };
   /** Switch the sidebar bottom panel to a specific tab (e.g. 'background' when a task starts) */

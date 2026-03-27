@@ -93,7 +93,7 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
 import { getWorkspaceColor, WORKSPACE_COLORS } from '@/lib/workspace-colors';
-import { TASK_STATUS_OPTIONS, getSprintPhaseOption } from '@/lib/session-fields';
+import { TASK_STATUS_OPTIONS } from '@/lib/session-fields';
 import { TaskStatusIcon } from '@/components/icons/TaskStatusIcon';
 import { GitStatusIcon } from '@/components/icons/GitStatusIcon';
 import { useToast } from '@/components/ui/toast';
@@ -110,7 +110,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
-import type { Workspace, WorktreeSession, SessionTaskStatus, SprintPhase } from '@/lib/types';
+import type { Workspace, WorktreeSession, SessionTaskStatus } from '@/lib/types';
 import { useSessionActivityState, useIsSessionUnread, useWorkspaceSelection, useSidebarActions } from '@/stores/selectors';
 import { ArchiveSessionDialog } from '@/components/dialogs/ArchiveSessionDialog';
 import { useArchiveSession } from '@/hooks/useArchiveSession';
@@ -557,10 +557,8 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onGitHubRepos,
   const VIEW_OPTIONS: { value: SidebarGroupBy; label: string; projectOnly?: boolean; singleProjectOnly?: boolean }[] = [
     { value: 'none', label: 'Recent', singleProjectOnly: true },
     { value: 'status', label: 'By Status', singleProjectOnly: true },
-    { value: 'sprint', label: 'By Sprint Phase', singleProjectOnly: true },
     { value: 'project', label: 'By Project', projectOnly: true },
     { value: 'project-status', label: 'By Project > Status', projectOnly: true },
-    { value: 'project-sprint', label: 'By Project > Sprint', projectOnly: true },
   ];
 
   return (
@@ -1176,52 +1174,6 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onGitHubRepos,
                     </>
                   )}
 
-                  {/* Mode: Sprint — sprint phase group headers with sessions */}
-                  {!isReorderMode && effectiveGroupBy === 'sprint' && (
-                    <>
-                      {baseSessions.map((session) => (
-                        <ErrorBoundary
-                          key={session.id}
-                          section="BaseSessionCard"
-                          fallback={<CardErrorFallback message="Error loading session" />}
-                        >
-                          <BaseSessionCard
-                            session={session}
-                            contentView={contentView}
-                            selectedSessionId={selectedSessionId}
-                            onSelectSession={(id, e) => handleSelectSession(session.workspaceId, id, e)}
-                            formatTimeAgo={formatTimeAgo}
-                          />
-                        </ErrorBoundary>
-                      ))}
-                      {baseSessions.length > 0 && sidebarGroups.length > 0 && (
-                        <div className="mx-2 my-1.5 border-t border-border/40" />
-                      )}
-                      {sidebarGroups.length === 0 && baseSessions.length === 0 && scheduledGroups.length === 0 ? (
-                        <div className="py-2 px-2 text-sm text-muted-foreground/70">
-                          No sessions found
-                        </div>
-                      ) : (
-                        sidebarGroups.map((group) => (
-                          <SprintPhaseGroupSection
-                            key={group.key}
-                            group={group}
-                            isExpanded={isGroupExpanded(group.key, group.defaultCollapsed)}
-                            onToggle={() => toggleSidebarGroupCollapsed(group.key)}
-                            contentView={contentView}
-                            selectedSessionId={selectedSessionId}
-                            onSelectSession={handleSelectSession}
-                            onArchiveSession={handleArchiveSession}
-                            onTaskStatusChange={handleTaskStatusChange}
-                            onOpenBranches={navigateToBranches}
-                            onOpenPRs={navigateToPRs}
-                            formatTimeAgo={formatTimeAgo}
-                          />
-                        ))
-                      )}
-                    </>
-                  )}
-
                   {/* Mode: Project — workspace headers with sessions (with DnD) */}
                   {!isReorderMode && effectiveGroupBy === 'project' && (
                     <DndContext
@@ -1321,55 +1273,6 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onGitHubRepos,
                     </DndContext>
                   )}
 
-                  {/* Mode: Project > Sprint — workspace headers with sprint phase sub-groups */}
-                  {!isReorderMode && effectiveGroupBy === 'project-sprint' && (
-                    <DndContext
-                      sensors={sensors}
-                      collisionDetection={closestCenter}
-                      onDragEnd={handleDragEnd}
-                    >
-                      <SortableContext
-                        items={workspaces.map((w) => w.id)}
-                        strategy={verticalListSortingStrategy}
-                      >
-                        {sidebarGroups.map((group) => {
-                          const ws = workspaces.find((w) => w.id === group.workspaceId);
-                          if (!ws) return null;
-                          const isUnread = unreadWorkspaces.includes(ws.id);
-                          return (
-                            <SortableProjectStatusItem
-                              key={ws.id}
-                              workspace={ws}
-                              group={group}
-                              isExpanded={isWorkspaceExpanded(ws.id)}
-                              selectedSessionId={selectedSessionId}
-                              onToggle={() => toggleWorkspaceCollapsed(ws.id)}
-                              onCreateSession={() => handleCreateSession(ws.id)}
-                              onSelectSession={(sessionId, event) => handleSelectSession(ws.id, sessionId, event)}
-                              onArchiveSession={handleArchiveSession}
-                              onTaskStatusChange={handleTaskStatusChange}
-                              onRemoveWorkspace={() => setWorkspaceToRemove({ id: ws.id, name: ws.name })}
-                              onOpenBranches={(event) => navigateToBranches(ws.id, event)}
-                              onOpenPRs={(event) => navigateToPRs(ws.id, event)}
-                              onOpenWorkspaceSettings={() => onOpenWorkspaceSettings?.(ws.id)}
-                              isUnread={isUnread}
-                              onToggleUnread={() => {
-                                if (isUnread) {
-                                  markWorkspaceRead(ws.id);
-                                } else {
-                                  markWorkspaceUnread(ws.id);
-                                }
-                              }}
-                              contentView={contentView}
-                              formatTimeAgo={formatTimeAgo}
-                              isSubGroupExpanded={isGroupExpanded}
-                              onToggleSubGroup={toggleSidebarGroupCollapsed}
-                            />
-                          );
-                        })}
-                      </SortableContext>
-                    </DndContext>
-                  )}
                 </>
               )}
             </div>
@@ -2255,86 +2158,6 @@ function StatusGroupSection({
   );
 }
 
-// --- Sprint phase icon helper ---
-
-function SprintPhaseIcon({ phase, className }: { phase: SprintPhase | null; className?: string }) {
-  if (!phase) {
-    return <Circle className={cn(className, 'text-muted-foreground')} />;
-  }
-  const option = getSprintPhaseOption(phase);
-  const Icon = option.icon;
-  return <Icon className={cn(className, option.color)} />;
-}
-
-// --- Sprint phase group section ---
-
-function SprintPhaseGroupSection({
-  group,
-  isExpanded,
-  onToggle,
-  contentView,
-  selectedSessionId,
-  onSelectSession,
-  onArchiveSession,
-  onTaskStatusChange,
-  onOpenBranches,
-  onOpenPRs,
-  formatTimeAgo,
-}: {
-  group: SidebarGroup;
-  isExpanded: boolean;
-  onToggle: () => void;
-  contentView: ContentView;
-  selectedSessionId: string | null;
-  onSelectSession: (workspaceId: string, sessionId: string, event?: React.MouseEvent) => void;
-  onArchiveSession: (sessionId: string) => void;
-  onTaskStatusChange: (sessionId: string, status: SessionTaskStatus) => void;
-  onOpenBranches: (workspaceId: string, event?: React.MouseEvent) => void;
-  onOpenPRs: (workspaceId: string, event?: React.MouseEvent) => void;
-  formatTimeAgo: (date: string) => string;
-}) {
-  return (
-    <Collapsible open={isExpanded} onOpenChange={onToggle}>
-      <CollapsibleTrigger asChild>
-        <div className="group flex items-center gap-1.5 px-2 py-1.5 rounded-md cursor-pointer hover:bg-surface-1 transition-colors">
-          <SprintPhaseIcon phase={group.sprintPhaseValue ?? null} className="w-3.5 h-3.5 shrink-0" />
-          <span className="text-sm font-semibold text-muted-foreground">{group.label}</span>
-          <ChevronDown className={cn(
-            'h-3.5 w-3.5 text-muted-foreground transition-transform duration-200 shrink-0',
-            !isExpanded && '-rotate-90'
-          )} />
-          <span className="text-xs text-muted-foreground/50 ml-auto">{group.count}</span>
-        </div>
-      </CollapsibleTrigger>
-      <CollapsibleContent>
-        <div className="ml-2">
-          {group.sessions.map((session) => {
-            return (
-              <ErrorBoundary
-                key={session.id}
-                section="SessionRow"
-                fallback={<CardErrorFallback message="Error loading session" />}
-              >
-                <SessionRow
-                  session={session}
-                  contentView={contentView}
-                  selectedSessionId={selectedSessionId}
-                  onSelectSession={(id, e) => onSelectSession(session.workspaceId, id, e)}
-                  onArchiveSession={onArchiveSession}
-                  onTaskStatusChange={onTaskStatusChange}
-                  onOpenBranches={(e) => onOpenBranches(session.workspaceId, e)}
-                  onOpenPRs={(e) => onOpenPRs(session.workspaceId, e)}
-                  formatTimeAgo={formatTimeAgo}
-                />
-              </ErrorBoundary>
-            );
-          })}
-        </div>
-      </CollapsibleContent>
-    </Collapsible>
-  );
-}
-
 // --- Project > Status sortable item ---
 
 interface SortableProjectStatusItemProps {
@@ -2560,9 +2383,6 @@ function SortableProjectStatusItem({
                         <div className="group flex items-center gap-1.5 px-2 py-1 rounded-md cursor-pointer hover:bg-surface-1 transition-colors">
                           {subGroup.type === 'status' && subGroup.statusValue && (
                             <TaskStatusIcon status={subGroup.statusValue} className="w-3 h-3 shrink-0" />
-                          )}
-                          {subGroup.type === 'sprint' && (
-                            <SprintPhaseIcon phase={subGroup.sprintPhaseValue ?? null} className="w-3 h-3 shrink-0" />
                           )}
                           <span className="text-xs font-semibold text-muted-foreground">{subGroup.label}</span>
                           <ChevronDown className={cn(

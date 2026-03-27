@@ -1,18 +1,16 @@
 import { useMemo } from 'react';
-import type { Workspace, WorktreeSession, SessionTaskStatus, SprintPhase } from '@/lib/types';
-import { SPRINT_PHASES } from '@/lib/types';
+import type { Workspace, WorktreeSession, SessionTaskStatus } from '@/lib/types';
 import { useSettingsStore, applyStatusGroupOrder } from '@/stores/settingsStore';
 import type { SidebarGroupBy, SidebarSortBy } from '@/stores/settingsStore';
 
 export interface SidebarGroup {
   key: string;
   label: string;
-  type: 'project' | 'status' | 'sprint';
+  type: 'project' | 'status';
   count: number;
   defaultCollapsed: boolean;
   workspaceId?: string;
   statusValue?: SessionTaskStatus;
-  sprintPhaseValue?: SprintPhase | null;
   color?: string;
   baseSessions?: WorktreeSession[];
   sessions: WorktreeSession[];
@@ -127,59 +125,10 @@ function buildStatusGroups(
   return groups;
 }
 
-// Sprint phase display order: "Not Started" first, then canonical phase order
-const SPRINT_PHASE_ORDER: (SprintPhase | 'not_started')[] = ['not_started', ...SPRINT_PHASES];
-
-const SPRINT_PHASE_LABELS: Record<SprintPhase | 'not_started', string> = {
-  not_started: 'Not Started',
-  think: 'Think',
-  plan: 'Plan',
-  build: 'Build',
-  review: 'Review',
-  test: 'Test',
-  ship: 'Ship',
-  reflect: 'Reflect',
-};
-
-const DEFAULT_COLLAPSED_SPRINT_PHASES = new Set<SprintPhase | 'not_started'>(['reflect']);
-
-function buildSprintPhaseGroups(
-  sessions: WorktreeSession[],
-  sortBy: SidebarSortBy,
-  keyPrefix: string = '',
-): SidebarGroup[] {
-  const byPhase = new Map<string, WorktreeSession[]>();
-  for (const s of sessions) {
-    const phase = s.sprintPhase ?? 'not_started';
-    const list = byPhase.get(phase) || [];
-    list.push(s);
-    byPhase.set(phase, list);
-  }
-
-  const groups: SidebarGroup[] = [];
-  for (const phase of SPRINT_PHASE_ORDER) {
-    const phaseSessions = byPhase.get(phase);
-    if (!phaseSessions || phaseSessions.length === 0) continue;
-
-    const key = keyPrefix ? `${keyPrefix}:sprint:${phase}` : `sprint:${phase}`;
-    groups.push({
-      key,
-      label: SPRINT_PHASE_LABELS[phase],
-      type: 'sprint',
-      count: phaseSessions.length,
-      defaultCollapsed: DEFAULT_COLLAPSED_SPRINT_PHASES.has(phase),
-      sprintPhaseValue: phase === 'not_started' ? null : phase as SprintPhase,
-      sessions: sortSessions(phaseSessions, sortBy),
-    });
-  }
-  return groups;
-}
-
 /** When filtering to a single project, project-level grouping is redundant. */
 function downgradeGroupBy(groupBy: SidebarGroupBy): SidebarGroupBy {
   if (groupBy === 'project') return 'none';
   if (groupBy === 'project-status') return 'status';
-  if (groupBy === 'project-sprint') return 'sprint';
   return groupBy;
 }
 
@@ -249,18 +198,6 @@ export function useSidebarSessions({
       };
     }
 
-    if (effectiveGroupBy === 'sprint') {
-      const base = sortSessions(unpinned.filter(isMainRepoSession), sortBy);
-      const regular = unpinned.filter(s => !isMainRepoSession(s));
-      return {
-        groups: buildSprintPhaseGroups(regular, sortBy),
-        flatSessions: [],
-        baseSessions: base,
-        pinnedSessions,
-        effectiveGroupBy,
-      };
-    }
-
     // For project-based grouping, bucket sessions by workspace
     const byWorkspace = new Map<string, WorktreeSession[]>();
     for (const s of unpinned) {
@@ -318,32 +255,8 @@ export function useSidebarSessions({
       return { groups, flatSessions: [], baseSessions: [], pinnedSessions, effectiveGroupBy };
     }
 
-    // project-sprint
-    if (effectiveGroupBy === 'project-sprint') {
-      const groups: SidebarGroup[] = [];
-      for (const ws of workspaces) {
-        const wsSessions = byWorkspace.get(ws.id) ?? [];
-        if (wsSessions.length === 0 && filters.searchTerm) continue;
-        const color = workspaceColors[ws.id] || getDefaultColor(ws.id);
-        const base = wsSessions.filter(isMainRepoSession);
-        const regular = wsSessions.filter(s => !isMainRepoSession(s));
-        const subGroups = buildSprintPhaseGroups(regular, sortBy, `project:${ws.id}`);
-        groups.push({
-          key: `project:${ws.id}`,
-          label: ws.name,
-          type: 'project',
-          count: wsSessions.length,
-          defaultCollapsed: false,
-          workspaceId: ws.id,
-          color,
-          baseSessions: base,
-          sessions: [],
-          subGroups,
-        });
-      }
-      return { groups, flatSessions: [], baseSessions: [], pinnedSessions, effectiveGroupBy };
-    }
-
+    // Unknown groupBy — should not be reachable from valid UI, but
+    // stale persisted values (e.g. from removed 'sprint' option) hit this path.
     return { groups: [], flatSessions: [], baseSessions: [], pinnedSessions, effectiveGroupBy };
   }, [sessions, workspaces, groupBy, sortBy, filters, projectFilter, workspaceColors, getDefaultColor, statusGroupOrder]);
 }
@@ -377,10 +290,10 @@ export function expandGroupsForSession(session: WorktreeSession): void {
 
   if (sidebarGroupBy === 'none') return;
 
-  // Base sessions live outside status/sprint groups in the sidebar.
+  // Base sessions live outside status groups in the sidebar.
   // For project-based grouping they sit at the project level, so only expand the workspace.
   if (isMainRepoSession(session)) {
-    if (sidebarGroupBy === 'project' || sidebarGroupBy === 'project-status' || sidebarGroupBy === 'project-sprint') {
+    if (sidebarGroupBy === 'project' || sidebarGroupBy === 'project-status') {
       expandWorkspace(session.workspaceId);
     }
     return;
@@ -406,20 +319,4 @@ export function expandGroupsForSession(session: WorktreeSession): void {
     return;
   }
 
-  if (sidebarGroupBy === 'sprint') {
-    const phaseKey = session.sprintPhase ?? 'not_started';
-    const key = `sprint:${phaseKey}`;
-    const defaultCollapsed = DEFAULT_COLLAPSED_SPRINT_PHASES.has(phaseKey);
-    ensureSidebarGroupExpanded(key, defaultCollapsed);
-    return;
-  }
-
-  if (sidebarGroupBy === 'project-sprint') {
-    expandWorkspace(session.workspaceId);
-    const phaseKey = session.sprintPhase ?? 'not_started';
-    const subKey = `project:${session.workspaceId}:sprint:${phaseKey}`;
-    const defaultCollapsed = DEFAULT_COLLAPSED_SPRINT_PHASES.has(phaseKey);
-    ensureSidebarGroupExpanded(subKey, defaultCollapsed);
-    return;
-  }
 }

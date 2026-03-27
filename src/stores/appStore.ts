@@ -353,9 +353,6 @@ interface AppState {
   // Pending user questions from AskUserQuestion tool (keyed by conversationId)
   pendingUserQuestion: { [conversationId: string]: PendingUserQuestion | null };
 
-  // Pending sprint phase proposals from update_sprint_phase tool (keyed by conversationId)
-  pendingSprintPhaseProposal: { [conversationId: string]: import('@/lib/types').PendingSprintPhaseProposal | null };
-
   // Pending QA browser handoff requests (keyed by conversationId)
   pendingQAHandoff: { [conversationId: string]: import('@/lib/types').PendingQAHandoff | null };
 
@@ -645,9 +642,6 @@ interface AppState {
   prevUserQuestion: (conversationId: string) => void;
   clearPendingUserQuestion: (conversationId: string) => void;
 
-  // Sprint phase proposal actions (update_sprint_phase tool)
-  setPendingSprintPhaseProposal: (conversationId: string, proposal: import('@/lib/types').PendingSprintPhaseProposal | null) => void;
-
   // QA browser handoff actions
   setPendingQAHandoff: (conversationId: string, handoff: import('@/lib/types').PendingQAHandoff | null) => void;
 
@@ -717,7 +711,6 @@ export const useAppStore = create<AppState>((set, get) => ({
   branchSyncCompletedAt: {},
   lastTurnCompletedAt: {},
   pendingUserQuestion: {},
-  pendingSprintPhaseProposal: {},
   pendingQAHandoff: {},
   interruptedState: {},
   inputSuggestions: {},
@@ -1209,8 +1202,6 @@ export const useAppStore = create<AppState>((set, get) => ({
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { [id]: _question, ...remainingPendingQuestions } = state.pendingUserQuestion;
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { [id]: _sprintProposal, ...remainingSprintProposals } = state.pendingSprintPhaseProposal;
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { [id]: _qaHandoff, ...remainingQAHandoffs } = state.pendingQAHandoff;
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { [id]: _interrupted, ...remainingInterruptedState } = state.interruptedState;
@@ -1266,7 +1257,6 @@ export const useAppStore = create<AppState>((set, get) => ({
       activeTools: remainingActiveTools,
       agentTodos: remainingAgentTodos,
       pendingUserQuestion: remainingPendingQuestions,
-      pendingSprintPhaseProposal: remainingSprintProposals,
       pendingQAHandoff: remainingQAHandoffs,
       interruptedState: remainingInterruptedState,
       contextUsage: remainingContextUsage,
@@ -2757,14 +2747,6 @@ updateFileTabContent: (id, content) => set((state) => ({
     pendingUserQuestion: {
       ...state.pendingUserQuestion,
       [conversationId]: null,
-    },
-  })),
-
-  // Sprint phase proposal actions (update_sprint_phase tool)
-  setPendingSprintPhaseProposal: (conversationId, proposal) => set((state) => ({
-    pendingSprintPhaseProposal: {
-      ...state.pendingSprintPhaseProposal,
-      [conversationId]: proposal,
     },
   })),
 

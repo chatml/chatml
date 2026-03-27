@@ -39,7 +39,7 @@ export type DictationShortcutPreset = 'capslock' | 'cmd-shift-d' | 'custom';
 export type BranchPrefixType = 'github' | 'custom' | 'none';
 
 // Sidebar grouping options
-export type SidebarGroupBy = 'none' | 'project' | 'status' | 'project-status' | 'sprint' | 'project-sprint';
+export type SidebarGroupBy = 'none' | 'project' | 'status' | 'project-status';
 
 // Sidebar sorting options
 export type SidebarSortBy = 'recent' | 'status' | 'priority' | 'name';
@@ -541,6 +541,13 @@ export const useSettingsStore = create<SettingsState>()(
         }
         if (merged.reviewModel === 'auto') {
           merged.reviewModel = 'claude-haiku-4-5-20251001';
+        }
+
+        // Migrate removed sprint groupBy options → project
+        // Cast through string: persisted value may be a stale literal not in SidebarGroupBy
+        const groupBy = merged.sidebarGroupBy as string;
+        if (groupBy === 'sprint' || groupBy === 'project-sprint') {
+          merged.sidebarGroupBy = 'project';
         }
 
         return merged;

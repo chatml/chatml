@@ -6,7 +6,6 @@ import { createLinearTools } from "./tools/linear.js";
 import { createCommentTools } from "./tools/comments.js";
 import { createPRTools } from "./tools/pr.js";
 import { createScriptTools } from "./tools/scripts.js";
-import { createSprintTools } from "./tools/sprint.js";
 import { createQATools } from "./tools/qa.js";
 import { buildHeaders, BACKEND_URL } from "./tools/fetch-utils.js";
 
@@ -263,9 +262,6 @@ export function createChatMLMcpServer(options: McpServerOptions) {
 
       // Script config tools
       ...createScriptTools(context),
-
-      // Sprint phase tools
-      ...createSprintTools(context),
 
       // QA browser handoff tools
       ...createQATools(context),
