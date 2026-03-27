@@ -1,12 +1,18 @@
 'use client';
 
-import { useCallback, useEffect, useState, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useState, useRef } from 'react';
 import { Button } from '@/components/ui/button';
-import { Terminal, FileEdit, Globe, Search, Wrench } from 'lucide-react';
 import { useAppStore } from '@/stores/appStore';
 import { approveTool } from '@/lib/api/conversations';
+import { FileDiff, parseDiffFromFile, PIERRE_THEMES } from '@/lib/pierre';
+import type { FileContents } from '@/lib/pierre';
+import { useResolvedThemeType } from '@/hooks/useResolvedThemeType';
+import { getShikiLanguage } from '@/lib/languageMapping';
 
 const TIMEOUT_MS = 55_000; // 55s — 5s before agent-runner's 60s timeout so our deny arrives first
+const MAX_PREVIEW_LINES = 200;
+
+const ensureTrailingNewline = (s: string) => s.endsWith('\n') ? s : s + '\n';
 
 function getActionVerb(toolName: string): string {
   switch (toolName) {
@@ -26,33 +32,22 @@ function getActionVerb(toolName: string): string {
   }
 }
 
-function getToolIcon(toolName: string) {
+function getTargetName(toolName: string, toolInput: Record<string, unknown>): string {
   switch (toolName) {
-    case 'Bash':
-      return <Terminal className="h-4 w-4 inline-block align-text-bottom mr-1" />;
     case 'Write':
     case 'Edit':
-    case 'NotebookEdit':
-      return <FileEdit className="h-4 w-4 inline-block align-text-bottom mr-1" />;
-    case 'WebFetch':
-      return <Globe className="h-4 w-4 inline-block align-text-bottom mr-1" />;
-    case 'WebSearch':
-      return <Search className="h-4 w-4 inline-block align-text-bottom mr-1" />;
-    default:
-      return <Wrench className="h-4 w-4 inline-block align-text-bottom mr-1" />;
-  }
-}
-
-function getHeaderSummary(toolName: string, toolInput: Record<string, unknown>): string {
-  switch (toolName) {
-    case 'Bash':
-      return (toolInput.command as string) || 'shell command';
-    case 'Write':
-    case 'Edit':
-    case 'NotebookEdit':
-      return (toolInput.file_path as string) || 'file';
-    case 'WebFetch':
-      return (toolInput.url as string) || 'URL';
+    case 'NotebookEdit': {
+      const filePath = (toolInput.file_path as string) || 'file';
+      return filePath.split('/').pop() || filePath;
+    }
+    case 'Bash': {
+      const cmd = (toolInput.command as string) || 'shell command';
+      return cmd.length > 60 ? cmd.slice(0, 57) + '...' : cmd;
+    }
+    case 'WebFetch': {
+      const url = (toolInput.url as string) || 'URL';
+      return url.length > 80 ? url.slice(0, 77) + '...' : url;
+    }
     case 'WebSearch':
       return (toolInput.query as string) || 'web search';
     default:
@@ -60,14 +55,14 @@ function getHeaderSummary(toolName: string, toolInput: Record<string, unknown>):
   }
 }
 
-function getDescription(toolName: string, toolInput: Record<string, unknown>): string | null {
+function getSubtitle(toolName: string, toolInput: Record<string, unknown>): string | null {
   switch (toolName) {
-    case 'Bash':
-      return (toolInput.description as string) || null;
     case 'Write':
     case 'Edit':
     case 'NotebookEdit':
       return (toolInput.file_path as string) || null;
+    case 'Bash':
+      return (toolInput.description as string) || null;
     case 'WebFetch':
       return (toolInput.url as string) || null;
     default:
@@ -75,22 +70,94 @@ function getDescription(toolName: string, toolInput: Record<string, unknown>): s
   }
 }
 
-function ReadOnlyPreview({ toolName, toolInput }: { toolName: string; toolInput: Record<string, unknown> }) {
-  if (toolName === 'Write' || toolName === 'Edit') {
+function truncateContent(content: string, maxLines: number): { text: string; truncated: boolean; totalLines: number } {
+  const lines = content.split('\n');
+  if (lines.length <= maxLines) return { text: content, truncated: false, totalLines: lines.length };
+  return { text: lines.slice(0, maxLines).join('\n'), truncated: true, totalLines: lines.length };
+}
+
+function ApprovalDiffPreview({ toolName, toolInput }: { toolName: string; toolInput: Record<string, unknown> }) {
+  const themeType = useResolvedThemeType();
+
+  const diffData = useMemo(() => {
+    if (toolName === 'Write' && typeof toolInput.content === 'string') {
+      const filePath = (toolInput.file_path as string) || 'file';
+      const filename = filePath.split('/').pop() || filePath;
+      const language = getShikiLanguage(filename);
+      const { text, truncated, totalLines } = truncateContent(toolInput.content as string, MAX_PREVIEW_LINES);
+
+      const oldFile: FileContents = {
+        name: filename,
+        contents: '',
+        lang: language as FileContents['lang'],
+        cacheKey: `approval-write-old:${filePath}`,
+      };
+      const newFile: FileContents = {
+        name: filename,
+        contents: ensureTrailingNewline(text),
+        lang: language as FileContents['lang'],
+        cacheKey: `approval-write-new:${filePath}:${text.length}:${text.slice(0, 64)}`,
+      };
+      return { fileDiff: parseDiffFromFile(oldFile, newFile), truncated, totalLines };
+    }
+
+    if (toolName === 'Edit' && typeof toolInput.old_string === 'string') {
+      const filePath = (toolInput.file_path as string) || 'file';
+      const filename = filePath.split('/').pop() || filePath;
+      const language = getShikiLanguage(filename);
+      const oldStr = toolInput.old_string as string;
+      const newStr = (toolInput.new_string as string) || '';
+
+      const oldFile: FileContents = {
+        name: filename,
+        contents: ensureTrailingNewline(oldStr),
+        lang: language as FileContents['lang'],
+        cacheKey: `approval-edit-old:${filePath}:${oldStr.length}:${oldStr.slice(0, 64)}`,
+      };
+      const newFile: FileContents = {
+        name: filename,
+        contents: ensureTrailingNewline(newStr),
+        lang: language as FileContents['lang'],
+        cacheKey: `approval-edit-new:${filePath}:${newStr.length}:${newStr.slice(0, 64)}`,
+      };
+      return { fileDiff: parseDiffFromFile(oldFile, newFile), truncated: false, totalLines: 0 };
+    }
+
+    return null;
+  }, [toolName, toolInput]);
+
+  const options = useMemo(() => ({
+    theme: PIERRE_THEMES,
+    themeType,
+    diffStyle: 'unified' as const,
+    overflow: 'scroll' as const,
+    diffIndicators: 'bars' as const,
+    lineDiffType: 'word' as const,
+    tokenizeMaxLineLength: 500,
+  }), [themeType]);
+
+  // Write/Edit with diff rendering
+  if (diffData) {
     return (
-      <div className="space-y-1.5">
-        <div className="text-xs text-muted-foreground font-mono">{(toolInput.file_path as string) || ''}</div>
-        {typeof toolInput.old_string === 'string' && (
-          <pre className="p-3 rounded-lg border border-border bg-muted/30 text-xs font-mono overflow-x-auto max-h-32 whitespace-pre-wrap break-all">
-            {`- ${(toolInput.old_string as string).slice(0, 300)}\n+ ${((toolInput.new_string as string) || '').slice(0, 300)}`}
-          </pre>
-        )}
-        {typeof toolInput.content === 'string' && !toolInput.old_string && (
-          <pre className="p-3 rounded-lg border border-border bg-muted/30 text-xs font-mono overflow-x-auto max-h-32 whitespace-pre-wrap break-all">
-            {(toolInput.content as string).slice(0, 500)}
-          </pre>
+      <div>
+        <div className="max-h-[250px] overflow-auto overscroll-contain rounded-lg border">
+          <FileDiff fileDiff={diffData.fileDiff} options={options} />
+        </div>
+        {diffData.truncated && (
+          <p className="text-xs text-muted-foreground mt-1.5 px-1">
+            Showing {MAX_PREVIEW_LINES} of {diffData.totalLines} lines
+          </p>
         )}
       </div>
+    );
+  }
+
+  // Write without content (shouldn't happen, but fallback)
+  if (toolName === 'Write' || toolName === 'Edit') {
+    return (
+      <pre className="p-3 rounded-lg border border-border bg-muted/30 text-xs font-mono overflow-x-auto max-h-32 whitespace-pre-wrap break-all">
+        {JSON.stringify(toolInput, null, 2).slice(0, 500)}
+      </pre>
     );
   }
 
@@ -216,7 +283,7 @@ export function ToolApprovalPrompt({ conversationId }: ToolApprovalPromptProps) 
         return;
       }
 
-      // Cmd/Ctrl+Enter = Allow for session
+      // Cmd/Ctrl+Enter = Always allow for session
       if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
         e.preventDefault();
         handleAction('allow_session');
@@ -240,8 +307,8 @@ export function ToolApprovalPrompt({ conversationId }: ToolApprovalPromptProps) 
 
   const progressPct = Math.min(100, (elapsed / TIMEOUT_MS) * 100);
   const verb = getActionVerb(pending.toolName);
-  const summary = getHeaderSummary(pending.toolName, pending.toolInput);
-  const description = getDescription(pending.toolName, pending.toolInput);
+  const targetName = getTargetName(pending.toolName, pending.toolInput);
+  const subtitle = getSubtitle(pending.toolName, pending.toolInput);
 
   return (
     <div className="pt-1 px-3 pb-3">
@@ -249,19 +316,14 @@ export function ToolApprovalPrompt({ conversationId }: ToolApprovalPromptProps) 
         {/* Header */}
         <div className="px-5 pt-4 pb-2">
           <p className="text-base leading-relaxed">
-            {getToolIcon(pending.toolName)}
-            Allow Claude to <strong>{verb}</strong>{' '}
-            <span className="text-muted-foreground font-mono text-sm break-all">
-              {summary.length > 120 ? summary.slice(0, 117) + '...' : summary}
-            </span>
-            ?
+            Allow Claude to <strong>{verb}</strong> {targetName}?
           </p>
-          {description && description !== summary && (
-            <p className="text-sm text-muted-foreground mt-1">{description}</p>
+          {subtitle && subtitle !== targetName && (
+            <p className="text-sm text-muted-foreground font-mono mt-1 break-all">{subtitle}</p>
           )}
         </div>
 
-        {/* Editable command area (Bash) or read-only preview (other tools) */}
+        {/* Content preview */}
         <div className="px-5 pb-3">
           {isBash ? (
             <textarea
@@ -273,20 +335,20 @@ export function ToolApprovalPrompt({ conversationId }: ToolApprovalPromptProps) 
               spellCheck={false}
             />
           ) : (
-            <ReadOnlyPreview toolName={pending.toolName} toolInput={pending.toolInput} />
+            <ApprovalDiffPreview toolName={pending.toolName} toolInput={pending.toolInput} />
           )}
         </div>
 
         {/* Timeout progress bar */}
         <div className="h-0.5 bg-muted">
           <div
-            className="h-full bg-orange-500/60 transition-all duration-200"
+            className="h-full bg-orange-500/40 transition-all duration-200"
             style={{ width: `${100 - progressPct}%` }}
           />
         </div>
 
         {/* Footer: action buttons */}
-        <div className="flex items-center justify-end gap-2 px-5 py-3">
+        <div className="flex items-center justify-center gap-2 px-5 py-3">
           <Button
             variant="outline"
             size="sm"
@@ -298,23 +360,23 @@ export function ToolApprovalPrompt({ conversationId }: ToolApprovalPromptProps) 
             <kbd className="ml-1.5 px-1 py-0.5 rounded bg-muted text-2xs font-mono">Esc</kbd>
           </Button>
           <Button
-            variant="ghost"
+            variant="outline"
             size="sm"
             className="h-8 text-xs"
             disabled={submitting}
-            onClick={() => handleAction('allow_once')}
+            onClick={() => handleAction('allow_session')}
           >
-            Allow once
-            <kbd className="ml-1.5 px-1 py-0.5 rounded bg-muted text-2xs font-mono">↵</kbd>
+            Always allow for session
+            <kbd className="ml-1.5 px-1 py-0.5 rounded bg-muted text-2xs font-mono">⌘↵</kbd>
           </Button>
           <Button
             size="sm"
             className="h-8 text-xs font-semibold bg-foreground text-background hover:bg-foreground/80"
             disabled={submitting}
-            onClick={() => handleAction('allow_session')}
+            onClick={() => handleAction('allow_once')}
           >
-            Allow for session
-            <kbd className="ml-1.5 px-1 py-0.5 rounded bg-background/20 text-background text-2xs font-mono">⌘↵</kbd>
+            Allow once
+            <kbd className="ml-1.5 px-1 py-0.5 rounded bg-background/20 text-background text-2xs font-mono">↵</kbd>
           </Button>
         </div>
 
