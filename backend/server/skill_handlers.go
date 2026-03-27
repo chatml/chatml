@@ -6,10 +6,12 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/chatml/chatml-backend/models"
 	"github.com/chatml/chatml-backend/skills"
 	"github.com/go-chi/chi/v5"
+	"gopkg.in/yaml.v3"
 )
 
 // skillFileDir returns the path to ~/.claude/skills/chatml-{id}/
@@ -31,10 +33,91 @@ func writeSkillFile(skill *models.Skill) error {
 		return fmt.Errorf("cannot create skill directory: %w", err)
 	}
 
-	// Build SKILL.md with frontmatter matching the SDK's expected format
-	content := fmt.Sprintf("---\nname: %s\ndescription: %s\n---\n\n%s", skill.ID, skill.Description, skill.Content)
+	// Build SKILL.md with a single frontmatter block. skill.Content may already
+	// contain its own frontmatter (e.g., GStack skills), so we merge rather than wrap.
+	content := buildSkillFileContent(skill)
 
 	return os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte(content), 0644)
+}
+
+// buildSkillFileContent produces a SKILL.md string with a single frontmatter block.
+// If skill.Content already contains YAML frontmatter, the existing fields are preserved
+// while name and description are overridden to match the catalog entry. If the content
+// has no frontmatter, a new block is created.
+func buildSkillFileContent(skill *models.Skill) string {
+	trimmed := strings.TrimLeft(skill.Content, " \t\r\n")
+
+	// Normalise CRLF → LF so all downstream fence searching and YAML parsing
+	// works with a single line-ending convention.
+	trimmed = strings.ReplaceAll(trimmed, "\r\n", "\n")
+
+	// Check if content starts with a frontmatter fence
+	if !strings.HasPrefix(trimmed, "---\n") {
+		// No existing frontmatter — create one from scratch
+		return fmt.Sprintf("---\nname: %s\ndescription: %s\n---\n\n%s", skill.ID, skill.Description, skill.Content)
+	}
+
+	// Find the closing fence. Search after the opening "---\n".
+	rest := trimmed[4:] // skip "---\n"
+	closingIdx := strings.Index(rest, "\n---\n")
+	if closingIdx == -1 {
+		// Check for closing fence at end of string
+		if strings.HasSuffix(rest, "\n---") {
+			closingIdx = len(rest) - 4 // position before "\n---"
+		} else {
+			// Malformed frontmatter — wrap from scratch
+			return fmt.Sprintf("---\nname: %s\ndescription: %s\n---\n\n%s", skill.ID, skill.Description, skill.Content)
+		}
+	}
+
+	fmYAML := rest[:closingIdx]
+	body := rest[closingIdx+4:] // skip "\n---"
+	// body starts with "\n..." (the content after the closing fence)
+
+	// Parse existing frontmatter into an ordered map
+	var fm yaml.Node
+	if err := yaml.Unmarshal([]byte(fmYAML), &fm); err != nil {
+		// Parse failed — wrap from scratch
+		return fmt.Sprintf("---\nname: %s\ndescription: %s\n---\n\n%s", skill.ID, skill.Description, skill.Content)
+	}
+
+	// yaml.Unmarshal wraps in a Document node; the mapping is the first child
+	if fm.Kind != yaml.DocumentNode || len(fm.Content) == 0 || fm.Content[0].Kind != yaml.MappingNode {
+		return fmt.Sprintf("---\nname: %s\ndescription: %s\n---\n\n%s", skill.ID, skill.Description, skill.Content)
+	}
+	mapping := fm.Content[0]
+
+	// Override name and description in the mapping node
+	setYAMLField(mapping, "name", skill.ID)
+	setYAMLField(mapping, "description", skill.Description)
+
+	out, err := yaml.Marshal(&fm)
+	if err != nil {
+		return fmt.Sprintf("---\nname: %s\ndescription: %s\n---\n\n%s", skill.ID, skill.Description, skill.Content)
+	}
+
+	// fmYAML has no leading "---", so the parsed DocumentNode is implicit.
+	// yaml.Marshal on an implicit document omits the document-start marker,
+	// which lets us prepend our own "---\n" without duplication.
+	// It does add a trailing newline; trim it so we get clean "---\n<yaml>\n---".
+	yamlStr := strings.TrimRight(string(out), "\n")
+	return "---\n" + yamlStr + "\n---" + body
+}
+
+// setYAMLField sets or adds a scalar field in a YAML mapping node.
+func setYAMLField(mapping *yaml.Node, key, value string) {
+	// Content is interleaved [key0, val0, key1, val1, ...]; step by 2.
+	for i := 0; i < len(mapping.Content)-1; i += 2 {
+		if mapping.Content[i].Value == key {
+			mapping.Content[i+1] = &yaml.Node{Kind: yaml.ScalarNode, Value: value}
+			return
+		}
+	}
+	// Key not found — append it
+	mapping.Content = append(mapping.Content,
+		&yaml.Node{Kind: yaml.ScalarNode, Value: key},
+		&yaml.Node{Kind: yaml.ScalarNode, Value: value},
+	)
 }
 
 // removeSkillFile removes ~/.claude/skills/chatml-{id}/

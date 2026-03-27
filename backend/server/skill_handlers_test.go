@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/chatml/chatml-backend/models"
@@ -323,4 +324,134 @@ func TestGetSkillContent_NotFound(t *testing.T) {
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &apiErr))
 	assert.Equal(t, ErrCodeNotFound, apiErr.Code)
 	assert.Contains(t, apiErr.Error, "skill")
+}
+
+// ============================================================================
+// buildSkillFileContent Tests
+// ============================================================================
+
+func TestBuildSkillFileContent_WithExistingFrontmatter(t *testing.T) {
+	skill := &models.Skill{
+		ID:          "gstack-office-hours",
+		Description: "YC Office Hours skill",
+		Content: `---
+name: office-hours
+preamble-tier: 3
+allowed-tools:
+  - Bash
+  - Read
+---
+## Instructions
+Do the thing.
+`,
+	}
+
+	result := buildSkillFileContent(skill)
+
+	// Should have exactly one frontmatter block
+	assert.Equal(t, 1, strings.Count(result, "\n---\n"), "should have exactly one closing fence inside content")
+	assert.True(t, strings.HasPrefix(result, "---\n"), "should start with frontmatter fence")
+
+	// Name should be overridden to the catalog ID
+	assert.Contains(t, result, "name: gstack-office-hours")
+	assert.NotContains(t, result, "name: office-hours")
+
+	// Description should be overridden
+	assert.Contains(t, result, "description: YC Office Hours skill")
+
+	// Preserved fields
+	assert.Contains(t, result, "preamble-tier")
+	assert.Contains(t, result, "allowed-tools")
+	assert.Contains(t, result, "Bash")
+	assert.Contains(t, result, "Read")
+
+	// Body content preserved
+	assert.Contains(t, result, "## Instructions")
+	assert.Contains(t, result, "Do the thing.")
+}
+
+func TestBuildSkillFileContent_WithoutFrontmatter(t *testing.T) {
+	skill := &models.Skill{
+		ID:          "my-skill",
+		Description: "A simple skill",
+		Content:     "Just some instructions here.",
+	}
+
+	result := buildSkillFileContent(skill)
+
+	assert.True(t, strings.HasPrefix(result, "---\n"))
+	assert.Contains(t, result, "name: my-skill")
+	assert.Contains(t, result, "description: A simple skill")
+	assert.Contains(t, result, "Just some instructions here.")
+}
+
+func TestBuildSkillFileContent_RealGStackSkill(t *testing.T) {
+	// Use an actual GStack skill from the catalog to verify end-to-end
+	skill := skills.GetSkillByID("gstack-office-hours")
+	if skill == nil {
+		t.Skip("gstack-office-hours not in catalog")
+	}
+
+	result := buildSkillFileContent(skill)
+
+	// Must start with frontmatter
+	assert.True(t, strings.HasPrefix(result, "---\n"))
+
+	// Name must be the catalog ID, not the original GStack name
+	assert.Contains(t, result, "name: gstack-office-hours")
+
+	// Should NOT have double frontmatter (the original "name: office-hours" should be gone)
+	assert.NotContains(t, result, "name: office-hours")
+
+	// Body content should still be present (non-trivial length beyond frontmatter)
+	fmEnd := strings.Index(result[4:], "\n---\n")
+	require.Greater(t, fmEnd, 0, "should find closing frontmatter fence")
+	body := result[4+fmEnd+5:]
+	assert.NotEmpty(t, body, "body content should survive frontmatter merging")
+}
+
+func TestBuildSkillFileContent_CRLFLineEndings(t *testing.T) {
+	skill := &models.Skill{
+		ID:          "crlf-skill",
+		Description: "CRLF test",
+		Content:     "---\r\nname: old\r\npreamble-tier: 3\r\n---\r\nBody here.",
+	}
+
+	result := buildSkillFileContent(skill)
+
+	assert.True(t, strings.HasPrefix(result, "---\n"), "should start with frontmatter fence")
+	assert.Contains(t, result, "name: crlf-skill")
+	assert.NotContains(t, result, "name: old")
+
+	// CRLF-specific fields should be preserved after normalisation
+	assert.Contains(t, result, "preamble-tier")
+	assert.Contains(t, result, "Body here.")
+}
+
+func TestBuildSkillFileContent_FrontmatterIsSequence(t *testing.T) {
+	skill := &models.Skill{
+		ID:          "seq-skill",
+		Description: "seq",
+		Content:     "---\n- item1\n- item2\n---\nBody.",
+	}
+
+	result := buildSkillFileContent(skill)
+
+	// Should fallback gracefully to fresh frontmatter, not panic
+	assert.True(t, strings.HasPrefix(result, "---\n"))
+	assert.Contains(t, result, "name: seq-skill")
+	assert.Contains(t, result, "description: seq")
+}
+
+func TestBuildSkillFileContent_EmptyContent(t *testing.T) {
+	skill := &models.Skill{
+		ID:          "empty-skill",
+		Description: "An empty skill",
+		Content:     "",
+	}
+
+	result := buildSkillFileContent(skill)
+
+	assert.True(t, strings.HasPrefix(result, "---\n"))
+	assert.Contains(t, result, "name: empty-skill")
 }
