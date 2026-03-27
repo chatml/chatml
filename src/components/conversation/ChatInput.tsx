@@ -905,16 +905,9 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
           }
           clearPendingPlanApproval(selectedConversationId);
           setApprovalError(null);
+        }
 
-          addMessage({
-            id: messageId,
-            conversationId: selectedConversationId,
-            role: 'user',
-            content: trimmedContent,
-            attachments: messageAttachments,
-            timestamp: messageTimestamp,
-          });
-        } else if (isStreaming) {
+        if ((pendingPlanApproval && selectedConversationId) || isStreaming) {
           addQueuedMessage(selectedConversationId, {
             id: messageId,
             content: trimmedContent,
