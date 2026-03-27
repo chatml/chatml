@@ -544,7 +544,9 @@ export const useSettingsStore = create<SettingsState>()(
         }
 
         // Migrate removed sprint groupBy options → project
-        if (merged.sidebarGroupBy === 'sprint' || merged.sidebarGroupBy === 'project-sprint') {
+        // Cast through string: persisted value may be a stale literal not in SidebarGroupBy
+        const groupBy = merged.sidebarGroupBy as string;
+        if (groupBy === 'sprint' || groupBy === 'project-sprint') {
           merged.sidebarGroupBy = 'project';
         }
 
