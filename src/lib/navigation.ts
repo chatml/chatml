@@ -13,6 +13,7 @@ import { useNavigationStore, type NavigationEntry } from '@/stores/navigationSto
 import { useTabStore } from '@/stores/tabStore';
 import { ENABLE_BROWSER_TABS } from '@/lib/constants';
 import { expandGroupsForSession } from '@/hooks/useSidebarSessions';
+import { useScheduledTaskStore } from '@/stores/scheduledTaskStore';
 
 /**
  * Check if a session's target conversation has messages cached in the store.
@@ -98,6 +99,14 @@ export function buildNavigationLabel(
       return 'Repositories';
     case 'session-manager':
       return 'Sessions';
+    case 'skills-store':
+      return 'Skills';
+    case 'scheduled-tasks':
+      return 'Scheduled Tasks';
+    case 'scheduled-task-detail': {
+      const task = useScheduledTaskStore.getState().tasks.find((t) => t.id === contentView.taskId);
+      return task ? task.name : 'Scheduled Task';
+    }
     default:
       return 'Unknown';
   }
@@ -171,7 +180,11 @@ function isEntryValid(entry: NavigationEntry): boolean {
       return true;
     case 'repositories':
     case 'session-manager':
+    case 'skills-store':
+    case 'scheduled-tasks':
       return true;
+    case 'scheduled-task-detail':
+      return useScheduledTaskStore.getState().tasks.some((t) => t.id === cv.taskId);
     case 'conversation':
     default:
       break;

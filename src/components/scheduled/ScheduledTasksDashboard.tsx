@@ -15,7 +15,9 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { AlertCircle, Clock, Plus, RefreshCw, MoreVertical, Play, Pencil, Trash2, Info } from 'lucide-react';
+import { navigate } from '@/lib/navigation';
 import { ScheduledTaskDialog } from './ScheduledTaskDialog';
+import { formatSchedule } from './scheduled-utils';
 import type { ScheduledTask } from '@/lib/types';
 import {
   Dialog,
@@ -25,34 +27,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-
-function formatSchedule(task: ScheduledTask): string {
-  const time = `${String(task.scheduleHour).padStart(2, '0')}:${String(task.scheduleMinute).padStart(2, '0')}`;
-  const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-
-  switch (task.frequency) {
-    case 'hourly':
-      return `Every hour at :${String(task.scheduleMinute).padStart(2, '0')}`;
-    case 'daily':
-      return `Every day at ${time}`;
-    case 'weekly':
-      return `Every ${days[task.scheduleDayOfWeek]} at ${time}`;
-    case 'monthly':
-      return `Monthly on the ${task.scheduleDayOfMonth}${ordinalSuffix(task.scheduleDayOfMonth)} at ${time}`;
-    default:
-      return `Every day at ${time}`;
-  }
-}
-
-function ordinalSuffix(n: number): string {
-  if (n >= 11 && n <= 13) return 'th';
-  switch (n % 10) {
-    case 1: return 'st';
-    case 2: return 'nd';
-    case 3: return 'rd';
-    default: return 'th';
-  }
-}
 
 export function ScheduledTasksDashboard() {
   const { tasks, isLoading, error, fetchTasks, toggleEnabled, deleteTask, triggerNow } =
@@ -208,7 +182,8 @@ export function ScheduledTasksDashboard() {
               {tasks.map((task) => (
                 <div
                   key={task.id}
-                  className="border rounded-lg p-4 bg-card hover:bg-accent/30 transition-colors"
+                  className="border rounded-lg p-4 bg-card hover:bg-accent/30 transition-colors cursor-pointer"
+                  onClick={() => navigate({ contentView: { type: 'scheduled-task-detail', taskId: task.id } })}
                 >
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0 flex-1">
@@ -233,10 +208,11 @@ export function ScheduledTasksDashboard() {
                       <Switch
                         checked={task.enabled}
                         onCheckedChange={() => toggleEnabled(task.id)}
+                        onClick={(e) => e.stopPropagation()}
                       />
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="icon" className="h-7 w-7">
+                          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={(e) => e.stopPropagation()}>
                             <MoreVertical className="w-3.5 h-3.5" />
                           </Button>
                         </DropdownMenuTrigger>

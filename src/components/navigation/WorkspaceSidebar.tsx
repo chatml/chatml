@@ -1026,40 +1026,50 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onGitHubRepos,
                           Scheduled
                         </span>
                       </div>
-                      {scheduledGroups.map((group) => (
-                        <Collapsible key={group.taskId} defaultOpen>
-                          <CollapsibleTrigger className="flex items-center gap-1.5 px-2 py-1 w-full hover:bg-surface-1 rounded-md mx-1 group/sched">
-                            <ChevronDown className="w-3 h-3 text-muted-foreground transition-transform group-data-[state=closed]/sched:-rotate-90" />
-                            <span className="text-sm font-medium truncate flex-1 text-left">{group.taskName}</span>
-                            <span className="text-[10px] text-muted-foreground shrink-0">
-                              {group.task?.frequency ? group.task.frequency.charAt(0).toUpperCase() + group.task.frequency.slice(1) : ''}
-                            </span>
-                          </CollapsibleTrigger>
-                          <CollapsibleContent>
-                            <div className="ml-3">
-                            {group.sessions.map((session) => (
-                              <ErrorBoundary
-                                key={session.id}
-                                section="SessionRow"
-                                fallback={<CardErrorFallback message="Error loading session" />}
+                      {scheduledGroups.map((group) => {
+                        const isDetailActive = contentView.type === 'scheduled-task-detail' && contentView.taskId === group.taskId;
+                        return (
+                          <Collapsible key={group.taskId} defaultOpen>
+                            <div className={`flex items-center gap-1.5 px-2 py-1 w-full rounded-md mx-1 ${isDetailActive ? 'bg-accent' : 'hover:bg-surface-1'}`}>
+                              <CollapsibleTrigger asChild>
+                                <button className="shrink-0 p-0.5 group/sched">
+                                  <ChevronDown className="w-3 h-3 text-muted-foreground transition-transform group-data-[state=closed]/sched:-rotate-90" />
+                                </button>
+                              </CollapsibleTrigger>
+                              <button
+                                className="text-sm font-medium truncate flex-1 text-left"
+                                onClick={() => navigate({ contentView: { type: 'scheduled-task-detail', taskId: group.taskId } })}
                               >
-                                <SessionRow
-                                  session={session}
-                                  contentView={contentView}
-                                  selectedSessionId={selectedSessionId}
-                                  onSelectSession={(id, e) => handleSelectSession(session.workspaceId, id, e)}
-                                  onArchiveSession={handleArchiveSession}
-                                  onTaskStatusChange={handleTaskStatusChange}
-                                  onOpenBranches={(e) => navigateToBranches(session.workspaceId, e)}
-                                  onOpenPRs={(e) => navigateToPRs(session.workspaceId, e)}
-                                  formatTimeAgo={formatTimeAgo}
-                                />
-                              </ErrorBoundary>
-                            ))}
+                                {group.taskName}
+                              </button>
+                              <span className="text-[10px] text-muted-foreground shrink-0">
+                                {group.task?.frequency ? group.task.frequency.charAt(0).toUpperCase() + group.task.frequency.slice(1) : ''}
+                              </span>
                             </div>
-                          </CollapsibleContent>
-                        </Collapsible>
-                      ))}
+                            <CollapsibleContent>
+                              {group.sessions.map((session) => {
+                                const runDate = new Date(session.createdAt ?? session.updatedAt);
+                                const dateLabel = runDate.toLocaleDateString([], { month: 'short', day: 'numeric' });
+                                const isSelected = selectedSessionId === session.id && contentView.type === 'conversation';
+                                return (
+                                  <button
+                                    key={session.id}
+                                    className={`flex items-center gap-1.5 px-2 py-1 ml-4 mr-1 rounded-md text-sm cursor-pointer w-full text-left ${isSelected ? 'bg-accent' : 'hover:bg-surface-1'}`}
+                                    onClick={(e) => handleSelectSession(session.workspaceId, session.id, e)}
+                                  >
+                                    <span className="truncate flex-1 text-muted-foreground">
+                                      {dateLabel} – {group.taskName}
+                                    </span>
+                                    <span className="text-[10px] text-muted-foreground shrink-0">
+                                      {formatTimeAgo(session.updatedAt ?? session.createdAt)}
+                                    </span>
+                                  </button>
+                                );
+                              })}
+                            </CollapsibleContent>
+                          </Collapsible>
+                        );
+                      })}
                       {flatSessions.length > 0 && (
                         <div className="mx-2 my-1.5 border-t border-border/40" />
                       )}
