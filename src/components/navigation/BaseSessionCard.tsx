@@ -100,7 +100,7 @@ export function BaseSessionCard({
                   'text-base truncate flex-1 min-w-0',
                   isSessionSelected ? 'text-foreground font-medium' : 'text-foreground/80 font-medium',
                 )}>
-                  {session.branch || session.name}
+                  {session.scheduledTaskId ? session.name : (session.branch || session.name)}
                 </span>
                 <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-500 font-medium shrink-0">
                   Base

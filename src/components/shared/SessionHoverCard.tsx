@@ -60,7 +60,7 @@ export function SessionHoverCardBody({
           <GitBranch className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
         )}
         <span className="text-sm font-medium text-foreground truncate">
-          {session.branch || session.name}
+          {session.scheduledTaskId ? session.name : (session.branch || session.name)}
         </span>
         {session.sessionType === 'base' && (
           <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-500 font-medium shrink-0">Base</span>

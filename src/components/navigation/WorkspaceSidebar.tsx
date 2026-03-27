@@ -1994,7 +1994,7 @@ function SessionRow({
                       isSessionSelected ? "text-foreground font-normal" : "text-foreground/60 font-normal",
                       isSessionUnread && !isSessionSelected && "font-medium text-foreground/80"
                     )}>
-                      {session.branch || session.name}
+                      {session.scheduledTaskId ? session.name : (session.branch || session.name)}
                     </span>
                   </div>
                   {/* Git line stats badge and actions container */}
