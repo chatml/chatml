@@ -1817,7 +1817,7 @@ function SessionRow({
   return (
     <ContextMenu onOpenChange={(open) => { if (open) setHoverOpen(false); }}>
       <ContextMenuTrigger asChild>
-        <HoverCard openDelay={500} open={hoverOpen} onOpenChange={(open) => {
+        <HoverCard openDelay={500} closeDelay={150} open={hoverOpen} onOpenChange={(open) => {
               setHoverOpen(open);
               if (open && session.scheduledTaskId) {
                 useScheduledTaskStore.getState().fetchRuns(session.scheduledTaskId);
