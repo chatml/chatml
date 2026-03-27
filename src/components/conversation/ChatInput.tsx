@@ -553,16 +553,20 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
 
   // Listen for compose-action events (e.g., Fix All review, Add to Chat)
   useAppEventListener('compose-action', ({ text, attachments: incoming }) => {
+    let didSetText = false;
     if (text) {
       const existing = plateInputRef.current?.getText() ?? '';
       if (!existing.trim()) {
         plateInputRef.current?.setText(text);
+        didSetText = true;
       }
     }
     if (incoming && incoming.length > 0) {
       setAttachments(prev => [...prev, ...incoming]);
     }
-    plateInputRef.current?.focus();
+    if (!didSetText) {
+      plateInputRef.current?.focus();
+    }
   });
 
   // Handler for toggling plan mode - also notifies the backend
