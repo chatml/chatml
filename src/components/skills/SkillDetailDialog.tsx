@@ -12,7 +12,7 @@ import { Button } from '@/components/ui/button';
 import { Loader2, AlertCircle } from 'lucide-react';
 import { getSkillContent } from '@/lib/api';
 import { CATEGORY_ICON_MAP } from './SkillsStore';
-import type { SkillDTO } from '@/lib/api';
+import type { SkillDTO, SkillCategory } from '@/lib/api';
 
 /** Strip YAML frontmatter (--- ... ---) from markdown content */
 function stripFrontmatter(md: string): string {
@@ -94,26 +94,48 @@ export function SkillDetailDialog({
   if (!skill) return null;
 
   const CategoryIcon = CATEGORY_ICON_MAP[skill.category];
+  const isGStack = skill.id.startsWith('gstack-');
+
+  const CATEGORY_LABELS: Record<SkillCategory, string> = {
+    'development': 'Development',
+    'documentation': 'Documentation',
+    'security': 'Security',
+    'version-control': 'Version Control',
+    'planning': 'Planning',
+    'deployment': 'Deployment',
+    'quality': 'Quality',
+  };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-2xl p-0 gap-0 flex flex-col h-[85vh]">
         {/* Header */}
         <div className="shrink-0 px-6 pt-6 pb-4">
-          <div className="flex items-center gap-3">
-            <div className="flex items-center justify-center h-10 w-10 rounded-full bg-muted shrink-0">
-              <CategoryIcon className="h-5 w-5 text-muted-foreground" />
+          <div className="flex items-start gap-3">
+            <div className={`flex items-center justify-center h-10 w-10 rounded-lg shrink-0 ${isGStack ? 'bg-violet-500/10' : 'bg-muted'}`}>
+              <CategoryIcon className={`h-5 w-5 ${isGStack ? 'text-violet-500' : 'text-muted-foreground'}`} />
             </div>
-            <div className="min-w-0">
+            <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2">
                 <DialogTitle>{skill.name}</DialogTitle>
-                <code className="shrink-0 text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded font-mono">
-                  /{skill.id}
-                </code>
+                {isGStack && (
+                  <span className="inline-flex items-center text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-violet-500/10 text-violet-500 shrink-0">
+                    GStack
+                  </span>
+                )}
               </div>
               <DialogDescription className="mt-0.5">
                 {skill.description}
               </DialogDescription>
+              <div className="flex items-center gap-2 mt-1.5 text-xs text-muted-foreground/60">
+                <span>{skill.author}</span>
+                <span className="text-muted-foreground/30">&middot;</span>
+                <span>{CATEGORY_LABELS[skill.category]}</span>
+                <span className="text-muted-foreground/30">&middot;</span>
+                <span>v{skill.version}</span>
+                <span className="text-muted-foreground/30">&middot;</span>
+                <code className="text-[11px] text-muted-foreground/50 font-mono">/{skill.id}</code>
+              </div>
             </div>
           </div>
         </div>

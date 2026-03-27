@@ -14,9 +14,12 @@ import {
   FileText,
   GitBranch,
   Shield,
-  Plus,
   Check,
   RefreshCw,
+  Target,
+  Rocket,
+  TestTube,
+  Download,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { SkillDetailDialog } from './SkillDetailDialog';
@@ -27,7 +30,24 @@ export const CATEGORY_ICON_MAP: Record<SkillCategory, ComponentType<{ className?
   'documentation': FileText,
   'security': Shield,
   'version-control': GitBranch,
+  'planning': Target,
+  'deployment': Rocket,
+  'quality': TestTube,
 };
+
+const CATEGORY_LABELS: Record<SkillCategory, string> = {
+  'development': 'Development',
+  'documentation': 'Documentation',
+  'security': 'Security',
+  'version-control': 'Version Control',
+  'planning': 'Planning',
+  'deployment': 'Deployment',
+  'quality': 'Quality',
+};
+
+function isGStackSkill(skill: SkillDTO): boolean {
+  return skill.id.startsWith('gstack-');
+}
 
 interface SkillRowProps {
   skill: SkillDTO;
@@ -56,30 +76,49 @@ function SkillRow({ skill, onInstallToggle, onSelect }: SkillRowProps) {
     }
   };
 
+  const gstack = isGStackSkill(skill);
+
   return (
     <div
       role="button"
       tabIndex={0}
       onClick={() => onSelect(skill)}
       onKeyDown={handleKeyDown}
-      className="flex items-center gap-3 rounded-lg px-3 py-2.5 hover:bg-accent/50 cursor-pointer transition-colors group"
+      className="flex items-start gap-3 rounded-lg px-3 py-3 hover:bg-accent/50 cursor-pointer transition-colors group"
     >
-      <div className="flex items-center justify-center h-9 w-9 rounded-full bg-amber-500/10 shrink-0">
-        <CategoryIcon className="h-4 w-4 text-nav-icon-skills" />
+      <div className={cn(
+        "flex items-center justify-center h-9 w-9 rounded-lg shrink-0 mt-0.5",
+        gstack ? "bg-violet-500/10" : "bg-amber-500/10",
+      )}>
+        <CategoryIcon className={cn("h-4 w-4", gstack ? "text-violet-500" : "text-nav-icon-skills")} />
       </div>
       <div className="flex-1 min-w-0">
-        <span className="text-sm font-medium">{skill.name}</span>
-        <p className="text-xs text-muted-foreground truncate">{skill.description}</p>
+        <div className="flex items-center gap-2">
+          <span className="text-sm font-medium">{skill.name}</span>
+          {gstack && (
+            <span className="inline-flex items-center text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-violet-500/10 text-violet-500 shrink-0">
+              GStack
+            </span>
+          )}
+        </div>
+        <p className="text-xs text-muted-foreground truncate mt-0.5">{skill.description}</p>
+        <div className="flex items-center gap-2 mt-1 text-[11px] text-muted-foreground/60">
+          <span>{skill.author}</span>
+          <span className="text-muted-foreground/30">&middot;</span>
+          <span>{CATEGORY_LABELS[skill.category]}</span>
+          <span className="text-muted-foreground/30">&middot;</span>
+          <span>v{skill.version}</span>
+        </div>
       </div>
       {skill.installed ? (
-        <div className="shrink-0">
+        <div className="shrink-0 mt-1">
           <Check className="h-4 w-4 text-green-500" />
         </div>
       ) : (
         <Button
           variant="ghost"
           size="icon"
-          className="h-7 w-7 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity"
+          className="h-7 w-7 shrink-0 mt-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
           onClick={handleInstall}
           disabled={isUpdating}
           title="Install"
@@ -87,7 +126,7 @@ function SkillRow({ skill, onInstallToggle, onSelect }: SkillRowProps) {
           {isUpdating ? (
             <RefreshCw className="h-3.5 w-3.5 animate-spin" />
           ) : (
-            <Plus className="h-4 w-4" />
+            <Download className="h-3.5 w-3.5" />
           )}
         </Button>
       )}
