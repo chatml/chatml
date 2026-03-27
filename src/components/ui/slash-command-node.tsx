@@ -64,7 +64,9 @@ export function SlashCommandInputElement(
                 <InlineComboboxItem
                   key={cmd.id}
                   value={cmd.trigger}
-                  onClick={() => onExecute(cmd)}
+                  // Defer so removeInput's Slate transforms settle before
+                  // onExecute mutates the editor (clear/setText).
+                  onClick={() => queueMicrotask(() => onExecute(cmd))}
                   className="gap-2"
                 >
                   <Icon className="size-4 shrink-0 text-muted-foreground" />
