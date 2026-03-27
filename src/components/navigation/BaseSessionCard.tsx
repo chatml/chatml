@@ -21,6 +21,7 @@ import { HoverCardPrimaryAction } from '@/components/shared/HoverCardPrimaryActi
 import { useSessionActivityState, useIsSessionUnread } from '@/stores/selectors';
 import { useAppStore } from '@/stores/appStore';
 import { useBaseSessionGitStatus } from '@/hooks/useBaseSessionGitStatus';
+import { useSessionHoverGroup, INITIAL_OPEN_DELAY } from '@/hooks/useSessionHoverGroup';
 import type { WorktreeSession } from '@/lib/types';
 import type { ContentView } from '@/stores/settingsStore';
 
@@ -49,6 +50,8 @@ export function BaseSessionCard({
   const isSessionUnread = useIsSessionUnread(sessionId);
   const lastAgentCompletedAt = useAppStore((s) => s.lastTurnCompletedAt[sessionId]);
   const [hoverOpen, setHoverOpen] = useState(false);
+  const { getOpenDelay, notifyOpen, notifyClose } = useSessionHoverGroup();
+  const [currentOpenDelay, setCurrentOpenDelay] = useState(INITIAL_OPEN_DELAY);
 
   const { gitStatus, loading } = useBaseSessionGitStatus(
     session.workspaceId,
@@ -73,11 +76,15 @@ export function BaseSessionCard({
     );
 
   return (
-    <ContextMenu onOpenChange={(open) => { if (open) setHoverOpen(false); }}>
+    <ContextMenu onOpenChange={(open) => { if (open) { setHoverOpen(false); if (hoverOpen) notifyClose(); } }}>
       <ContextMenuTrigger asChild>
-        <HoverCard openDelay={500} open={hoverOpen} onOpenChange={setHoverOpen}>
+        <HoverCard openDelay={currentOpenDelay} closeDelay={150} open={hoverOpen} onOpenChange={(open) => {
+          setHoverOpen(open);
+          if (open) { notifyOpen(); } else { notifyClose(); }
+        }}>
           <HoverCardTrigger asChild>
             <div
+              onPointerEnter={() => setCurrentOpenDelay(getOpenDelay())}
               className={cn(
                 'group relative flex flex-col gap-1 rounded-lg border px-2.5 py-2 my-0.5 cursor-pointer transition-colors',
                 isSessionSelected
