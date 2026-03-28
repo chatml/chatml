@@ -89,6 +89,8 @@ import {
   FolderGit2,
   Unlink,
   GripVertical,
+  Pin,
+  PinOff,
 } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
@@ -438,6 +440,17 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onGitHubRepos,
     updateSessionApi(session.workspaceId, sessionId, { taskStatus: status }).catch(() => {
       updateSession(sessionId, { taskStatus: prev });
       showError('Failed to update task status');
+    });
+  };
+
+  const handlePinSession = (sessionId: string) => {
+    const session = sessions.find((s) => s.id === sessionId);
+    if (!session) return;
+    const newPinned = !session.pinned;
+    updateSession(sessionId, { pinned: newPinned });
+    updateSessionApi(session.workspaceId, sessionId, { pinned: newPinned }).catch(() => {
+      updateSession(sessionId, { pinned: !newPinned });
+      showError('Failed to update pin status');
     });
   };
 
@@ -1005,6 +1018,7 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onGitHubRepos,
                               selectedSessionId={selectedSessionId}
                               onSelectSession={(id, e) => handleSelectSession(session.workspaceId, id, e)}
                               onArchiveSession={handleArchiveSession}
+                              onPinSession={handlePinSession}
                               onTaskStatusChange={handleTaskStatusChange}
                               onOpenBranches={(e) => navigateToBranches(session.workspaceId, e)}
                               onOpenPRs={(e) => navigateToPRs(session.workspaceId, e)}
@@ -1115,6 +1129,7 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onGitHubRepos,
                                 selectedSessionId={selectedSessionId}
                                 onSelectSession={(id, e) => handleSelectSession(session.workspaceId, id, e)}
                                 onArchiveSession={handleArchiveSession}
+                                onPinSession={handlePinSession}
                                 onTaskStatusChange={handleTaskStatusChange}
                                 onOpenBranches={(e) => navigateToBranches(session.workspaceId, e)}
                                 onOpenPRs={(e) => navigateToPRs(session.workspaceId, e)}
@@ -1165,6 +1180,7 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onGitHubRepos,
                             workspaceColors={workspaceColors}
                             onSelectSession={handleSelectSession}
                             onArchiveSession={handleArchiveSession}
+                            onPinSession={handlePinSession}
                             onTaskStatusChange={handleTaskStatusChange}
                             onOpenBranches={navigateToBranches}
                             onOpenPRs={navigateToPRs}
@@ -1202,6 +1218,7 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onGitHubRepos,
                               onCreateSession={() => handleCreateSession(ws.id)}
                               onSelectSession={(sessionId, event) => handleSelectSession(ws.id, sessionId, event)}
                               onArchiveSession={handleArchiveSession}
+                              onPinSession={handlePinSession}
                               onTaskStatusChange={handleTaskStatusChange}
                               onRemoveWorkspace={() => setWorkspaceToRemove({ id: ws.id, name: ws.name })}
                               onOpenBranches={(event) => navigateToBranches(ws.id, event)}
@@ -1250,6 +1267,7 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onGitHubRepos,
                               onCreateSession={() => handleCreateSession(ws.id)}
                               onSelectSession={(sessionId, event) => handleSelectSession(ws.id, sessionId, event)}
                               onArchiveSession={handleArchiveSession}
+                              onPinSession={handlePinSession}
                               onTaskStatusChange={handleTaskStatusChange}
                               onRemoveWorkspace={() => setWorkspaceToRemove({ id: ws.id, name: ws.name })}
                               onOpenBranches={(event) => navigateToBranches(ws.id, event)}
@@ -1498,6 +1516,7 @@ interface SortableWorkspaceItemProps {
   onCreateSession: () => void;
   onSelectSession: (sessionId: string, event?: React.MouseEvent) => void;
   onArchiveSession: (sessionId: string) => void;
+  onPinSession: (sessionId: string) => void;
   onTaskStatusChange: (sessionId: string, status: SessionTaskStatus) => void;
   onRemoveWorkspace: () => void;
   onOpenBranches: (event?: React.MouseEvent) => void;
@@ -1519,6 +1538,7 @@ function SortableWorkspaceItem({
   onCreateSession,
   onSelectSession,
   onArchiveSession,
+  onPinSession,
   onTaskStatusChange,
   onRemoveWorkspace,
   onOpenBranches,
@@ -1697,8 +1717,6 @@ function SortableWorkspaceItem({
                   contentView={contentView}
                   selectedSessionId={selectedSessionId}
                   onSelectSession={onSelectSession}
-                  onOpenBranches={onOpenBranches}
-                  onOpenPRs={onOpenPRs}
                   formatTimeAgo={formatTimeAgo}
                 />
               </ErrorBoundary>
@@ -1724,6 +1742,7 @@ function SortableWorkspaceItem({
                     selectedSessionId={selectedSessionId}
                     onSelectSession={onSelectSession}
                     onArchiveSession={onArchiveSession}
+                    onPinSession={onPinSession}
                     onTaskStatusChange={onTaskStatusChange}
                     onOpenBranches={onOpenBranches}
                     onOpenPRs={onOpenPRs}
@@ -1778,6 +1797,7 @@ function SessionRow({
   selectedSessionId,
   onSelectSession,
   onArchiveSession,
+  onPinSession,
   onTaskStatusChange,
   onOpenBranches,
   onOpenPRs,
@@ -1789,6 +1809,7 @@ function SessionRow({
   selectedSessionId: string | null;
   onSelectSession: (sessionId: string, event?: React.MouseEvent) => void;
   onArchiveSession: (sessionId: string) => void;
+  onPinSession: (sessionId: string) => void;
   onTaskStatusChange: (sessionId: string, status: SessionTaskStatus) => void;
   onOpenBranches?: (event?: React.MouseEvent) => void;
   onOpenPRs?: (event?: React.MouseEvent) => void;
@@ -1968,12 +1989,31 @@ function SessionRow({
         </HoverCard>
       </ContextMenuTrigger>
       <ContextMenuContent>
+        {/* Mark as read / unread — available for all sessions */}
+        <ContextMenuItem onClick={() => {
+          if (isSessionUnread) {
+            useSettingsStore.getState().markSessionRead(sessionId);
+          } else {
+            useSettingsStore.getState().markSessionUnread(sessionId);
+          }
+        }}>
+          {isSessionUnread ? 'Mark as read' : 'Mark as unread'}
+        </ContextMenuItem>
+
         {session.sessionType !== 'base' && (
           <>
+            <ContextMenuSeparator />
+            {/* Pin / Unpin */}
+            <ContextMenuItem onClick={() => onPinSession(session.id)}>
+              {session.pinned ? <PinOff className="h-4 w-4" /> : <Pin className="h-4 w-4" />}
+              {session.pinned ? 'Unpin' : 'Pin'}
+            </ContextMenuItem>
+
+            {/* Set status submenu */}
             <ContextMenuSub>
               <ContextMenuSubTrigger>
                 <TaskStatusIcon status={session.taskStatus} className="h-4 w-4" />
-                Status
+                Set status
               </ContextMenuSubTrigger>
               <ContextMenuSubContent className="w-44">
                 {TASK_STATUS_OPTIONS.map((option) => (
@@ -1990,23 +2030,12 @@ function SessionRow({
                 ))}
               </ContextMenuSubContent>
             </ContextMenuSub>
+
             <ContextMenuSeparator />
           </>
         )}
-        {/* Hidden for shipping — Branches & PR context items
-        {onOpenBranches && (
-          <ContextMenuItem onClick={() => onOpenBranches()}>
-            <GitBranch className="h-4 w-4" />
-            Branches
-          </ContextMenuItem>
-        )}
-        {onOpenPRs && (
-          <ContextMenuItem onClick={() => onOpenPRs()}>
-            <GitPullRequest className="h-4 w-4" />
-            Pull Requests
-          </ContextMenuItem>
-        )}
-        */}
+
+        {!!session.prNumber && <ContextMenuSeparator />}
         {!!session.prNumber && (
           <ContextMenuItem onClick={async () => {
             try {
@@ -2020,9 +2049,7 @@ function SessionRow({
             Unlink Pull Request
           </ContextMenuItem>
         )}
-        {/* Hidden for shipping — separator for Branches & PR items
-        {(onOpenBranches || onOpenPRs) && session.sessionType !== 'base' && <ContextMenuSeparator />}
-        */}
+
         {session.sessionType !== 'base' && (
           <ContextMenuItem onClick={() => onArchiveSession(session.id)} variant="destructive">
             <Archive className="h-4 w-4" />
@@ -2102,6 +2129,7 @@ function StatusGroupSection({
   workspaceColors,
   onSelectSession,
   onArchiveSession,
+  onPinSession,
   onTaskStatusChange,
   onOpenBranches,
   onOpenPRs,
@@ -2116,6 +2144,7 @@ function StatusGroupSection({
   workspaceColors: Record<string, string>;
   onSelectSession: (workspaceId: string, sessionId: string, event?: React.MouseEvent) => void;
   onArchiveSession: (sessionId: string) => void;
+  onPinSession: (sessionId: string) => void;
   onTaskStatusChange: (sessionId: string, status: SessionTaskStatus) => void;
   onOpenBranches: (workspaceId: string, event?: React.MouseEvent) => void;
   onOpenPRs: (workspaceId: string, event?: React.MouseEvent) => void;
@@ -2152,6 +2181,7 @@ function StatusGroupSection({
                   selectedSessionId={selectedSessionId}
                   onSelectSession={(id, e) => onSelectSession(session.workspaceId, id, e)}
                   onArchiveSession={onArchiveSession}
+                  onPinSession={onPinSession}
                   onTaskStatusChange={onTaskStatusChange}
                   onOpenBranches={(e) => onOpenBranches(session.workspaceId, e)}
                   onOpenPRs={(e) => onOpenPRs(session.workspaceId, e)}
@@ -2178,6 +2208,7 @@ interface SortableProjectStatusItemProps {
   onCreateSession: () => void;
   onSelectSession: (sessionId: string, event?: React.MouseEvent) => void;
   onArchiveSession: (sessionId: string) => void;
+  onPinSession: (sessionId: string) => void;
   onTaskStatusChange: (sessionId: string, status: SessionTaskStatus) => void;
   onRemoveWorkspace: () => void;
   onOpenBranches: (event?: React.MouseEvent) => void;
@@ -2200,6 +2231,7 @@ function SortableProjectStatusItem({
   onCreateSession,
   onSelectSession,
   onArchiveSession,
+  onPinSession,
   onTaskStatusChange,
   onRemoveWorkspace,
   onOpenBranches,
@@ -2366,8 +2398,6 @@ function SortableProjectStatusItem({
                       contentView={contentView}
                       selectedSessionId={selectedSessionId}
                       onSelectSession={onSelectSession}
-                      onOpenBranches={onOpenBranches}
-                      onOpenPRs={onOpenPRs}
                       formatTimeAgo={formatTimeAgo}
                     />
                   </ErrorBoundary>
@@ -2415,6 +2445,7 @@ function SortableProjectStatusItem({
                                 selectedSessionId={selectedSessionId}
                                 onSelectSession={onSelectSession}
                                 onArchiveSession={onArchiveSession}
+                                onPinSession={onPinSession}
                                 onTaskStatusChange={onTaskStatusChange}
                                 onOpenBranches={onOpenBranches}
                                 onOpenPRs={onOpenPRs}

@@ -3,8 +3,6 @@
 import { useState } from 'react';
 import {
   FolderGit2,
-  GitBranch,
-  GitPullRequest,
   MessageCircleQuestion,
   ClipboardCheck,
 } from 'lucide-react';
@@ -20,18 +18,16 @@ import { SessionHoverCardBody } from '@/components/shared/SessionHoverCard';
 import { HoverCardPrimaryAction } from '@/components/shared/HoverCardPrimaryAction';
 import { useSessionActivityState, useIsSessionUnread } from '@/stores/selectors';
 import { useAppStore } from '@/stores/appStore';
+import { useSettingsStore, type ContentView } from '@/stores/settingsStore';
 import { useBaseSessionGitStatus } from '@/hooks/useBaseSessionGitStatus';
 import { useSessionHoverGroup, INITIAL_OPEN_DELAY } from '@/hooks/useSessionHoverGroup';
 import type { WorktreeSession } from '@/lib/types';
-import type { ContentView } from '@/stores/settingsStore';
 
 interface BaseSessionCardProps {
   session: WorktreeSession;
   contentView: ContentView;
   selectedSessionId: string | null;
   onSelectSession: (sessionId: string, event?: React.MouseEvent) => void;
-  onOpenBranches?: (event?: React.MouseEvent) => void;
-  onOpenPRs?: (event?: React.MouseEvent) => void;
   formatTimeAgo: (date: string) => string;
 }
 
@@ -40,8 +36,6 @@ export function BaseSessionCard({
   contentView,
   selectedSessionId,
   onSelectSession,
-  onOpenBranches,
-  onOpenPRs,
   formatTimeAgo,
 }: BaseSessionCardProps) {
   const isSessionSelected = contentView.type === 'conversation' && selectedSessionId === session.id;
@@ -52,6 +46,14 @@ export function BaseSessionCard({
   const [hoverOpen, setHoverOpen] = useState(false);
   const { getOpenDelay, notifyOpen, notifyClose } = useSessionHoverGroup();
   const [currentOpenDelay, setCurrentOpenDelay] = useState(INITIAL_OPEN_DELAY);
+
+  const handleToggleRead = () => {
+    if (isSessionUnread) {
+      useSettingsStore.getState().markSessionRead(sessionId);
+    } else {
+      useSettingsStore.getState().markSessionUnread(sessionId);
+    }
+  };
 
   const { gitStatus, loading } = useBaseSessionGitStatus(
     session.workspaceId,
@@ -135,20 +137,9 @@ export function BaseSessionCard({
         </HoverCard>
       </ContextMenuTrigger>
       <ContextMenuContent>
-        {/* Hidden for shipping — Branches & PR context menu items
-        {onOpenBranches && (
-          <ContextMenuItem onClick={() => onOpenBranches()}>
-            <GitBranch className="h-4 w-4" />
-            Branches
-          </ContextMenuItem>
-        )}
-        {onOpenPRs && (
-          <ContextMenuItem onClick={() => onOpenPRs()}>
-            <GitPullRequest className="h-4 w-4" />
-            Pull Requests
-          </ContextMenuItem>
-        )}
-        */}
+        <ContextMenuItem onClick={handleToggleRead}>
+          {isSessionUnread ? 'Mark as read' : 'Mark as unread'}
+        </ContextMenuItem>
       </ContextMenuContent>
     </ContextMenu>
   );
