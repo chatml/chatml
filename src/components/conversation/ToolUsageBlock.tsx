@@ -214,7 +214,10 @@ export const ToolUsageBlock = memo(function ToolUsageBlock({
       case 'TodoWrite':
         return 'Update tasks';
       case 'ExitPlanMode':
-        return isActive ? 'Propose Plan' : 'Exiting Plan mode';
+        if (isActive) return 'Propose Plan';
+        return success === false ? 'Plan revision requested' : 'Exiting Plan mode';
+      case 'EnterPlanMode':
+        return 'Entering Plan mode';
       case 'Skill':
         return 'Loading Skill';
       default:
@@ -366,6 +369,7 @@ export const ToolUsageBlock = memo(function ToolUsageBlock({
 
   const additionalParams = formatParams();
   const showExpandable = hasDetails || hasOutput;
+  const isPlanDenial = tool === 'ExitPlanMode' && success === false;
 
   return (
     <>
@@ -383,17 +387,19 @@ export const ToolUsageBlock = memo(function ToolUsageBlock({
             <span className="block w-2 h-2 rounded-full border-[1.5px] border-primary border-t-transparent animate-spin" />
           ) : success === true ? (
             <Circle className="w-2 h-2 fill-text-success text-text-success" />
-          ) : success === false ? (
+          ) : success === false && !isPlanDenial ? (
             <Circle className="w-2 h-2 fill-text-error text-text-error" />
+          ) : success === false && isPlanDenial ? (
+            <Circle className="w-2 h-2 fill-muted-foreground/50 text-muted-foreground/50" />
           ) : (
             <Circle className="w-2 h-2 fill-muted-foreground/50 text-muted-foreground/50" />
           )}
         </span>
 
         {/* Tool icon and label */}
-        <ToolIcon className={cn('w-3 h-3 shrink-0', success === false ? 'text-text-error' : 'text-muted-foreground')} />
-        <span className={cn('font-medium shrink-0 whitespace-nowrap', success === false ? 'text-text-error' : 'text-foreground')}>{getToolLabel()}</span>
-        {success === false && (
+        <ToolIcon className={cn('w-3 h-3 shrink-0', success === false && !isPlanDenial ? 'text-text-error' : 'text-muted-foreground')} />
+        <span className={cn('font-medium shrink-0 whitespace-nowrap', success === false && !isPlanDenial ? 'text-text-error' : 'text-foreground')}>{getToolLabel()}</span>
+        {success === false && !isPlanDenial && (
           <span className="text-2xs px-1 py-0.5 rounded bg-text-error/10 text-text-error font-medium shrink-0">
             Error
           </span>
