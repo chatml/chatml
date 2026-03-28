@@ -1716,8 +1716,6 @@ function SortableWorkspaceItem({
                   contentView={contentView}
                   selectedSessionId={selectedSessionId}
                   onSelectSession={onSelectSession}
-                  onOpenBranches={onOpenBranches}
-                  onOpenPRs={onOpenPRs}
                   formatTimeAgo={formatTimeAgo}
                 />
               </ErrorBoundary>
@@ -2391,8 +2389,6 @@ function SortableProjectStatusItem({
                       contentView={contentView}
                       selectedSessionId={selectedSessionId}
                       onSelectSession={onSelectSession}
-                      onOpenBranches={onOpenBranches}
-                      onOpenPRs={onOpenPRs}
                       formatTimeAgo={formatTimeAgo}
                     />
                   </ErrorBoundary>
