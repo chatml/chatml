@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useAppStore } from '@/stores/appStore';
 import { useScheduledTaskStore } from '@/stores/scheduledTaskStore';
 import { useShallow } from 'zustand/react/shallow';
@@ -23,6 +23,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { AlertCircle, Info } from 'lucide-react';
+import { MODELS as SHARED_MODELS, toShortDisplayName, getModelDescription, isDefaultRecommended, deduplicateById, deduplicateByName, sortModelEntries } from '@/lib/models';
 import type { ScheduledTask, ScheduledTaskFrequency } from '@/lib/types';
 
 interface ScheduledTaskDialogProps {
@@ -57,7 +58,18 @@ const DAY_OF_WEEK_OPTIONS = [
 
 export function ScheduledTaskDialog({ open, onOpenChange, editTask }: ScheduledTaskDialogProps) {
   const workspaces = useAppStore(useShallow((s) => s.workspaces));
+  const dynamicModels = useAppStore(useShallow((s) => s.supportedModels));
   const { createTask, updateTask } = useScheduledTaskStore();
+
+  const modelOptions = useMemo(() => {
+    if (dynamicModels.length === 0) {
+      return SHARED_MODELS.map((m) => ({ id: m.id, name: m.name, description: m.description }));
+    }
+    const entries = dynamicModels
+      .filter((m) => !isDefaultRecommended(m.displayName))
+      .map((m) => ({ id: m.value, name: toShortDisplayName(m.value, m.displayName), description: getModelDescription(m.value) }));
+    return sortModelEntries(deduplicateByName(deduplicateById(entries)));
+  }, [dynamicModels]);
 
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
@@ -234,11 +246,26 @@ export function ScheduledTaskDialog({ open, onOpenChange, editTask }: ScheduledT
               </div>
               <div className="space-y-1.5">
                 <label className="text-sm font-medium">Model</label>
-                <Input
-                  value={model}
-                  onChange={(e) => setModel(e.target.value)}
-                  placeholder="claude-opus-4-6"
-                />
+                <Select value={model} onValueChange={setModel}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Default" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value=" " textValue="Default">
+                      <span className="text-muted-foreground">Default</span>
+                    </SelectItem>
+                    {modelOptions.map((m) => (
+                      <SelectItem key={m.id} value={m.id} textValue={m.name}>
+                        <div className="flex flex-col">
+                          <span>{m.name}</span>
+                          {m.description && (
+                            <span className="text-xs text-muted-foreground">{m.description}</span>
+                          )}
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
             </div>
 
