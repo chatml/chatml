@@ -81,7 +81,7 @@ type Manager struct {
 	worktreeManager *git.WorktreeManager
 	backendPort     int             // port the Go backend is listening on
 	processes       map[string]*Process // keyed by agentID (legacy)
-	convProcesses   map[string]*Process // keyed by conversationID
+	convProcesses   map[string]ConversationBackend // keyed by conversationID
 	mu              sync.RWMutex
 	autoNameMu      sync.Mutex // serializes AutoNamed claim to prevent duplicate title generation
 
@@ -119,6 +119,10 @@ type Manager struct {
 	// titleGenSem limits concurrent title generation API calls to avoid
 	// bursting when multiple goroutines unblock after credReadyCh closes.
 	titleGenSem chan struct{}
+
+	// nativeBackendFactory creates native Go loop backends. Set at startup
+	// via SetNativeBackendFactory to avoid circular imports.
+	nativeBackendFactory NativeBackendFactory
 }
 
 func NewManager(ctx context.Context, s *store.SQLiteStore, wm *git.WorktreeManager, backendPort int) *Manager {
@@ -128,7 +132,7 @@ func NewManager(ctx context.Context, s *store.SQLiteStore, wm *git.WorktreeManag
 		worktreeManager: wm,
 		backendPort:     backendPort,
 		processes:       make(map[string]*Process),
-		convProcesses:   make(map[string]*Process),
+		convProcesses:   make(map[string]ConversationBackend),
 		credReadyCh:     make(chan struct{}),
 		titleGenSem:     make(chan struct{}, 3),
 	}
@@ -182,6 +186,14 @@ func (m *Manager) SetOnPRMerged(handler func(sessionID string)) {
 	m.onPRMerged = handler
 }
 
+// Backend identifies which conversation backend to use.
+const (
+	// BackendAgentRunner uses the existing agent-runner Node.js child process (default).
+	BackendAgentRunner = "agent-runner"
+	// BackendNative uses the new native Go agentic loop.
+	BackendNative = "native"
+)
+
 // StartConversationOptions contains optional parameters for starting a conversation
 type StartConversationOptions struct {
 	MaxThinkingTokens int                 // Enable extended thinking with this token budget
@@ -192,6 +204,7 @@ type StartConversationOptions struct {
 	Instructions      string              // Additional instructions (e.g., from conversation summaries)
 	Model             string              // Model name override (e.g., "claude-opus-4-6", "claude-sonnet-4-6")
 	PermissionMode    string              // Permission mode: default, acceptEdits, bypassPermissions, dontAsk (empty = bypassPermissions)
+	Backend           string              // Backend type: "agent-runner" (default) or "native" (Go loop)
 }
 
 // StartConversation creates and starts a new conversation within a session
@@ -370,14 +383,34 @@ func (m *Manager) StartConversation(ctx context.Context, sessionID, conversation
 		procOpts.AgentsJSON = agentsJSON
 	}
 
-	// Create and start process
-	proc := NewProcessWithOptions(procOpts)
+	// Determine which backend to use for this conversation.
+	backendType := BackendAgentRunner
+	if opts != nil && opts.Backend == BackendNative {
+		backendType = BackendNative
+	} else if os.Getenv("CHATML_NATIVE_LOOP") == "1" {
+		backendType = BackendNative
+	}
+
+	// Create and start the conversation backend
+	var backend ConversationBackend
+	if backendType == BackendNative {
+		nativeBackend, provErr := m.createNativeBackend(ctx, procOpts)
+		if provErr != nil {
+			logger.Manager.Warnf("Failed to create native backend, falling back to agent-runner: %v", provErr)
+			backendType = BackendAgentRunner
+		} else {
+			backend = nativeBackend
+		}
+	}
+	if backendType == BackendAgentRunner {
+		backend = NewProcessWithOptions(procOpts)
+	}
 
 	m.mu.Lock()
-	m.convProcesses[convID] = proc
+	m.convProcesses[convID] = backend
 	m.mu.Unlock()
 
-	if err := proc.Start(); err != nil {
+	if err := backend.Start(); err != nil {
 		if updateErr := m.store.UpdateConversation(ctx, convID, func(c *models.Conversation) {
 			c.Status = models.ConversationStatusIdle
 		}); updateErr != nil {
@@ -386,14 +419,14 @@ func (m *Manager) StartConversation(ctx context.Context, sessionID, conversation
 		if m.onConversationStatus != nil {
 			m.onConversationStatus(convID, models.ConversationStatusIdle)
 		}
-		return conv, fmt.Errorf("failed to start agent process: %w", err)
+		return conv, fmt.Errorf("failed to start agent backend: %w", err)
 	}
 
 	// Handle output streaming
-	go m.handleConversationOutput(convID, proc)
+	go m.handleConversationOutput(convID, backend)
 
 	// Handle completion
-	go m.handleConversationCompletion(convID, proc)
+	go m.handleConversationCompletion(convID, backend)
 
 	// Auto-transition session taskStatus from "backlog" to "in_progress" when agent starts working
 	if session.TaskStatus == models.TaskStatusBacklog {
@@ -438,7 +471,7 @@ func (m *Manager) StartConversation(ctx context.Context, sessionID, conversation
 			}
 		}
 
-		if err := proc.SendMessageWithAttachments(initialMessage, attachments); err != nil {
+		if err := backend.SendMessageWithAttachments(initialMessage, attachments); err != nil {
 			return conv, fmt.Errorf("failed to send initial message: %w", err)
 		}
 
@@ -474,7 +507,7 @@ func (m *Manager) storePendingUserMessage(ctx context.Context, convID string, pe
 // handleConversationOutput processes output from the agent process.
 // Note: Uses the app-level context so background work is cancelled on shutdown.
 // Store errors are logged but not propagated since this is async processing.
-func (m *Manager) handleConversationOutput(convID string, proc *Process) {
+func (m *Manager) handleConversationOutput(convID string, proc ConversationBackend) {
 	ctx := m.ctx
 	var currentAssistantMessage string
 	var lastReportedDrops uint64
@@ -1350,11 +1383,13 @@ outer:
 					go m.refreshCachedCredentials(event.ApiKeySource)
 				}
 
-				if err := proc.GetSupportedCommands(); err != nil {
-					logger.Manager.Errorf("Conversation %s: failed to request supported commands: %v", convID, err)
-				}
-				if err := proc.GetSupportedModels(); err != nil {
-					logger.Manager.Errorf("Conversation %s: failed to request supported models: %v", convID, err)
+				if p, isProcess := proc.(*Process); isProcess {
+					if err := p.GetSupportedCommands(); err != nil {
+						logger.Manager.Errorf("Conversation %s: failed to request supported commands: %v", convID, err)
+					}
+					if err := p.GetSupportedModels(); err != nil {
+						logger.Manager.Errorf("Conversation %s: failed to request supported models: %v", convID, err)
+					}
 				}
 				// Retry after delay — plugins may still be loading during init.
 				// The frontend merges responses, so a second call enriches rather
@@ -1393,8 +1428,11 @@ outer:
 			flushSnapshot(ctx)
 
 		case <-dropCheckTicker.C:
-			// Check for new drops and emit warning out-of-band
-			currentDrops := proc.DroppedMessages()
+			// Check for new drops and emit warning out-of-band (Process-only)
+			var currentDrops uint64
+			if p, isProcess := proc.(*Process); isProcess {
+				currentDrops = p.DroppedMessages()
+			}
 			if currentDrops > lastReportedDrops {
 				newDrops := currentDrops - lastReportedDrops
 				lastReportedDrops = currentDrops
@@ -1539,8 +1577,11 @@ outer:
 		}
 	}
 
-	// Emit final drop stats if any drops occurred
-	finalDrops := proc.DroppedMessages()
+	// Emit final drop stats if any drops occurred (Process-only)
+	var finalDrops uint64
+	if p, isProcess := proc.(*Process); isProcess {
+		finalDrops = p.DroppedMessages()
+	}
 	if finalDrops > 0 {
 		logger.Manager.Warnf("Conversation %s: process ended with %d total dropped messages", convID, finalDrops)
 		if finalDrops > lastReportedDrops && m.onConversationEvent != nil {
@@ -1557,7 +1598,7 @@ outer:
 
 // handleConversationCompletion handles process completion.
 // Uses a detached context for persistence so data is flushed even during shutdown.
-func (m *Manager) handleConversationCompletion(convID string, proc *Process) {
+func (m *Manager) handleConversationCompletion(convID string, proc ConversationBackend) {
 	ctx := m.ctx
 	appShutdown := false
 	select {
@@ -1579,7 +1620,15 @@ func (m *Manager) handleConversationCompletion(convID string, proc *Process) {
 	flushCtx, flushCancel := context.WithTimeout(context.Background(), 1*time.Second)
 	defer flushCancel()
 
-	exitErr := proc.ExitError()
+	// Process-specific crash diagnostics (ExitError, LastStderrLines).
+	// The Runner backend doesn't have these — it runs in-process and emits errors via events.
+	var exitErr error
+	var stderrLinesFn func() []string
+	if p, isProcess := proc.(*Process); isProcess {
+		exitErr = p.ExitError()
+		stderrLinesFn = p.LastStderrLines
+	}
+
 	var synthesizedError string
 
 	if exitErr != nil {
@@ -1588,10 +1637,11 @@ func (m *Manager) handleConversationCompletion(convID string, proc *Process) {
 		// If the agent-runner didn't emit its own error event, synthesize one
 		// so the frontend shows a useful message instead of silently going idle.
 		if !proc.SawErrorEvent() {
-			stderrLines := proc.LastStderrLines()
 			synthesizedError = "Claude Code process exited with code 1"
-			if len(stderrLines) > 0 {
-				synthesizedError += ": " + strings.Join(stderrLines, "\n")
+			if stderrLinesFn != nil {
+				if stderrLines := stderrLinesFn(); len(stderrLines) > 0 {
+					synthesizedError += ": " + strings.Join(stderrLines, "\n")
+				}
 			}
 		}
 	} else if appShutdown {
@@ -1606,10 +1656,11 @@ func (m *Manager) handleConversationCompletion(convID string, proc *Process) {
 	// Only fires if the crash fallback above didn't already synthesize an error.
 	// Skip during app shutdown — the partial output is handled by handleConversationOutput.
 	if synthesizedError == "" && !appShutdown && !proc.ProducedOutput() && !proc.SawErrorEvent() {
-		stderrLines := proc.LastStderrLines()
 		synthesizedError = "The agent process exited without producing any response"
-		if len(stderrLines) > 0 {
-			synthesizedError += ": " + strings.Join(stderrLines, "\n")
+		if stderrLinesFn != nil {
+			if stderrLines := stderrLinesFn(); len(stderrLines) > 0 {
+				synthesizedError += ": " + strings.Join(stderrLines, "\n")
+			}
 		}
 		logger.Manager.Warnf("Conversation %s zero-output safety net triggered", convID)
 	}
@@ -1673,7 +1724,9 @@ func (m *Manager) SendConversationMessage(ctx context.Context, convID, message s
 		// Capture previous exit error for logging before we replace the process
 		var prevExitErr error
 		if ok && proc != nil {
-			prevExitErr = proc.ExitError()
+			if p, isProcess := proc.(*Process); isProcess {
+				prevExitErr = p.ExitError()
+			}
 		}
 
 		// Retrieve original options from the old process (if any) so we preserve
@@ -1883,7 +1936,9 @@ func (m *Manager) SendConversationMessage(ctx context.Context, convID, message s
 	if err := proc.SendMessageWithAttachments(message, attachments); err != nil {
 		// Discard the pending message — it was never delivered to the agent,
 		// so it should not be flushed to the DB later.
-		proc.TakePendingUserMessage()
+		if p, isProcess := proc.(*Process); isProcess {
+			p.TakePendingUserMessage()
+		}
 		logger.Manager.Errorf("Failed to send message to conv %s: %v (attachments=%d)", convID, err, len(attachments))
 		return err
 	}
@@ -2036,7 +2091,10 @@ func (m *Manager) RewindConversationFiles(convID, checkpointUuid string) error {
 		return fmt.Errorf("conversation process not running: %s", convID)
 	}
 
-	return proc.RewindFiles(checkpointUuid)
+	if p, isProcess := proc.(*Process); isProcess {
+		return p.RewindFiles(checkpointUuid)
+	}
+	return fmt.Errorf("RewindFiles not supported on this backend")
 }
 
 // SetConversationPlanMode sets the permission mode for a conversation
@@ -2136,9 +2194,12 @@ func (m *Manager) GetConversationDropStats(convID string) map[string]uint64 {
 		return nil
 	}
 
-	return map[string]uint64{
-		"droppedMessages": proc.DroppedMessages(),
+	if p, isProcess := proc.(*Process); isProcess {
+		return map[string]uint64{
+			"droppedMessages": p.DroppedMessages(),
+		}
 	}
+	return map[string]uint64{}
 }
 
 // StopConversation stops a running conversation
@@ -2211,8 +2272,20 @@ func (m *Manager) InsertProcessForTest(convID string, proc *Process) {
 	m.mu.Unlock()
 }
 
-// GetConversationProcess returns the process for a conversation
+// GetConversationProcess returns the process for a conversation.
+// Returns nil if the conversation is not running or is not backed by a Process.
 func (m *Manager) GetConversationProcess(convID string) *Process {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	backend := m.convProcesses[convID]
+	if p, ok := backend.(*Process); ok {
+		return p
+	}
+	return nil
+}
+
+// GetConversationBackend returns the ConversationBackend for a conversation.
+func (m *Manager) GetConversationBackend(convID string) ConversationBackend {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	return m.convProcesses[convID]
@@ -3418,4 +3491,54 @@ func parseModelUsage(raw map[string]interface{}) map[string]*models.ModelUsageIn
 		return nil
 	}
 	return result
+}
+
+// --- Native Go loop helpers ---
+
+// NativeBackendFactory is a factory function that creates a ConversationBackend
+// backed by the native Go agentic loop. It is set at app startup to avoid
+// circular imports between the agent and loop packages.
+//
+// The factory receives ProcessOptions and AI credentials (apiKey or oauthToken)
+// and returns a ConversationBackend (a *loop.Runner).
+type NativeBackendFactory func(opts ProcessOptions, apiKey, oauthToken string) (ConversationBackend, error)
+
+// SetNativeBackendFactory registers the factory for creating native Go loop backends.
+// Call this at app startup after importing the loop package.
+func (m *Manager) SetNativeBackendFactory(factory NativeBackendFactory) {
+	m.nativeBackendFactory = factory
+}
+
+// createNativeBackend creates a ConversationBackend backed by the native Go agentic loop.
+func (m *Manager) createNativeBackend(ctx context.Context, opts ProcessOptions) (ConversationBackend, error) {
+	if m.nativeBackendFactory == nil {
+		return nil, fmt.Errorf("native backend factory not registered")
+	}
+
+	// Extract credentials from the ai.Client
+	client := m.newAIClient()
+	if client == nil {
+		return nil, fmt.Errorf("no AI credentials available for native loop")
+	}
+
+	type authExporter interface {
+		AuthHeader() string
+		AuthValue() string
+	}
+
+	exporter, ok := client.(authExporter)
+	if !ok {
+		return nil, fmt.Errorf("AI client does not export auth credentials")
+	}
+
+	header := exporter.AuthHeader()
+	value := exporter.AuthValue()
+	var apiKey, oauthToken string
+	if header == "Authorization" {
+		oauthToken = strings.TrimPrefix(value, "Bearer ")
+	} else {
+		apiKey = value
+	}
+
+	return m.nativeBackendFactory(opts, apiKey, oauthToken)
 }

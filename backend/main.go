@@ -15,6 +15,7 @@ import (
 
 	"github.com/chatml/chatml-backend/agent"
 	"github.com/chatml/chatml-backend/appdir"
+	"github.com/chatml/chatml-backend/loop"
 	"github.com/chatml/chatml-backend/branch"
 	"github.com/chatml/chatml-backend/git"
 	"github.com/chatml/chatml-backend/github"
@@ -148,6 +149,7 @@ func main() {
 	}()
 
 	agentMgr := agent.NewManager(ctx, s, wm, actualPort)
+	agentMgr.SetNativeBackendFactory(loop.NewBackendFactory())
 	if err := agentMgr.Init(ctx); err != nil {
 		logger.Main.Errorf("Agent manager init: %v", err)
 	}

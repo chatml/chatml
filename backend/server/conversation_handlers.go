@@ -856,15 +856,15 @@ func (h *Handlers) ApproveTool(w http.ResponseWriter, r *http.Request) {
 		req.UpdatedInput = nil
 	}
 
-	// Get the process for this conversation
-	proc := h.agentManager.GetConversationProcess(convID)
-	if proc == nil {
-		writeNotFound(w, "no active process for conversation")
+	// Get the backend for this conversation (works for both Process and Runner)
+	backend := h.agentManager.GetConversationBackend(convID)
+	if backend == nil {
+		writeNotFound(w, "no active backend for conversation")
 		return
 	}
 
-	// Send the approval/denial to the agent process
-	if err := proc.SendToolApprovalResponse(req.RequestID, req.Action, req.Specifier, req.UpdatedInput); err != nil {
+	// Send the approval/denial to the conversation backend
+	if err := backend.SendToolApprovalResponse(req.RequestID, req.Action, req.Specifier, req.UpdatedInput); err != nil {
 		writeInternalError(w, "failed to send tool approval", err)
 		return
 	}
