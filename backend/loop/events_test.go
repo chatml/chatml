@@ -186,6 +186,31 @@ func TestEmitter_JSONFormat(t *testing.T) {
 	assert.Equal(t, "test", event.Content)
 }
 
+func TestEmitter_EmitToolApprovalRequest(t *testing.T) {
+	e, ch := newTestEmitter()
+
+	toolInput := map[string]interface{}{"command": "rm -rf /"}
+	e.emitToolApprovalRequest("tar-1-12345", "Bash", toolInput, "rm -rf /")
+
+	event := readEvent(t, ch)
+	assert.Equal(t, "tool_approval_request", event.Type)
+	assert.Equal(t, "tar-1-12345", event.RequestID)
+	assert.Equal(t, "Bash", event.ToolName)
+	assert.Equal(t, "rm -rf /", event.Specifier)
+	assert.NotNil(t, event.ToolInput)
+}
+
+func TestEmitter_EmitToolApprovalRequest_NilInput(t *testing.T) {
+	e, ch := newTestEmitter()
+	e.emitToolApprovalRequest("tar-2-99999", "Write", nil, "/etc/passwd")
+
+	event := readEvent(t, ch)
+	assert.Equal(t, "tool_approval_request", event.Type)
+	assert.Equal(t, "tar-2-99999", event.RequestID)
+	assert.Equal(t, "Write", event.ToolName)
+	assert.Equal(t, "/etc/passwd", event.Specifier)
+}
+
 func TestEmitter_SpecialCharacters(t *testing.T) {
 	e, ch := newTestEmitter()
 	e.emitAssistantText("Hello \"world\" \n\ttab & <html>")

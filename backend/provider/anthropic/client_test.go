@@ -278,3 +278,76 @@ func TestConvertTools(t *testing.T) {
 	assert.Equal(t, "Run a shell command", result[0]["description"])
 	assert.NotNil(t, result[0]["input_schema"])
 }
+
+func TestCountTokens_CancelledContext(t *testing.T) {
+	c, _ := New(Config{APIKey: "sk-test"})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // Cancel immediately
+
+	_, err := c.CountTokens(ctx, []provider.Message{
+		{Role: provider.RoleUser, Content: []provider.ContentBlock{provider.NewTextBlock("hello")}},
+	})
+	assert.Error(t, err)
+}
+
+func TestStreamChat_RetryOnTransientError(t *testing.T) {
+	calls := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		if calls == 1 {
+			w.WriteHeader(http.StatusBadGateway) // 502 — retryable
+			w.Write([]byte(`{"error":"bad gateway"}`))
+			return
+		}
+		// Success on second attempt
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Write([]byte("event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"usage\":{\"input_tokens\":10}}}\n\n"))
+		w.Write([]byte("event: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\n"))
+		w.Write([]byte("event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"text\":\"ok\"}}\n\n"))
+		w.Write([]byte("event: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":0}\n\n"))
+		w.Write([]byte("event: message_delta\ndata: {\"delta\":{\"stop_reason\":\"end_turn\"},\"usage\":{\"output_tokens\":1}}\n\n"))
+		w.Write([]byte("event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n"))
+	}))
+	defer srv.Close()
+
+	c, _ := New(Config{APIKey: "sk-test", APIURL: srv.URL})
+
+	ch, err := c.StreamChat(context.Background(), provider.ChatRequest{
+		Messages: []provider.Message{
+			{Role: provider.RoleUser, Content: []provider.ContentBlock{provider.NewTextBlock("hi")}},
+		},
+	})
+	require.NoError(t, err)
+
+	// Should have retried and succeeded
+	var gotText bool
+	for ev := range ch {
+		if ev.Type == provider.EventTextDelta && ev.Text == "ok" {
+			gotText = true
+		}
+	}
+	assert.True(t, gotText)
+	assert.Equal(t, 2, calls)
+}
+
+func TestStreamChat_OAuthBetaHeader(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "Bearer oauth-token", r.Header.Get("Authorization"))
+		assert.Equal(t, oauthBetaHeader, r.Header.Get("anthropic-beta"))
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Write([]byte("event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"usage\":{\"input_tokens\":1}}}\n\n"))
+		w.Write([]byte("event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n"))
+	}))
+	defer srv.Close()
+
+	c, err := New(Config{OAuthToken: "oauth-token", APIURL: srv.URL})
+	require.NoError(t, err)
+
+	_, err = c.StreamChat(context.Background(), provider.ChatRequest{
+		Messages: []provider.Message{
+			{Role: provider.RoleUser, Content: []provider.ContentBlock{provider.NewTextBlock("hi")}},
+		},
+	})
+	assert.NoError(t, err)
+}

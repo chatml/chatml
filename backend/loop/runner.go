@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -12,6 +13,7 @@ import (
 	"github.com/chatml/chatml-backend/agent"
 	"github.com/chatml/chatml-backend/models"
 	"github.com/chatml/chatml-backend/permission"
+	"github.com/chatml/chatml-backend/prompt"
 	"github.com/chatml/chatml-backend/provider"
 	"github.com/chatml/chatml-backend/tool"
 )
@@ -58,6 +60,9 @@ type Runner struct {
 
 	// Emitter for producing AgentEvent JSON
 	emitter *emitter
+
+	// System prompt builder
+	promptBuilder *prompt.Builder
 
 	// Permission engine
 	permEngine       *permission.Engine
@@ -133,6 +138,7 @@ func NewRunnerFull(opts agent.ProcessOptions, prov provider.Provider, registry *
 		planModeActive: opts.PlanMode,
 		fastMode:       opts.FastMode,
 		emitter:        &emitter{ch: output},
+		promptBuilder:  prompt.NewBuilder(opts.Workdir, opts.Model, opts.Instructions),
 		permEngine:     permEngine,
 	}
 }
@@ -240,7 +246,40 @@ func (r *Runner) executeTurn(ctx context.Context, userContent string, attachment
 	var contentBlocks []provider.ContentBlock
 	contentBlocks = append(contentBlocks, provider.NewTextBlock(userContent))
 
-	// TODO: Handle attachments (images, files) by adding appropriate content blocks
+	// Convert attachments to content blocks
+	for _, att := range attachments {
+		switch {
+		case strings.HasPrefix(att.MimeType, "image/"):
+			if att.Base64Data != "" {
+				contentBlocks = append(contentBlocks, provider.ContentBlock{
+					Type:       provider.BlockImage,
+					MediaType:  att.MimeType,
+					Base64Data: att.Base64Data,
+				})
+			}
+		default:
+			// Text/file attachments — read from path or use preview
+			label := att.Name
+			if label == "" {
+				label = "attachment"
+			}
+			content := att.Preview
+			if content == "" && att.Path != "" {
+				if data, err := os.ReadFile(att.Path); err == nil {
+					content = string(data)
+					// Limit to 100KB for text attachments
+					if len(content) > 100*1024 {
+						content = content[:100*1024] + "\n... (attachment truncated)"
+					}
+				}
+			}
+			if content != "" {
+				contentBlocks = append(contentBlocks, provider.NewTextBlock(
+					fmt.Sprintf("[%s]\n%s", label, content),
+				))
+			}
+		}
+	}
 
 	userMsg := provider.Message{
 		Role:    provider.RoleUser,
@@ -332,11 +371,20 @@ func (r *Runner) buildChatRequest() provider.ChatRequest {
 	thinkingBudget := r.opts.MaxThinkingTokens
 	r.mu.Unlock()
 
+	// Build system prompt from workspace context
+	systemPrompt := r.opts.Instructions
+	if r.promptBuilder != nil {
+		systemPrompt = r.promptBuilder.Build()
+	}
+
+	// Normalize messages and apply tool result budget before sending
+	normalizedMsgs := normalizeMessages(r.messages)
+	normalizedMsgs = applyToolResultBudget(normalizedMsgs, 0)
+
 	req := provider.ChatRequest{
-		Model:    model,
-		Messages: r.messages,
-		// TODO: Build system prompt from workspace context, CLAUDE.md, git status, etc.
-		SystemPrompt:   r.opts.Instructions,
+		Model:          model,
+		Messages:       normalizedMsgs,
+		SystemPrompt:   systemPrompt,
 		ThinkingBudget: thinkingBudget,
 	}
 

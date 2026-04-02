@@ -289,3 +289,102 @@ func TestEngine_NilRulesOK(t *testing.T) {
 	result := e.Check("Bash", bashInput("ls"))
 	assert.Equal(t, NeedApproval, result.Decision)
 }
+
+// --- NewEngineWithWorkdir tests ---
+
+func TestEngine_NewEngineWithWorkdir(t *testing.T) {
+	e := NewEngineWithWorkdir(ModeDefault, nil, "/home/user/project")
+	assert.Equal(t, ModeDefault, e.Mode())
+	assert.Equal(t, "/home/user/project", e.workdir)
+}
+
+// --- Safety check tests (dangerous paths block even in bypass mode) ---
+
+func TestEngine_BypassMode_BlocksDangerousWritePaths(t *testing.T) {
+	e := NewEngine(ModeBypassPermissions, nil)
+
+	// Writing to .git/config should require approval even in bypass mode
+	result := e.Check("Write", fileInput(".git/config"))
+	assert.Equal(t, NeedApproval, result.Decision, ".git/config should not be auto-allowed")
+
+	// Writing to .bashrc should require approval
+	result = e.Check("Edit", fileInput(".bashrc"))
+	assert.Equal(t, NeedApproval, result.Decision, ".bashrc should not be auto-allowed")
+
+	// Writing to .vscode/settings.json should require approval
+	result = e.Check("Write", fileInput(".vscode/settings.json"))
+	assert.Equal(t, NeedApproval, result.Decision, ".vscode/ should not be auto-allowed")
+}
+
+func TestEngine_BypassMode_AllowsSafeWritePaths(t *testing.T) {
+	e := NewEngine(ModeBypassPermissions, nil)
+
+	// Normal files should still be auto-allowed in bypass mode
+	result := e.Check("Write", fileInput("src/main.go"))
+	assert.Equal(t, Allow, result.Decision)
+
+	result = e.Check("Edit", fileInput("package.json"))
+	assert.Equal(t, Allow, result.Decision)
+}
+
+func TestEngine_BypassMode_AllowsBash(t *testing.T) {
+	e := NewEngine(ModeBypassPermissions, nil)
+
+	// Bash commands should still be auto-allowed in bypass (not a file write)
+	result := e.Check("Bash", bashInput("rm -rf .git"))
+	assert.Equal(t, Allow, result.Decision)
+}
+
+func TestEngine_BypassMode_AllowsReadDangerousPaths(t *testing.T) {
+	e := NewEngine(ModeBypassPermissions, nil)
+
+	// Reading dangerous paths should be allowed (read-only tools always allowed)
+	result := e.Check("Read", json.RawMessage(`{"file_path":".git/config"}`))
+	assert.Equal(t, Allow, result.Decision)
+}
+
+func TestEngine_BypassMode_AllowsClaudeWorktrees(t *testing.T) {
+	e := NewEngine(ModeBypassPermissions, nil)
+
+	// .claude/worktrees/ is a safe exception
+	result := e.Check("Write", fileInput(".claude/worktrees/branch/file.go"))
+	assert.Equal(t, Allow, result.Decision)
+}
+
+// --- acceptEdits workdir gate tests ---
+
+func TestEngine_AcceptEdits_AllowsInsideWorkdir(t *testing.T) {
+	e := NewEngineWithWorkdir(ModeAcceptEdits, nil, "/home/user/project")
+
+	result := e.Check("Write", fileInput("/home/user/project/src/main.go"))
+	assert.Equal(t, Allow, result.Decision)
+}
+
+func TestEngine_AcceptEdits_DeniesOutsideWorkdir(t *testing.T) {
+	e := NewEngineWithWorkdir(ModeAcceptEdits, nil, "/home/user/project")
+
+	result := e.Check("Write", fileInput("/etc/passwd"))
+	assert.Equal(t, NeedApproval, result.Decision)
+
+	result = e.Check("Edit", fileInput("/home/user/other/file.go"))
+	assert.Equal(t, NeedApproval, result.Decision)
+}
+
+func TestEngine_AcceptEdits_NoWorkdirAllowsAll(t *testing.T) {
+	// When no workdir is set, acceptEdits allows all Write/Edit
+	e := NewEngine(ModeAcceptEdits, nil)
+
+	result := e.Check("Write", fileInput("/any/path/file.go"))
+	assert.Equal(t, Allow, result.Decision)
+}
+
+func TestEngine_AcceptEdits_DangerousPathsStillBlocked(t *testing.T) {
+	e := NewEngineWithWorkdir(ModeAcceptEdits, nil, "/home/user/project")
+
+	// Even inside workdir, dangerous paths should be blocked
+	result := e.Check("Write", fileInput("/home/user/project/.git/config"))
+	assert.Equal(t, NeedApproval, result.Decision)
+
+	result = e.Check("Edit", fileInput("/home/user/project/.bashrc"))
+	assert.Equal(t, NeedApproval, result.Decision)
+}
