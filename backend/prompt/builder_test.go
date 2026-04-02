@@ -15,8 +15,10 @@ func TestBuilder_Build_ContainsCoreSection(t *testing.T) {
 	b := NewBuilder(dir, "claude-sonnet-4-6", "")
 	prompt := b.Build()
 
-	assert.Contains(t, prompt, "AI assistant")
-	assert.Contains(t, prompt, "Key Principles")
+	assert.Contains(t, prompt, "interactive agent")
+	assert.Contains(t, prompt, "Doing tasks")
+	assert.Contains(t, prompt, "Executing actions with care")
+	assert.Contains(t, prompt, "NEVER generate or guess URLs")
 }
 
 func TestBuilder_Build_ContainsEnvironment(t *testing.T) {
@@ -35,9 +37,9 @@ func TestBuilder_Build_ContainsToolGuidelines(t *testing.T) {
 	b := NewBuilder(dir, "", "")
 	prompt := b.Build()
 
-	assert.Contains(t, prompt, "Tool Usage Guidelines")
-	assert.Contains(t, prompt, "Read tool")
-	assert.Contains(t, prompt, "Edit tool")
+	assert.Contains(t, prompt, "Using your tools")
+	assert.Contains(t, prompt, "Read instead of cat")
+	assert.Contains(t, prompt, "Edit instead of sed")
 }
 
 func TestBuilder_Build_IncludesInstructions(t *testing.T) {

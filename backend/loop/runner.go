@@ -45,7 +45,9 @@ type Runner struct {
 	cancel context.CancelFunc
 
 	// Conversation state
-	messages []provider.Message // Full conversation history
+	messages                 []provider.Message // Full conversation history
+	streamingToolExecEnabled bool              // Enable streaming tool execution
+	activeStreamExec         *StreamingToolExecutor // Set during processStream, used by executeTools
 
 	// Mutable state protected by mu
 	mu                 sync.Mutex
@@ -71,6 +73,10 @@ type Runner struct {
 
 	// Fallback model (used when primary model hits capacity/unsupported errors)
 	fallbackModel string
+
+	// Memory extraction (background, after N turns)
+	memoryExtractor *MemoryExtractor
+	sessionNotes    *SessionNotes
 
 	// Permission engine
 	permEngine       *permission.Engine
@@ -157,6 +163,8 @@ func NewRunnerFull(opts agent.ProcessOptions, prov provider.Provider, registry *
 	// Initialize context manager (requires provider for context window size)
 	if prov != nil {
 		r.ctxManager = ctxpkg.NewManager(prov.MaxContextWindow())
+		r.memoryExtractor = NewMemoryExtractor(prov, opts.Workdir, 10*time.Minute)
+		r.sessionNotes = NewSessionNotes(prov)
 	}
 
 	return r
@@ -433,6 +441,14 @@ func (r *Runner) executeTurn(ctx context.Context, userContent string, attachment
 
 		// Loop back to send tool results to the LLM
 	}
+
+	// Background memory extraction (non-blocking)
+	if r.memoryExtractor != nil {
+		r.memoryExtractor.IncrementTurn()
+		if r.memoryExtractor.ShouldExtract() {
+			go r.memoryExtractor.Extract(context.Background(), r.messages)
+		}
+	}
 }
 
 // buildChatRequest constructs a provider.ChatRequest from the current conversation state.
@@ -452,11 +468,18 @@ func (r *Runner) buildChatRequest() provider.ChatRequest {
 	normalizedMsgs := normalizeMessages(r.messages)
 	normalizedMsgs = applyToolResultBudget(normalizedMsgs, 0)
 
+	// Enable prompt caching for Anthropic provider
+	enableCache := false
+	if r.provider != nil && r.provider.Capabilities().SupportsCaching {
+		enableCache = true
+	}
+
 	req := provider.ChatRequest{
 		Model:          model,
 		Messages:       normalizedMsgs,
 		SystemPrompt:   systemPrompt,
 		ThinkingBudget: thinkingBudget,
+		CacheControl:   enableCache,
 	}
 
 	// Add tool definitions from the registry
@@ -468,7 +491,9 @@ func (r *Runner) buildChatRequest() provider.ChatRequest {
 }
 
 // processStream reads streaming events and builds the assistant message.
-// Returns the complete assistant message, any tool calls, and usage stats.
+// Returns the complete assistant message, any tool calls, usage stats, and stop reason.
+// When streaming tool execution is enabled and no permission engine is configured,
+// concurrent-safe tools start executing immediately as their blocks complete.
 func (r *Runner) processStream(ctx context.Context, stream <-chan provider.StreamEvent) (provider.Message, []provider.ToolUseBlock, *provider.Usage, string) {
 	var (
 		textAccum     strings.Builder
@@ -477,6 +502,16 @@ func (r *Runner) processStream(ctx context.Context, stream <-chan provider.Strea
 		lastUsage     *provider.Usage
 		stopReason    string
 	)
+
+	// Create streaming executor if enabled and in bypass mode (no permission checks needed)
+	var streamExec *StreamingToolExecutor
+	if r.streamingToolExecEnabled && r.toolRegistry != nil && r.toolExecutor != nil {
+		// Only use streaming execution in bypass mode — permission checks require
+		// sequential processing which can't happen during streaming
+		if r.permEngine == nil || r.permEngine.Mode() == "bypassPermissions" {
+			streamExec = NewStreamingToolExecutor(r.toolRegistry, r.toolExecutor)
+		}
+	}
 
 	for event := range stream {
 		select {
@@ -502,13 +537,16 @@ func (r *Runner) processStream(ctx context.Context, stream <-chan provider.Strea
 
 		case provider.EventToolUseStart:
 			if event.ToolUse != nil {
-				// Emit tool_start event — params will be populated on tool_end
 				r.emitter.emitToolStart(event.ToolUse.ID, event.ToolUse.Name, nil)
 			}
 
 		case provider.EventToolUseEnd:
 			if event.ToolUse != nil {
 				toolCalls = append(toolCalls, *event.ToolUse)
+				// Start concurrent-safe tools immediately during streaming
+				if streamExec != nil {
+					streamExec.AddTool(ctx, *event.ToolUse)
+				}
 			}
 
 		case provider.EventMessageDelta:
@@ -526,6 +564,9 @@ func (r *Runner) processStream(ctx context.Context, stream <-chan provider.Strea
 			}
 		}
 	}
+
+	// Store streaming executor for use by executeTools
+	r.activeStreamExec = streamExec
 
 	// Build the assistant message with all content blocks
 	var content []provider.ContentBlock
@@ -550,14 +591,38 @@ func (r *Runner) processStream(ctx context.Context, stream <-chan provider.Strea
 // We match this behavior — approval only ends via user response or context cancellation.
 
 // executeTools runs tool calls through permission checks and then executes approved ones.
+// If streaming tool execution was active (bypass mode), collect pre-started results.
 func (r *Runner) executeTools(ctx context.Context, toolCalls []provider.ToolUseBlock) provider.Message {
 	if r.toolExecutor == nil {
-		// No tool registry — return errors for all tool calls
 		var resultBlocks []provider.ContentBlock
 		for _, tc := range toolCalls {
 			result := fmt.Sprintf("Tool %q is not available (no tool registry configured).", tc.Name)
 			r.emitter.emitToolEnd(tc.ID, tc.Name, false, result)
 			resultBlocks = append(resultBlocks, provider.NewToolResultBlock(tc.ID, result, true))
+		}
+		return provider.Message{Role: provider.RoleUser, Content: resultBlocks}
+	}
+
+	// If streaming executor was active (bypass mode), collect pre-started results
+	if r.activeStreamExec != nil {
+		se := r.activeStreamExec
+		r.activeStreamExec = nil
+		results := se.Collect(ctx, toolCalls)
+
+		var resultBlocks []provider.ContentBlock
+		for _, tcr := range results {
+			content := ""
+			isError := false
+			if tcr.Result != nil {
+				content = tcr.Result.Content
+				isError = tcr.Result.IsError
+			}
+			summary := content
+			if len(summary) > 200 {
+				summary = summary[:200] + "..."
+			}
+			r.emitter.emitToolEnd(tcr.ToolCall.ID, tcr.ToolCall.Name, !isError, summary)
+			resultBlocks = append(resultBlocks, provider.NewToolResultBlock(tcr.ToolCall.ID, content, isError))
 		}
 		return provider.Message{Role: provider.RoleUser, Content: resultBlocks}
 	}

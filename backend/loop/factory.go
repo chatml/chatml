@@ -74,6 +74,12 @@ func NewBackendFactory() agent.NativeBackendFactory {
 		// Wire the registry into the runner
 		runner.toolRegistry = registry
 		runner.toolExecutor = tool.NewExecutor(registry, 8)
+		runner.streamingToolExecEnabled = true
+
+		// Set fallback model: if primary is Opus, fallback to Sonnet
+		if strings.HasPrefix(opts.Model, "claude-opus") {
+			runner.fallbackModel = "claude-sonnet-4-6"
+		}
 
 		return runner, nil
 	}
