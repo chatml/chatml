@@ -1,0 +1,181 @@
+package provider
+
+import (
+	"context"
+	"fmt"
+	"math"
+	"math/rand"
+	"net"
+	"strconv"
+	"strings"
+	"time"
+)
+
+// RetryConfig controls retry behavior for API calls.
+type RetryConfig struct {
+	MaxRetries     int           // Maximum number of retry attempts (default 10)
+	InitialBackoff time.Duration // Starting backoff duration (default 1s)
+	MaxBackoff     time.Duration // Maximum backoff duration (default 60s)
+	JitterFraction float64       // Random jitter fraction 0-1 (default 0.1)
+}
+
+// DefaultRetryConfig returns sensible defaults matching Claude Code's withRetry.ts.
+func DefaultRetryConfig() RetryConfig {
+	return RetryConfig{
+		MaxRetries:     10,
+		InitialBackoff: 1 * time.Second,
+		MaxBackoff:     60 * time.Second,
+		JitterFraction: 0.1,
+	}
+}
+
+// APIError represents an HTTP error from an LLM API.
+type APIError struct {
+	StatusCode int
+	Message    string
+	RetryAfter time.Duration // From Retry-After header, 0 if not present
+}
+
+func (e *APIError) Error() string {
+	return fmt.Sprintf("API error %d: %s", e.StatusCode, e.Message)
+}
+
+// IsRetryable returns whether this error should be retried.
+func (e *APIError) IsRetryable() bool {
+	switch e.StatusCode {
+	case 429: // Rate limited
+		return true
+	case 529: // Overloaded
+		return true
+	case 502, 503, 504: // Gateway errors
+		return true
+	default:
+		return false
+	}
+}
+
+// isNetworkError checks for transient network errors (ECONNRESET, EPIPE, etc.)
+func isNetworkError(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	// Check for net.Error (timeouts, connection resets)
+	if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
+		return true
+	}
+
+	// Check error message for common transient patterns
+	msg := err.Error()
+	return strings.Contains(msg, "connection reset") ||
+		strings.Contains(msg, "broken pipe") ||
+		strings.Contains(msg, "ECONNRESET") ||
+		strings.Contains(msg, "EPIPE") ||
+		strings.Contains(msg, "EOF") ||
+		strings.Contains(msg, "connection refused")
+}
+
+// WithRetry wraps a function with retry logic using exponential backoff.
+// The function fn should return an error; if the error is an *APIError with
+// a retryable status code, or a transient network error, the call is retried.
+func WithRetry(ctx context.Context, cfg RetryConfig, fn func() error) error {
+	if cfg.MaxRetries <= 0 {
+		cfg = DefaultRetryConfig()
+	}
+
+	var lastErr error
+	for attempt := 0; attempt <= cfg.MaxRetries; attempt++ {
+		lastErr = fn()
+		if lastErr == nil {
+			return nil
+		}
+
+		// Check if we should retry
+		shouldRetry := false
+		var backoff time.Duration
+
+		if apiErr, ok := lastErr.(*APIError); ok {
+			if !apiErr.IsRetryable() {
+				return lastErr // Non-retryable API error
+			}
+			shouldRetry = true
+
+			// Use Retry-After if provided
+			if apiErr.RetryAfter > 0 {
+				backoff = apiErr.RetryAfter
+			}
+		} else if isNetworkError(lastErr) {
+			shouldRetry = true
+		}
+
+		if !shouldRetry {
+			return lastErr // Unknown error type — don't retry
+		}
+
+		// Don't sleep after the last attempt
+		if attempt == cfg.MaxRetries {
+			break
+		}
+
+		// Calculate backoff if not set by Retry-After
+		if backoff == 0 {
+			backoff = calculateBackoff(attempt, cfg)
+		}
+
+		// Cap at max backoff
+		if backoff > cfg.MaxBackoff {
+			backoff = cfg.MaxBackoff
+		}
+
+		// Wait with context cancellation
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(backoff):
+			// Continue to next attempt
+		}
+	}
+
+	return fmt.Errorf("max retries (%d) exceeded: %w", cfg.MaxRetries, lastErr)
+}
+
+// calculateBackoff returns exponential backoff with jitter.
+func calculateBackoff(attempt int, cfg RetryConfig) time.Duration {
+	// Exponential: initialBackoff * 2^attempt
+	backoff := float64(cfg.InitialBackoff) * math.Pow(2, float64(attempt))
+
+	// Add jitter
+	if cfg.JitterFraction > 0 {
+		jitter := backoff * cfg.JitterFraction * (rand.Float64()*2 - 1) // ±jitter
+		backoff += jitter
+	}
+
+	if backoff < 0 {
+		backoff = float64(cfg.InitialBackoff)
+	}
+
+	return time.Duration(backoff)
+}
+
+// ParseRetryAfter parses a Retry-After header value into a duration.
+// Supports both seconds (integer) and HTTP-date formats.
+func ParseRetryAfter(value string) time.Duration {
+	if value == "" {
+		return 0
+	}
+
+	// Try parsing as seconds
+	if seconds, err := strconv.ParseFloat(value, 64); err == nil {
+		return time.Duration(seconds * float64(time.Second))
+	}
+
+	// Try parsing as HTTP-date
+	if t, err := time.Parse(time.RFC1123, value); err == nil {
+		d := time.Until(t)
+		if d > 0 {
+			return d
+		}
+	}
+
+	return 0
+}

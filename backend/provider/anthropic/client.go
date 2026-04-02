@@ -147,7 +147,8 @@ func (c *Client) CountTokens(ctx context.Context, messages []provider.Message) (
 }
 
 // StreamChat sends a streaming chat request to the Anthropic Messages API
-// and returns a channel of unified StreamEvents.
+// and returns a channel of unified StreamEvents. Transient errors (429, 529,
+// network resets) are automatically retried with exponential backoff.
 func (c *Client) StreamChat(ctx context.Context, req provider.ChatRequest) (<-chan provider.StreamEvent, error) {
 	// Build the Anthropic request body
 	body := c.buildRequestBody(req)
@@ -157,21 +158,39 @@ func (c *Client) StreamChat(ctx context.Context, req provider.ChatRequest) (<-ch
 		return nil, fmt.Errorf("anthropic: marshal request: %w", err)
 	}
 
-	httpReq, err := http.NewRequestWithContext(ctx, "POST", c.apiURL, bytes.NewReader(jsonBody))
-	if err != nil {
-		return nil, fmt.Errorf("anthropic: create request: %w", err)
-	}
-	c.setHeaders(httpReq)
+	var resp *http.Response
 
-	resp, err := c.httpClient.Do(httpReq)
-	if err != nil {
-		return nil, fmt.Errorf("anthropic: request failed: %w", err)
-	}
+	retryErr := provider.WithRetry(ctx, provider.DefaultRetryConfig(), func() error {
+		httpReq, err := http.NewRequestWithContext(ctx, "POST", c.apiURL, bytes.NewReader(jsonBody))
+		if err != nil {
+			return fmt.Errorf("anthropic: create request: %w", err)
+		}
+		c.setHeaders(httpReq)
 
-	if resp.StatusCode != http.StatusOK {
-		defer resp.Body.Close()
-		respBody, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("anthropic: API returned %d: %s", resp.StatusCode, string(respBody))
+		r, err := c.httpClient.Do(httpReq)
+		if err != nil {
+			return err // May be a network error — WithRetry checks isNetworkError
+		}
+
+		if r.StatusCode != http.StatusOK {
+			defer r.Body.Close()
+			respBody, _ := io.ReadAll(r.Body)
+			apiErr := &provider.APIError{
+				StatusCode: r.StatusCode,
+				Message:    string(respBody),
+			}
+			if ra := r.Header.Get("Retry-After"); ra != "" {
+				apiErr.RetryAfter = provider.ParseRetryAfter(ra)
+			}
+			return apiErr
+		}
+
+		resp = r
+		return nil
+	})
+
+	if retryErr != nil {
+		return nil, fmt.Errorf("anthropic: %w", retryErr)
 	}
 
 	// Parse SSE stream in a goroutine, emit unified events

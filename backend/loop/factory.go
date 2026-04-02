@@ -48,7 +48,7 @@ func NewBackendFactory() agent.NativeBackendFactory {
 		if mode == "" {
 			mode = permission.ModeBypassPermissions
 		}
-		permEngine := permission.NewEngine(mode, rules)
+		permEngine := permission.NewEngineWithWorkdir(mode, rules, opts.Workdir)
 
 		return NewRunnerFull(opts, provider.Provider(prov), registry, permEngine), nil
 	}

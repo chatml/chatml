@@ -249,6 +249,11 @@ func (r *Runner) executeTurn(ctx context.Context, userContent string, attachment
 	r.messages = append(r.messages, userMsg)
 
 	turnCount := 0
+	maxOutputRecoveryCount := 0
+	const maxOutputRecoveryLimit = 3
+
+	// Track cumulative cost across the turn
+	var cumulativeCost float64
 
 	// Inner agentic loop — continues as long as the LLM returns tool calls
 	for {
@@ -274,19 +279,41 @@ func (r *Runner) executeTurn(ctx context.Context, userContent string, attachment
 		}
 
 		// Process the stream and collect the assistant response
-		assistantMsg, toolCalls, usage := r.processStream(ctx, stream)
+		assistantMsg, toolCalls, usage, stopReason := r.processStream(ctx, stream)
 
 		// Append assistant message to history
 		r.messages = append(r.messages, assistantMsg)
 
-		// Emit usage/result
+		// Track cost
 		if usage != nil {
+			r.mu.Lock()
+			model := r.opts.Model
+			r.mu.Unlock()
+			cumulativeCost += provider.CalculateCost(model, *usage)
 			r.emitter.emitContextUsage(usage.InputTokens, usage.OutputTokens, r.provider.MaxContextWindow())
+		}
+
+		// Max output tokens recovery: if the model hit the output limit,
+		// inject a continuation prompt and retry (up to 3 times).
+		if stopReason == "max_tokens" && len(toolCalls) == 0 {
+			maxOutputRecoveryCount++
+			if maxOutputRecoveryCount <= maxOutputRecoveryLimit {
+				recoveryMsg := provider.Message{
+					Role:    provider.RoleUser,
+					Content: []provider.ContentBlock{provider.NewTextBlock("Your response was cut off. Please continue from where you stopped.")},
+				}
+				r.messages = append(r.messages, recoveryMsg)
+				continue // Retry the turn
+			}
+			// Exhausted recovery attempts — fall through to end turn
+		} else if len(toolCalls) > 0 {
+			// Successful tool call turn — reset recovery counter
+			maxOutputRecoveryCount = 0
 		}
 
 		// If no tool calls, the turn is complete
 		if len(toolCalls) == 0 {
-			r.emitter.emitResult(usage, 0, turnCount)
+			r.emitter.emitResult(usage, cumulativeCost, turnCount)
 			break
 		}
 
@@ -323,12 +350,13 @@ func (r *Runner) buildChatRequest() provider.ChatRequest {
 
 // processStream reads streaming events and builds the assistant message.
 // Returns the complete assistant message, any tool calls, and usage stats.
-func (r *Runner) processStream(ctx context.Context, stream <-chan provider.StreamEvent) (provider.Message, []provider.ToolUseBlock, *provider.Usage) {
+func (r *Runner) processStream(ctx context.Context, stream <-chan provider.StreamEvent) (provider.Message, []provider.ToolUseBlock, *provider.Usage, string) {
 	var (
 		textAccum     strings.Builder
 		thinkingAccum strings.Builder
 		toolCalls     []provider.ToolUseBlock
 		lastUsage     *provider.Usage
+		stopReason    string
 	)
 
 	for event := range stream {
@@ -366,6 +394,9 @@ func (r *Runner) processStream(ctx context.Context, stream <-chan provider.Strea
 
 		case provider.EventMessageDelta:
 			lastUsage = event.Usage
+			if event.StopReason != "" {
+				stopReason = event.StopReason
+			}
 
 		case provider.EventError:
 			if event.Error != nil {
@@ -393,7 +424,7 @@ func (r *Runner) processStream(ctx context.Context, stream <-chan provider.Strea
 	return provider.Message{
 		Role:    provider.RoleAssistant,
 		Content: content,
-	}, toolCalls, lastUsage
+	}, toolCalls, lastUsage, stopReason
 }
 
 // toolApprovalTimeout is how long to wait for user approval before auto-denying.

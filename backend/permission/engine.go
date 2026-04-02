@@ -75,12 +75,20 @@ type Engine struct {
 	mu               sync.RWMutex
 	mode             string
 	prePlanMode      string
+	workdir          string // Workspace root directory for acceptEdits gate
 	rules            *RuleSet
 	sessionApprovals map[string]string // ruleKey -> "allow" | "deny"
 }
 
 // NewEngine creates a permission engine with the given mode and rules.
 func NewEngine(mode string, rules *RuleSet) *Engine {
+	return NewEngineWithWorkdir(mode, rules, "")
+}
+
+// NewEngineWithWorkdir creates a permission engine with a workspace directory.
+// The workdir is used to gate acceptEdits mode — only files within the workdir
+// are auto-allowed.
+func NewEngineWithWorkdir(mode string, rules *RuleSet, workdir string) *Engine {
 	if rules == nil {
 		rules = NewRuleSet(nil)
 	}
@@ -89,6 +97,7 @@ func NewEngine(mode string, rules *RuleSet) *Engine {
 	}
 	return &Engine{
 		mode:             mode,
+		workdir:          workdir,
 		rules:            rules,
 		sessionApprovals: make(map[string]string),
 	}
@@ -155,7 +164,14 @@ func (e *Engine) Check(toolName string, input json.RawMessage) CheckResult {
 		}
 	}
 
-	// 2. Bypass mode: allow everything
+	// 1.5. Safety checks: dangerous paths require explicit approval even in bypass mode.
+	// This MUST run before the bypass mode check.
+	if writesToFile(toolName) && specifier != "" && IsDangerousPath(specifier) {
+		result.Decision = NeedApproval
+		return result
+	}
+
+	// 2. Bypass mode: allow everything (safety checks already handled above)
 	if effectiveMode == ModeBypassPermissions {
 		result.Decision = Allow
 		return result
@@ -214,10 +230,18 @@ func (e *Engine) Check(toolName string, input json.RawMessage) CheckResult {
 		// Fall through to NeedApproval
 	}
 
-	// 7. acceptEdits mode: auto-allow Write/Edit/NotebookEdit
+	// 7. acceptEdits mode: auto-allow Write/Edit/NotebookEdit WITHIN working directory only
 	if effectiveMode == ModeAcceptEdits && acceptEditsTools[toolName] {
-		result.Decision = Allow
-		return result
+		e.mu.RLock()
+		workdir := e.workdir
+		e.mu.RUnlock()
+
+		// If no workdir set, or file is within workdir, allow
+		if workdir == "" || specifier == "" || IsWithinDirectory(specifier, workdir) {
+			result.Decision = Allow
+			return result
+		}
+		// File is outside workdir — fall through to NeedApproval
 	}
 
 	// 8. dontAsk mode: deny anything not already allowed by rules
@@ -252,4 +276,14 @@ func (e *Engine) ClearSession() {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	e.sessionApprovals = make(map[string]string)
+}
+
+// writesToFile returns true if the tool modifies files (and thus the specifier is a file path).
+func writesToFile(toolName string) bool {
+	switch toolName {
+	case "Write", "Edit", "NotebookEdit":
+		return true
+	default:
+		return false
+	}
 }

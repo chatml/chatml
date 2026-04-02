@@ -178,8 +178,8 @@ func TestConvertMessages(t *testing.T) {
 
 func TestStreamChat_HTTPError(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusTooManyRequests)
-		w.Write([]byte(`{"error":{"type":"rate_limit_error","message":"Too many requests"}}`))
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte(`{"error":{"type":"invalid_request_error","message":"Bad request"}}`))
 	}))
 	defer srv.Close()
 
@@ -192,7 +192,7 @@ func TestStreamChat_HTTPError(t *testing.T) {
 	})
 
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "429")
+	assert.Contains(t, err.Error(), "400")
 }
 
 func TestStreamChat_Success(t *testing.T) {
