@@ -4,11 +4,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"strings"
 
 	"github.com/chatml/chatml-backend/agent"
 	"github.com/chatml/chatml-backend/permission"
 	"github.com/chatml/chatml-backend/provider"
 	"github.com/chatml/chatml-backend/provider/anthropic"
+	"github.com/chatml/chatml-backend/provider/openai"
 	"github.com/chatml/chatml-backend/tool"
 	"github.com/chatml/chatml-backend/tool/builtin"
 )
@@ -17,15 +19,10 @@ import (
 // with the full built-in tool set. Register with Manager.SetNativeBackendFactory at startup.
 func NewBackendFactory() agent.NativeBackendFactory {
 	return func(opts agent.ProcessOptions, apiKey, oauthToken string) (agent.ConversationBackend, error) {
-		cfg := anthropic.Config{
-			APIKey:     apiKey,
-			OAuthToken: oauthToken,
-			Model:      opts.Model,
-		}
-
-		prov, err := anthropic.New(cfg)
+		// Select provider based on model name
+		prov, err := createProvider(opts.Model, apiKey, oauthToken)
 		if err != nil {
-			return nil, fmt.Errorf("create anthropic provider: %w", err)
+			return nil, fmt.Errorf("create provider: %w", err)
 		}
 
 		// Initialize permission engine
@@ -80,4 +77,37 @@ func NewBackendFactory() agent.NativeBackendFactory {
 
 		return runner, nil
 	}
+}
+
+// createProvider selects and creates the appropriate LLM provider based on model name.
+// OpenAI models (gpt-*, o1*, o3*, o4*) use the OpenAI provider.
+// Everything else defaults to Anthropic.
+func createProvider(model, apiKey, oauthToken string) (provider.Provider, error) {
+	if isOpenAIModel(model) {
+		// OpenAI models use the API key directly
+		cfg := openai.Config{
+			APIKey: apiKey,
+			Model:  model,
+		}
+		return openai.New(cfg)
+	}
+
+	// Default: Anthropic
+	cfg := anthropic.Config{
+		APIKey:     apiKey,
+		OAuthToken: oauthToken,
+		Model:      model,
+	}
+	return anthropic.New(cfg)
+}
+
+// isOpenAIModel returns true if the model name indicates an OpenAI model.
+func isOpenAIModel(model string) bool {
+	openAIPrefixes := []string{"gpt-", "o1", "o3", "o4"}
+	for _, prefix := range openAIPrefixes {
+		if strings.HasPrefix(model, prefix) {
+			return true
+		}
+	}
+	return false
 }
