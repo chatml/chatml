@@ -775,13 +775,19 @@ func TestGrepTool_Metadata(t *testing.T) {
 func TestRegisterAll(t *testing.T) {
 	reg := tool.NewRegistry()
 	RegisterAll(reg, "/tmp")
-	assert.Equal(t, 6, reg.Count())
+	assert.Equal(t, 12, reg.Count())
 	assert.NotNil(t, reg.Get("Bash"))
 	assert.NotNil(t, reg.Get("Read"))
 	assert.NotNil(t, reg.Get("Write"))
 	assert.NotNil(t, reg.Get("Edit"))
 	assert.NotNil(t, reg.Get("Glob"))
 	assert.NotNil(t, reg.Get("Grep"))
+	assert.NotNil(t, reg.Get("WebFetch"))
+	assert.NotNil(t, reg.Get("WebSearch"))
+	assert.NotNil(t, reg.Get("TodoWrite"))
+	assert.NotNil(t, reg.Get("AskUserQuestion"))
+	assert.NotNil(t, reg.Get("ExitPlanMode"))
+	assert.NotNil(t, reg.Get("EnterPlanMode"))
 }
 
 func TestRegisterAll_ToolDefsValid(t *testing.T) {
@@ -789,7 +795,7 @@ func TestRegisterAll_ToolDefsValid(t *testing.T) {
 	RegisterAll(reg, "/tmp")
 
 	defs := reg.ToolDefs()
-	assert.Len(t, defs, 6)
+	assert.Len(t, defs, 12)
 	for _, def := range defs {
 		assert.NotEmpty(t, def.Name)
 		assert.NotEmpty(t, def.Description)
@@ -810,4 +816,230 @@ func TestRegisterAll_ConcurrencyFlags(t *testing.T) {
 	assert.False(t, reg.Get("Bash").IsConcurrentSafe())
 	assert.False(t, reg.Get("Write").IsConcurrentSafe())
 	assert.False(t, reg.Get("Edit").IsConcurrentSafe())
+}
+
+// --- TodoWriteTool tests ---
+
+func TestTodoWriteTool_Basic(t *testing.T) {
+	var emittedType string
+	var emittedData interface{}
+	emitFn := func(eventType string, data interface{}) {
+		emittedType = eventType
+		emittedData = data
+	}
+
+	tw := NewTodoWriteTool(emitFn)
+	assert.Equal(t, "TodoWrite", tw.Name())
+	assert.False(t, tw.IsConcurrentSafe())
+
+	result, err := tw.Execute(context.Background(), json.RawMessage(`{
+		"todos": [
+			{"content": "Write tests", "status": "in_progress", "activeForm": "Writing tests"},
+			{"content": "Deploy", "status": "pending"}
+		]
+	}`))
+	require.NoError(t, err)
+	assert.False(t, result.IsError)
+	assert.Contains(t, result.Content, "1 pending")
+	assert.Contains(t, result.Content, "1 in progress")
+	assert.Equal(t, "todo_update", emittedType)
+	assert.NotNil(t, emittedData)
+}
+
+func TestTodoWriteTool_InvalidJSON(t *testing.T) {
+	tw := NewTodoWriteTool(nil)
+	result, err := tw.Execute(context.Background(), json.RawMessage(`{bad`))
+	require.NoError(t, err)
+	assert.True(t, result.IsError)
+}
+
+func TestTodoWriteTool_NilEmit(t *testing.T) {
+	tw := NewTodoWriteTool(nil)
+	result, err := tw.Execute(context.Background(), json.RawMessage(`{"todos":[]}`))
+	require.NoError(t, err)
+	assert.False(t, result.IsError)
+}
+
+func TestTodoWriteTool_NameAndSchema(t *testing.T) {
+	tw := NewTodoWriteTool(nil)
+	assert.NotEmpty(t, tw.Description())
+	assert.True(t, json.Valid(tw.InputSchema()))
+}
+
+// --- WebFetchTool tests ---
+
+func TestWebFetchTool_NameAndSchema(t *testing.T) {
+	wf := NewWebFetchTool()
+	assert.Equal(t, "WebFetch", wf.Name())
+	assert.True(t, wf.IsConcurrentSafe())
+	assert.NotEmpty(t, wf.Description())
+	assert.True(t, json.Valid(wf.InputSchema()))
+}
+
+func TestWebFetchTool_EmptyURL(t *testing.T) {
+	wf := NewWebFetchTool()
+	result, err := wf.Execute(context.Background(), json.RawMessage(`{"url":""}`))
+	require.NoError(t, err)
+	assert.True(t, result.IsError)
+	assert.Contains(t, result.Content, "url is required")
+}
+
+func TestWebFetchTool_InvalidScheme(t *testing.T) {
+	wf := NewWebFetchTool()
+	result, err := wf.Execute(context.Background(), json.RawMessage(`{"url":"ftp://example.com"}`))
+	require.NoError(t, err)
+	assert.True(t, result.IsError)
+	assert.Contains(t, result.Content, "http")
+}
+
+func TestWebFetchTool_InvalidJSON(t *testing.T) {
+	wf := NewWebFetchTool()
+	result, err := wf.Execute(context.Background(), json.RawMessage(`{bad`))
+	require.NoError(t, err)
+	assert.True(t, result.IsError)
+}
+
+// --- WebSearchTool tests ---
+
+func TestWebSearchTool_NameAndSchema(t *testing.T) {
+	ws := NewWebSearchTool()
+	assert.Equal(t, "WebSearch", ws.Name())
+	assert.True(t, ws.IsConcurrentSafe())
+	assert.NotEmpty(t, ws.Description())
+	assert.True(t, json.Valid(ws.InputSchema()))
+}
+
+func TestWebSearchTool_EmptyQuery(t *testing.T) {
+	ws := NewWebSearchTool()
+	result, err := ws.Execute(context.Background(), json.RawMessage(`{"query":""}`))
+	require.NoError(t, err)
+	assert.True(t, result.IsError)
+}
+
+func TestWebSearchTool_NotConfigured(t *testing.T) {
+	ws := NewWebSearchTool()
+	result, err := ws.Execute(context.Background(), json.RawMessage(`{"query":"test"}`))
+	require.NoError(t, err)
+	assert.True(t, result.IsError)
+	assert.Contains(t, result.Content, "not yet configured")
+}
+
+// --- AskUserQuestionTool tests ---
+
+func TestAskUserQuestionTool_NameAndSchema(t *testing.T) {
+	ask := NewAskUserQuestionTool(nil)
+	assert.Equal(t, "AskUserQuestion", ask.Name())
+	assert.False(t, ask.IsConcurrentSafe())
+	assert.NotEmpty(t, ask.Description())
+	assert.True(t, json.Valid(ask.InputSchema()))
+}
+
+func TestAskUserQuestionTool_NoCallback(t *testing.T) {
+	ask := NewAskUserQuestionTool(nil)
+	result, err := ask.Execute(context.Background(), json.RawMessage(`{"questions":[{"id":"q1","text":"What?"}]}`))
+	require.NoError(t, err)
+	assert.True(t, result.IsError)
+	assert.Contains(t, result.Content, "not available")
+}
+
+func TestAskUserQuestionTool_EmptyQuestions(t *testing.T) {
+	ask := NewAskUserQuestionTool(nil)
+	result, err := ask.Execute(context.Background(), json.RawMessage(`{"questions":[]}`))
+	require.NoError(t, err)
+	assert.True(t, result.IsError)
+	assert.Contains(t, result.Content, "At least one question")
+}
+
+func TestAskUserQuestionTool_InvalidJSON(t *testing.T) {
+	ask := NewAskUserQuestionTool(nil)
+	result, err := ask.Execute(context.Background(), json.RawMessage(`{bad`))
+	require.NoError(t, err)
+	assert.True(t, result.IsError)
+}
+
+// --- PlanMode tool tests ---
+
+func TestExitPlanModeTool_NameAndSchema(t *testing.T) {
+	epm := NewExitPlanModeTool(nil)
+	assert.Equal(t, "ExitPlanMode", epm.Name())
+	assert.False(t, epm.IsConcurrentSafe())
+	assert.NotEmpty(t, epm.Description())
+	assert.True(t, json.Valid(epm.InputSchema()))
+}
+
+func TestExitPlanModeTool_NoCallback(t *testing.T) {
+	epm := NewExitPlanModeTool(nil)
+	result, err := epm.Execute(context.Background(), json.RawMessage(`{}`))
+	require.NoError(t, err)
+	assert.True(t, result.IsError)
+	assert.Contains(t, result.Content, "not available")
+}
+
+func TestEnterPlanModeTool_NameAndSchema(t *testing.T) {
+	epm := NewEnterPlanModeTool(nil)
+	assert.Equal(t, "EnterPlanMode", epm.Name())
+	assert.False(t, epm.IsConcurrentSafe())
+	assert.NotEmpty(t, epm.Description())
+	assert.True(t, json.Valid(epm.InputSchema()))
+}
+
+func TestEnterPlanModeTool_NoCallback(t *testing.T) {
+	epm := NewEnterPlanModeTool(nil)
+	result, err := epm.Execute(context.Background(), json.RawMessage(`{}`))
+	require.NoError(t, err)
+	assert.True(t, result.IsError)
+	assert.Contains(t, result.Content, "not available")
+}
+
+// --- RegisterAllWithCallbacks tests ---
+
+func TestRegisterAllWithCallbacks(t *testing.T) {
+	reg := tool.NewRegistry()
+	RegisterAllWithCallbacks(reg, "/tmp", nil)
+
+	// Should have all original tools + new ones
+	assert.NotNil(t, reg.Get("Bash"))
+	assert.NotNil(t, reg.Get("Read"))
+	assert.NotNil(t, reg.Get("Write"))
+	assert.NotNil(t, reg.Get("Edit"))
+	assert.NotNil(t, reg.Get("Glob"))
+	assert.NotNil(t, reg.Get("Grep"))
+	assert.NotNil(t, reg.Get("WebFetch"))
+	assert.NotNil(t, reg.Get("WebSearch"))
+	assert.NotNil(t, reg.Get("TodoWrite"))
+	assert.NotNil(t, reg.Get("AskUserQuestion"))
+	assert.NotNil(t, reg.Get("ExitPlanMode"))
+	assert.NotNil(t, reg.Get("EnterPlanMode"))
+	assert.Equal(t, 12, reg.Count())
+}
+
+func TestRegisterAll_BackwardsCompat(t *testing.T) {
+	// RegisterAll (without callbacks) should register all tools with nil callbacks
+	reg := tool.NewRegistry()
+	RegisterAll(reg, "/tmp")
+	assert.Equal(t, 12, reg.Count())
+}
+
+// --- stripHTML tests ---
+
+func TestStripHTML_Basic(t *testing.T) {
+	html := "<html><body><p>Hello world</p></body></html>"
+	text := stripHTML(html)
+	assert.Contains(t, text, "Hello world")
+	assert.NotContains(t, text, "<")
+}
+
+func TestStripHTML_Scripts(t *testing.T) {
+	html := "<p>text</p><script>alert('xss')</script><p>more</p>"
+	text := stripHTML(html)
+	assert.Contains(t, text, "text")
+	assert.Contains(t, text, "more")
+	assert.NotContains(t, text, "alert")
+}
+
+func TestStripHTML_Styles(t *testing.T) {
+	html := "<style>.foo{color:red}</style><p>content</p>"
+	text := stripHTML(html)
+	assert.Contains(t, text, "content")
+	assert.NotContains(t, text, "color")
 }

@@ -17,6 +17,7 @@ import (
 	"github.com/chatml/chatml-backend/prompt"
 	"github.com/chatml/chatml-backend/provider"
 	"github.com/chatml/chatml-backend/tool"
+	"github.com/chatml/chatml-backend/tool/builtin"
 )
 
 // Runner implements agent.ConversationBackend using the native Go agentic loop.
@@ -72,6 +73,10 @@ type Runner struct {
 	permEngine       *permission.Engine
 	pendingApprovals sync.Map // requestID -> chan permission.ApprovalResponse
 	approvalCounter  int64
+
+	// Pending user question and plan approval channels
+	pendingQuestions     sync.Map // requestID -> chan map[string]string
+	pendingPlanApprovals sync.Map // requestID -> chan builtin.PlanApprovalResult
 }
 
 // inputMsg represents a message sent to the runner by the Manager.
@@ -516,8 +521,8 @@ func (r *Runner) processStream(ctx context.Context, stream <-chan provider.Strea
 	}, toolCalls, lastUsage, stopReason
 }
 
-// toolApprovalTimeout is how long to wait for user approval before auto-denying.
-const toolApprovalTimeout = 60 * time.Second
+// Note: Claude Code waits INDEFINITELY for user approval (no timeout).
+// We match this behavior — approval only ends via user response or context cancellation.
 
 // executeTools runs tool calls through permission checks and then executes approved ones.
 func (r *Runner) executeTools(ctx context.Context, toolCalls []provider.ToolUseBlock) provider.Message {
@@ -620,14 +625,11 @@ func (r *Runner) requestApproval(ctx context.Context, tc provider.ToolUseBlock, 
 	// Emit approval request to frontend
 	r.emitter.emitToolApprovalRequest(requestID, tc.Name, toolInputObj, check.Specifier)
 
-	// Block waiting for response
+	// Block waiting for response — no timeout (matches Claude Code behavior).
+	// Only cancelled by context (runner stop/interrupt).
 	select {
 	case resp := <-respCh:
 		return r.processApprovalResponse(check, resp, tc.Input)
-	case <-time.After(toolApprovalTimeout):
-		check.Decision = permission.Deny
-		check.DenyMessage = "Tool approval timed out after 60 seconds"
-		return check, nil
 	case <-ctx.Done():
 		check.Decision = permission.Deny
 		check.DenyMessage = "Tool approval cancelled"
@@ -918,13 +920,90 @@ func (r *Runner) SendToolApprovalResponse(requestId, action, specifier string, u
 }
 
 func (r *Runner) SendUserQuestionResponse(requestId string, answers map[string]string) error {
-	// TODO: Route user question response to the waiting AskUserQuestion tool
-	return nil
+	val, ok := r.pendingQuestions.Load(requestId)
+	if !ok {
+		return fmt.Errorf("no pending question request with ID %q", requestId)
+	}
+	ch := val.(chan map[string]string)
+	select {
+	case ch <- answers:
+		return nil
+	default:
+		return fmt.Errorf("question response channel full for request %q", requestId)
+	}
 }
 
 func (r *Runner) SendPlanApprovalResponse(requestId string, approved bool, reason string) error {
-	// TODO: Route plan approval to the waiting ExitPlanMode tool
-	return nil
+	val, ok := r.pendingPlanApprovals.Load(requestId)
+	if !ok {
+		return fmt.Errorf("no pending plan approval request with ID %q", requestId)
+	}
+	ch := val.(chan builtin.PlanApprovalResult)
+	select {
+	case ch <- builtin.PlanApprovalResult{Approved: approved, Reason: reason}:
+		return nil
+	default:
+		return fmt.Errorf("plan approval response channel full for request %q", requestId)
+	}
+}
+
+// --- UserQuestionCallback interface ---
+
+// EmitQuestionRequest implements builtin.UserQuestionCallback.
+func (r *Runner) EmitQuestionRequest(requestID string, questions []builtin.QuestionDef) <-chan map[string]string {
+	ch := make(chan map[string]string, 1)
+	r.pendingQuestions.Store(requestID, ch)
+
+	// Emit the user_question_request event
+	r.emitter.emit(&agent.AgentEvent{
+		Type:      "user_question_request",
+		RequestID: requestID,
+		Questions: convertQuestions(questions),
+	})
+
+	return ch
+}
+
+func convertQuestions(qs []builtin.QuestionDef) []agent.UserQuestion {
+	result := make([]agent.UserQuestion, len(qs))
+	for i, q := range qs {
+		result[i] = agent.UserQuestion{
+			Question: q.Text,
+			Header:   q.ID,
+		}
+	}
+	return result
+}
+
+// --- PlanModeCallback interface ---
+
+// EmitPlanApprovalRequest implements builtin.PlanModeCallback.
+func (r *Runner) EmitPlanApprovalRequest(requestID string, planContent string) <-chan builtin.PlanApprovalResult {
+	ch := make(chan builtin.PlanApprovalResult, 1)
+	r.pendingPlanApprovals.Store(requestID, ch)
+
+	// Emit the plan_approval_request event
+	r.emitter.emit(&agent.AgentEvent{
+		Type:        "plan_approval_request",
+		RequestID:   requestID,
+		PlanContent: planContent,
+	})
+
+	return ch
+}
+
+// SetPermissionModeDirect implements builtin.PlanModeCallback.
+func (r *Runner) SetPermissionModeDirect(mode string) {
+	r.mu.Lock()
+	r.permissionMode = mode
+	r.planModeActive = (mode == "plan")
+	r.mu.Unlock()
+
+	if r.permEngine != nil {
+		r.permEngine.SetMode(mode)
+	}
+
+	r.emitter.emitPermissionModeChanged(mode)
 }
 
 func (r *Runner) Options() agent.ProcessOptions {

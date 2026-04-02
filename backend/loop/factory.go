@@ -1,6 +1,7 @@
 package loop
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 
@@ -27,10 +28,6 @@ func NewBackendFactory() agent.NativeBackendFactory {
 			return nil, fmt.Errorf("create anthropic provider: %w", err)
 		}
 
-		// Create tool registry with all built-in tools
-		registry := tool.NewRegistry()
-		builtin.RegisterAll(registry, opts.Workdir)
-
 		// Initialize permission engine
 		var rules *permission.RuleSet
 		if opts.PermissionRulesFile != "" {
@@ -50,6 +47,37 @@ func NewBackendFactory() agent.NativeBackendFactory {
 		}
 		permEngine := permission.NewEngineWithWorkdir(mode, rules, opts.Workdir)
 
-		return NewRunnerFull(opts, provider.Provider(prov), registry, permEngine), nil
+		// Create runner first (needed for callbacks)
+		runner := NewRunnerFull(opts, provider.Provider(prov), nil, permEngine)
+
+		// Create tool registry with callbacks wired to the runner
+		registry := tool.NewRegistry()
+		builtin.RegisterAllWithCallbacks(registry, opts.Workdir, &builtin.Callbacks{
+			EmitEvent: func(eventType string, data interface{}) {
+				// Convert data to []TodoItem for todo_update events
+				if eventType == "todo_update" {
+					if raw, err := json.Marshal(data); err == nil {
+						var todos []agent.TodoItem
+						if json.Unmarshal(raw, &todos) == nil {
+							runner.emitter.emit(&agent.AgentEvent{
+								Type:  eventType,
+								Todos: todos,
+							})
+							return
+						}
+					}
+				}
+				// Fallback: emit generic event
+				runner.emitter.emit(&agent.AgentEvent{Type: eventType})
+			},
+			UserQuestion: runner,
+			PlanMode:     runner,
+		})
+
+		// Wire the registry into the runner
+		runner.toolRegistry = registry
+		runner.toolExecutor = tool.NewExecutor(registry, 8)
+
+		return runner, nil
 	}
 }

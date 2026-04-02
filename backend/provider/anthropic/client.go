@@ -20,7 +20,7 @@ const (
 	countTokensURL  = "https://api.anthropic.com/v1/messages/count_tokens"
 	apiVersion      = "2023-06-01"
 	oauthBetaHeader = "oauth-2025-04-20"
-	defaultTimeout  = 5 * time.Minute // Streaming requests can be long
+	defaultTimeout  = 10 * time.Minute // Matches Claude Code's API_TIMEOUT_MS (600s)
 )
 
 // modelContextWindows maps model IDs to their context window sizes.

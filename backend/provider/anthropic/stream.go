@@ -4,10 +4,18 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"strings"
+	"time"
 
 	"github.com/chatml/chatml-backend/provider"
+)
+
+const (
+	// streamIdleTimeout is the maximum time to wait between SSE events before
+	// declaring the stream stalled. Matches Claude Code's STREAM_IDLE_TIMEOUT_MS (90s).
+	streamIdleTimeout = 90 * time.Second
 )
 
 // Anthropic SSE event types from the Messages API streaming format.
@@ -34,21 +42,56 @@ func (c *Client) processStream(ctx context.Context, body io.ReadCloser, ch chan<
 	// SSE events can have large data payloads (tool inputs)
 	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 
+	// Read lines in a goroutine so we can apply an idle watchdog timer
+	type scanResult struct {
+		line string
+		ok   bool
+	}
+	lines := make(chan scanResult, 1)
+	go func() {
+		defer close(lines)
+		for scanner.Scan() {
+			lines <- scanResult{line: scanner.Text(), ok: true}
+		}
+	}()
+
 	var eventType string
 	// Track current tool block for accumulating input deltas
 	var currentToolID string
 	var currentToolName string
 	var inputAccumulator strings.Builder
 
-	for scanner.Scan() {
-		line := scanner.Text()
+	idleTimer := time.NewTimer(streamIdleTimeout)
+	defer idleTimer.Stop()
 
-		// Check for context cancellation
+	for {
+		// Select on line arrival, idle timeout, or context cancellation
+		var line string
 		select {
+		case sr, open := <-lines:
+			if !open {
+				return // Stream finished normally
+			}
+			line = sr.line
+			// Reset idle timer on each line received
+			if !idleTimer.Stop() {
+				select {
+				case <-idleTimer.C:
+				default:
+				}
+			}
+			idleTimer.Reset(streamIdleTimeout)
+
+		case <-idleTimer.C:
+			ch <- provider.StreamEvent{
+				Type:  provider.EventError,
+				Error: fmt.Errorf("stream idle timeout: no data received for %s", streamIdleTimeout),
+			}
+			return
+
 		case <-ctx.Done():
 			ch <- provider.StreamEvent{Type: provider.EventError, Error: ctx.Err()}
 			return
-		default:
 		}
 
 		// SSE format: "event: <type>" followed by "data: <json>"
@@ -195,10 +238,6 @@ func (c *Client) processStream(ctx context.Context, body io.ReadCloser, ch chan<
 		}
 
 		eventType = "" // Reset for next event
-	}
-
-	if err := scanner.Err(); err != nil {
-		ch <- provider.StreamEvent{Type: provider.EventError, Error: err}
 	}
 }
 

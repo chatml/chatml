@@ -5,11 +5,18 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"os/exec"
 	"strings"
 	"time"
 
 	"github.com/chatml/chatml-backend/tool"
+)
+
+const (
+	// bashGracePeriod is how long to wait after SIGTERM before sending SIGKILL.
+	// Matches Claude Code's graceful shutdown pattern.
+	bashGracePeriod = 5 * time.Second
 )
 
 const (
@@ -87,6 +94,13 @@ func (t *BashTool) Execute(ctx context.Context, input json.RawMessage) (*tool.Re
 
 	cmd := exec.CommandContext(cmdCtx, "bash", "-c", in.Command)
 	cmd.Dir = t.workdir
+
+	// Graceful shutdown: send SIGTERM first, then SIGKILL after grace period.
+	// This matches Claude Code's behavior and gives processes a chance to clean up.
+	cmd.Cancel = func() error {
+		return cmd.Process.Signal(os.Interrupt) // SIGINT (more graceful than SIGTERM for shells)
+	}
+	cmd.WaitDelay = bashGracePeriod // After SIGINT, wait this long before SIGKILL
 
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout

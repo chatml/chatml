@@ -8,6 +8,7 @@ import (
 	"github.com/chatml/chatml-backend/agent"
 	"github.com/chatml/chatml-backend/models"
 	"github.com/chatml/chatml-backend/permission"
+	"github.com/chatml/chatml-backend/tool/builtin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -328,16 +329,43 @@ func TestRunner_SendToolApprovalResponse_WithPending(t *testing.T) {
 	assert.Equal(t, "Bash(ls)", resp.Specifier)
 }
 
-func TestRunner_SendUserQuestionResponse(t *testing.T) {
+func TestRunner_SendUserQuestionResponse_NoPending(t *testing.T) {
 	r := NewRunner(defaultOpts(), nil)
 	err := r.SendUserQuestionResponse("req-1", map[string]string{"q1": "answer"})
-	assert.NoError(t, err)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "no pending question")
 }
 
-func TestRunner_SendPlanApprovalResponse(t *testing.T) {
+func TestRunner_SendUserQuestionResponse_WithPending(t *testing.T) {
+	r := NewRunner(defaultOpts(), nil)
+	ch := make(chan map[string]string, 1)
+	r.pendingQuestions.Store("req-1", ch)
+
+	err := r.SendUserQuestionResponse("req-1", map[string]string{"q1": "answer"})
+	assert.NoError(t, err)
+
+	resp := <-ch
+	assert.Equal(t, "answer", resp["q1"])
+}
+
+func TestRunner_SendPlanApprovalResponse_NoPending(t *testing.T) {
 	r := NewRunner(defaultOpts(), nil)
 	err := r.SendPlanApprovalResponse("req-1", true, "looks good")
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "no pending plan approval")
+}
+
+func TestRunner_SendPlanApprovalResponse_WithPending(t *testing.T) {
+	r := NewRunner(defaultOpts(), nil)
+	ch := make(chan builtin.PlanApprovalResult, 1)
+	r.pendingPlanApprovals.Store("req-1", ch)
+
+	err := r.SendPlanApprovalResponse("req-1", true, "looks good")
 	assert.NoError(t, err)
+
+	resp := <-ch
+	assert.True(t, resp.Approved)
+	assert.Equal(t, "looks good", resp.Reason)
 }
 
 func TestRunner_PlanModeFromOptions(t *testing.T) {
