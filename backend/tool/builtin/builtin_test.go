@@ -776,7 +776,7 @@ func TestGrepTool_Metadata(t *testing.T) {
 func TestRegisterAll(t *testing.T) {
 	reg := tool.NewRegistry()
 	RegisterAll(reg, "/tmp")
-	assert.Equal(t, 12, reg.Count())
+	assert.Equal(t, 13, reg.Count())
 	assert.NotNil(t, reg.Get("Bash"))
 	assert.NotNil(t, reg.Get("Read"))
 	assert.NotNil(t, reg.Get("Write"))
@@ -796,7 +796,7 @@ func TestRegisterAll_ToolDefsValid(t *testing.T) {
 	RegisterAll(reg, "/tmp")
 
 	defs := reg.ToolDefs()
-	assert.Len(t, defs, 12)
+	assert.Len(t, defs, 13)
 	for _, def := range defs {
 		assert.NotEmpty(t, def.Name)
 		assert.NotEmpty(t, def.Description)
@@ -1011,14 +1011,14 @@ func TestRegisterAllWithCallbacks(t *testing.T) {
 	assert.NotNil(t, reg.Get("AskUserQuestion"))
 	assert.NotNil(t, reg.Get("ExitPlanMode"))
 	assert.NotNil(t, reg.Get("EnterPlanMode"))
-	assert.Equal(t, 12, reg.Count())
+	assert.Equal(t, 13, reg.Count())
 }
 
 func TestRegisterAll_BackwardsCompat(t *testing.T) {
 	// RegisterAll (without callbacks) should register all tools with nil callbacks
 	reg := tool.NewRegistry()
 	RegisterAll(reg, "/tmp")
-	assert.Equal(t, 12, reg.Count())
+	assert.Equal(t, 13, reg.Count())
 }
 
 // --- stripHTML tests ---
@@ -1059,9 +1059,9 @@ func TestReadTool_ImageFile(t *testing.T) {
 	assert.False(t, result.IsError)
 	assert.Contains(t, result.Content, "Image")
 	assert.Contains(t, result.Content, "test.png")
-	assert.NotNil(t, result.Metadata)
-	assert.Equal(t, "image", result.Metadata["type"])
-	assert.NotEmpty(t, result.Metadata["base64"])
+	assert.NotNil(t, result.ImageData)
+	assert.Equal(t, "image/png", result.ImageData.MediaType)
+	assert.NotEmpty(t, result.ImageData.Base64)
 }
 
 func TestReadTool_NotebookFile(t *testing.T) {
@@ -1110,8 +1110,10 @@ func TestReadTool_PDFFile(t *testing.T) {
 	read := NewReadTool(dir)
 	result, err := read.Execute(context.Background(), json.RawMessage(`{"file_path":"`+path+`"}`))
 	require.NoError(t, err)
+	// With pdftotext available: will try to extract and may fail on fake PDF.
+	// Without pdftotext: returns error about missing tool.
+	// Either way, should return an error result for a fake PDF.
 	assert.True(t, result.IsError)
-	assert.Contains(t, result.Content, "PDF reading is not yet supported")
 }
 
 func TestReadTool_SVGImage(t *testing.T) {
@@ -1123,7 +1125,8 @@ func TestReadTool_SVGImage(t *testing.T) {
 	result, err := read.Execute(context.Background(), json.RawMessage(`{"file_path":"`+path+`"}`))
 	require.NoError(t, err)
 	assert.False(t, result.IsError)
-	assert.Equal(t, "image/svg+xml", result.Metadata["media_type"])
+	assert.NotNil(t, result.ImageData)
+	assert.Equal(t, "image/svg+xml", result.ImageData.MediaType)
 }
 
 func TestIsBinaryFile_TextFile(t *testing.T) {

@@ -71,6 +71,7 @@ type CreateConversationRequest struct {
 		Labels      []string `json:"labels"`
 	} `json:"linearIssue,omitempty"` // Linked Linear issue (optional)
 	LinkedWorkspaceIDs []string `json:"linkedWorkspaceIds,omitempty"` // Additional workspace IDs for context (optional)
+	Backend            string   `json:"backend,omitempty"`            // "agent-runner" (default) or "native" (Go loop)
 }
 
 func (h *Handlers) CreateConversation(w http.ResponseWriter, r *http.Request) {
@@ -196,7 +197,7 @@ func (h *Handlers) CreateConversation(w http.ResponseWriter, r *http.Request) {
 
 	// Build options for starting the conversation
 	var opts *agent.StartConversationOptions
-	if req.MaxThinkingTokens > 0 || len(req.Attachments) > 0 || req.PlanMode || req.FastMode || instructions != "" || req.Model != "" || req.Effort != "" || req.PermissionMode != "" {
+	if req.MaxThinkingTokens > 0 || len(req.Attachments) > 0 || req.PlanMode || req.FastMode || instructions != "" || req.Model != "" || req.Effort != "" || req.PermissionMode != "" || req.Backend != "" {
 		opts = &agent.StartConversationOptions{
 			MaxThinkingTokens: req.MaxThinkingTokens,
 			Effort:            req.Effort,
@@ -206,6 +207,7 @@ func (h *Handlers) CreateConversation(w http.ResponseWriter, r *http.Request) {
 			FastMode:          req.FastMode,
 			Instructions:      instructions,
 			Model:             req.Model,
+			Backend:           req.Backend,
 		}
 	}
 

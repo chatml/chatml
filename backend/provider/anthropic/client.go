@@ -124,7 +124,7 @@ func (c *Client) CountTokens(ctx context.Context, messages []provider.Message) (
 	if err != nil {
 		return 0, fmt.Errorf("anthropic: create count_tokens request: %w", err)
 	}
-	c.setHeaders(req)
+	c.setHeaders(req, nil)
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
@@ -165,7 +165,7 @@ func (c *Client) StreamChat(ctx context.Context, req provider.ChatRequest) (<-ch
 		if err != nil {
 			return fmt.Errorf("anthropic: create request: %w", err)
 		}
-		c.setHeaders(httpReq)
+		c.setHeaders(httpReq, &req)
 
 		r, err := c.httpClient.Do(httpReq)
 		if err != nil {
@@ -200,13 +200,43 @@ func (c *Client) StreamChat(ctx context.Context, req provider.ChatRequest) (<-ch
 }
 
 // setHeaders sets the standard Anthropic headers on an HTTP request.
-func (c *Client) setHeaders(req *http.Request) {
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set(c.authHeader, c.authValue)
-	req.Header.Set("anthropic-version", apiVersion)
+// chatReq is optional — when provided, beta headers are added based on features used.
+func (c *Client) setHeaders(httpReq *http.Request, chatReq *provider.ChatRequest) {
+	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set(c.authHeader, c.authValue)
+	httpReq.Header.Set("anthropic-version", apiVersion)
+
+	// Build beta headers list
+	var betas []string
 	if c.isOAuth {
-		req.Header.Set("anthropic-beta", oauthBetaHeader)
+		betas = append(betas, oauthBetaHeader)
 	}
+	if chatReq != nil {
+		if chatReq.Effort != "" {
+			betas = append(betas, "effort-2025-11-24")
+		}
+		if chatReq.OutputFormat != "" {
+			betas = append(betas, "structured-outputs-2025-12-15")
+		}
+		if chatReq.FastMode {
+			betas = append(betas, "fast-mode-2026-02-01")
+		}
+	}
+	if len(betas) > 0 {
+		httpReq.Header.Set("anthropic-beta", joinBetas(betas))
+	}
+}
+
+// joinBetas joins beta header values with commas.
+func joinBetas(betas []string) string {
+	result := ""
+	for i, b := range betas {
+		if i > 0 {
+			result += ","
+		}
+		result += b
+	}
+	return result
 }
 
 // buildRequestBody constructs the Anthropic Messages API request body.
@@ -260,6 +290,19 @@ func (c *Client) buildRequestBody(req provider.ChatRequest) map[string]interface
 
 	if len(req.StopSequences) > 0 {
 		body["stop_sequences"] = req.StopSequences
+	}
+
+	// Effort level (beta: effort-2025-11-24)
+	if req.Effort != "" {
+		body["effort"] = req.Effort
+	}
+
+	// Structured output format (beta: structured-outputs-2025-12-15)
+	if req.OutputFormat != "" {
+		var outputFmt interface{}
+		if json.Unmarshal([]byte(req.OutputFormat), &outputFmt) == nil {
+			body["output_format"] = outputFmt
+		}
 	}
 
 	return body

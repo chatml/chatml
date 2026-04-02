@@ -40,8 +40,12 @@ type ChatRequest struct {
 	MaxTokens      int        `json:"max_tokens,omitempty"`
 	Temperature    *float64   `json:"temperature,omitempty"`
 	ThinkingBudget int        `json:"thinking_budget,omitempty"` // 0 = disabled
+	AdaptiveThinking bool     `json:"adaptive_thinking,omitempty"` // Enable adaptive budget adjustment
 	StopSequences  []string   `json:"stop_sequences,omitempty"`
 	CacheControl   bool       `json:"cache_control,omitempty"`  // Enable prompt caching (Anthropic)
+	Effort         string     `json:"effort,omitempty"`          // "low", "medium", "high", "max" (beta)
+	OutputFormat   string     `json:"output_format,omitempty"`   // JSON schema for structured output (beta)
+	FastMode       bool       `json:"fast_mode,omitempty"`       // Enable fast/penguin mode (beta)
 }
 
 // Capabilities describes what features a provider supports.

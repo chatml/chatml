@@ -41,9 +41,20 @@ type Result struct {
 	// as an error message and can decide how to proceed.
 	IsError bool
 
+	// ImageData holds base64-encoded image data for image tool results.
+	// When set, the runner converts this into an image content block in the
+	// tool_result message so the LLM can see the image visually.
+	ImageData *ImageResultData
+
 	// Metadata contains optional structured data for the frontend (e.g., file
 	// paths modified, lines changed). Not sent to the LLM.
 	Metadata map[string]interface{}
+}
+
+// ImageResultData holds the data needed to construct an image content block.
+type ImageResultData struct {
+	MediaType string // e.g., "image/png", "image/jpeg"
+	Base64    string // Base64-encoded image data
 }
 
 // ToolDef converts a Tool to a provider.ToolDef for inclusion in API requests.
@@ -53,6 +64,28 @@ func ToolDef(t Tool) provider.ToolDef {
 		Description: t.Description(),
 		InputSchema: t.InputSchema(),
 	}
+}
+
+// PromptProvider is an optional interface that tools can implement to inject
+// additional instructions into the system prompt. The prompt builder calls
+// Prompt() on each registered tool and appends non-empty results.
+type PromptProvider interface {
+	Prompt() string
+}
+
+// Cleanable is an optional interface for tools that hold resources requiring
+// explicit cleanup on session teardown (e.g., background processes, temp files).
+// The runner calls Cleanup() on all tools implementing this interface when stopping.
+type Cleanable interface {
+	Cleanup()
+}
+
+// Deferrable is an optional interface for tools that should be deferred —
+// not sent upfront in the tools array but discoverable via ToolSearch.
+// This reduces context window usage when many tools are registered.
+type Deferrable interface {
+	// DeferLoading returns true if this tool should be deferred.
+	DeferLoading() bool
 }
 
 // ErrorResult creates a Result with IsError=true.

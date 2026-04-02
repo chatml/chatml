@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -190,13 +191,18 @@ func (t *GrepTool) Execute(ctx context.Context, input json.RawMessage) (*tool.Re
 	// Pattern (use -e to handle patterns starting with -)
 	args = append(args, "-e", in.Pattern)
 
-	// Search path
+	// Search path — absolute paths are allowed (consistent with ReadTool),
+	// but relative paths are confined to workdir to prevent ".." traversal.
 	searchPath := t.workdir
 	if in.Path != "" {
-		if strings.HasPrefix(in.Path, "/") {
-			searchPath = in.Path
+		if filepath.IsAbs(in.Path) {
+			searchPath = filepath.Clean(in.Path)
 		} else {
-			searchPath = fmt.Sprintf("%s/%s", t.workdir, in.Path)
+			resolved := filepath.Clean(filepath.Join(t.workdir, in.Path))
+			if !strings.HasPrefix(resolved, t.workdir) {
+				return tool.ErrorResult(fmt.Sprintf("Relative path %q escapes the workspace directory", in.Path)), nil
+			}
+			searchPath = resolved
 		}
 	}
 	args = append(args, searchPath)
@@ -267,4 +273,20 @@ func (t *GrepTool) Execute(ctx context.Context, input json.RawMessage) (*tool.Re
 	}, nil
 }
 
+// Prompt implements tool.PromptProvider.
+func (t *GrepTool) Prompt() string {
+	return `A powerful search tool built on ripgrep
+
+  Usage:
+  - ALWAYS use Grep for search tasks. NEVER invoke ` + "`grep`" + ` or ` + "`rg`" + ` as a Bash command. The Grep tool has been optimized for correct permissions and access.
+  - Supports full regex syntax (e.g., "log.*Error", "function\s+\w+")
+  - Filter files with glob parameter (e.g., "*.js", "**/*.tsx") or type parameter (e.g., "js", "py", "rust")
+  - Output modes: "content" shows matching lines, "files_with_matches" shows only file paths (default), "count" shows match counts
+  - Use Agent tool for open-ended searches requiring multiple rounds
+  - Pattern syntax: Uses ripgrep (not grep) - literal braces need escaping (use ` + "`interface\\{\\}`" + ` to find ` + "`interface{}`" + ` in Go code)
+  - Multiline matching: By default patterns match within single lines only. For cross-line patterns like ` + "`struct \\{[\\s\\S]*?field`" + `, use ` + "`multiline: true`" + `
+`
+}
+
 var _ tool.Tool = (*GrepTool)(nil)
+var _ tool.PromptProvider = (*GrepTool)(nil)

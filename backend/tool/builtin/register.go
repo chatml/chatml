@@ -19,11 +19,14 @@ func RegisterAll(reg *tool.Registry, workdir string) {
 // RegisterAllWithCallbacks registers all built-in tools with optional callbacks
 // for interactive tools (TodoWrite, AskUserQuestion, PlanMode).
 func RegisterAllWithCallbacks(reg *tool.Registry, workdir string, cb *Callbacks) {
+	// Shared read tracker: Read marks files as read, Edit/Write check before modifying.
+	tracker := tool.NewReadTracker()
+
 	// File/shell tools
 	reg.Register(NewBashTool(workdir))
-	reg.Register(NewReadTool(workdir))
-	reg.Register(NewWriteTool(workdir))
-	reg.Register(NewEditTool(workdir))
+	reg.Register(NewReadToolWithTracker(workdir, tracker))
+	reg.Register(NewWriteToolWithTracker(workdir, tracker))
+	reg.Register(NewEditToolWithTracker(workdir, tracker))
 	reg.Register(NewGlobTool(workdir))
 	reg.Register(NewGrepTool(workdir))
 
@@ -45,4 +48,7 @@ func RegisterAllWithCallbacks(reg *tool.Registry, workdir string, cb *Callbacks)
 	reg.Register(NewAskUserQuestionTool(uqCb))
 	reg.Register(NewExitPlanModeTool(pmCb))
 	reg.Register(NewEnterPlanModeTool(pmCb))
+
+	// ToolSearch: discovers deferred tools (must be registered after all other tools)
+	reg.Register(NewToolSearchTool(reg))
 }

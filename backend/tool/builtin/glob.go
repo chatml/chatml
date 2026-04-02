@@ -65,12 +65,18 @@ func (t *GlobTool) Execute(ctx context.Context, input json.RawMessage) (*tool.Re
 		return tool.ErrorResult("pattern is required"), nil
 	}
 
+	// Absolute paths are allowed (consistent with ReadTool),
+	// but relative paths are confined to workdir to prevent ".." traversal.
 	searchDir := t.workdir
 	if in.Path != "" {
 		if filepath.IsAbs(in.Path) {
-			searchDir = in.Path
+			searchDir = filepath.Clean(in.Path)
 		} else {
-			searchDir = filepath.Join(t.workdir, in.Path)
+			resolved := filepath.Clean(filepath.Join(t.workdir, in.Path))
+			if !strings.HasPrefix(resolved, t.workdir) {
+				return tool.ErrorResult(fmt.Sprintf("Relative path %q escapes the workspace directory", in.Path)), nil
+			}
+			searchDir = resolved
 		}
 	}
 
@@ -193,6 +199,8 @@ func walkGlob(root, pattern string) ([]string, error) {
 
 // matchDoubleGlob performs basic ** glob matching.
 // Handles patterns like "**/*.go", "src/**/*.ts", "**/*test*".
+// Limitation: only one ** segment is supported. Patterns with multiple **
+// (e.g., "src/**/test/**/*.go") will not match correctly.
 func matchDoubleGlob(path, pattern string) bool {
 	// Convert ** pattern to a suffix match
 	// "**/*.go" → match any path ending in .go
@@ -234,4 +242,14 @@ func matchDoubleGlob(path, pattern string) bool {
 	return matched
 }
 
+// Prompt implements tool.PromptProvider.
+func (t *GlobTool) Prompt() string {
+	return `- Fast file pattern matching tool that works with any codebase size
+- Supports glob patterns like "**/*.js" or "src/**/*.ts"
+- Returns matching file paths sorted by modification time
+- Use this tool when you need to find files by name patterns
+- When you are doing an open ended search that may require multiple rounds of globbing and grepping, use the Agent tool instead`
+}
+
 var _ tool.Tool = (*GlobTool)(nil)
+var _ tool.PromptProvider = (*GlobTool)(nil)

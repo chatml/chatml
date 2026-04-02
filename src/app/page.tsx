@@ -303,8 +303,10 @@ export default function Home() {
     if (!selectedWorkspaceId || !selectedSessionId) return;
 
     try {
+      const defaultBackend = useSettingsStore.getState().defaultBackend;
       const newConv = await createConversation(selectedWorkspaceId, selectedSessionId, {
         type: 'task',
+        backend: defaultBackend !== 'agent-runner' ? defaultBackend : undefined,
       });
 
       useAppStore.getState().addConversation({

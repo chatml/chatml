@@ -51,7 +51,7 @@ func TestReadClaudeCodeCredentialsFile_MissingFile(t *testing.T) {
 
 	_, err := ReadClaudeCodeCredentialsFile()
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "reading credentials file")
+	assert.Contains(t, err.Error(), "no credentials file found")
 }
 
 func TestReadClaudeCodeCredentialsFile_InvalidJSON(t *testing.T) {

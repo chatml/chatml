@@ -2,6 +2,8 @@ package context
 
 import (
 	"time"
+
+	"github.com/chatml/chatml-backend/provider"
 )
 
 // Threshold constants matching Claude Code's autoCompact.ts.
@@ -15,11 +17,12 @@ const (
 
 // Manager tracks context window usage and determines when compaction is needed.
 type Manager struct {
-	contextWindow    int       // Total context window size for the model
-	lastCompactTime  time.Time // When the last compaction (micro or auto) occurred
-	compactFailures  int       // Consecutive auto-compact failures (circuit breaker)
-	lastTokenCount   int       // Last known token count from API usage
-	microcompactCount int      // Number of tool results since last microcompact
+	contextWindow     int             // Total context window size for the model
+	lastCompactTime   time.Time       // When the last compaction (micro or auto) occurred
+	compactFailures   int             // Consecutive auto-compact failures (circuit breaker)
+	lastTokenCount    int             // Last known token count from API usage
+	microcompactCount int             // Number of tool results since last microcompact
+	lastUsage         *provider.Usage // Last full API usage data (authoritative)
 }
 
 // NewManager creates a context manager for the given model's context window size.
@@ -38,6 +41,21 @@ func (m *Manager) ContextWindow() int {
 // UpdateTokenCount records the latest token count from API usage.
 func (m *Manager) UpdateTokenCount(tokens int) {
 	m.lastTokenCount = tokens
+}
+
+// UpdateFromUsage records the full API usage data and updates the token count
+// from the authoritative provider response (instead of heuristic estimation).
+func (m *Manager) UpdateFromUsage(usage *provider.Usage) {
+	if usage == nil {
+		return
+	}
+	m.lastUsage = usage
+	m.lastTokenCount = ContextTokensFromUsage(usage)
+}
+
+// LastUsage returns the last full API usage data.
+func (m *Manager) LastUsage() *provider.Usage {
+	return m.lastUsage
 }
 
 // LastTokenCount returns the last recorded token count.

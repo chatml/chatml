@@ -666,6 +666,7 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
         type: 'task',
         message: pendingPlanApproval.planContent,
         model: selectedModel.id,
+        backend: useSettingsStore.getState().defaultBackend !== 'agent-runner' ? useSettingsStore.getState().defaultBackend : undefined,
       });
 
       addConversation({
@@ -856,6 +857,7 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
             labels: linkedLinearIssue.labels,
           } : undefined,
           linkedWorkspaceIds: linkedWorkspaceIds.length > 0 ? linkedWorkspaceIds : undefined,
+          backend: useSettingsStore.getState().defaultBackend !== 'agent-runner' ? useSettingsStore.getState().defaultBackend : undefined,
         });
 
         // Clear streaming on placeholder before removing it

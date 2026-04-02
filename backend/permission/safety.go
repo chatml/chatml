@@ -18,6 +18,7 @@ var dangerousFiles = map[string]bool{
 	".ripgreprc":    true,
 	".mcp.json":     true,
 	".claude.json":  true,
+	".chatml.json":  true,
 }
 
 // Dangerous directory prefixes that should NEVER be auto-approved for modification.
@@ -26,11 +27,13 @@ var dangerousDirs = []string{
 	".vscode/",
 	".idea/",
 	".claude/",
+	".chatml/",
 }
 
 // Safe subdirectories within otherwise dangerous directories.
 var safeDirExceptions = []string{
 	".claude/worktrees/",
+	".chatml/worktrees/",
 }
 
 // IsDangerousPath returns true if the given file path targets a dangerous
@@ -93,6 +96,108 @@ func IsDangerousPath(filePath string) bool {
 	}
 
 	return false
+}
+
+// Dangerous command patterns — programs that can execute arbitrary code,
+// escalate privileges, or make network requests. These require explicit
+// user approval even in bypass mode. Ported from Claude Code's dangerousPatterns.ts.
+var dangerousCommands = map[string]bool{
+	// Interpreters / code execution
+	"python": true, "python3": true, "python2": true,
+	"node": true, "deno": true, "bun": true,
+	"ruby": true, "perl": true, "php": true,
+	"lua": true, "julia": true, "Rscript": true,
+	// Shell execution
+	"bash": true, "sh": true, "zsh": true, "fish": true,
+	"eval": true, "exec": true, "source": true,
+	// Privilege escalation
+	"sudo": true, "su": true, "doas": true,
+	// Network tools
+	"curl": true, "wget": true, "ssh": true, "scp": true,
+	"rsync": true, "nc": true, "ncat": true, "netcat": true,
+	// Package managers (global install)
+	"npm": true, "yarn": true, "pnpm": true, "pip": true, "pip3": true,
+	"gem": true, "cargo": true, "go": true,
+	// Version control (can push/modify remote)
+	"git": true,
+	// Cloud / infra
+	"kubectl": true, "docker": true, "podman": true,
+	"aws": true, "gcloud": true, "az": true, "terraform": true,
+}
+
+// IsDangerousCommand returns true if a Bash command invokes a dangerous program.
+// Handles pipes (|), chaining (&&, ;, ||), and subshells.
+func IsDangerousCommand(command string) bool {
+	if command == "" {
+		return false
+	}
+
+	// Split on pipe, &&, ||, ; to check each subcommand
+	// Use a simple approach: replace delimiters with a common separator
+	normalized := command
+	for _, sep := range []string{"&&", "||", "|", ";"} {
+		normalized = strings.ReplaceAll(normalized, sep, "\x00")
+	}
+
+	for _, segment := range strings.Split(normalized, "\x00") {
+		segment = strings.TrimSpace(segment)
+		if segment == "" {
+			continue
+		}
+
+		// Extract the first token (the command being run)
+		// Handle: env VAR=val cmd, command cmd, xargs cmd
+		cmd := extractCommand(segment)
+		if cmd == "" {
+			continue
+		}
+
+		if dangerousCommands[cmd] {
+			return true
+		}
+	}
+
+	return false
+}
+
+// extractCommand extracts the effective command from a shell segment.
+// Handles prefixes like env, command, xargs, nohup, and VAR=val assignments.
+func extractCommand(segment string) string {
+	fields := strings.Fields(segment)
+	if len(fields) == 0 {
+		return ""
+	}
+
+	i := 0
+	for i < len(fields) {
+		token := fields[i]
+
+		// Skip env variable assignments (KEY=VALUE)
+		if strings.Contains(token, "=") && !strings.HasPrefix(token, "-") && !strings.Contains(token, "/") {
+			i++
+			continue
+		}
+
+		// Skip command wrappers that pass through to the next arg
+		switch token {
+		case "env", "command", "xargs", "nohup", "time", "nice", "ionice", "strace":
+			i++
+			// Skip any flags after the wrapper
+			for i < len(fields) && strings.HasPrefix(fields[i], "-") {
+				i++
+			}
+			continue
+		}
+
+		// Return the base name (strip path)
+		base := token
+		if idx := strings.LastIndex(base, "/"); idx >= 0 {
+			base = base[idx+1:]
+		}
+		return base
+	}
+
+	return ""
 }
 
 // IsWithinDirectory checks if a file path is within the given directory.

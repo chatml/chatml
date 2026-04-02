@@ -96,6 +96,7 @@ export const SETTINGS_DEFAULTS = {
   reviewActionableOnly: false,
   defaultPlanMode: false,
   defaultFastMode: false,
+  defaultBackend: 'agent-runner' as 'agent-runner' | 'native',
   // Git
   branchPrefixType: 'github' as BranchPrefixType,
   branchPrefixCustom: '',
@@ -135,6 +136,7 @@ interface SettingsState {
   reviewActionableOnly: boolean; // Only include actionable feedback (errors/warnings/suggestions) in code reviews
   defaultPlanMode: boolean;
   defaultFastMode: boolean;
+  defaultBackend: 'agent-runner' | 'native';
   autoConvertLongText: boolean;
   showChatCost: boolean;
   showMessageTokenCost: boolean; // Whether to show compact token/cost footer below each assistant message
@@ -219,6 +221,7 @@ interface SettingsState {
   setReviewActionableOnly: (value: boolean) => void;
   setDefaultPlanMode: (value: boolean) => void;
   setDefaultFastMode: (value: boolean) => void;
+  setDefaultBackend: (value: 'agent-runner' | 'native') => void;
   setAutoConvertLongText: (value: boolean) => void;
   setShowChatCost: (value: boolean) => void;
   setShowMessageTokenCost: (value: boolean) => void;
@@ -325,6 +328,7 @@ export const useSettingsStore = create<SettingsState>()(
       setReviewActionableOnly: (value) => set({ reviewActionableOnly: value }),
       setDefaultPlanMode: (value) => set({ defaultPlanMode: value }),
       setDefaultFastMode: (value) => set({ defaultFastMode: value }),
+      setDefaultBackend: (value: 'agent-runner' | 'native') => set({ defaultBackend: value }),
       setAutoConvertLongText: (value) => set({ autoConvertLongText: value }),
       setShowChatCost: (value) => set({ showChatCost: value }),
       setShowMessageTokenCost: (value) => set({ showMessageTokenCost: value }),

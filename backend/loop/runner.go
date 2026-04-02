@@ -3,8 +3,13 @@ package loop
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"log"
 	"os"
+	"path/filepath"
+	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -47,7 +52,6 @@ type Runner struct {
 	// Conversation state
 	messages                 []provider.Message // Full conversation history
 	streamingToolExecEnabled bool              // Enable streaming tool execution
-	activeStreamExec         *StreamingToolExecutor // Set during processStream, used by executeTools
 
 	// Mutable state protected by mu
 	mu                 sync.Mutex
@@ -72,7 +76,11 @@ type Runner struct {
 	ctxManager *ctxpkg.Manager
 
 	// Fallback model (used when primary model hits capacity/unsupported errors)
-	fallbackModel string
+	fallbackModel       string
+	consecutive529Count int // Track consecutive 529s for fallback trigger
+
+	// Fast mode cooldown: when 429/529 received during fast mode, temporarily disable
+	fastModeCooldownUntil time.Time
 
 	// Memory extraction (background, after N turns)
 	memoryExtractor *MemoryExtractor
@@ -82,6 +90,9 @@ type Runner struct {
 	permEngine       *permission.Engine
 	pendingApprovals sync.Map // requestID -> chan permission.ApprovalResponse
 	approvalCounter  int64
+
+	// Tool result persistence for large outputs
+	resultPersister *tool.ResultPersister
 
 	// Pending user question and plan approval channels
 	pendingQuestions     sync.Map // requestID -> chan map[string]string
@@ -156,7 +167,6 @@ func NewRunnerFull(opts agent.ProcessOptions, prov provider.Provider, registry *
 		planModeActive: opts.PlanMode,
 		fastMode:       opts.FastMode,
 		emitter:        &emitter{ch: output},
-		promptBuilder:  prompt.NewBuilder(opts.Workdir, opts.Model, opts.Instructions),
 		permEngine:     permEngine,
 	}
 
@@ -181,7 +191,9 @@ func (r *Runner) Start() error {
 	r.mu.Unlock()
 
 	ctx, cancel := context.WithCancel(context.Background())
+	r.mu.Lock()
 	r.cancel = cancel
+	r.mu.Unlock()
 
 	go r.runLoop(ctx)
 	return nil
@@ -190,6 +202,7 @@ func (r *Runner) Start() error {
 // runLoop is the main agentic loop goroutine.
 func (r *Runner) runLoop(ctx context.Context) {
 	defer func() {
+		r.cleanup()
 		r.mu.Lock()
 		r.running = false
 		r.mu.Unlock()
@@ -230,12 +243,6 @@ func (r *Runner) runLoop(ctx context.Context) {
 			case "interrupt":
 				// Interrupt is handled by context cancellation within executeTurn
 				continue
-			case "set_permission_mode":
-				r.mu.Lock()
-				r.permissionMode = msg.PermissionMode
-				r.planModeActive = (msg.PermissionMode == "plan")
-				r.mu.Unlock()
-				r.emitter.emitPermissionModeChanged(msg.PermissionMode)
 			case "set_fast_mode":
 				if msg.FastMode != nil {
 					r.mu.Lock()
@@ -317,6 +324,10 @@ func (r *Runner) executeTurn(ctx context.Context, userContent string, attachment
 	turnCount := 0
 	maxOutputRecoveryCount := 0
 	const maxOutputRecoveryLimit = 3
+	promptTooLongRetried := false
+	var escalatedMaxTokens int  // Non-zero when we've escalated max output tokens
+	thinkingBudgetAttempts := 0 // Adaptive thinking: tracks retry attempts
+	const maxThinkingAttempts = 2
 
 	// Track cumulative cost across the turn
 	var cumulativeCost float64
@@ -331,14 +342,65 @@ func (r *Runner) executeTurn(ctx context.Context, userContent string, attachment
 			break
 		}
 
+		// Check cost budget limit
+		if r.opts.MaxBudgetUsd > 0 && cumulativeCost >= r.opts.MaxBudgetUsd {
+			r.emitter.emitAssistantText(fmt.Sprintf("\n\n[Budget limit reached: $%.4f / $%.4f]", cumulativeCost, r.opts.MaxBudgetUsd))
+			break
+		}
+
+		// Proactive compaction BEFORE the API call (matches Claude Code's behavior).
+		// This prevents prompt-too-long errors by trimming context proactively.
+		if r.ctxManager != nil {
+			lastTokens := r.ctxManager.LastTokenCount()
+
+			// Microcompact: trim old tool results when accumulated enough
+			if r.ctxManager.ShouldMicrocompact(lastTokens, 2*time.Minute) {
+				r.messages = ctxpkg.Microcompact(r.messages, 10)
+				r.ctxManager.RecordCompaction()
+			}
+
+			// Auto-compact: full LLM-based summarization when approaching limit
+			if r.ctxManager.ShouldAutoCompact(lastTokens) {
+				compResult, compErr := ctxpkg.Compact(ctx, r.provider, r.messages, 4)
+				if compErr != nil {
+					r.ctxManager.RecordCompactFailure()
+					r.emitter.emitError(fmt.Sprintf("Auto-compact failed: %v", compErr))
+				} else {
+					r.messages = compResult.Messages
+					r.ctxManager.RecordCompaction()
+					r.ctxManager.ResetCompactFailures()
+				}
+			}
+		}
+
 		// Build the chat request
 		req := r.buildChatRequest()
+
+		// Apply escalated max tokens if we're in recovery mode
+		if escalatedMaxTokens > 0 {
+			req.MaxTokens = escalatedMaxTokens
+		}
 
 		// Stream the LLM response
 		stream, err := r.provider.StreamChat(ctx, req)
 		if err != nil {
-			// Try fallback model if available and this is a capacity/model error
-			if r.fallbackModel != "" && isFallbackEligible(err) {
+			// Track consecutive 529s for fallback decision
+			if is529Error(err) {
+				r.consecutive529Count++
+			} else {
+				r.consecutive529Count = 0
+			}
+
+			// Fast mode cooldown: on 429/529 during fast mode, enter 30s cooldown
+			if req.FastMode && (is529Error(err) || is429Error(err)) {
+				r.mu.Lock()
+				r.fastModeCooldownUntil = time.Now().Add(30 * time.Second)
+				r.mu.Unlock()
+				r.emitter.emitError("Fast mode cooldown triggered — retrying at standard speed")
+			}
+
+			// Try fallback model after 3+ consecutive 529s (matches Claude Code)
+			if r.fallbackModel != "" && r.consecutive529Count >= 3 && isFallbackEligible(err) {
 				r.mu.Lock()
 				originalModel := r.opts.Model
 				r.opts.Model = r.fallbackModel
@@ -346,15 +408,59 @@ func (r *Runner) executeTurn(ctx context.Context, userContent string, attachment
 
 				r.emitter.emitError(fmt.Sprintf("Switching to fallback model %s: %v", r.fallbackModel, err))
 
-				// Retry with fallback model (strip thinking blocks from messages)
 				req = r.buildChatRequest()
-				req.ThinkingBudget = 0 // Fallback model may not support thinking
+				req.ThinkingBudget = 0
 				stream, err = r.provider.StreamChat(ctx, req)
 
-				// Restore original model for next turn
 				r.mu.Lock()
 				r.opts.Model = originalModel
 				r.mu.Unlock()
+
+				if err == nil {
+					r.consecutive529Count = 0 // Reset after successful fallback
+				}
+			}
+
+			// 413 Prompt-too-long: emergency compact + retry (single-shot)
+			if err != nil && isPromptTooLong(err) && !promptTooLongRetried {
+				promptTooLongRetried = true
+				r.emitter.emitError("Prompt too long — compacting and retrying")
+				compResult, compErr := ctxpkg.Compact(ctx, r.provider, r.messages, 4)
+				if compErr == nil {
+					r.messages = compResult.Messages
+					if r.ctxManager != nil {
+						r.ctxManager.RecordCompaction()
+						r.ctxManager.ResetCompactFailures()
+					}
+					req = r.buildChatRequest()
+					stream, err = r.provider.StreamChat(ctx, req)
+				}
+			}
+
+			// Token budget adjustment: on context overflow, parse the error to compute
+			// the correct max_tokens rather than blindly halving.
+			if err != nil && isContextOverflow(err) {
+				r.emitter.emitError("Context overflow — retrying with reduced token budget")
+				req = r.buildChatRequest()
+
+				if inputTokens, contextLimit, ok := parseContextOverflow(err.Error()); ok && contextLimit > inputTokens {
+					// Calculate exact budget: context limit - input tokens - thinking budget
+					newMax := contextLimit - inputTokens
+					if req.ThinkingBudget > 0 {
+						newMax -= req.ThinkingBudget
+					}
+					if newMax < 1024 {
+						newMax = 1024
+					}
+					req.MaxTokens = newMax
+				} else {
+					// Fallback: halve max_tokens
+					req.MaxTokens = req.MaxTokens / 2
+					if req.MaxTokens < 1024 {
+						req.MaxTokens = 1024
+					}
+				}
+				stream, err = r.provider.StreamChat(ctx, req)
 			}
 
 			if err != nil {
@@ -364,15 +470,17 @@ func (r *Runner) executeTurn(ctx context.Context, userContent string, attachment
 				r.mu.Unlock()
 				break
 			}
+		} else {
+			r.consecutive529Count = 0 // Reset on success
 		}
 
 		// Process the stream and collect the assistant response
-		assistantMsg, toolCalls, usage, stopReason := r.processStream(ctx, stream)
+		assistantMsg, toolCalls, usage, stopReason, streamExec := r.processStream(ctx, stream)
 
 		// Append assistant message to history
 		r.messages = append(r.messages, assistantMsg)
 
-		// Track cost and context usage
+		// Track cost and context usage (update token count for next iteration's proactive check)
 		if usage != nil {
 			r.mu.Lock()
 			model := r.opts.Model
@@ -380,36 +488,55 @@ func (r *Runner) executeTurn(ctx context.Context, userContent string, attachment
 			cumulativeCost += provider.CalculateCost(model, *usage)
 			r.emitter.emitContextUsage(usage.InputTokens, usage.OutputTokens, r.provider.MaxContextWindow())
 
-			// Update context manager with token count
 			if r.ctxManager != nil {
-				currentTokens := ctxpkg.ContextTokensFromUsage(usage)
-				r.ctxManager.UpdateTokenCount(currentTokens)
+				r.ctxManager.UpdateFromUsage(usage)
+			}
+		}
 
-				// Check if microcompact is needed
-				if r.ctxManager.ShouldMicrocompact(r.ctxManager.LastTokenCount(), 2*time.Minute) {
-					r.messages = ctxpkg.Microcompact(r.messages, 10)
-					r.ctxManager.RecordCompaction()
+		// Adaptive thinking: if thinking was enabled and the model hit max_tokens
+		// with thinking content but no text/tool output, the thinking budget was
+		// likely too small. Increase it and retry (up to maxThinkingAttempts).
+		if stopReason == "max_tokens" && len(toolCalls) == 0 && thinkingBudgetAttempts < maxThinkingAttempts {
+			r.mu.Lock()
+			currentBudget := r.opts.MaxThinkingTokens
+			r.mu.Unlock()
+
+			if currentBudget > 0 {
+				// Check if the response was thinking-only (no text output produced)
+				hasTextOutput := false
+				for _, b := range assistantMsg.Content {
+					if b.Type == provider.BlockText && strings.TrimSpace(b.Text) != "" {
+						hasTextOutput = true
+						break
+					}
 				}
 
-				// Check if auto-compact is needed
-				if r.ctxManager.ShouldAutoCompact(currentTokens) {
-					result, compErr := ctxpkg.Compact(ctx, r.provider, r.messages, 4)
-					if compErr != nil {
-						r.ctxManager.RecordCompactFailure()
-						r.emitter.emitError(fmt.Sprintf("Auto-compact failed: %v", compErr))
-					} else {
-						r.messages = result.Messages
-						r.ctxManager.RecordCompaction()
-						r.ctxManager.ResetCompactFailures()
-					}
+				if !hasTextOutput {
+					// Thinking was truncated — increase budget by 2x and retry
+					thinkingBudgetAttempts++
+					newBudget := currentBudget * 2
+					r.mu.Lock()
+					r.opts.MaxThinkingTokens = newBudget
+					r.mu.Unlock()
+
+					log.Printf("adaptive thinking: increasing budget %d → %d (attempt %d/%d)",
+						currentBudget, newBudget, thinkingBudgetAttempts, maxThinkingAttempts)
+
+					// Remove the truncated assistant message and retry
+					r.messages = r.messages[:len(r.messages)-1]
+					continue
 				}
 			}
 		}
 
 		// Max output tokens recovery: if the model hit the output limit,
-		// inject a continuation prompt and retry (up to 3 times).
+		// escalate max_tokens and inject a continuation prompt (up to 3 retries).
 		if stopReason == "max_tokens" && len(toolCalls) == 0 {
 			maxOutputRecoveryCount++
+			if maxOutputRecoveryCount == 1 {
+				// First hit: escalate max output tokens (8k → 64k)
+				escalatedMaxTokens = 64000
+			}
 			if maxOutputRecoveryCount <= maxOutputRecoveryLimit {
 				recoveryMsg := provider.Message{
 					Role:    provider.RoleUser,
@@ -419,9 +546,11 @@ func (r *Runner) executeTurn(ctx context.Context, userContent string, attachment
 				continue // Retry the turn
 			}
 			// Exhausted recovery attempts — fall through to end turn
+			escalatedMaxTokens = 0 // Reset escalation
 		} else if len(toolCalls) > 0 {
-			// Successful tool call turn — reset recovery counter
+			// Successful tool call turn — reset recovery state
 			maxOutputRecoveryCount = 0
+			escalatedMaxTokens = 0
 		}
 
 		// If no tool calls, the turn is complete
@@ -431,7 +560,7 @@ func (r *Runner) executeTurn(ctx context.Context, userContent string, attachment
 		}
 
 		// Execute tool calls and collect results
-		toolResultMsg := r.executeTools(ctx, toolCalls)
+		toolResultMsg := r.executeTools(ctx, toolCalls, streamExec)
 		r.messages = append(r.messages, toolResultMsg)
 
 		// Track tool results for microcompact triggering
@@ -446,7 +575,18 @@ func (r *Runner) executeTurn(ctx context.Context, userContent string, attachment
 	if r.memoryExtractor != nil {
 		r.memoryExtractor.IncrementTurn()
 		if r.memoryExtractor.ShouldExtract() {
-			go r.memoryExtractor.Extract(context.Background(), r.messages)
+			// Snapshot messages to avoid data race on the live slice
+			// (the backing array is shared and may be mutated by subsequent turns).
+			msgSnapshot := make([]provider.Message, len(r.messages))
+			copy(msgSnapshot, r.messages)
+
+			// Use a bounded context so extraction doesn't run forever
+			// after the runner is stopped.
+			extractCtx, extractCancel := context.WithTimeout(context.Background(), 2*time.Minute)
+			go func() {
+				defer extractCancel()
+				r.memoryExtractor.Extract(extractCtx, msgSnapshot)
+			}()
 		}
 	}
 }
@@ -457,6 +597,11 @@ func (r *Runner) buildChatRequest() provider.ChatRequest {
 	model := r.opts.Model
 	thinkingBudget := r.opts.MaxThinkingTokens
 	r.mu.Unlock()
+
+	// Inject tool prompts into the builder before assembling system prompt
+	if r.promptBuilder != nil && r.toolRegistry != nil {
+		r.promptBuilder.SetToolPrompts(r.toolRegistry.ToolPrompts())
+	}
 
 	// Build system prompt from workspace context
 	systemPrompt := r.opts.Instructions
@@ -474,12 +619,20 @@ func (r *Runner) buildChatRequest() provider.ChatRequest {
 		enableCache = true
 	}
 
+	// Fast mode: respect cooldown period
+	r.mu.Lock()
+	fastModeActive := r.fastMode && time.Now().After(r.fastModeCooldownUntil)
+	r.mu.Unlock()
+
 	req := provider.ChatRequest{
 		Model:          model,
 		Messages:       normalizedMsgs,
 		SystemPrompt:   systemPrompt,
 		ThinkingBudget: thinkingBudget,
 		CacheControl:   enableCache,
+		Effort:         r.opts.Effort,
+		OutputFormat:    r.opts.StructuredOutput,
+		FastMode:       fastModeActive,
 	}
 
 	// Add tool definitions from the registry
@@ -491,10 +644,11 @@ func (r *Runner) buildChatRequest() provider.ChatRequest {
 }
 
 // processStream reads streaming events and builds the assistant message.
-// Returns the complete assistant message, any tool calls, usage stats, and stop reason.
-// When streaming tool execution is enabled and no permission engine is configured,
-// concurrent-safe tools start executing immediately as their blocks complete.
-func (r *Runner) processStream(ctx context.Context, stream <-chan provider.StreamEvent) (provider.Message, []provider.ToolUseBlock, *provider.Usage, string) {
+// Returns the complete assistant message, any tool calls, usage stats, stop reason,
+// and the streaming executor (if streaming tool execution was active).
+// When streaming tool execution is enabled, concurrent-safe tools start executing
+// immediately as their blocks complete.
+func (r *Runner) processStream(ctx context.Context, stream <-chan provider.StreamEvent) (provider.Message, []provider.ToolUseBlock, *provider.Usage, string, *StreamingToolExecutor) {
 	var (
 		textAccum     strings.Builder
 		thinkingAccum strings.Builder
@@ -503,23 +657,22 @@ func (r *Runner) processStream(ctx context.Context, stream <-chan provider.Strea
 		stopReason    string
 	)
 
-	// Create streaming executor if enabled and in bypass mode (no permission checks needed)
+	// Create streaming executor if enabled. Concurrent-safe tools (Read, Glob, Grep)
+	// are auto-approved and can start during streaming regardless of permission mode.
+	// Serial tools requiring permission are queued and handled by executeTools.
 	var streamExec *StreamingToolExecutor
 	if r.streamingToolExecEnabled && r.toolRegistry != nil && r.toolExecutor != nil {
-		// Only use streaming execution in bypass mode — permission checks require
-		// sequential processing which can't happen during streaming
-		if r.permEngine == nil || r.permEngine.Mode() == "bypassPermissions" {
-			streamExec = NewStreamingToolExecutor(r.toolRegistry, r.toolExecutor)
-		}
+		streamExec = NewStreamingToolExecutor(r.toolRegistry, r.toolExecutor)
 	}
 
+	streamLoop:
 	for event := range stream {
 		select {
 		case <-ctx.Done():
 			// Drain remaining events
 			for range stream {
 			}
-			break
+			break streamLoop
 		default:
 		}
 
@@ -565,8 +718,24 @@ func (r *Runner) processStream(ctx context.Context, stream <-chan provider.Strea
 		}
 	}
 
-	// Store streaming executor for use by executeTools
-	r.activeStreamExec = streamExec
+	// Post-stream completeness validation: if no content was produced and no
+	// error was recorded, the stream was silently truncated.
+	hasContent := textAccum.Len() > 0 || thinkingAccum.Len() > 0 || len(toolCalls) > 0
+	if !hasContent && stopReason == "" {
+		log.Printf("warning: stream completed with no content and no stop_reason (possible silent truncation)")
+	}
+
+	// Discard incomplete tool calls (started but no complete input JSON).
+	// This can happen when the stream is truncated mid-tool-call.
+	var validToolCalls []provider.ToolUseBlock
+	for _, tc := range toolCalls {
+		if tc.ID != "" && tc.Name != "" {
+			validToolCalls = append(validToolCalls, tc)
+		} else {
+			log.Printf("warning: discarding incomplete tool call (id=%q name=%q)", tc.ID, tc.Name)
+		}
+	}
+	toolCalls = validToolCalls
 
 	// Build the assistant message with all content blocks
 	var content []provider.ContentBlock
@@ -584,15 +753,15 @@ func (r *Runner) processStream(ctx context.Context, stream <-chan provider.Strea
 	return provider.Message{
 		Role:    provider.RoleAssistant,
 		Content: content,
-	}, toolCalls, lastUsage, stopReason
+	}, toolCalls, lastUsage, stopReason, streamExec
 }
 
 // Note: Claude Code waits INDEFINITELY for user approval (no timeout).
 // We match this behavior — approval only ends via user response or context cancellation.
 
 // executeTools runs tool calls through permission checks and then executes approved ones.
-// If streaming tool execution was active (bypass mode), collect pre-started results.
-func (r *Runner) executeTools(ctx context.Context, toolCalls []provider.ToolUseBlock) provider.Message {
+// If a streaming executor is provided, collect pre-started results from it.
+func (r *Runner) executeTools(ctx context.Context, toolCalls []provider.ToolUseBlock, streamExec *StreamingToolExecutor) provider.Message {
 	if r.toolExecutor == nil {
 		var resultBlocks []provider.ContentBlock
 		for _, tc := range toolCalls {
@@ -603,11 +772,9 @@ func (r *Runner) executeTools(ctx context.Context, toolCalls []provider.ToolUseB
 		return provider.Message{Role: provider.RoleUser, Content: resultBlocks}
 	}
 
-	// If streaming executor was active (bypass mode), collect pre-started results
-	if r.activeStreamExec != nil {
-		se := r.activeStreamExec
-		r.activeStreamExec = nil
-		results := se.Collect(ctx, toolCalls)
+	// If streaming executor was active, collect pre-started results
+	if streamExec != nil {
+		results := streamExec.Collect(ctx, toolCalls)
 
 		var resultBlocks []provider.ContentBlock
 		for _, tcr := range results {
@@ -617,12 +784,15 @@ func (r *Runner) executeTools(ctx context.Context, toolCalls []provider.ToolUseB
 				content = tcr.Result.Content
 				isError = tcr.Result.IsError
 			}
+			if !isError {
+				content = r.maybePersistResult(tcr.ToolCall.ID, content)
+			}
 			summary := content
 			if len(summary) > 200 {
 				summary = summary[:200] + "..."
 			}
 			r.emitter.emitToolEnd(tcr.ToolCall.ID, tcr.ToolCall.Name, !isError, summary)
-			resultBlocks = append(resultBlocks, provider.NewToolResultBlock(tcr.ToolCall.ID, content, isError))
+			resultBlocks = append(resultBlocks, toolResultBlock(tcr.ToolCall.ID, content, isError, tcr.Result))
 		}
 		return provider.Message{Role: provider.RoleUser, Content: resultBlocks}
 	}
@@ -670,16 +840,46 @@ func (r *Runner) executeTools(ctx context.Context, toolCalls []provider.ToolUseB
 				isError = tcr.Result.IsError
 			}
 
+			// Persist large results to disk with a preview
+			if !isError {
+				content = r.maybePersistResult(tcr.ToolCall.ID, content)
+			}
+
 			summary := content
 			if len(summary) > 200 {
 				summary = summary[:200] + "..."
 			}
 			r.emitter.emitToolEnd(tcr.ToolCall.ID, tcr.ToolCall.Name, !isError, summary)
-			resultBlocks = append(resultBlocks, provider.NewToolResultBlock(tcr.ToolCall.ID, content, isError))
+			resultBlocks = append(resultBlocks, toolResultBlock(tcr.ToolCall.ID, content, isError, tcr.Result))
 		}
 	}
 
 	return provider.Message{Role: provider.RoleUser, Content: resultBlocks}
+}
+
+// toolResultBlock creates the appropriate tool_result content block.
+// If the result contains image data, it creates an image tool result block
+// so the LLM can see the image visually. Otherwise, creates a text result.
+func toolResultBlock(toolUseID, content string, isError bool, result *tool.Result) provider.ContentBlock {
+	if !isError && result != nil && result.ImageData != nil {
+		return provider.NewImageToolResultBlock(
+			toolUseID,
+			content,
+			result.ImageData.MediaType,
+			result.ImageData.Base64,
+		)
+	}
+	return provider.NewToolResultBlock(toolUseID, content, isError)
+}
+
+// maybePersistResult runs a tool result through the persister if configured.
+// Large results get written to disk with a preview returned inline.
+func (r *Runner) maybePersistResult(toolUseID, content string) string {
+	if r.resultPersister == nil {
+		return content
+	}
+	inline, _ := r.resultPersister.MaybePersist(toolUseID, content)
+	return inline
 }
 
 // checkPermission evaluates whether a tool call should be allowed, denied, or needs user approval.
@@ -754,6 +954,9 @@ func (r *Runner) SendMessage(content string) error {
 	case r.messageQueue <- inputMsg{Type: "message", Content: content}:
 		return nil
 	default:
+		// Queue capacity is 32 — this should not happen in normal single-turn flow.
+		// Log so dropped messages are debuggable.
+		log.Printf("WARNING: runner message queue full, dropping message (len=%d chars)", len(content))
 		return fmt.Errorf("runner message queue full")
 	}
 }
@@ -763,6 +966,7 @@ func (r *Runner) SendMessageWithAttachments(content string, attachments []models
 	case r.messageQueue <- inputMsg{Type: "message", Content: content, Attachments: attachments}:
 		return nil
 	default:
+		log.Printf("WARNING: runner message queue full, dropping message with %d attachment(s) (len=%d chars)", len(attachments), len(content))
 		return fmt.Errorf("runner message queue full")
 	}
 }
@@ -777,8 +981,11 @@ func (r *Runner) SendStop() error {
 }
 
 func (r *Runner) SendInterrupt() error {
-	if r.cancel != nil {
-		r.cancel()
+	r.mu.Lock()
+	cancel := r.cancel
+	r.mu.Unlock()
+	if cancel != nil {
+		cancel()
 	}
 	return nil
 }
@@ -790,10 +997,11 @@ func (r *Runner) Stop() {
 		return
 	}
 	r.stopped = true
+	cancel := r.cancel
 	r.mu.Unlock()
 
-	if r.cancel != nil {
-		r.cancel()
+	if cancel != nil {
+		cancel()
 	}
 }
 
@@ -804,10 +1012,11 @@ func (r *Runner) TryStop() bool {
 		return false
 	}
 	r.stopped = true
+	cancel := r.cancel
 	r.mu.Unlock()
 
-	if r.cancel != nil {
-		r.cancel()
+	if cancel != nil {
+		cancel()
 	}
 	return true
 }
@@ -855,12 +1064,8 @@ func (r *Runner) SetPermissionMode(mode string) error {
 		r.permEngine.SetMode(mode)
 	}
 
-	select {
-	case r.messageQueue <- inputMsg{Type: "set_permission_mode", PermissionMode: mode}:
-		return nil
-	default:
-		return nil // Best effort
-	}
+	r.emitter.emitPermissionModeChanged(mode)
+	return nil
 }
 
 func (r *Runner) SetFastMode(enabled bool) error {
@@ -1096,23 +1301,136 @@ func (r *Runner) SetPermissionModeDirect(mode string) {
 	r.emitter.emitPermissionModeChanged(mode)
 }
 
+// cleanup releases resources held by the runner on shutdown.
+// Cleans up tools that implement tool.Cleanable and removes temp directories.
+func (r *Runner) cleanup() {
+	// Generate session notes for potential session resume
+	if r.sessionNotes != nil && len(r.messages) > 2 {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		if notes, err := r.sessionNotes.GenerateNotes(ctx, r.messages); err == nil && notes != "" {
+			if memDir, err := r.memoryExtractor.memoryDir(); err == nil {
+				os.MkdirAll(memDir, 0755)
+				notesPath := filepath.Join(memDir, "session_notes.md")
+				os.WriteFile(notesPath, []byte(notes), 0644)
+			}
+		}
+	}
+
+	// Cleanup tools (e.g., BashTool kills background processes)
+	if r.toolRegistry != nil {
+		for _, t := range r.toolRegistry.All() {
+			if c, ok := t.(tool.Cleanable); ok {
+				c.Cleanup()
+			}
+		}
+	}
+
+	// Remove persisted tool result temp directory
+	if r.resultPersister != nil {
+		r.resultPersister.Cleanup()
+	}
+}
+
 func (r *Runner) Options() agent.ProcessOptions {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	return r.opts
 }
 
+// isAPIStatusCode checks if the error is an *provider.APIError with one of the given status codes.
+func isAPIStatusCode(err error, codes ...int) bool {
+	var apiErr *provider.APIError
+	if errors.As(err, &apiErr) {
+		for _, code := range codes {
+			if apiErr.StatusCode == code {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // isFallbackEligible returns true if the error warrants trying a fallback model.
-// Eligible errors: 529 (overloaded), 503 (service unavailable), model-specific capacity errors.
 func isFallbackEligible(err error) bool {
 	if err == nil {
 		return false
 	}
+	// Prefer typed check
+	if isAPIStatusCode(err, 529, 503, 502, 504) {
+		return true
+	}
+	// Fallback to string matching for wrapped errors
 	msg := err.Error()
-	return strings.Contains(msg, "529") ||
-		strings.Contains(msg, "503") ||
-		strings.Contains(msg, "overloaded") ||
+	return strings.Contains(msg, "overloaded") ||
 		strings.Contains(msg, "capacity")
+}
+
+// is529Error returns true if the error is specifically a 529 (overloaded) error.
+func is529Error(err error) bool {
+	if err == nil {
+		return false
+	}
+	if isAPIStatusCode(err, 529) {
+		return true
+	}
+	return strings.Contains(err.Error(), "529")
+}
+
+func is429Error(err error) bool {
+	if err == nil {
+		return false
+	}
+	return isAPIStatusCode(err, 429)
+}
+
+// isContextOverflow returns true if the error indicates a context window overflow.
+// Claude Code handles this by reducing max_tokens and retrying.
+func isContextOverflow(err error) bool {
+	if err == nil {
+		return false
+	}
+	// Fallback to string matching for context-overflow messages not tied to a status code
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "context_length_exceeded") ||
+		strings.Contains(msg, "maximum context length") ||
+		(strings.Contains(msg, "max_tokens") && strings.Contains(msg, "exceeds")) ||
+		strings.Contains(msg, "too many tokens") ||
+		strings.Contains(msg, "input is too long")
+}
+
+// contextOverflowRe matches error messages like:
+// "input tokens (150000) + max_tokens (8192) must be <= context limit (200000)"
+// or "input_tokens: 150000 ... context_window: 200000"
+var contextOverflowRe = regexp.MustCompile(`(?i)input[_ ]tokens[:\s(]*(\d+).*context[_ ](?:limit|window)[:\s(]*(\d+)`)
+
+// parseContextOverflow extracts the input token count and context limit from
+// a context overflow error message. Returns ok=false if parsing fails.
+func parseContextOverflow(errMsg string) (inputTokens, contextLimit int, ok bool) {
+	matches := contextOverflowRe.FindStringSubmatch(errMsg)
+	if len(matches) < 3 {
+		return 0, 0, false
+	}
+	input, err1 := strconv.Atoi(matches[1])
+	limit, err2 := strconv.Atoi(matches[2])
+	if err1 != nil || err2 != nil {
+		return 0, 0, false
+	}
+	return input, limit, true
+}
+
+// isPromptTooLong returns true if the error indicates the prompt exceeded
+// the model's context window. This triggers reactive compaction + retry.
+func isPromptTooLong(err error) bool {
+	if err == nil {
+		return false
+	}
+	if isAPIStatusCode(err, 413) {
+		return true
+	}
+	msg := strings.ToLower(err.Error())
+	return (strings.Contains(msg, "prompt") && strings.Contains(msg, "too long")) ||
+		strings.Contains(msg, "prompt_too_long")
 }
 
 // Ensure Runner implements ConversationBackend at compile time.

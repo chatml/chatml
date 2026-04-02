@@ -4,41 +4,70 @@
 package prompt
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
+
+	"github.com/chatml/chatml-backend/paths"
 )
 
 const maxClaudeMDChars = 40_000
 
 // ClaudeMDEntry represents a loaded CLAUDE.md file with its source path and content.
 type ClaudeMDEntry struct {
-	Path     string // Source file path
-	Content  string // File content (after processing)
-	Priority int    // Higher = loaded later = higher priority
+	Path       string   // Source file path
+	Content    string   // File content (after processing)
+	Priority   int      // Higher = loaded later = higher priority
+	PathGlobs  []string // Optional: file path patterns this rule applies to (from frontmatter paths:)
 }
 
-// LoadClaudeMD discovers and loads all CLAUDE.md files for the given workspace.
+// LoadClaudeMD discovers and loads all instruction files for the given workspace.
+// Checks CHATML.md (primary) and CLAUDE.md (fallback) at each location.
 // Search order (lowest to highest priority):
-//  1. ~/.claude/CLAUDE.md (user-level global)
-//  2. CLAUDE.md files walking UP from workdir to root (parent dirs = lower priority)
-//  3. .claude/CLAUDE.md in each directory
-//  4. .claude/rules/*.md in each directory
-//  5. CLAUDE.local.md in workdir (highest priority, project-local)
+//  1. ~/.chatml/CHATML.md OR ~/.claude/CLAUDE.md (user-level global)
+//  2. CHATML.md/CLAUDE.md files walking UP from workdir to root
+//  3. .chatml/CHATML.md OR .claude/CLAUDE.md in each directory
+//  4. .chatml/rules/*.md OR .claude/rules/*.md in each directory
+//  5. CHATML.local.md OR CLAUDE.local.md in workdir (highest priority)
 func LoadClaudeMD(workdir string) []ClaudeMDEntry {
 	var entries []ClaudeMDEntry
 	priority := 0
 
-	// 1. User-level global: ~/.claude/CLAUDE.md
-	if home, err := os.UserHomeDir(); err == nil {
-		userMD := filepath.Join(home, ".claude", "CLAUDE.md")
-		if content, err := readClaudeMDFile(userMD); err == nil {
-			entries = append(entries, ClaudeMDEntry{Path: userMD, Content: content, Priority: priority})
-			priority++
+	// Helper: load from first existing path (primary then fallback)
+	loadFirst := func(primaryPath, fallbackPath string) {
+		for _, p := range []string{primaryPath, fallbackPath} {
+			if content, err := readClaudeMDFile(p); err == nil {
+				entry := ClaudeMDEntry{Path: p, Content: content, Priority: priority}
+				if raw, readErr := os.ReadFile(p); readErr == nil {
+					entry.PathGlobs = parseFrontmatterPaths(string(raw))
+				}
+				entries = append(entries, entry)
+				priority++
+				return // Only load first found
+			}
 		}
 	}
+
+	// Helper: load from ALL existing paths (for merging both .chatml + .claude)
+	loadAll := func(primaryPath, fallbackPath string) {
+		for _, p := range []string{primaryPath, fallbackPath} {
+			if content, err := readClaudeMDFile(p); err == nil {
+				entry := ClaudeMDEntry{Path: p, Content: content, Priority: priority}
+				if raw, readErr := os.ReadFile(p); readErr == nil {
+					entry.PathGlobs = parseFrontmatterPaths(string(raw))
+				}
+				entries = append(entries, entry)
+				priority++
+			}
+		}
+	}
+
+	// 1. User-level global: ~/.chatml/CHATML.md or ~/.claude/CLAUDE.md
+	primary, fallback := paths.HomeInstructionPaths()
+	loadFirst(primary, fallback)
 
 	// 2-4. Walk directory tree upward from workdir to root
 	dirs := directoryChainToRoot(workdir)
@@ -46,44 +75,44 @@ func LoadClaudeMD(workdir string) []ClaudeMDEntry {
 	for i := len(dirs) - 1; i >= 0; i-- {
 		dir := dirs[i]
 
-		// CLAUDE.md in this directory
-		mdPath := filepath.Join(dir, "CLAUDE.md")
-		if content, err := readClaudeMDFile(mdPath); err == nil {
-			entries = append(entries, ClaudeMDEntry{Path: mdPath, Content: content, Priority: priority})
-			priority++
-		}
+		// CHATML.md / CLAUDE.md in this directory
+		p, fb := paths.InstructionPaths(dir)
+		loadFirst(p, fb)
 
-		// .claude/CLAUDE.md
-		dotClaudeMD := filepath.Join(dir, ".claude", "CLAUDE.md")
-		if content, err := readClaudeMDFile(dotClaudeMD); err == nil {
-			entries = append(entries, ClaudeMDEntry{Path: dotClaudeMD, Content: content, Priority: priority})
-			priority++
-		}
+		// .chatml/CHATML.md / .claude/CLAUDE.md
+		p, fb = paths.ConfigInstructionPaths(dir)
+		loadFirst(p, fb)
 
-		// .claude/rules/*.md
-		rulesDir := filepath.Join(dir, ".claude", "rules")
-		if ruleFiles, err := filepath.Glob(filepath.Join(rulesDir, "*.md")); err == nil {
-			sort.Strings(ruleFiles) // Deterministic order
-			for _, rf := range ruleFiles {
-				if content, err := readClaudeMDFile(rf); err == nil {
-					entries = append(entries, ClaudeMDEntry{Path: rf, Content: content, Priority: priority})
-					priority++
+		// .chatml/rules/*.md AND .claude/rules/*.md (merge both)
+		pRules, fbRules := paths.RulesDirPaths(dir)
+		for _, rulesDir := range []string{pRules, fbRules} {
+			if ruleFiles, err := filepath.Glob(filepath.Join(rulesDir, "*.md")); err == nil {
+				sort.Strings(ruleFiles)
+				for _, rf := range ruleFiles {
+					if content, err := readClaudeMDFile(rf); err == nil {
+						entry := ClaudeMDEntry{Path: rf, Content: content, Priority: priority}
+						if raw, readErr := os.ReadFile(rf); readErr == nil {
+							entry.PathGlobs = parseFrontmatterPaths(string(raw))
+						}
+						entries = append(entries, entry)
+						priority++
+					}
 				}
 			}
 		}
 	}
 
-	// 5. CLAUDE.local.md (highest priority — project-local, not committed)
-	localMD := filepath.Join(workdir, "CLAUDE.local.md")
-	if content, err := readClaudeMDFile(localMD); err == nil {
-		entries = append(entries, ClaudeMDEntry{Path: localMD, Content: content, Priority: priority})
-	}
+	// 5. CHATML.local.md / CLAUDE.local.md (highest priority)
+	p, fb := paths.LocalInstructionPaths(workdir)
+	loadAll(p, fb)
 
+	_ = loadAll // suppress unused warning if loadAll is only used for local
 	return entries
 }
 
 // MergeClaudeMD combines all loaded entries into a single string, respecting
 // the character limit. Higher-priority entries are kept if truncation is needed.
+// Entries with PathGlobs are only included if at least one glob matches the workdir.
 func MergeClaudeMD(entries []ClaudeMDEntry) string {
 	if len(entries) == 0 {
 		return ""
@@ -98,10 +127,15 @@ func MergeClaudeMD(entries []ClaudeMDEntry) string {
 	totalLen := 0
 
 	for _, e := range entries {
+		// Skip entries with path patterns that don't match the working directory
+		if len(e.PathGlobs) > 0 && !matchesAnyGlob(e.Path, e.PathGlobs) {
+			continue
+		}
+
 		content := e.Content
 		if totalLen+len(content) > maxClaudeMDChars {
 			remaining := maxClaudeMDChars - totalLen
-			if remaining > 100 {
+			if remaining > 50 {
 				content = content[:remaining] + "\n... (truncated)"
 			} else {
 				break
@@ -114,13 +148,63 @@ func MergeClaudeMD(entries []ClaudeMDEntry) string {
 	return strings.Join(parts, "\n\n")
 }
 
-// readClaudeMDFile reads a file, strips block HTML comments, and trims whitespace.
+// matchesAnyGlob checks if the entry's source directory matches any of the glob patterns.
+// Patterns are matched against the directory containing the CLAUDE.md file.
+func matchesAnyGlob(entryPath string, patterns []string) bool {
+	dir := filepath.Dir(entryPath)
+	for _, pattern := range patterns {
+		// Match pattern against the entry's directory
+		if matched, _ := filepath.Match(pattern, dir); matched {
+			return true
+		}
+		// Also try matching against relative paths within the entry's parent
+		if matched, _ := filepath.Match(pattern, filepath.Base(dir)); matched {
+			return true
+		}
+	}
+	// If no patterns match, the rule doesn't apply
+	return false
+}
+
+// readClaudeMDFile reads a file, processes @include directives, strips block
+// HTML comments, and trims whitespace.
 func readClaudeMDFile(path string) (string, error) {
+	return readClaudeMDFileWithDepth(path, 0, nil)
+}
+
+const maxIncludeDepth = 5
+
+func readClaudeMDFileWithDepth(path string, depth int, visited map[string]bool) (string, error) {
+	if depth > maxIncludeDepth {
+		return "", fmt.Errorf("@include depth exceeded (max %d)", maxIncludeDepth)
+	}
+
+	absPath, err := filepath.Abs(path)
+	if err != nil {
+		return "", err
+	}
+
+	// Circular reference detection
+	if visited == nil {
+		visited = make(map[string]bool)
+	}
+	if visited[absPath] {
+		return "", fmt.Errorf("circular @include: %s", absPath)
+	}
+	visited[absPath] = true
+
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return "", err
 	}
 	content := string(data)
+
+	// Strip frontmatter before processing
+	content = stripFrontmatter(content)
+
+	// Process @include directives
+	content = processIncludes(content, filepath.Dir(path), depth, visited)
+
 	content = stripBlockComments(content)
 	content = strings.TrimSpace(content)
 	if content == "" {
@@ -129,12 +213,176 @@ func readClaudeMDFile(path string) (string, error) {
 	return content, nil
 }
 
+// includeRe matches @include directives with relative paths only.
+// Absolute and home-relative (~/) paths are NOT supported to prevent
+// exfiltration of sensitive files (SSH keys, credentials) via malicious
+// CLAUDE.md files in untrusted repositories.
+var includeRe = regexp.MustCompile(`(?m)^@(\./.+)\s*$`)
+
+// processIncludes resolves @include directives in CLAUDE.md content.
+// Only relative (./...) paths are supported, and they must resolve within
+// the baseDir directory tree (no escaping via "..").
+func processIncludes(content, baseDir string, depth int, visited map[string]bool) string {
+	absBaseDir, err := filepath.Abs(baseDir)
+	if err != nil {
+		return content // Can't resolve base dir — skip all includes
+	}
+
+	return includeRe.ReplaceAllStringFunc(content, func(match string) string {
+		ref := strings.TrimSpace(match[1:]) // Strip leading @
+
+		// Resolve relative path
+		resolved := filepath.Clean(filepath.Join(baseDir, ref))
+
+		// Security: verify the resolved path stays within baseDir.
+		// This prevents path traversal via @./../../../etc/passwd.
+		absResolved, err := filepath.Abs(resolved)
+		if err != nil {
+			return "" // Silently skip unresolvable paths
+		}
+		if !isPathWithin(absBaseDir, absResolved) {
+			return fmt.Sprintf("[Blocked: @include path escapes project directory: %s]", ref)
+		}
+
+		// Only include text files (with explicit extension)
+		ext := strings.ToLower(filepath.Ext(resolved))
+		if !isTextFileExt(ext) {
+			return fmt.Sprintf("[Cannot include non-text file: %s]", ref)
+		}
+
+		included, err := readClaudeMDFileWithDepth(resolved, depth+1, visited)
+		if err != nil {
+			return "" // Silently skip missing includes
+		}
+		return included
+	})
+}
+
+// isPathWithin returns true if candidate is inside (or equal to) the base directory.
+func isPathWithin(base, candidate string) bool {
+	rel, err := filepath.Rel(base, candidate)
+	if err != nil {
+		return false
+	}
+	return !strings.HasPrefix(rel, ".."+string(filepath.Separator)) && rel != ".."
+}
+
+// isTextFileExt returns true if the extension is a known text file type.
+// Files with no extension are NOT allowed to prevent inclusion of credential
+// files (SSH keys, .aws/credentials, .netrc, etc.) which have no extension.
+func isTextFileExt(ext string) bool {
+	textExts := map[string]bool{
+		".md": true, ".txt": true, ".json": true, ".yaml": true, ".yml": true,
+		".ts": true, ".js": true, ".go": true, ".py": true, ".rs": true,
+		".toml": true, ".cfg": true, ".ini": true, ".sh": true, ".bash": true,
+		".zsh": true, ".fish": true, ".css": true, ".html": true, ".xml": true,
+		".svg": true, ".sql": true, ".graphql": true, ".proto": true,
+		".java": true, ".kt": true, ".swift": true, ".c": true, ".h": true,
+		".cpp": true, ".hpp": true, ".rb": true, ".php": true, ".lua": true,
+		".r": true, ".ex": true, ".exs": true, ".erl": true, ".hs": true,
+	}
+	return textExts[ext]
+}
+
+// frontmatterRe matches YAML frontmatter blocks at the start of a file.
+var frontmatterRe = regexp.MustCompile(`(?s)\A---\n.*?\n---\n?`)
+
+// stripFrontmatter removes YAML frontmatter from the start of content.
+func stripFrontmatter(content string) string {
+	return frontmatterRe.ReplaceAllString(content, "")
+}
+
+// parseFrontmatterPaths extracts the paths: field from YAML frontmatter.
+// Returns nil if no paths field is found. The paths field is used for
+// conditional rules — the entry only applies to files matching these patterns.
+func parseFrontmatterPaths(content string) []string {
+	if !strings.HasPrefix(content, "---\n") {
+		return nil
+	}
+	end := strings.Index(content[4:], "\n---")
+	if end < 0 {
+		return nil
+	}
+	fm := content[4 : 4+end]
+
+	var paths []string
+	inPaths := false
+	for _, line := range strings.Split(fm, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "paths:") {
+			inPaths = true
+			// Check for inline value: paths: src/**
+			val := strings.TrimSpace(strings.TrimPrefix(trimmed, "paths:"))
+			if val != "" {
+				for _, p := range splitPathPatterns(val) {
+					paths = append(paths, p)
+				}
+			}
+			continue
+		}
+		// YAML list continuation: "  - src/**"
+		if inPaths && (strings.HasPrefix(line, "  ") || strings.HasPrefix(line, "\t")) {
+			val := strings.TrimSpace(strings.TrimPrefix(trimmed, "-"))
+			if val != "" {
+				paths = append(paths, val)
+			}
+			continue
+		}
+		inPaths = false
+	}
+	return paths
+}
+
+// splitPathPatterns splits a paths value on commas, semicolons, and newlines.
+func splitPathPatterns(val string) []string {
+	val = strings.ReplaceAll(val, ";", ",")
+	parts := strings.Split(val, ",")
+	var result []string
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p != "" && p != "**" {
+			result = append(result, p)
+		}
+	}
+	return result
+}
+
 // blockCommentRe matches HTML block comments <!-- ... --> (including multiline).
 var blockCommentRe = regexp.MustCompile(`(?s)<!--.*?-->`)
 
-// stripBlockComments removes HTML block comments from markdown content.
+// codeFenceRe matches markdown code fence boundaries (``` or ~~~).
+var codeFenceRe = regexp.MustCompile("(?m)^(```|~~~)")
+
+// stripBlockComments removes HTML block comments from markdown content,
+// but preserves comments inside code blocks (fenced with ``` or ~~~).
 func stripBlockComments(content string) string {
-	return blockCommentRe.ReplaceAllString(content, "")
+	// Split on code fence boundaries
+	fenceIndices := codeFenceRe.FindAllStringIndex(content, -1)
+	if len(fenceIndices) == 0 {
+		// No code blocks — strip all comments
+		return blockCommentRe.ReplaceAllString(content, "")
+	}
+
+	// Build list of code block ranges (pairs of fence positions)
+	type codeRange struct{ start, end int }
+	var codeRanges []codeRange
+	for i := 0; i+1 < len(fenceIndices); i += 2 {
+		codeRanges = append(codeRanges, codeRange{
+			start: fenceIndices[i][0],
+			end:   fenceIndices[i+1][1],
+		})
+	}
+
+	// Replace comments only if they're outside all code blocks
+	return blockCommentRe.ReplaceAllStringFunc(content, func(match string) string {
+		matchStart := strings.Index(content, match)
+		for _, cr := range codeRanges {
+			if matchStart >= cr.start && matchStart < cr.end {
+				return match // Inside code block — preserve
+			}
+		}
+		return "" // Outside code block — strip
+	})
 }
 
 // directoryChainToRoot returns the chain of directories from dir up to the root.

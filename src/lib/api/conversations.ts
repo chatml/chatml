@@ -220,6 +220,7 @@ export async function createConversation(
       labels: string[];
     };
     linkedWorkspaceIds?: string[];
+    backend?: 'agent-runner' | 'native';
   }
 ): Promise<ConversationDTO> {
   const res = await fetchWithAuth(

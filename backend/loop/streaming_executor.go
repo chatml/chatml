@@ -12,24 +12,37 @@ import (
 // StreamingToolExecutor starts executing tool calls as they arrive during
 // streaming, rather than waiting for the entire response to complete.
 // Concurrent-safe tools start immediately; serial tools are queued.
+//
+// Sibling abort: if a Bash tool returns an error, pending sibling tools
+// are cancelled via the shared siblingCtx. This matches Claude Code's
+// behavior where Bash errors abort sibling tools (implicit dependency chains).
 type StreamingToolExecutor struct {
 	registry *tool.Registry
 	executor *tool.Executor
 
 	mu        sync.Mutex
-	pending   []provider.ToolUseBlock // Tools waiting for execution
+	pending   []provider.ToolUseBlock      // Tools waiting for execution
 	results   map[string]tool.ToolCallResult // Completed results by tool ID
-	running   map[string]struct{} // Currently executing tool IDs
+	running   map[string]struct{}           // Currently executing tool IDs
 	wg        sync.WaitGroup
+
+	// Sibling abort: cancel pending tools when a Bash error occurs
+	siblingCtx    context.Context
+	siblingCancel context.CancelFunc
+	aborted       bool
+	abortReason   string
 }
 
 // NewStreamingToolExecutor creates a streaming executor.
 func NewStreamingToolExecutor(registry *tool.Registry, executor *tool.Executor) *StreamingToolExecutor {
+	ctx, cancel := context.WithCancel(context.Background())
 	return &StreamingToolExecutor{
-		registry: registry,
-		executor: executor,
-		results:  make(map[string]tool.ToolCallResult),
-		running:  make(map[string]struct{}),
+		registry:      registry,
+		executor:      executor,
+		results:       make(map[string]tool.ToolCallResult),
+		running:       make(map[string]struct{}),
+		siblingCtx:    ctx,
+		siblingCancel: cancel,
 	}
 }
 
@@ -48,7 +61,15 @@ func (se *StreamingToolExecutor) AddTool(ctx context.Context, block provider.Too
 		se.wg.Add(1)
 		go func() {
 			defer se.wg.Done()
-			result := se.executeOne(ctx, block)
+			// Use sibling context so tools can be cancelled on Bash errors.
+			// Also propagate parent ctx cancellation via AfterFunc (avoids a
+			// separate goroutine per tool).
+			execCtx, cancel := context.WithCancel(se.siblingCtx)
+			defer cancel()
+			stop := context.AfterFunc(ctx, cancel)
+			defer stop()
+
+			result := se.executeOne(execCtx, block)
 			se.mu.Lock()
 			se.results[block.ID] = result
 			delete(se.running, block.ID)
@@ -75,7 +96,36 @@ func (se *StreamingToolExecutor) Collect(ctx context.Context, allToolCalls []pro
 	se.mu.Unlock()
 
 	for _, block := range pending {
+		// Check if siblings were aborted
+		se.mu.Lock()
+		aborted := se.aborted
+		reason := se.abortReason
+		se.mu.Unlock()
+
+		if aborted {
+			tc := tool.ToolCall{ID: block.ID, Name: block.Name, Input: json.RawMessage(block.Input)}
+			se.mu.Lock()
+			se.results[block.ID] = tool.ToolCallResult{
+				ToolCall: tc,
+				Result:   tool.ErrorResult("Aborted: " + reason),
+			}
+			se.mu.Unlock()
+			continue
+		}
+
 		result := se.executeOne(ctx, block)
+
+		// If a Bash tool (serial) returned an error, abort remaining siblings
+		if block.Name == "Bash" && result.Result != nil && result.Result.IsError {
+			se.mu.Lock()
+			if !se.aborted {
+				se.aborted = true
+				se.abortReason = "Bash command failed — aborting remaining tools"
+				se.siblingCancel()
+			}
+			se.mu.Unlock()
+		}
+
 		se.mu.Lock()
 		se.results[block.ID] = result
 		se.mu.Unlock()

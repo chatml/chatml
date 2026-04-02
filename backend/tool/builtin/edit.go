@@ -13,12 +13,18 @@ import (
 
 // EditTool performs structured string replacements in files.
 type EditTool struct {
-	workdir string
+	workdir     string
+	readTracker *tool.ReadTracker
 }
 
 // NewEditTool creates an Edit tool for the given workspace.
 func NewEditTool(workdir string) *EditTool {
 	return &EditTool{workdir: workdir}
+}
+
+// NewEditToolWithTracker creates an Edit tool with a shared ReadTracker.
+func NewEditToolWithTracker(workdir string, tracker *tool.ReadTracker) *EditTool {
+	return &EditTool{workdir: workdir, readTracker: tracker}
 }
 
 func (t *EditTool) Name() string { return "Edit" }
@@ -76,12 +82,24 @@ func (t *EditTool) Execute(ctx context.Context, input json.RawMessage) (*tool.Re
 
 	filePath := t.resolvePath(in.FilePath)
 
-	// Read current file content
-	data, err := os.ReadFile(filePath)
-	if err != nil {
-		if os.IsNotExist(err) {
+	// Enforce read-before-edit: the file must have been read in this session.
+	// This prevents blind edits to files the model hasn't seen.
+	if t.readTracker != nil && !t.readTracker.HasBeenRead(filePath) {
+		return tool.ErrorResult(fmt.Sprintf("You must read %s before editing it. Use the Read tool first.", in.FilePath)), nil
+	}
+
+	// Read current file content and preserve permissions
+	info, statErr := os.Stat(filePath)
+	if statErr != nil {
+		if os.IsNotExist(statErr) {
 			return tool.ErrorResult(fmt.Sprintf("File not found: %s", in.FilePath)), nil
 		}
+		return tool.ErrorResult(fmt.Sprintf("Cannot access file: %v", statErr)), nil
+	}
+	fileMode := info.Mode()
+
+	data, err := os.ReadFile(filePath)
+	if err != nil {
 		return tool.ErrorResult(fmt.Sprintf("Cannot read file: %v", err)), nil
 	}
 
@@ -105,8 +123,8 @@ func (t *EditTool) Execute(ctx context.Context, input json.RawMessage) (*tool.Re
 		newContent = strings.Replace(content, in.OldString, in.NewString, 1)
 	}
 
-	// Write back
-	if err := os.WriteFile(filePath, []byte(newContent), 0644); err != nil {
+	// Write back preserving original file permissions
+	if err := os.WriteFile(filePath, []byte(newContent), fileMode); err != nil {
 		return tool.ErrorResult(fmt.Sprintf("Failed to write file: %v", err)), nil
 	}
 
@@ -131,4 +149,18 @@ func (t *EditTool) resolvePath(path string) string {
 	return filepath.Clean(filepath.Join(t.workdir, path))
 }
 
+// Prompt implements tool.PromptProvider.
+func (t *EditTool) Prompt() string {
+	return `Performs exact string replacements in files.
+
+Usage:
+- You must use your ` + "`Read`" + ` tool at least once in the conversation before editing. This tool will error if you attempt an edit without reading the file.
+- When editing text from Read tool output, ensure you preserve the exact indentation (tabs/spaces) as it appears AFTER the line number prefix. The line number prefix format is: spaces + line number + tab. Everything after that tab is the actual file content to match. Never include any part of the line number prefix in the old_string or new_string.
+- ALWAYS prefer editing existing files in the codebase. NEVER write new files unless explicitly required.
+- Only use emojis if the user explicitly requests it. Avoid adding emojis to files unless asked.
+- The edit will FAIL if ` + "`old_string`" + ` is not unique in the file. Either provide a larger string with more surrounding context to make it unique or use ` + "`replace_all`" + ` to change every instance of ` + "`old_string`" + `.
+- Use ` + "`replace_all`" + ` for replacing and renaming strings across the file. This parameter is useful if you want to rename a variable for instance.`
+}
+
 var _ tool.Tool = (*EditTool)(nil)
+var _ tool.PromptProvider = (*EditTool)(nil)

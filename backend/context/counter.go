@@ -47,3 +47,13 @@ func ContextTokensFromUsage(usage *provider.Usage) int {
 	}
 	return usage.InputTokens + usage.OutputTokens
 }
+
+// CacheBreakdown returns separate cache token counts for cost analysis.
+// CacheReadInputTokens are tokens served from cache (cheaper).
+// CacheCreationInputTokens are tokens written to cache (one-time cost).
+func CacheBreakdown(usage *provider.Usage) (cacheRead, cacheCreation int) {
+	if usage == nil {
+		return 0, 0
+	}
+	return usage.CacheReadInputTokens, usage.CacheCreationInputTokens
+}

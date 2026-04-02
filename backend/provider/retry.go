@@ -2,7 +2,9 @@ package provider
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io"
 	"math"
 	"math/rand"
 	"net"
@@ -17,6 +19,7 @@ type RetryConfig struct {
 	InitialBackoff time.Duration // Starting backoff duration (default 1s)
 	MaxBackoff     time.Duration // Maximum backoff duration (default 60s)
 	JitterFraction float64       // Random jitter fraction 0-1 (default 0.1)
+	OnAuthError    func() error  // Called on 401/403 to refresh tokens before retry (optional)
 }
 
 // DefaultRetryConfig returns sensible defaults matching Claude Code's withRetry.ts.
@@ -43,6 +46,10 @@ func (e *APIError) Error() string {
 // IsRetryable returns whether this error should be retried.
 func (e *APIError) IsRetryable() bool {
 	switch e.StatusCode {
+	case 408: // Request timeout
+		return true
+	case 409: // Lock timeout / conflict
+		return true
 	case 429: // Rate limited
 		return true
 	case 529: // Overloaded
@@ -65,13 +72,19 @@ func isNetworkError(err error) bool {
 		return true
 	}
 
+	// Check for unexpected EOF (mid-stream connection drop).
+	// Plain io.EOF is a normal end-of-stream and should NOT be retried.
+	if errors.Is(err, io.ErrUnexpectedEOF) {
+		return true
+	}
+
 	// Check error message for common transient patterns
 	msg := err.Error()
 	return strings.Contains(msg, "connection reset") ||
 		strings.Contains(msg, "broken pipe") ||
 		strings.Contains(msg, "ECONNRESET") ||
 		strings.Contains(msg, "EPIPE") ||
-		strings.Contains(msg, "EOF") ||
+		strings.Contains(msg, "unexpected EOF") || // string fallback for wrapped errors
 		strings.Contains(msg, "connection refused")
 }
 
@@ -95,10 +108,18 @@ func WithRetry(ctx context.Context, cfg RetryConfig, fn func() error) error {
 		var backoff time.Duration
 
 		if apiErr, ok := lastErr.(*APIError); ok {
-			if !apiErr.IsRetryable() {
+			// Auth errors: try token refresh before giving up
+			if (apiErr.StatusCode == 401 || apiErr.StatusCode == 403) && cfg.OnAuthError != nil {
+				if refreshErr := cfg.OnAuthError(); refreshErr == nil {
+					shouldRetry = true // Token refreshed — retry
+				} else {
+					return lastErr // Refresh failed — give up
+				}
+			} else if !apiErr.IsRetryable() {
 				return lastErr // Non-retryable API error
+			} else {
+				shouldRetry = true
 			}
-			shouldRetry = true
 
 			// Use Retry-After if provided
 			if apiErr.RetryAfter > 0 {

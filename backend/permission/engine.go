@@ -164,7 +164,7 @@ func (e *Engine) Check(toolName string, input json.RawMessage) CheckResult {
 		}
 	}
 
-	// 1.5. Safety checks: dangerous paths require explicit approval even in bypass mode.
+	// 1.5. Safety checks: dangerous PATHS require explicit approval even in bypass mode.
 	// This MUST run before the bypass mode check.
 	if writesToFile(toolName) && specifier != "" && IsDangerousPath(specifier) {
 		result.Decision = NeedApproval
@@ -228,6 +228,14 @@ func (e *Engine) Check(toolName string, input json.RawMessage) CheckResult {
 		return result
 	case "ask":
 		// Fall through to NeedApproval
+	}
+
+	// 6.5. Dangerous command detection: Bash commands that invoke interpreters,
+	// network tools, or privilege escalation require approval if not already
+	// allowed by session cache or persistent rules.
+	if toolName == "Bash" && specifier != "" && IsDangerousCommand(specifier) {
+		result.Decision = NeedApproval
+		return result
 	}
 
 	// 7. acceptEdits mode: auto-allow Write/Edit/NotebookEdit WITHIN working directory only

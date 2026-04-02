@@ -150,6 +150,20 @@ func NewToolResultBlock(toolUseID, content string, isError bool) ContentBlock {
 	return ContentBlock{Type: BlockToolResult, ForToolUseID: toolUseID, ResultContent: content, IsError: isError}
 }
 
+// NewImageToolResultBlock creates a tool_result content block that contains
+// an image. The Anthropic API supports multi-content tool results; this block
+// carries both the base64 image data and a text description so the LLM can
+// see the image visually.
+func NewImageToolResultBlock(toolUseID, textContent, mediaType, base64Data string) ContentBlock {
+	return ContentBlock{
+		Type:         BlockToolResult,
+		ForToolUseID: toolUseID,
+		ResultContent: textContent,
+		MediaType:    mediaType,
+		Base64Data:   base64Data,
+	}
+}
+
 // NewThinkingBlock creates a thinking content block.
 func NewThinkingBlock(thinking string) ContentBlock {
 	return ContentBlock{Type: BlockThinking, Thinking: thinking}

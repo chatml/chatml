@@ -10,6 +10,7 @@ import (
 type Rule struct {
 	Tool      string `json:"tool"`               // Tool name (e.g., "Bash", "Write")
 	Specifier string `json:"specifier,omitempty"` // Optional content pattern (e.g., "npm run *")
+	Content   string `json:"content,omitempty"`   // Optional substring match on tool input content
 	Action    string `json:"action"`              // "allow", "deny", or "ask"
 }
 
@@ -85,18 +86,27 @@ func matchesRule(rule Rule, toolName, specifier string) bool {
 		return false
 	}
 
-	// If the rule has no specifier, it matches all uses of the tool
-	if rule.Specifier == "" {
-		return true
+	// If the rule has a specifier, the specifier must match
+	if rule.Specifier != "" {
+		if specifier == "" {
+			return false
+		}
+		if !WildcardMatch(rule.Specifier, specifier) {
+			return false
+		}
 	}
 
-	// If there's no specifier from the tool call, a rule with a specifier doesn't match
-	if specifier == "" {
-		return false
+	// If the rule has a content pattern, the specifier must contain it as a substring
+	if rule.Content != "" {
+		if specifier == "" {
+			return false
+		}
+		if !strings.Contains(specifier, rule.Content) {
+			return false
+		}
 	}
 
-	// Match the specifier using glob-style wildcards
-	return WildcardMatch(rule.Specifier, specifier)
+	return true
 }
 
 // WildcardMatch performs glob-style matching with * wildcards.

@@ -4,10 +4,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"os"
 	"strings"
 
 	"github.com/chatml/chatml-backend/agent"
 	"github.com/chatml/chatml-backend/permission"
+	"github.com/chatml/chatml-backend/prompt"
 	"github.com/chatml/chatml-backend/provider"
 	"github.com/chatml/chatml-backend/provider/anthropic"
 	"github.com/chatml/chatml-backend/provider/openai"
@@ -44,8 +46,20 @@ func NewBackendFactory() agent.NativeBackendFactory {
 		}
 		permEngine := permission.NewEngineWithWorkdir(mode, rules, opts.Workdir)
 
+		// Pre-compute git config for enriched system prompt
+		promptCfg := prompt.BuilderConfig{
+			Workdir:      opts.Workdir,
+			Model:        opts.Model,
+			Instructions: opts.Instructions,
+			FastMode:     opts.FastMode,
+		}
+		// Set model marketing name + ID based on model
+		promptCfg.ModelMarketingName, promptCfg.ModelID, promptCfg.KnowledgeCutoff = modelInfo(opts.Model)
+		prompt.PrecomputeGitConfig(&promptCfg)
+
 		// Create runner first (needed for callbacks)
 		runner := NewRunnerFull(opts, provider.Provider(prov), nil, permEngine)
+		runner.promptBuilder = prompt.NewBuilderWithConfig(promptCfg)
 
 		// Create tool registry with callbacks wired to the runner
 		registry := tool.NewRegistry()
@@ -76,7 +90,22 @@ func NewBackendFactory() agent.NativeBackendFactory {
 		runner.toolExecutor = tool.NewExecutor(registry, 8)
 		runner.streamingToolExecEnabled = true
 
-		// Set fallback model: if primary is Opus, fallback to Sonnet
+		// Initialize tool result persister for large outputs.
+		// Uses a session-specific temp directory to avoid polluting the workdir
+		// and to isolate concurrent sessions from each other.
+		if opts.Workdir != "" {
+			sessionDir, err := os.MkdirTemp("", "chatml-tool-results-*")
+			if err != nil {
+				log.Printf("warning: failed to create tool results temp dir: %v (using workdir fallback)", err)
+				sessionDir = opts.Workdir
+			}
+			runner.resultPersister = tool.NewResultPersister(sessionDir)
+		}
+
+		// Set fallback model: if primary is Opus, fallback to Sonnet.
+		// Both are Anthropic models so reusing runner.provider is safe.
+		// If fallback ever crosses provider boundaries, a new provider
+		// instance must be created (see createProvider).
 		if strings.HasPrefix(opts.Model, "claude-opus") {
 			runner.fallbackModel = "claude-sonnet-4-6"
 		}
@@ -86,7 +115,7 @@ func NewBackendFactory() agent.NativeBackendFactory {
 }
 
 // createProvider selects and creates the appropriate LLM provider based on model name.
-// OpenAI models (gpt-*, o1*, o3*, o4*) use the OpenAI provider.
+// OpenAI models (gpt-*, o1-/o1.*, o3-/o3.*, o4-/o4.*) use the OpenAI provider.
 // Everything else defaults to Anthropic.
 func createProvider(model, apiKey, oauthToken string) (provider.Provider, error) {
 	if isOpenAIModel(model) {
@@ -107,9 +136,35 @@ func createProvider(model, apiKey, oauthToken string) (provider.Provider, error)
 	return anthropic.New(cfg)
 }
 
+// modelInfo returns the marketing name, model ID, and knowledge cutoff for known models.
+func modelInfo(model string) (marketingName, modelID, cutoff string) {
+	switch {
+	case strings.Contains(model, "opus-4-6"):
+		return "Opus 4.6 (1M context)", model, "May 2025"
+	case strings.Contains(model, "sonnet-4-6"):
+		return "Sonnet 4.6", model, "May 2025"
+	case strings.Contains(model, "haiku-4-5"):
+		return "Haiku 4.5", model, "May 2025"
+	case strings.Contains(model, "sonnet-4-5"):
+		return "Sonnet 4.5", model, "May 2025"
+	case strings.HasPrefix(model, "claude-"):
+		return model, model, "May 2025"
+	default:
+		return model, model, ""
+	}
+}
+
 // isOpenAIModel returns true if the model name indicates an OpenAI model.
+// Uses exact matches for bare names ("o1", "o3", "o4") and prefix matches
+// with delimiters for versioned names to avoid matching non-OpenAI models.
 func isOpenAIModel(model string) bool {
-	openAIPrefixes := []string{"gpt-", "o1", "o3", "o4"}
+	// Exact bare model names
+	switch model {
+	case "o1", "o3", "o4":
+		return true
+	}
+	// Prefixed model names (with delimiter: dash or dot)
+	openAIPrefixes := []string{"gpt-", "o1-", "o1.", "o3-", "o3.", "o4-", "o4."}
 	for _, prefix := range openAIPrefixes {
 		if strings.HasPrefix(model, prefix) {
 			return true
