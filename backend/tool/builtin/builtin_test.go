@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/chatml/chatml-backend/tool"
 	"github.com/stretchr/testify/assert"
@@ -1042,4 +1043,139 @@ func TestStripHTML_Styles(t *testing.T) {
 	text := stripHTML(html)
 	assert.Contains(t, text, "content")
 	assert.NotContains(t, text, "color")
+}
+
+// --- Read tool: file type detection tests ---
+
+func TestReadTool_ImageFile(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "test.png")
+	// Write a minimal PNG header
+	os.WriteFile(path, []byte{0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A}, 0644)
+
+	read := NewReadTool(dir)
+	result, err := read.Execute(context.Background(), json.RawMessage(`{"file_path":"`+path+`"}`))
+	require.NoError(t, err)
+	assert.False(t, result.IsError)
+	assert.Contains(t, result.Content, "Image")
+	assert.Contains(t, result.Content, "test.png")
+	assert.NotNil(t, result.Metadata)
+	assert.Equal(t, "image", result.Metadata["type"])
+	assert.NotEmpty(t, result.Metadata["base64"])
+}
+
+func TestReadTool_NotebookFile(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "notebook.ipynb")
+	notebook := `{"cells":[{"cell_type":"code","source":["print(1)"],"outputs":[]},{"cell_type":"markdown","source":["# Title"],"outputs":[]}]}`
+	os.WriteFile(path, []byte(notebook), 0644)
+
+	read := NewReadTool(dir)
+	result, err := read.Execute(context.Background(), json.RawMessage(`{"file_path":"`+path+`"}`))
+	require.NoError(t, err)
+	assert.False(t, result.IsError)
+	assert.Contains(t, result.Content, "Cell 1 [code]")
+	assert.Contains(t, result.Content, "print(1)")
+	assert.Contains(t, result.Content, "Cell 2 [markdown]")
+	assert.NotNil(t, result.Metadata)
+	assert.Equal(t, 2, result.Metadata["num_cells"])
+}
+
+func TestReadTool_BinaryFile(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "binary.dat")
+	// Write a file with many null bytes (binary)
+	data := make([]byte, 100)
+	for i := range data {
+		if i%2 == 0 {
+			data[i] = 0
+		} else {
+			data[i] = byte(i)
+		}
+	}
+	os.WriteFile(path, data, 0644)
+
+	read := NewReadTool(dir)
+	result, err := read.Execute(context.Background(), json.RawMessage(`{"file_path":"`+path+`"}`))
+	require.NoError(t, err)
+	assert.True(t, result.IsError)
+	assert.Contains(t, result.Content, "binary file")
+}
+
+func TestReadTool_PDFFile(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "doc.pdf")
+	os.WriteFile(path, []byte("%PDF-1.4 fake"), 0644)
+
+	read := NewReadTool(dir)
+	result, err := read.Execute(context.Background(), json.RawMessage(`{"file_path":"`+path+`"}`))
+	require.NoError(t, err)
+	assert.True(t, result.IsError)
+	assert.Contains(t, result.Content, "PDF reading is not yet supported")
+}
+
+func TestReadTool_SVGImage(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "icon.svg")
+	os.WriteFile(path, []byte(`<svg xmlns="http://www.w3.org/2000/svg"><circle r="10"/></svg>`), 0644)
+
+	read := NewReadTool(dir)
+	result, err := read.Execute(context.Background(), json.RawMessage(`{"file_path":"`+path+`"}`))
+	require.NoError(t, err)
+	assert.False(t, result.IsError)
+	assert.Equal(t, "image/svg+xml", result.Metadata["media_type"])
+}
+
+func TestIsBinaryFile_TextFile(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "text.go")
+	os.WriteFile(path, []byte("package main\n\nfunc main() {}\n"), 0644)
+	assert.False(t, isBinaryFile(path))
+}
+
+func TestIsBinaryFile_Binary(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "binary")
+	data := make([]byte, 100)
+	for i := range data {
+		data[i] = 0
+	}
+	os.WriteFile(path, data, 0644)
+	assert.True(t, isBinaryFile(path))
+}
+
+// --- WebFetch cache tests ---
+
+func TestWebFetchTool_CacheHit(t *testing.T) {
+	wf := NewWebFetchTool()
+
+	// Pre-populate cache
+	wf.cache["https://example.com"] = &cachedResponse{
+		content:   "cached content",
+		metadata:  map[string]interface{}{"url": "https://example.com"},
+		fetchedAt: time.Now(),
+	}
+
+	result, err := wf.Execute(context.Background(), json.RawMessage(`{"url":"https://example.com"}`))
+	require.NoError(t, err)
+	assert.False(t, result.IsError)
+	assert.Equal(t, "cached content", result.Content)
+}
+
+func TestWebFetchTool_CacheExpired(t *testing.T) {
+	wf := NewWebFetchTool()
+
+	// Pre-populate with expired cache entry
+	wf.cache["https://expired.example.com"] = &cachedResponse{
+		content:   "old content",
+		metadata:  map[string]interface{}{},
+		fetchedAt: time.Now().Add(-20 * time.Minute), // Expired (>15min TTL)
+	}
+
+	// This will try to actually fetch, which will fail since it's a real URL
+	// But the point is it doesn't use the expired cache
+	result, err := wf.Execute(context.Background(), json.RawMessage(`{"url":"https://expired.example.com"}`))
+	require.NoError(t, err)
+	// Should have tried to fetch (and failed), not returned cached content
+	assert.NotEqual(t, "old content", result.Content)
 }

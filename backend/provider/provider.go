@@ -41,6 +41,7 @@ type ChatRequest struct {
 	Temperature    *float64   `json:"temperature,omitempty"`
 	ThinkingBudget int        `json:"thinking_budget,omitempty"` // 0 = disabled
 	StopSequences  []string   `json:"stop_sequences,omitempty"`
+	CacheControl   bool       `json:"cache_control,omitempty"`  // Enable prompt caching (Anthropic)
 }
 
 // Capabilities describes what features a provider supports.

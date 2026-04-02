@@ -229,7 +229,18 @@ func (c *Client) buildRequestBody(req provider.ChatRequest) map[string]interface
 	}
 
 	if req.SystemPrompt != "" {
-		body["system"] = req.SystemPrompt
+		if req.CacheControl {
+			// With caching: system prompt as array with cache_control breakpoint
+			body["system"] = []map[string]interface{}{
+				{
+					"type": "text",
+					"text": req.SystemPrompt,
+					"cache_control": map[string]string{"type": "ephemeral"},
+				},
+			}
+		} else {
+			body["system"] = req.SystemPrompt
+		}
 	}
 
 	if len(req.Tools) > 0 {

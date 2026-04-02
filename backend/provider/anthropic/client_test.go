@@ -132,6 +132,45 @@ func TestBuildRequestBody_AllOptions(t *testing.T) {
 	assert.Equal(t, "Bash", tools[0]["name"])
 }
 
+func TestBuildRequestBody_CacheControl(t *testing.T) {
+	c, _ := New(Config{APIKey: "sk-test"})
+
+	req := provider.ChatRequest{
+		SystemPrompt: "You are helpful.",
+		CacheControl: true,
+		Messages: []provider.Message{
+			{Role: provider.RoleUser, Content: []provider.ContentBlock{provider.NewTextBlock("Hi")}},
+		},
+	}
+
+	body := c.buildRequestBody(req)
+
+	// System prompt should be an array with cache_control
+	system := body["system"].([]map[string]interface{})
+	require.Len(t, system, 1)
+	assert.Equal(t, "text", system[0]["type"])
+	assert.Equal(t, "You are helpful.", system[0]["text"])
+	cc := system[0]["cache_control"].(map[string]string)
+	assert.Equal(t, "ephemeral", cc["type"])
+}
+
+func TestBuildRequestBody_NoCacheControl(t *testing.T) {
+	c, _ := New(Config{APIKey: "sk-test"})
+
+	req := provider.ChatRequest{
+		SystemPrompt: "You are helpful.",
+		CacheControl: false,
+		Messages: []provider.Message{
+			{Role: provider.RoleUser, Content: []provider.ContentBlock{provider.NewTextBlock("Hi")}},
+		},
+	}
+
+	body := c.buildRequestBody(req)
+
+	// Without cache control, system should be a plain string
+	assert.Equal(t, "You are helpful.", body["system"])
+}
+
 func TestConvertMessages(t *testing.T) {
 	msgs := []provider.Message{
 		{

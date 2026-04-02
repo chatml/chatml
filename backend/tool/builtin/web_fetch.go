@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/chatml/chatml-backend/tool"
@@ -20,11 +21,24 @@ const (
 	webFetchMaxRedirects = 10                  // Matches Claude Code
 )
 
-// WebFetchTool fetches content from URLs.
-type WebFetchTool struct{}
+const webFetchCacheTTL = 15 * time.Minute // Matches Claude Code's cache TTL
+
+type cachedResponse struct {
+	content   string
+	metadata  map[string]interface{}
+	fetchedAt time.Time
+}
+
+// WebFetchTool fetches content from URLs with a 15-minute response cache.
+type WebFetchTool struct {
+	mu    sync.RWMutex
+	cache map[string]*cachedResponse
+}
 
 func NewWebFetchTool() *WebFetchTool {
-	return &WebFetchTool{}
+	return &WebFetchTool{
+		cache: make(map[string]*cachedResponse),
+	}
 }
 
 func (t *WebFetchTool) Name() string { return "WebFetch" }
@@ -61,6 +75,17 @@ func (t *WebFetchTool) Execute(ctx context.Context, input json.RawMessage) (*too
 	if in.URL == "" {
 		return tool.ErrorResult("url is required"), nil
 	}
+
+	// Check cache first
+	t.mu.RLock()
+	if cached, ok := t.cache[in.URL]; ok && time.Since(cached.fetchedAt) < webFetchCacheTTL {
+		t.mu.RUnlock()
+		return &tool.Result{
+			Content:  cached.content,
+			Metadata: cached.metadata,
+		}, nil
+	}
+	t.mu.RUnlock()
 
 	// Validate URL scheme
 	if !strings.HasPrefix(in.URL, "http://") && !strings.HasPrefix(in.URL, "https://") {
@@ -113,13 +138,24 @@ func (t *WebFetchTool) Execute(ctx context.Context, input json.RawMessage) (*too
 		content = content[:webFetchMaxOutput] + "\n... (content truncated)"
 	}
 
+	metadata := map[string]interface{}{
+		"url":         in.URL,
+		"statusCode":  resp.StatusCode,
+		"contentType": contentType,
+	}
+
+	// Store in cache
+	t.mu.Lock()
+	t.cache[in.URL] = &cachedResponse{
+		content:   content,
+		metadata:  metadata,
+		fetchedAt: time.Now(),
+	}
+	t.mu.Unlock()
+
 	return &tool.Result{
-		Content: content,
-		Metadata: map[string]interface{}{
-			"url":         in.URL,
-			"statusCode":  resp.StatusCode,
-			"contentType": contentType,
-		},
+		Content:  content,
+		Metadata: metadata,
 	}, nil
 }
 

@@ -3,6 +3,7 @@ package builtin
 import (
 	"bufio"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -87,7 +88,23 @@ func (t *ReadTool) Execute(ctx context.Context, input json.RawMessage) (*tool.Re
 		return tool.ErrorResult(fmt.Sprintf("File too large (%d bytes). Use offset and limit to read specific ranges.", info.Size())), nil
 	}
 
-	// Open and read file
+	// Handle special file types by extension
+	ext := strings.ToLower(filepath.Ext(filePath))
+	switch ext {
+	case ".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".svg":
+		return t.readImage(filePath, ext, info.Size())
+	case ".ipynb":
+		return t.readNotebook(filePath)
+	case ".pdf":
+		return tool.ErrorResult("PDF reading is not yet supported. Use Bash with a PDF-to-text tool (e.g., pdftotext) to extract content."), nil
+	}
+
+	// Detect binary files (check first 512 bytes)
+	if isBinaryFile(filePath) {
+		return tool.ErrorResult(fmt.Sprintf("%s appears to be a binary file. Use Bash to inspect it with appropriate tools.", in.FilePath)), nil
+	}
+
+	// Open and read text file
 	f, err := os.Open(filePath)
 	if err != nil {
 		return tool.ErrorResult(fmt.Sprintf("Cannot open file: %v", err)), nil
@@ -145,6 +162,100 @@ func (t *ReadTool) resolvePath(path string) string {
 		return filepath.Clean(path)
 	}
 	return filepath.Clean(filepath.Join(t.workdir, path))
+}
+
+// readImage reads an image file and returns base64-encoded content with metadata.
+func (t *ReadTool) readImage(filePath, ext string, size int64) (*tool.Result, error) {
+	data, err := os.ReadFile(filePath)
+	if err != nil {
+		return tool.ErrorResult(fmt.Sprintf("Cannot read image: %v", err)), nil
+	}
+
+	b64 := base64.StdEncoding.EncodeToString(data)
+	mediaType := "image/" + strings.TrimPrefix(ext, ".")
+	if ext == ".jpg" {
+		mediaType = "image/jpeg"
+	}
+	if ext == ".svg" {
+		mediaType = "image/svg+xml"
+	}
+
+	return &tool.Result{
+		Content: fmt.Sprintf("[Image: %s, %d bytes, %s]", filepath.Base(filePath), size, mediaType),
+		Metadata: map[string]interface{}{
+			"type":       "image",
+			"media_type": mediaType,
+			"base64":     b64,
+			"file_path":  filePath,
+		},
+	}, nil
+}
+
+// readNotebook reads a Jupyter notebook and returns cells with their outputs.
+func (t *ReadTool) readNotebook(filePath string) (*tool.Result, error) {
+	data, err := os.ReadFile(filePath)
+	if err != nil {
+		return tool.ErrorResult(fmt.Sprintf("Cannot read notebook: %v", err)), nil
+	}
+
+	var notebook struct {
+		Cells []struct {
+			CellType string        `json:"cell_type"`
+			Source   []string      `json:"source"`
+			Outputs []interface{} `json:"outputs"`
+		} `json:"cells"`
+	}
+	if err := json.Unmarshal(data, &notebook); err != nil {
+		return tool.ErrorResult(fmt.Sprintf("Invalid notebook format: %v", err)), nil
+	}
+
+	var result strings.Builder
+	for i, cell := range notebook.Cells {
+		fmt.Fprintf(&result, "--- Cell %d [%s] ---\n", i+1, cell.CellType)
+		for _, line := range cell.Source {
+			result.WriteString(line)
+		}
+		result.WriteString("\n")
+		if len(cell.Outputs) > 0 {
+			result.WriteString("[Has output]\n")
+		}
+		result.WriteString("\n")
+	}
+
+	return &tool.Result{
+		Content: result.String(),
+		Metadata: map[string]interface{}{
+			"type":      "notebook",
+			"num_cells": len(notebook.Cells),
+		},
+	}, nil
+}
+
+// isBinaryFile checks if a file appears to be binary by examining the first 512 bytes.
+func isBinaryFile(filePath string) bool {
+	f, err := os.Open(filePath)
+	if err != nil {
+		return false
+	}
+	defer f.Close()
+
+	buf := make([]byte, 512)
+	n, err := f.Read(buf)
+	if err != nil {
+		return false
+	}
+	buf = buf[:n]
+
+	// Count null bytes — binary files typically have many
+	nullCount := 0
+	for _, b := range buf {
+		if b == 0 {
+			nullCount++
+		}
+	}
+
+	// If more than 10% null bytes, likely binary
+	return nullCount > n/10
 }
 
 var _ tool.Tool = (*ReadTool)(nil)

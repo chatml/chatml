@@ -69,6 +69,9 @@ type Runner struct {
 	// Context manager
 	ctxManager *ctxpkg.Manager
 
+	// Fallback model (used when primary model hits capacity/unsupported errors)
+	fallbackModel string
+
 	// Permission engine
 	permEngine       *permission.Engine
 	pendingApprovals sync.Map // requestID -> chan permission.ApprovalResponse
@@ -326,11 +329,33 @@ func (r *Runner) executeTurn(ctx context.Context, userContent string, attachment
 		// Stream the LLM response
 		stream, err := r.provider.StreamChat(ctx, req)
 		if err != nil {
-			r.emitter.emitError(fmt.Sprintf("LLM API error: %v", err))
-			r.mu.Lock()
-			r.sawErrorEvent = true
-			r.mu.Unlock()
-			break
+			// Try fallback model if available and this is a capacity/model error
+			if r.fallbackModel != "" && isFallbackEligible(err) {
+				r.mu.Lock()
+				originalModel := r.opts.Model
+				r.opts.Model = r.fallbackModel
+				r.mu.Unlock()
+
+				r.emitter.emitError(fmt.Sprintf("Switching to fallback model %s: %v", r.fallbackModel, err))
+
+				// Retry with fallback model (strip thinking blocks from messages)
+				req = r.buildChatRequest()
+				req.ThinkingBudget = 0 // Fallback model may not support thinking
+				stream, err = r.provider.StreamChat(ctx, req)
+
+				// Restore original model for next turn
+				r.mu.Lock()
+				r.opts.Model = originalModel
+				r.mu.Unlock()
+			}
+
+			if err != nil {
+				r.emitter.emitError(fmt.Sprintf("LLM API error: %v", err))
+				r.mu.Lock()
+				r.sawErrorEvent = true
+				r.mu.Unlock()
+				break
+			}
 		}
 
 		// Process the stream and collect the assistant response
@@ -1010,6 +1035,19 @@ func (r *Runner) Options() agent.ProcessOptions {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	return r.opts
+}
+
+// isFallbackEligible returns true if the error warrants trying a fallback model.
+// Eligible errors: 529 (overloaded), 503 (service unavailable), model-specific capacity errors.
+func isFallbackEligible(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "529") ||
+		strings.Contains(msg, "503") ||
+		strings.Contains(msg, "overloaded") ||
+		strings.Contains(msg, "capacity")
 }
 
 // Ensure Runner implements ConversationBackend at compile time.
