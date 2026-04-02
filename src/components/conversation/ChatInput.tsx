@@ -901,6 +901,7 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
         const messageTimestamp = new Date().toISOString();
         const messageAttachments = currentAttachments.length > 0 ? currentAttachments : undefined;
 
+        let handledPlanDenial = false;
         if (pendingPlanApproval && selectedConversationId) {
           try {
             await approvePlan(selectedConversationId, pendingPlanApproval.requestId, false, trimmedContent);
@@ -909,9 +910,10 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
           }
           clearPendingPlanApproval(selectedConversationId);
           setApprovalError(null);
+          handledPlanDenial = true;
         }
 
-        if ((pendingPlanApproval && selectedConversationId) || isStreaming) {
+        if (!handledPlanDenial && isStreaming) {
           addQueuedMessage(selectedConversationId, {
             id: messageId,
             content: trimmedContent,
