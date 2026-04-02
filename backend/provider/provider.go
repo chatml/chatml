@@ -43,6 +43,7 @@ type ChatRequest struct {
 	AdaptiveThinking bool     `json:"adaptive_thinking,omitempty"` // Enable adaptive budget adjustment
 	StopSequences  []string   `json:"stop_sequences,omitempty"`
 	CacheControl   bool       `json:"cache_control,omitempty"`  // Enable prompt caching (Anthropic)
+	ToolChoice     string     `json:"tool_choice,omitempty"`    // "auto", "any", "none", or tool name
 	Effort         string     `json:"effort,omitempty"`          // "low", "medium", "high", "max" (beta)
 	OutputFormat   string     `json:"output_format,omitempty"`   // JSON schema for structured output (beta)
 	FastMode       bool       `json:"fast_mode,omitempty"`       // Enable fast/penguin mode (beta)

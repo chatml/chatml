@@ -107,6 +107,8 @@ var dangerousCommands = map[string]bool{
 	"node": true, "deno": true, "bun": true,
 	"ruby": true, "perl": true, "php": true,
 	"lua": true, "julia": true, "Rscript": true,
+	// Package script runners (execute arbitrary project scripts)
+	"npx": true, "tsx": true, "bunx": true,
 	// Shell execution
 	"bash": true, "sh": true, "zsh": true, "fish": true,
 	"eval": true, "exec": true, "source": true,
@@ -115,7 +117,7 @@ var dangerousCommands = map[string]bool{
 	// Network tools
 	"curl": true, "wget": true, "ssh": true, "scp": true,
 	"rsync": true, "nc": true, "ncat": true, "netcat": true,
-	// Package managers (global install)
+	// Package managers (can install/run arbitrary code)
 	"npm": true, "yarn": true, "pnpm": true, "pip": true, "pip3": true,
 	"gem": true, "cargo": true, "go": true,
 	// Version control (can push/modify remote)
@@ -123,6 +125,18 @@ var dangerousCommands = map[string]bool{
 	// Cloud / infra
 	"kubectl": true, "docker": true, "podman": true,
 	"aws": true, "gcloud": true, "az": true, "terraform": true,
+	// Zsh-specific dangerous builtins (from Claude Code's bashSecurity.ts)
+	// These can execute code, access files, or exfiltrate data via Zsh modules
+	"zmodload": true,  // Load arbitrary Zsh modules (gateway to many attacks)
+	"emulate": true,   // Eval-equivalent with -c flag
+	"sysopen": true, "sysread": true, "syswrite": true, "sysseek": true, // zsh/system builtins
+	"zpty": true,      // Pseudo-terminal execution
+	"ztcp": true, "zsocket": true, // Network exfiltration via Zsh
+	"mapfile": true,   // Invisible file I/O via array assignment
+	// Zsh file builtins (bypass normal command auditing)
+	"zf_rm": true, "zf_mv": true, "zf_ln": true,
+	"zf_chmod": true, "zf_chown": true, "zf_chgrp": true,
+	"zf_mkdir": true, "zf_rmdir": true,
 }
 
 // IsDangerousCommand returns true if a Bash command invokes a dangerous program.

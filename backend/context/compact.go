@@ -16,17 +16,24 @@ type CompactResult struct {
 }
 
 // summarySystemPrompt is the system prompt for the summarization LLM call.
-const summarySystemPrompt = `You are a conversation summarizer. Your task is to create a detailed summary of a coding conversation that preserves all critical context needed to continue the work.
+// Ported from Claude Code's compact/prompt.ts with 9 required sections.
+const summarySystemPrompt = `You are a conversation summarizer. Your task is to create a detailed summary that preserves ALL critical context needed to continue the work.
 
-Your summary MUST include:
-1. The user's primary request and intent
-2. Key technical decisions made
-3. Files created, modified, or discussed (with paths)
-4. Current state of the work (what's done, what's pending)
-5. Any errors encountered and how they were resolved
-6. Important context the user provided
+RESPOND WITH TEXT ONLY. Do NOT call any tools. Do NOT generate tool_use blocks.
 
-Output your summary in a structured format. Be thorough but concise.`
+Your summary MUST include these 9 sections:
+
+1. **Primary request and intent**: What did the user ask for? What is the high-level goal?
+2. **Key technical concepts**: Architecture decisions, design patterns, libraries, APIs involved.
+3. **Files and code sections**: List every file path created, modified, or discussed. Include brief code snippets for critical sections (e.g., function signatures, key logic).
+4. **Errors and fixes**: Every error encountered, what caused it, and how it was resolved.
+5. **Problem solving**: How were ambiguities resolved? What alternatives were considered and rejected?
+6. **All user messages**: Summarize every non-tool user message. Preserve exact quotes for specific instructions.
+7. **Pending tasks**: What remains to be done? Any blocked items?
+8. **Current work**: What was the most recent thing being worked on? Include file names and code snippets.
+9. **Optional next step**: If the conversation ended mid-task, what would the logical next action be?
+
+Be thorough — this summary replaces the full conversation. Missing details cannot be recovered.`
 
 // Compact summarizes the conversation via an LLM call and replaces the message
 // history with a compact representation: [summary message] + [recent messages].
@@ -52,44 +59,61 @@ func Compact(
 	toSummarize := messages[:splitIdx]
 	recentMessages := messages[splitIdx:]
 
-	// Build the transcript for summarization
-	transcript := buildTranscript(toSummarize)
+	// Retry loop: if the summary prompt itself exceeds context (prompt-too-long),
+	// truncate the oldest 20% of messages and retry up to 3 times.
+	// Matches Claude Code's truncateHeadForPTLRetry() behavior.
+	const maxPTLRetries = 3
+	var summary string
 
-	// Call the LLM to generate a summary
-	summaryReq := provider.ChatRequest{
-		Model:        "", // Use default/cheap model
-		SystemPrompt: summarySystemPrompt,
-		Messages: []provider.Message{
-			{
-				Role: provider.RoleUser,
-				Content: []provider.ContentBlock{
-					provider.NewTextBlock(fmt.Sprintf(
-						"Please summarize the following coding conversation. Preserve all technical details needed to continue the work.\n\n%s",
-						transcript,
-					)),
+	for attempt := 0; attempt <= maxPTLRetries; attempt++ {
+		transcript := buildTranscript(toSummarize)
+
+		summaryReq := provider.ChatRequest{
+			Model:        "",
+			SystemPrompt: summarySystemPrompt,
+			Messages: []provider.Message{
+				{
+					Role: provider.RoleUser,
+					Content: []provider.ContentBlock{
+						provider.NewTextBlock(fmt.Sprintf(
+							"Please summarize the following coding conversation. Preserve all technical details needed to continue the work.\n\n%s",
+							transcript,
+						)),
+					},
 				},
 			},
-		},
-		MaxTokens: MaxOutputForSummary,
-	}
-
-	stream, err := prov.StreamChat(ctx, summaryReq)
-	if err != nil {
-		return nil, fmt.Errorf("compact: LLM call failed: %w", err)
-	}
-
-	// Collect the full summary text from the stream
-	var summaryText strings.Builder
-	for event := range stream {
-		if event.Type == provider.EventTextDelta {
-			summaryText.WriteString(event.Text)
+			MaxTokens: MaxOutputForSummary,
 		}
-		if event.Type == provider.EventError && event.Error != nil {
-			return nil, fmt.Errorf("compact: LLM stream error: %w", event.Error)
+
+		stream, err := prov.StreamChat(ctx, summaryReq)
+		if err != nil {
+			// Check if this is a prompt-too-long error
+			if isPromptTooLong(err) && attempt < maxPTLRetries && len(toSummarize) > 2 {
+				// Truncate oldest 20% of messages and retry
+				dropCount := len(toSummarize) / 5
+				if dropCount < 1 {
+					dropCount = 1
+				}
+				toSummarize = toSummarize[dropCount:]
+				continue
+			}
+			return nil, fmt.Errorf("compact: LLM call failed: %w", err)
 		}
+
+		var summaryText strings.Builder
+		for event := range stream {
+			if event.Type == provider.EventTextDelta {
+				summaryText.WriteString(event.Text)
+			}
+			if event.Type == provider.EventError && event.Error != nil {
+				return nil, fmt.Errorf("compact: LLM stream error: %w", event.Error)
+			}
+		}
+
+		summary = summaryText.String()
+		break // Success
 	}
 
-	summary := summaryText.String()
 	if summary == "" {
 		return nil, fmt.Errorf("compact: LLM returned empty summary")
 	}
@@ -157,4 +181,15 @@ func buildTranscript(messages []provider.Message) string {
 	}
 
 	return sb.String()
+}
+
+// isPromptTooLong returns true if the error indicates the prompt exceeded the context window.
+func isPromptTooLong(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "prompt") && strings.Contains(msg, "too long") ||
+		strings.Contains(msg, "context") && strings.Contains(msg, "exceed") ||
+		strings.Contains(msg, "token") && strings.Contains(msg, "limit")
 }

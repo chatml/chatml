@@ -16,26 +16,30 @@ import (
 // Sibling abort: if a Bash tool returns an error, pending sibling tools
 // are cancelled via the shared siblingCtx. This matches Claude Code's
 // behavior where Bash errors abort sibling tools (implicit dependency chains).
+//
+// IMPORTANT: Only concurrent-safe (read-only) tools are auto-executed during
+// streaming. Serial tools (Bash, Write, Edit, etc.) are queued and returned
+// to the caller for permission checks before execution.
 type StreamingToolExecutor struct {
 	registry *tool.Registry
 	executor *tool.Executor
 
 	mu        sync.Mutex
-	pending   []provider.ToolUseBlock      // Tools waiting for execution
-	results   map[string]tool.ToolCallResult // Completed results by tool ID
-	running   map[string]struct{}           // Currently executing tool IDs
+	pending   []provider.ToolUseBlock        // Serial tools waiting for permission + execution
+	results   map[string]tool.ToolCallResult  // Completed concurrent results by tool ID
+	running   map[string]struct{}             // Currently executing tool IDs
 	wg        sync.WaitGroup
 
 	// Sibling abort: cancel pending tools when a Bash error occurs
 	siblingCtx    context.Context
 	siblingCancel context.CancelFunc
-	aborted       bool
-	abortReason   string
 }
 
 // NewStreamingToolExecutor creates a streaming executor.
-func NewStreamingToolExecutor(registry *tool.Registry, executor *tool.Executor) *StreamingToolExecutor {
-	ctx, cancel := context.WithCancel(context.Background())
+// parentCtx is used as the parent for the sibling-abort context so that
+// runner cancellation also cancels in-flight concurrent tools.
+func NewStreamingToolExecutor(parentCtx context.Context, registry *tool.Registry, executor *tool.Executor) *StreamingToolExecutor {
+	ctx, cancel := context.WithCancel(parentCtx)
 	return &StreamingToolExecutor{
 		registry:      registry,
 		executor:      executor,
@@ -48,12 +52,13 @@ func NewStreamingToolExecutor(registry *tool.Registry, executor *tool.Executor) 
 
 // AddTool queues a completed tool_use block for execution.
 // If the tool is concurrent-safe, execution starts immediately in a goroutine.
-// Serial tools are queued and executed after all concurrent tools complete.
+// Serial tools are queued and returned by Collect for permission checks.
 func (se *StreamingToolExecutor) AddTool(ctx context.Context, block provider.ToolUseBlock) {
 	t := se.registry.Get(block.Name)
 
 	if t != nil && t.IsConcurrentSafe() {
-		// Start concurrent-safe tools immediately
+		// Start concurrent-safe tools immediately — these are read-only
+		// and always allowed by the permission engine.
 		se.mu.Lock()
 		se.running[block.ID] = struct{}{}
 		se.mu.Unlock()
@@ -76,77 +81,28 @@ func (se *StreamingToolExecutor) AddTool(ctx context.Context, block provider.Too
 			se.mu.Unlock()
 		}()
 	} else {
-		// Queue serial tools for later
+		// Queue serial tools for later — they need permission checks
 		se.mu.Lock()
 		se.pending = append(se.pending, block)
 		se.mu.Unlock()
 	}
 }
 
-// Collect waits for all concurrent tools to finish, then executes serial tools,
-// and returns all results in the order matching the provided tool call list.
-func (se *StreamingToolExecutor) Collect(ctx context.Context, allToolCalls []provider.ToolUseBlock) []tool.ToolCallResult {
+// Collect waits for all concurrent tools to finish and returns:
+// - concurrentResults: results for concurrent-safe tools (keyed by tool ID)
+// - pendingSerial: serial tool blocks that still need permission checks + execution
+//
+// Serial tools are NOT executed here — the caller must run them through the
+// permission engine before execution.
+func (se *StreamingToolExecutor) Collect(ctx context.Context) (concurrentResults map[string]tool.ToolCallResult, pendingSerial []provider.ToolUseBlock) {
 	// Wait for all concurrent tools to finish
 	se.wg.Wait()
 
-	// Execute serial tools sequentially
 	se.mu.Lock()
-	pending := se.pending
-	se.pending = nil
-	se.mu.Unlock()
+	defer se.mu.Unlock()
 
-	for _, block := range pending {
-		// Check if siblings were aborted
-		se.mu.Lock()
-		aborted := se.aborted
-		reason := se.abortReason
-		se.mu.Unlock()
-
-		if aborted {
-			tc := tool.ToolCall{ID: block.ID, Name: block.Name, Input: json.RawMessage(block.Input)}
-			se.mu.Lock()
-			se.results[block.ID] = tool.ToolCallResult{
-				ToolCall: tc,
-				Result:   tool.ErrorResult("Aborted: " + reason),
-			}
-			se.mu.Unlock()
-			continue
-		}
-
-		result := se.executeOne(ctx, block)
-
-		// If a Bash tool (serial) returned an error, abort remaining siblings
-		if block.Name == "Bash" && result.Result != nil && result.Result.IsError {
-			se.mu.Lock()
-			if !se.aborted {
-				se.aborted = true
-				se.abortReason = "Bash command failed — aborting remaining tools"
-				se.siblingCancel()
-			}
-			se.mu.Unlock()
-		}
-
-		se.mu.Lock()
-		se.results[block.ID] = result
-		se.mu.Unlock()
-	}
-
-	// Build results in original order
-	results := make([]tool.ToolCallResult, len(allToolCalls))
-	se.mu.Lock()
-	for i, tc := range allToolCalls {
-		if r, ok := se.results[tc.ID]; ok {
-			results[i] = r
-		} else {
-			results[i] = tool.ToolCallResult{
-				ToolCall: tool.ToolCall{ID: tc.ID, Name: tc.Name, Input: tc.Input},
-				Result:   tool.ErrorResult("Tool execution result not found"),
-			}
-		}
-	}
-	se.mu.Unlock()
-
-	return results
+	// Return concurrent results and pending serial tools
+	return se.results, se.pending
 }
 
 // CompletedCount returns how many tools have finished executing.

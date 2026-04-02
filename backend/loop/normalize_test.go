@@ -43,8 +43,10 @@ func TestNormalize_MergesConsecutiveAssistantMessages(t *testing.T) {
 		{Role: provider.RoleAssistant, Content: []provider.ContentBlock{provider.NewTextBlock("part2")}},
 	}
 	result := normalizeMessages(msgs)
-	require.Len(t, result, 1)
-	assert.Len(t, result[0].Content, 2)
+	// ensureFirstMessageIsUser prepends a synthetic user message
+	require.Len(t, result, 2)
+	assert.Equal(t, provider.RoleUser, result[0].Role) // Synthetic
+	assert.Len(t, result[1].Content, 2)                // Merged assistant
 }
 
 func TestNormalize_PreservesAlternatingRoles(t *testing.T) {
@@ -71,22 +73,22 @@ func TestNormalize_RemovesEmptyMessages(t *testing.T) {
 
 func TestNormalize_ThinkingStrippedFromLastAssistant(t *testing.T) {
 	msgs := []provider.Message{
+		{Role: provider.RoleUser, Content: []provider.ContentBlock{provider.NewTextBlock("q")}},
 		{Role: provider.RoleAssistant, Content: []provider.ContentBlock{
 			provider.NewThinkingBlock("thinking..."),
 			provider.NewTextBlock("response"),
 		}},
 	}
 	result := normalizeMessages(msgs)
-	require.Len(t, result, 1)
+	require.Len(t, result, 2)
 	// Thinking stripped from last assistant, only text remains
-	assert.Len(t, result[0].Content, 1)
-	assert.Equal(t, "response", result[0].Content[0].Text)
+	assert.Len(t, result[1].Content, 1)
+	assert.Equal(t, "response", result[1].Content[0].Text)
 }
 
 func TestNormalize_ThinkingStrippedFromLastAssistantEvenIfNotLast(t *testing.T) {
-	// filterTrailingThinking finds the last ASSISTANT message and strips its thinking.
-	// This is correct — thinking blocks are ephemeral and shouldn't be replayed.
 	msgs := []provider.Message{
+		{Role: provider.RoleUser, Content: []provider.ContentBlock{provider.NewTextBlock("q")}},
 		{Role: provider.RoleAssistant, Content: []provider.ContentBlock{
 			provider.NewThinkingBlock("thinking..."),
 			provider.NewTextBlock("response"),
@@ -94,10 +96,10 @@ func TestNormalize_ThinkingStrippedFromLastAssistantEvenIfNotLast(t *testing.T) 
 		{Role: provider.RoleUser, Content: []provider.ContentBlock{provider.NewTextBlock("follow-up")}},
 	}
 	result := normalizeMessages(msgs)
-	require.Len(t, result, 2)
-	// Thinking stripped from the last assistant message (which is the first msg)
-	assert.Len(t, result[0].Content, 1)
-	assert.Equal(t, "response", result[0].Content[0].Text)
+	require.Len(t, result, 3)
+	// Thinking stripped from the last assistant message (which is the second msg)
+	assert.Len(t, result[1].Content, 1)
+	assert.Equal(t, "response", result[1].Content[0].Text)
 }
 
 func TestNormalize_ComplexMerge(t *testing.T) {

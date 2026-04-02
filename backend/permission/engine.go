@@ -164,11 +164,22 @@ func (e *Engine) Check(toolName string, input json.RawMessage) CheckResult {
 		}
 	}
 
-	// 1.5. Safety checks: dangerous PATHS require explicit approval even in bypass mode.
-	// This MUST run before the bypass mode check.
+	// 1.5. Safety checks for bypass mode: dangerous paths/commands require explicit
+	// approval even when all other permissions are bypassed.
+	// NOTE: There is a companion check at step 6.5 for non-bypass modes that runs
+	// AFTER session cache and persistent rules. This split is intentional:
+	// - In bypass mode: no session cache or rules are checked, so we must catch here.
+	// - In other modes: session cache/rules may already allow the command, so we
+	//   defer to step 6.5 (after those lookups) to avoid redundant prompts.
 	if writesToFile(toolName) && specifier != "" && IsDangerousPath(specifier) {
 		result.Decision = NeedApproval
 		return result
+	}
+	if toolName == "Bash" && specifier != "" && IsDangerousCommand(specifier) {
+		if effectiveMode == ModeBypassPermissions {
+			result.Decision = NeedApproval
+			return result
+		}
 	}
 
 	// 2. Bypass mode: allow everything (safety checks already handled above)
@@ -230,9 +241,9 @@ func (e *Engine) Check(toolName string, input json.RawMessage) CheckResult {
 		// Fall through to NeedApproval
 	}
 
-	// 6.5. Dangerous command detection: Bash commands that invoke interpreters,
-	// network tools, or privilege escalation require approval if not already
-	// allowed by session cache or persistent rules.
+	// 6.5. Dangerous command check for non-bypass modes. This is the companion
+	// to step 1.5 and catches dangerous Bash commands that were NOT already
+	// allowed by session cache (step 5) or persistent rules (step 6).
 	if toolName == "Bash" && specifier != "" && IsDangerousCommand(specifier) {
 		result.Decision = NeedApproval
 		return result

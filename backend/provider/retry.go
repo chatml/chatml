@@ -20,6 +20,7 @@ type RetryConfig struct {
 	MaxBackoff     time.Duration // Maximum backoff duration (default 60s)
 	JitterFraction float64       // Random jitter fraction 0-1 (default 0.1)
 	OnAuthError    func() error  // Called on 401/403 to refresh tokens before retry (optional)
+	QuerySource    string        // "foreground" (default) or "background" — background skips 529 retry
 }
 
 // DefaultRetryConfig returns sensible defaults matching Claude Code's withRetry.ts.
@@ -97,6 +98,7 @@ func WithRetry(ctx context.Context, cfg RetryConfig, fn func() error) error {
 	}
 
 	var lastErr error
+	authRefreshed := false // Track whether OnAuthError was already called (at most once)
 	for attempt := 0; attempt <= cfg.MaxRetries; attempt++ {
 		lastErr = fn()
 		if lastErr == nil {
@@ -108,13 +110,24 @@ func WithRetry(ctx context.Context, cfg RetryConfig, fn func() error) error {
 		var backoff time.Duration
 
 		if apiErr, ok := lastErr.(*APIError); ok {
-			// Auth errors: try token refresh before giving up
-			if (apiErr.StatusCode == 401 || apiErr.StatusCode == 403) && cfg.OnAuthError != nil {
+			// 529 stratification: background sources fail immediately on overload
+			// to prevent retry amplification during capacity outages
+			if apiErr.StatusCode == 529 && cfg.QuerySource == "background" {
+				return lastErr
+			}
+
+			// Auth errors: try token refresh once before giving up.
+			// Only refresh once per WithRetry invocation to avoid hammering
+			// the auth server with rapid refresh calls on persistent 401/403.
+			if (apiErr.StatusCode == 401 || apiErr.StatusCode == 403) && cfg.OnAuthError != nil && !authRefreshed {
 				if refreshErr := cfg.OnAuthError(); refreshErr == nil {
+					authRefreshed = true
 					shouldRetry = true // Token refreshed — retry
 				} else {
 					return lastErr // Refresh failed — give up
 				}
+			} else if apiErr.StatusCode == 401 || apiErr.StatusCode == 403 {
+				return lastErr // Already refreshed once — token is invalid
 			} else if !apiErr.IsRetryable() {
 				return lastErr // Non-retryable API error
 			} else {
@@ -161,6 +174,9 @@ func WithRetry(ctx context.Context, cfg RetryConfig, fn func() error) error {
 }
 
 // calculateBackoff returns exponential backoff with jitter.
+// Uses math/rand (not crypto/rand) for jitter — this is intentional since
+// the goal is just to spread retries, not provide cryptographic randomness.
+// In Go 1.20+, math/rand functions use a per-goroutine source automatically.
 func calculateBackoff(attempt int, cfg RetryConfig) time.Duration {
 	// Exponential: initialBackoff * 2^attempt
 	backoff := float64(cfg.InitialBackoff) * math.Pow(2, float64(attempt))

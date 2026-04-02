@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/chatml/chatml-backend/provider"
@@ -277,15 +278,39 @@ func (c *Client) buildRequestBody(req provider.ChatRequest) map[string]interface
 		body["tools"] = convertTools(req.Tools)
 	}
 
-	if req.Temperature != nil {
-		body["temperature"] = *req.Temperature
+	// Tool choice: "auto" (default), "any" (must use a tool), "none", or specific tool name
+	if req.ToolChoice != "" {
+		switch req.ToolChoice {
+		case "auto", "any", "none":
+			body["tool_choice"] = map[string]string{"type": req.ToolChoice}
+		default:
+			body["tool_choice"] = map[string]interface{}{
+				"type": "tool",
+				"name": req.ToolChoice,
+			}
+		}
 	}
 
-	if req.ThinkingBudget > 0 {
+	// Thinking configuration: prefer adaptive when supported, fall back to budget-constrained.
+	// Adaptive thinking lets the model decide how much to think (better quality).
+	thinkingEnabled := false
+	if req.AdaptiveThinking && modelSupportsAdaptiveThinking(model) {
 		body["thinking"] = map[string]interface{}{
-			"type":         "enabled",
+			"type": "adaptive",
+		}
+		thinkingEnabled = true
+	} else if req.ThinkingBudget > 0 {
+		body["thinking"] = map[string]interface{}{
+			"type":          "enabled",
 			"budget_tokens": req.ThinkingBudget,
 		}
+		thinkingEnabled = true
+	}
+
+	// Temperature: Anthropic API rejects temperature when thinking is enabled.
+	// Only send it when thinking is OFF (matches Claude Code behavior).
+	if req.Temperature != nil && !thinkingEnabled {
+		body["temperature"] = *req.Temperature
 	}
 
 	if len(req.StopSequences) > 0 {
@@ -303,6 +328,11 @@ func (c *Client) buildRequestBody(req provider.ChatRequest) map[string]interface
 		if json.Unmarshal([]byte(req.OutputFormat), &outputFmt) == nil {
 			body["output_format"] = outputFmt
 		}
+	}
+
+	// Fast mode: send speed parameter in body (beta header also required)
+	if req.FastMode {
+		body["speed"] = "fast"
 	}
 
 	return body
@@ -383,6 +413,15 @@ func convertTools(tools []provider.ToolDef) []map[string]interface{} {
 		})
 	}
 	return result
+}
+
+// modelSupportsAdaptiveThinking returns true if the model supports adaptive
+// thinking (type: "adaptive" instead of budget-constrained).
+func modelSupportsAdaptiveThinking(model string) bool {
+	// Opus and Sonnet 4.6+ support adaptive thinking
+	return strings.Contains(model, "opus-4") ||
+		strings.Contains(model, "sonnet-4-6") ||
+		strings.Contains(model, "sonnet-4-5")
 }
 
 // Ensure Client implements provider.Provider at compile time.

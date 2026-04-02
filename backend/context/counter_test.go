@@ -19,8 +19,8 @@ func TestEstimateTokens_TextMessage(t *testing.T) {
 		}},
 	}
 	tokens := EstimateTokens(msgs)
-	// 13/4 + 1*4 = 3 + 4 = 7
-	assert.Equal(t, 7, tokens)
+	// raw: 13/4 + 1*4 = 7, with 33% padding: 7*4/3 = 9
+	assert.Equal(t, 9, tokens)
 }
 
 func TestEstimateTokens_ToolUse(t *testing.T) {

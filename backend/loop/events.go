@@ -28,6 +28,7 @@ const (
 	eventPermissionMode      = "permission_mode_changed"
 	eventContextUsage        = "context_usage"
 	eventToolApprovalRequest = "tool_approval_request"
+	eventContextWarning      = "context_warning"
 )
 
 // emitter wraps a channel and provides helper methods for emitting AgentEvent types
@@ -173,5 +174,13 @@ func (e *emitter) emitPermissionModeChanged(mode string) {
 	e.emit(&agent.AgentEvent{
 		Type: eventPermissionMode,
 		Mode: mode,
+	})
+}
+
+// emitContextWarning warns the user that the context window is filling up.
+func (e *emitter) emitContextWarning(message string) {
+	e.emit(&agent.AgentEvent{
+		Type:    eventContextWarning,
+		Message: message,
 	})
 }

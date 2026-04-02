@@ -120,9 +120,11 @@ func TestBuildRequestBody_AllOptions(t *testing.T) {
 	assert.Equal(t, "claude-opus-4-6", body["model"]) // Override
 	assert.Equal(t, "You are helpful.", body["system"])
 	assert.Equal(t, 8192, body["max_tokens"])
-	assert.Equal(t, 0.7, body["temperature"])
+	// Temperature is NOT sent when thinking is enabled (API constraint)
+	assert.Nil(t, body["temperature"], "temperature must not be sent with thinking enabled")
 	assert.Equal(t, []string{"\n\nHuman:"}, body["stop_sequences"])
 
+	// AdaptiveThinking is false, so budget_tokens path is taken (not adaptive)
 	thinking := body["thinking"].(map[string]interface{})
 	assert.Equal(t, "enabled", thinking["type"])
 	assert.Equal(t, 4096, thinking["budget_tokens"])
@@ -213,6 +215,57 @@ func TestConvertMessages(t *testing.T) {
 	content2 := result[2]["content"].([]map[string]interface{})
 	assert.Equal(t, "tool_result", content2[0]["type"])
 	assert.Equal(t, "tu_1", content2[0]["tool_use_id"])
+}
+
+func TestBuildRequestBody_FastMode(t *testing.T) {
+	c, _ := New(Config{APIKey: "sk-test"})
+
+	req := provider.ChatRequest{
+		FastMode: true,
+		Messages: []provider.Message{
+			{Role: provider.RoleUser, Content: []provider.ContentBlock{provider.NewTextBlock("Hi")}},
+		},
+	}
+
+	body := c.buildRequestBody(req)
+	assert.Equal(t, "fast", body["speed"], "fast mode should set speed=fast in body")
+}
+
+func TestBuildRequestBody_FastModeHeaders(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Contains(t, r.Header.Get("anthropic-beta"), "fast-mode-2026-02-01")
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Write([]byte("event: message_stop\ndata: {}\n\n"))
+	}))
+	defer srv.Close()
+
+	c, _ := New(Config{APIKey: "sk-test", APIURL: srv.URL})
+	ch, err := c.StreamChat(context.Background(), provider.ChatRequest{
+		FastMode: true,
+		Messages: []provider.Message{
+			{Role: provider.RoleUser, Content: []provider.ContentBlock{provider.NewTextBlock("hi")}},
+		},
+	})
+	require.NoError(t, err)
+	for range ch {
+	}
+}
+
+func TestBuildRequestBody_AdaptiveThinking(t *testing.T) {
+	c, _ := New(Config{APIKey: "sk-test", Model: "claude-opus-4-6"})
+
+	req := provider.ChatRequest{
+		Model:            "claude-opus-4-6",
+		AdaptiveThinking: true,
+		Messages: []provider.Message{
+			{Role: provider.RoleUser, Content: []provider.ContentBlock{provider.NewTextBlock("Hi")}},
+		},
+	}
+
+	body := c.buildRequestBody(req)
+	thinking := body["thinking"].(map[string]interface{})
+	assert.Equal(t, "adaptive", thinking["type"], "adaptive thinking should use type=adaptive")
+	assert.Nil(t, thinking["budget_tokens"], "adaptive thinking should not set budget_tokens")
 }
 
 func TestStreamChat_HTTPError(t *testing.T) {

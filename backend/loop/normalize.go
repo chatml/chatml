@@ -17,13 +17,32 @@ const (
 	defaultMaxAggregateResultBytes = 200 * 1024 // 200KB
 )
 
+// cloneMessages creates a deep copy of the message slice so that normalizers
+// can modify Content blocks without aliasing the caller's backing array.
+func cloneMessages(messages []provider.Message) []provider.Message {
+	cloned := make([]provider.Message, len(messages))
+	for i, msg := range messages {
+		cloned[i] = provider.Message{Role: msg.Role}
+		if len(msg.Content) > 0 {
+			cloned[i].Content = make([]provider.ContentBlock, len(msg.Content))
+			copy(cloned[i].Content, msg.Content)
+		}
+	}
+	return cloned
+}
+
 // normalizeMessages prepares messages for the API by running a pipeline of
 // normalization passes. The order matters — see inline comments.
 // Ported from Claude Code's normalizeMessagesForAPI() in messages.ts.
+// The input slice is deep-copied first so in-place passes do not mutate the caller's data.
 func normalizeMessages(messages []provider.Message) []provider.Message {
 	if len(messages) == 0 {
 		return messages
 	}
+
+	// Deep-copy so that in-place mutations (filterTrailingThinking, sanitizeErrorToolResults,
+	// hoistToolResults) do not affect the caller's live conversation history.
+	messages = cloneMessages(messages)
 
 	// 1. Remove assistant messages that contain ONLY thinking blocks (no text/tool_use).
 	//    These cause API 400 errors. Must happen BEFORE merging.
@@ -52,6 +71,9 @@ func normalizeMessages(messages []provider.Message) []provider.Message {
 
 	// 6. Remove image/document blocks from error tool results.
 	messages = sanitizeErrorToolResults(messages)
+
+	// 7. Ensure the first message is role=user (API requirement).
+	messages = ensureFirstMessageIsUser(messages)
 
 	return messages
 }
@@ -233,8 +255,14 @@ func sanitizeErrorToolResults(messages []provider.Message) []provider.Message {
 // ensureToolResultPairing validates that every tool_use block in an assistant
 // message has a matching tool_result block in the subsequent user message.
 // Inserts synthetic tool_result blocks for any orphaned tool_use IDs.
+// Builds a new result slice rather than mutating in place to avoid index
+// arithmetic errors when insertions change the slice length mid-iteration.
 func ensureToolResultPairing(messages []provider.Message) []provider.Message {
-	for i := 0; i < len(messages)-1; i++ {
+	result := make([]provider.Message, 0, len(messages)+4)
+
+	for i := 0; i < len(messages); i++ {
+		result = append(result, messages[i])
+
 		if messages[i].Role != provider.RoleAssistant {
 			continue
 		}
@@ -250,7 +278,7 @@ func ensureToolResultPairing(messages []provider.Message) []provider.Message {
 			continue
 		}
 
-		// Find the next user message
+		// Find the next user message in the original slice
 		nextUserIdx := -1
 		for j := i + 1; j < len(messages); j++ {
 			if messages[j].Role == provider.RoleUser {
@@ -260,16 +288,12 @@ func ensureToolResultPairing(messages []provider.Message) []provider.Message {
 		}
 
 		if nextUserIdx < 0 {
-			// No user message follows — add one with synthetic results
+			// No user message follows — insert a synthetic one with tool results
 			var resultBlocks []provider.ContentBlock
 			for id := range toolUseIDs {
 				resultBlocks = append(resultBlocks, provider.NewToolResultBlock(id, "[Tool result not available]", false))
 			}
-			// Insert synthetic user message after the assistant
-			tail := make([]provider.Message, len(messages[i+1:]))
-			copy(tail, messages[i+1:])
-			messages = append(messages[:i+1], provider.Message{Role: provider.RoleUser, Content: resultBlocks})
-			messages = append(messages, tail...)
+			result = append(result, provider.Message{Role: provider.RoleUser, Content: resultBlocks})
 			continue
 		}
 
@@ -280,13 +304,20 @@ func ensureToolResultPairing(messages []provider.Message) []provider.Message {
 			}
 		}
 
-		// Add synthetic tool_result blocks for any unmatched IDs
-		for id := range toolUseIDs {
-			messages[nextUserIdx].Content = append(messages[nextUserIdx].Content,
-				provider.NewToolResultBlock(id, "[Tool result not available]", false))
+		// Add synthetic tool_result blocks for any unmatched IDs.
+		// We modify the Content of the message that will be appended when
+		// we reach nextUserIdx in the outer loop. Clone the content to avoid
+		// mutating the original.
+		if len(toolUseIDs) > 0 {
+			newContent := make([]provider.ContentBlock, len(messages[nextUserIdx].Content))
+			copy(newContent, messages[nextUserIdx].Content)
+			for id := range toolUseIDs {
+				newContent = append(newContent, provider.NewToolResultBlock(id, "[Tool result not available]", false))
+			}
+			messages[nextUserIdx].Content = newContent
 		}
 	}
-	return messages
+	return result
 }
 
 // hoistToolResults reorders content blocks within each user message so that
@@ -335,7 +366,10 @@ func fixThinkingBlockOrder(blocks []provider.ContentBlock) []provider.ContentBlo
 }
 
 // applyToolResultBudget truncates tool result contents that exceed maxBytes.
-// Also enforces an aggregate per-message budget.
+// Also enforces an aggregate per-message budget. Note: the aggregate limit
+// (defaultMaxAggregateResultBytes) is applied independently per message, not
+// globally across all messages. This is intentional — each tool result message
+// is self-contained, and a global limit would require a two-pass approach.
 func applyToolResultBudget(messages []provider.Message, maxBytes int) []provider.Message {
 	if maxBytes <= 0 {
 		maxBytes = defaultMaxToolResultBytes
@@ -414,4 +448,23 @@ func stripOversizedContent(messages []provider.Message, errMsg string) []provide
 	}
 
 	return messages
+}
+
+// ensureFirstMessageIsUser ensures the first message is role=user.
+// The Anthropic API requires conversations to start with a user message.
+// If the first message is assistant, prepend a synthetic user message.
+func ensureFirstMessageIsUser(messages []provider.Message) []provider.Message {
+	if len(messages) == 0 {
+		return messages
+	}
+	if messages[0].Role == provider.RoleUser {
+		return messages // Already starts with user
+	}
+
+	// Prepend a synthetic user message
+	synthetic := provider.Message{
+		Role:    provider.RoleUser,
+		Content: []provider.ContentBlock{provider.NewTextBlock("[Conversation continued]")},
+	}
+	return append([]provider.Message{synthetic}, messages...)
 }

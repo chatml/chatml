@@ -46,8 +46,11 @@ type Runner struct {
 	// Message input — user messages are queued here and consumed by the loop.
 	messageQueue chan inputMsg
 
-	// Cancel function for the loop's context
+	// Cancel function for the loop's context (only called by Stop)
 	cancel context.CancelFunc
+
+	// Per-turn interrupt: cancels the current executeTurn without killing the loop
+	turnCancel context.CancelFunc
 
 	// Conversation state
 	messages                 []provider.Message // Full conversation history
@@ -200,9 +203,15 @@ func (r *Runner) Start() error {
 }
 
 // runLoop is the main agentic loop goroutine.
+//
+// Shutdown order: cleanup() runs first (session notes, tool cleanup), then
+// emitComplete is sent, then the output channel is closed, then Done() fires.
+// Callers watching Output() receive "complete" as the last event; callers
+// waiting on Done() know cleanup has fully finished.
 func (r *Runner) runLoop(ctx context.Context) {
 	defer func() {
 		r.cleanup()
+		r.emitter.emitComplete()
 		r.mu.Lock()
 		r.running = false
 		r.mu.Unlock()
@@ -225,12 +234,10 @@ func (r *Runner) runLoop(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done():
-			r.emitter.emitComplete()
 			return
 
 		case msg, ok := <-r.messageQueue:
 			if !ok {
-				r.emitter.emitComplete()
 				return
 			}
 
@@ -238,7 +245,6 @@ func (r *Runner) runLoop(ctx context.Context) {
 			case "message":
 				r.executeTurn(ctx, msg.Content, msg.Attachments)
 			case "stop":
-				r.emitter.emitComplete()
 				return
 			case "interrupt":
 				// Interrupt is handled by context cancellation within executeTurn
@@ -264,14 +270,27 @@ func (r *Runner) runLoop(ctx context.Context) {
 
 // executeTurn runs one complete agentic turn: sends messages to the LLM,
 // processes tool calls, and loops until the LLM responds with no tool calls.
+//
+// A per-turn child context is created so that SendInterrupt can cancel the
+// current turn without killing the outer message loop. The outer ctx (from
+// runLoop) is used as parent, so Stop() still propagates.
+//
+// emitTurnComplete is always called on exit (including errors) to re-enable
+// the input field on the frontend — this is intentional.
 func (r *Runner) executeTurn(ctx context.Context, userContent string, attachments []models.Attachment) {
+	// Create a per-turn context that can be cancelled by SendInterrupt
+	turnCtx, turnCancel := context.WithCancel(ctx)
+	defer turnCancel()
+
 	r.mu.Lock()
 	r.inActiveTurn = true
+	r.turnCancel = turnCancel
 	r.mu.Unlock()
 
 	defer func() {
 		r.mu.Lock()
 		r.inActiveTurn = false
+		r.turnCancel = nil
 		r.mu.Unlock()
 		r.emitter.emitTurnComplete()
 	}()
@@ -336,7 +355,9 @@ func (r *Runner) executeTurn(ctx context.Context, userContent string, attachment
 	for {
 		turnCount++
 
-		// Check max turns limit
+		// Check max turns limit. Note: turnCount increments per inner loop
+		// iteration (each LLM API call), not per user message. A user turn
+		// that triggers 5 tool calls consumes 6 turnCount units.
 		if r.opts.MaxTurns > 0 && turnCount > r.opts.MaxTurns {
 			r.emitter.emitAssistantText("\n\n[Max turns reached]")
 			break
@@ -353,15 +374,17 @@ func (r *Runner) executeTurn(ctx context.Context, userContent string, attachment
 		if r.ctxManager != nil {
 			lastTokens := r.ctxManager.LastTokenCount()
 
-			// Microcompact: trim old tool results when accumulated enough
+			// Microcompact FIRST (cheap). May free enough to skip auto-compact.
 			if r.ctxManager.ShouldMicrocompact(lastTokens, 2*time.Minute) {
 				r.messages = ctxpkg.Microcompact(r.messages, 10)
 				r.ctxManager.RecordCompaction()
+				lastTokens = ctxpkg.EstimateTokens(r.messages)
+				r.ctxManager.UpdateTokenCount(lastTokens)
 			}
 
 			// Auto-compact: full LLM-based summarization when approaching limit
 			if r.ctxManager.ShouldAutoCompact(lastTokens) {
-				compResult, compErr := ctxpkg.Compact(ctx, r.provider, r.messages, 4)
+				compResult, compErr := ctxpkg.Compact(turnCtx, r.provider, r.messages, 4)
 				if compErr != nil {
 					r.ctxManager.RecordCompactFailure()
 					r.emitter.emitError(fmt.Sprintf("Auto-compact failed: %v", compErr))
@@ -382,7 +405,7 @@ func (r *Runner) executeTurn(ctx context.Context, userContent string, attachment
 		}
 
 		// Stream the LLM response
-		stream, err := r.provider.StreamChat(ctx, req)
+		stream, err := r.provider.StreamChat(turnCtx, req)
 		if err != nil {
 			// Track consecutive 529s for fallback decision
 			if is529Error(err) {
@@ -392,29 +415,26 @@ func (r *Runner) executeTurn(ctx context.Context, userContent string, attachment
 			}
 
 			// Fast mode cooldown: on 429/529 during fast mode, enter 30s cooldown
+			// and retry immediately at standard speed (next buildChatRequest will
+			// see the cooldown and disable fast mode).
 			if req.FastMode && (is529Error(err) || is429Error(err)) {
 				r.mu.Lock()
 				r.fastModeCooldownUntil = time.Now().Add(30 * time.Second)
 				r.mu.Unlock()
 				r.emitter.emitError("Fast mode cooldown triggered — retrying at standard speed")
+				continue // Retry the turn at standard speed
 			}
 
-			// Try fallback model after 3+ consecutive 529s (matches Claude Code)
+			// Try fallback model after 3+ consecutive 529s (matches Claude Code).
+			// Build a new request with the fallback model directly rather than
+			// mutating r.opts.Model to avoid TOCTOU races with concurrent readers.
 			if r.fallbackModel != "" && r.consecutive529Count >= 3 && isFallbackEligible(err) {
-				r.mu.Lock()
-				originalModel := r.opts.Model
-				r.opts.Model = r.fallbackModel
-				r.mu.Unlock()
-
 				r.emitter.emitError(fmt.Sprintf("Switching to fallback model %s: %v", r.fallbackModel, err))
 
 				req = r.buildChatRequest()
+				req.Model = r.fallbackModel
 				req.ThinkingBudget = 0
-				stream, err = r.provider.StreamChat(ctx, req)
-
-				r.mu.Lock()
-				r.opts.Model = originalModel
-				r.mu.Unlock()
+				stream, err = r.provider.StreamChat(turnCtx, req)
 
 				if err == nil {
 					r.consecutive529Count = 0 // Reset after successful fallback
@@ -425,7 +445,7 @@ func (r *Runner) executeTurn(ctx context.Context, userContent string, attachment
 			if err != nil && isPromptTooLong(err) && !promptTooLongRetried {
 				promptTooLongRetried = true
 				r.emitter.emitError("Prompt too long — compacting and retrying")
-				compResult, compErr := ctxpkg.Compact(ctx, r.provider, r.messages, 4)
+				compResult, compErr := ctxpkg.Compact(turnCtx, r.provider, r.messages, 4)
 				if compErr == nil {
 					r.messages = compResult.Messages
 					if r.ctxManager != nil {
@@ -433,7 +453,7 @@ func (r *Runner) executeTurn(ctx context.Context, userContent string, attachment
 						r.ctxManager.ResetCompactFailures()
 					}
 					req = r.buildChatRequest()
-					stream, err = r.provider.StreamChat(ctx, req)
+					stream, err = r.provider.StreamChat(turnCtx, req)
 				}
 			}
 
@@ -460,7 +480,7 @@ func (r *Runner) executeTurn(ctx context.Context, userContent string, attachment
 						req.MaxTokens = 1024
 					}
 				}
-				stream, err = r.provider.StreamChat(ctx, req)
+				stream, err = r.provider.StreamChat(turnCtx, req)
 			}
 
 			if err != nil {
@@ -475,9 +495,28 @@ func (r *Runner) executeTurn(ctx context.Context, userContent string, attachment
 		}
 
 		// Process the stream and collect the assistant response
-		assistantMsg, toolCalls, usage, stopReason, streamExec := r.processStream(ctx, stream)
+		assistantMsg, toolCalls, usage, stopReason, streamExec := r.processStream(turnCtx, stream)
 
-		// Append assistant message to history
+		// Only append assistant message if it has content (avoid corrupt history
+		// from partial/empty messages when stream errors occur mid-response).
+		hasContent := false
+		for _, b := range assistantMsg.Content {
+			if b.Type == provider.BlockText && strings.TrimSpace(b.Text) != "" {
+				hasContent = true
+				break
+			}
+			if b.Type == provider.BlockToolUse || b.Type == provider.BlockThinking {
+				hasContent = true
+				break
+			}
+		}
+		r.mu.Lock()
+		sawError := r.sawErrorEvent
+		r.mu.Unlock()
+		if !hasContent && sawError {
+			// Skip appending empty/partial message from a failed stream
+			break
+		}
 		r.messages = append(r.messages, assistantMsg)
 
 		// Track cost and context usage (update token count for next iteration's proactive check)
@@ -490,6 +529,16 @@ func (r *Runner) executeTurn(ctx context.Context, userContent string, attachment
 
 			if r.ctxManager != nil {
 				r.ctxManager.UpdateFromUsage(usage)
+
+				// Emit context warning when approaching limit
+				tokens := r.ctxManager.LastTokenCount()
+				if r.ctxManager.ShouldWarn(tokens) {
+					pct := tokens * 100 / r.ctxManager.ContextWindow()
+					r.emitter.emitContextWarning(
+						fmt.Sprintf("Context window %d%% full (%d/%d tokens). Consider compacting or starting a new conversation.",
+							pct, tokens, r.ctxManager.ContextWindow()),
+					)
+				}
 			}
 		}
 
@@ -522,8 +571,11 @@ func (r *Runner) executeTurn(ctx context.Context, userContent string, attachment
 					log.Printf("adaptive thinking: increasing budget %d → %d (attempt %d/%d)",
 						currentBudget, newBudget, thinkingBudgetAttempts, maxThinkingAttempts)
 
-					// Remove the truncated assistant message and retry
+					// Remove the truncated assistant message and retry.
+					// Reset maxOutputRecoveryCount so the continuation prompt path
+					// doesn't fire incorrectly when the retry produces actual output.
 					r.messages = r.messages[:len(r.messages)-1]
+					maxOutputRecoveryCount = 0
 					continue
 				}
 			}
@@ -560,7 +612,7 @@ func (r *Runner) executeTurn(ctx context.Context, userContent string, attachment
 		}
 
 		// Execute tool calls and collect results
-		toolResultMsg := r.executeTools(ctx, toolCalls, streamExec)
+		toolResultMsg := r.executeTools(turnCtx, toolCalls, streamExec)
 		r.messages = append(r.messages, toolResultMsg)
 
 		// Track tool results for microcompact triggering
@@ -575,14 +627,13 @@ func (r *Runner) executeTurn(ctx context.Context, userContent string, attachment
 	if r.memoryExtractor != nil {
 		r.memoryExtractor.IncrementTurn()
 		if r.memoryExtractor.ShouldExtract() {
-			// Snapshot messages to avoid data race on the live slice
-			// (the backing array is shared and may be mutated by subsequent turns).
-			msgSnapshot := make([]provider.Message, len(r.messages))
-			copy(msgSnapshot, r.messages)
+			// Deep-copy messages to avoid data races: the outer slice AND the
+			// Content backing arrays must be independent from the live history.
+			msgSnapshot := cloneMessages(r.messages)
 
 			// Use a bounded context so extraction doesn't run forever
-			// after the runner is stopped.
-			extractCtx, extractCancel := context.WithTimeout(context.Background(), 2*time.Minute)
+			// after the runner is stopped (30s should be enough for an LLM call).
+			extractCtx, extractCancel := context.WithTimeout(context.Background(), 30*time.Second)
 			go func() {
 				defer extractCancel()
 				r.memoryExtractor.Extract(extractCtx, msgSnapshot)
@@ -593,9 +644,13 @@ func (r *Runner) executeTurn(ctx context.Context, userContent string, attachment
 
 // buildChatRequest constructs a provider.ChatRequest from the current conversation state.
 func (r *Runner) buildChatRequest() provider.ChatRequest {
+	// Read all mutable opts under a single lock to avoid data races
 	r.mu.Lock()
 	model := r.opts.Model
 	thinkingBudget := r.opts.MaxThinkingTokens
+	effort := r.opts.Effort
+	outputFormat := r.opts.StructuredOutput
+	fastModeActive := r.fastMode && time.Now().After(r.fastModeCooldownUntil)
 	r.mu.Unlock()
 
 	// Inject tool prompts into the builder before assembling system prompt
@@ -619,19 +674,14 @@ func (r *Runner) buildChatRequest() provider.ChatRequest {
 		enableCache = true
 	}
 
-	// Fast mode: respect cooldown period
-	r.mu.Lock()
-	fastModeActive := r.fastMode && time.Now().After(r.fastModeCooldownUntil)
-	r.mu.Unlock()
-
 	req := provider.ChatRequest{
 		Model:          model,
 		Messages:       normalizedMsgs,
 		SystemPrompt:   systemPrompt,
 		ThinkingBudget: thinkingBudget,
 		CacheControl:   enableCache,
-		Effort:         r.opts.Effort,
-		OutputFormat:    r.opts.StructuredOutput,
+		Effort:         effort,
+		OutputFormat:    outputFormat,
 		FastMode:       fastModeActive,
 	}
 
@@ -662,7 +712,7 @@ func (r *Runner) processStream(ctx context.Context, stream <-chan provider.Strea
 	// Serial tools requiring permission are queued and handled by executeTools.
 	var streamExec *StreamingToolExecutor
 	if r.streamingToolExecEnabled && r.toolRegistry != nil && r.toolExecutor != nil {
-		streamExec = NewStreamingToolExecutor(r.toolRegistry, r.toolExecutor)
+		streamExec = NewStreamingToolExecutor(ctx, r.toolRegistry, r.toolExecutor)
 	}
 
 	streamLoop:
@@ -760,7 +810,11 @@ func (r *Runner) processStream(ctx context.Context, stream <-chan provider.Strea
 // We match this behavior — approval only ends via user response or context cancellation.
 
 // executeTools runs tool calls through permission checks and then executes approved ones.
-// If a streaming executor is provided, collect pre-started results from it.
+// If a streaming executor is provided, its concurrent-safe results are collected first,
+// then serial tools go through the normal permission flow.
+//
+// tool_start events are emitted during processStream (EventToolUseStart), so we do NOT
+// re-emit them here. We only emit tool_end after execution or denial.
 func (r *Runner) executeTools(ctx context.Context, toolCalls []provider.ToolUseBlock, streamExec *StreamingToolExecutor) provider.Message {
 	if r.toolExecutor == nil {
 		var resultBlocks []provider.ContentBlock
@@ -772,40 +826,48 @@ func (r *Runner) executeTools(ctx context.Context, toolCalls []provider.ToolUseB
 		return provider.Message{Role: provider.RoleUser, Content: resultBlocks}
 	}
 
-	// If streaming executor was active, collect pre-started results
+	// Collect pre-started concurrent-safe results and pending serial tools from the
+	// streaming executor (if active). Serial tools are NOT executed by the streaming
+	// executor — they go through permission checks below.
+	var concurrentResults map[string]tool.ToolCallResult
 	if streamExec != nil {
-		results := streamExec.Collect(ctx, toolCalls)
-
-		var resultBlocks []provider.ContentBlock
-		for _, tcr := range results {
-			content := ""
-			isError := false
-			if tcr.Result != nil {
-				content = tcr.Result.Content
-				isError = tcr.Result.IsError
-			}
-			if !isError {
-				content = r.maybePersistResult(tcr.ToolCall.ID, content)
-			}
-			summary := content
-			if len(summary) > 200 {
-				summary = summary[:200] + "..."
-			}
-			r.emitter.emitToolEnd(tcr.ToolCall.ID, tcr.ToolCall.Name, !isError, summary)
-			resultBlocks = append(resultBlocks, toolResultBlock(tcr.ToolCall.ID, content, isError, tcr.Result))
-		}
-		return provider.Message{Role: provider.RoleUser, Content: resultBlocks}
+		concurrentResults, _ = streamExec.Collect(ctx)
 	}
 
+	// Build result blocks in original tool call order. For each tool call:
+	// - If it was handled by the streaming executor (concurrent-safe), emit its result
+	// - Otherwise, run through permission checks then execute
 	var approvedCalls []tool.ToolCall
+	resultsByID := make(map[string]provider.ContentBlock) // For pre-resolved tools
 	var resultBlocks []provider.ContentBlock
 
-	// Phase 1: Check permissions for each tool call (sequential — may block on user approval)
 	for _, tc := range toolCalls {
+		// Check if this tool was already executed by the streaming executor
+		if concurrentResults != nil {
+			if tcr, ok := concurrentResults[tc.ID]; ok {
+				content := ""
+				isError := false
+				if tcr.Result != nil {
+					content = tcr.Result.Content
+					isError = tcr.Result.IsError
+				}
+				if !isError {
+					content = r.maybePersistResult(tcr.ToolCall.ID, content)
+				}
+				summary := content
+				if len(summary) > 200 {
+					summary = summary[:200] + "..."
+				}
+				r.emitter.emitToolEnd(tcr.ToolCall.ID, tcr.ToolCall.Name, !isError, summary)
+				resultsByID[tc.ID] = toolResultBlock(tcr.ToolCall.ID, content, isError, tcr.Result)
+				continue
+			}
+		}
+
+		// Tool needs permission check (either no streamExec, or it's a serial tool)
 		if r.permEngine == nil {
 			// No permission engine — allow everything (backwards compat)
 			approvedCalls = append(approvedCalls, tool.ToolCall{ID: tc.ID, Name: tc.Name, Input: tc.Input})
-			r.emitter.emitToolStart(tc.ID, tc.Name, nil)
 			continue
 		}
 
@@ -814,22 +876,19 @@ func (r *Runner) executeTools(ctx context.Context, toolCalls []provider.ToolUseB
 		switch check.Decision {
 		case permission.Allow:
 			approvedCalls = append(approvedCalls, tool.ToolCall{ID: tc.ID, Name: tc.Name, Input: input})
-			r.emitter.emitToolStart(tc.ID, tc.Name, nil)
 		case permission.Deny:
 			msg := fmt.Sprintf("Permission denied: %s", check.DenyMessage)
-			r.emitter.emitToolStart(tc.ID, tc.Name, nil)
 			r.emitter.emitToolEnd(tc.ID, tc.Name, false, msg)
-			resultBlocks = append(resultBlocks, provider.NewToolResultBlock(tc.ID, msg, true))
+			resultsByID[tc.ID] = provider.NewToolResultBlock(tc.ID, msg, true)
 		case permission.NeedApproval:
 			// This shouldn't happen — checkPermission resolves NeedApproval via requestApproval
 			msg := "Permission check returned unexpected NeedApproval"
-			r.emitter.emitToolStart(tc.ID, tc.Name, nil)
 			r.emitter.emitToolEnd(tc.ID, tc.Name, false, msg)
-			resultBlocks = append(resultBlocks, provider.NewToolResultBlock(tc.ID, msg, true))
+			resultsByID[tc.ID] = provider.NewToolResultBlock(tc.ID, msg, true)
 		}
 	}
 
-	// Phase 2: Execute approved calls
+	// Execute approved calls
 	if len(approvedCalls) > 0 {
 		results := r.toolExecutor.Execute(ctx, approvedCalls)
 		for _, tcr := range results {
@@ -850,7 +909,17 @@ func (r *Runner) executeTools(ctx context.Context, toolCalls []provider.ToolUseB
 				summary = summary[:200] + "..."
 			}
 			r.emitter.emitToolEnd(tcr.ToolCall.ID, tcr.ToolCall.Name, !isError, summary)
-			resultBlocks = append(resultBlocks, toolResultBlock(tcr.ToolCall.ID, content, isError, tcr.Result))
+			resultsByID[tcr.ToolCall.ID] = toolResultBlock(tcr.ToolCall.ID, content, isError, tcr.Result)
+		}
+	}
+
+	// Build result blocks in original order
+	for _, tc := range toolCalls {
+		if block, ok := resultsByID[tc.ID]; ok {
+			resultBlocks = append(resultBlocks, block)
+		} else {
+			// Shouldn't happen, but provide a safe fallback
+			resultBlocks = append(resultBlocks, provider.NewToolResultBlock(tc.ID, "Tool execution result not found", true))
 		}
 	}
 
@@ -982,10 +1051,11 @@ func (r *Runner) SendStop() error {
 
 func (r *Runner) SendInterrupt() error {
 	r.mu.Lock()
-	cancel := r.cancel
+	turnCancel := r.turnCancel
 	r.mu.Unlock()
-	if cancel != nil {
-		cancel()
+	// Cancel the current turn only — the outer loop stays alive for subsequent messages.
+	if turnCancel != nil {
+		turnCancel()
 	}
 	return nil
 }
@@ -1199,7 +1269,10 @@ func (r *Runner) SendToolApprovalResponse(requestId, action, specifier string, u
 		return fmt.Errorf("no pending approval request with ID %q", requestId)
 	}
 
-	ch := val.(chan permission.ApprovalResponse)
+	ch, ok2 := val.(chan permission.ApprovalResponse)
+	if !ok2 {
+		return fmt.Errorf("invalid pending approval state for request %q", requestId)
+	}
 	resp := permission.ApprovalResponse{
 		Action:       action,
 		Specifier:    specifier,
@@ -1210,7 +1283,10 @@ func (r *Runner) SendToolApprovalResponse(requestId, action, specifier string, u
 	case ch <- resp:
 		return nil
 	default:
-		return fmt.Errorf("approval response channel full for request %q", requestId)
+		// Duplicate approval — the first response was already consumed.
+		// This is a no-op (not a bug), but log it for debugging.
+		log.Printf("warning: duplicate approval response for request %q (action=%s) — ignoring", requestId, action)
+		return nil
 	}
 }
 
@@ -1219,7 +1295,10 @@ func (r *Runner) SendUserQuestionResponse(requestId string, answers map[string]s
 	if !ok {
 		return fmt.Errorf("no pending question request with ID %q", requestId)
 	}
-	ch := val.(chan map[string]string)
+	ch, ok2 := val.(chan map[string]string)
+	if !ok2 {
+		return fmt.Errorf("invalid pending question state for request %q", requestId)
+	}
 	select {
 	case ch <- answers:
 		return nil
@@ -1233,7 +1312,10 @@ func (r *Runner) SendPlanApprovalResponse(requestId string, approved bool, reaso
 	if !ok {
 		return fmt.Errorf("no pending plan approval request with ID %q", requestId)
 	}
-	ch := val.(chan builtin.PlanApprovalResult)
+	ch, ok2 := val.(chan builtin.PlanApprovalResult)
+	if !ok2 {
+		return fmt.Errorf("invalid pending plan approval state for request %q", requestId)
+	}
 	select {
 	case ch <- builtin.PlanApprovalResult{Approved: approved, Reason: reason}:
 		return nil
@@ -1305,7 +1387,7 @@ func (r *Runner) SetPermissionModeDirect(mode string) {
 // Cleans up tools that implement tool.Cleanable and removes temp directories.
 func (r *Runner) cleanup() {
 	// Generate session notes for potential session resume
-	if r.sessionNotes != nil && len(r.messages) > 2 {
+	if r.sessionNotes != nil && r.memoryExtractor != nil && len(r.messages) > 2 {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 		if notes, err := r.sessionNotes.GenerateNotes(ctx, r.messages); err == nil && notes != "" {

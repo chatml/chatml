@@ -25,8 +25,11 @@ func EstimateTokens(messages []provider.Message) int {
 			}
 		}
 	}
-	// ~4 characters per token, plus overhead per message (~4 tokens)
-	return totalChars/4 + len(messages)*4
+	// ~4 characters per token, plus overhead per message (~4 tokens).
+	// Apply 33% conservative padding (4/3 multiplier) matching Claude Code's
+	// roughTokenCountEstimation() to prevent underestimating and late compaction.
+	raw := totalChars/4 + len(messages)*4
+	return raw * 4 / 3
 }
 
 // TokensFromUsage extracts the total token count from an API usage response.

@@ -42,7 +42,9 @@ func (c *Client) processStream(ctx context.Context, body io.ReadCloser, ch chan<
 	// SSE events can have large data payloads (tool inputs)
 	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 
-	// Read lines in a goroutine so we can apply an idle watchdog timer
+	// Read lines in a goroutine so we can apply an idle watchdog timer.
+	// The goroutine checks ctx.Done to avoid leaking when the parent cancels
+	// while the channel is full.
 	type scanResult struct {
 		line string
 		ok   bool
@@ -51,11 +53,16 @@ func (c *Client) processStream(ctx context.Context, body io.ReadCloser, ch chan<
 	go func() {
 		defer close(lines)
 		for scanner.Scan() {
-			lines <- scanResult{line: scanner.Text(), ok: true}
+			select {
+			case lines <- scanResult{line: scanner.Text(), ok: true}:
+			case <-ctx.Done():
+				return
+			}
 		}
 	}()
 
 	var eventType string
+	var dataAccumulator strings.Builder // Accumulate multi-line data: fields per SSE spec
 	// Track current tool block for accumulating input deltas
 	var currentToolID string
 	var currentToolName string
@@ -101,10 +108,27 @@ func (c *Client) processStream(ctx context.Context, body io.ReadCloser, ch chan<
 		}
 
 		if !strings.HasPrefix(line, "data: ") {
+			// Empty line signals end of an event in the SSE spec.
+			// If we have accumulated data, dispatch it now.
+			if line == "" && dataAccumulator.Len() > 0 {
+				// Process accumulated data (handled below after switch)
+				// No-op here — we dispatch on the next event: or data: line
+			}
 			continue // Skip empty lines and comments
 		}
 
-		data := strings.TrimPrefix(line, "data: ")
+		// Accumulate multi-line data fields (SSE spec allows multiple data: lines).
+		// For single-line events (the common case), this just stores one line.
+		if dataAccumulator.Len() > 0 {
+			dataAccumulator.WriteString("\n")
+		}
+		dataAccumulator.WriteString(strings.TrimPrefix(line, "data: "))
+
+		// Peek ahead: if the NEXT line is also data:, we need to accumulate more.
+		// Since we can't peek in a channel, we dispatch immediately (Anthropic sends
+		// single-line JSON) and handle multi-line via accumulation if needed.
+		data := dataAccumulator.String()
+		dataAccumulator.Reset()
 
 		switch eventType {
 		case ssePing:
