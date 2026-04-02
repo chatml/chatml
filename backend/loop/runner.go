@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/chatml/chatml-backend/agent"
+	ctxpkg "github.com/chatml/chatml-backend/context"
 	"github.com/chatml/chatml-backend/models"
 	"github.com/chatml/chatml-backend/permission"
 	"github.com/chatml/chatml-backend/prompt"
@@ -63,6 +64,9 @@ type Runner struct {
 
 	// System prompt builder
 	promptBuilder *prompt.Builder
+
+	// Context manager
+	ctxManager *ctxpkg.Manager
 
 	// Permission engine
 	permEngine       *permission.Engine
@@ -126,7 +130,7 @@ func NewRunnerFull(opts agent.ProcessOptions, prov provider.Provider, registry *
 	if registry != nil {
 		executor = tool.NewExecutor(registry, 8)
 	}
-	return &Runner{
+	r := &Runner{
 		opts:           opts,
 		provider:       prov,
 		toolRegistry:   registry,
@@ -141,6 +145,13 @@ func NewRunnerFull(opts agent.ProcessOptions, prov provider.Provider, registry *
 		promptBuilder:  prompt.NewBuilder(opts.Workdir, opts.Model, opts.Instructions),
 		permEngine:     permEngine,
 	}
+
+	// Initialize context manager (requires provider for context window size)
+	if prov != nil {
+		r.ctxManager = ctxpkg.NewManager(prov.MaxContextWindow())
+	}
+
+	return r
 }
 
 // Start launches the agentic loop goroutine. Implements agent.ConversationBackend.
@@ -323,13 +334,38 @@ func (r *Runner) executeTurn(ctx context.Context, userContent string, attachment
 		// Append assistant message to history
 		r.messages = append(r.messages, assistantMsg)
 
-		// Track cost
+		// Track cost and context usage
 		if usage != nil {
 			r.mu.Lock()
 			model := r.opts.Model
 			r.mu.Unlock()
 			cumulativeCost += provider.CalculateCost(model, *usage)
 			r.emitter.emitContextUsage(usage.InputTokens, usage.OutputTokens, r.provider.MaxContextWindow())
+
+			// Update context manager with token count
+			if r.ctxManager != nil {
+				currentTokens := ctxpkg.ContextTokensFromUsage(usage)
+				r.ctxManager.UpdateTokenCount(currentTokens)
+
+				// Check if microcompact is needed
+				if r.ctxManager.ShouldMicrocompact(r.ctxManager.LastTokenCount(), 2*time.Minute) {
+					r.messages = ctxpkg.Microcompact(r.messages, 10)
+					r.ctxManager.RecordCompaction()
+				}
+
+				// Check if auto-compact is needed
+				if r.ctxManager.ShouldAutoCompact(currentTokens) {
+					result, compErr := ctxpkg.Compact(ctx, r.provider, r.messages, 4)
+					if compErr != nil {
+						r.ctxManager.RecordCompactFailure()
+						r.emitter.emitError(fmt.Sprintf("Auto-compact failed: %v", compErr))
+					} else {
+						r.messages = result.Messages
+						r.ctxManager.RecordCompaction()
+						r.ctxManager.ResetCompactFailures()
+					}
+				}
+			}
 		}
 
 		// Max output tokens recovery: if the model hit the output limit,
@@ -359,6 +395,11 @@ func (r *Runner) executeTurn(ctx context.Context, userContent string, attachment
 		// Execute tool calls and collect results
 		toolResultMsg := r.executeTools(ctx, toolCalls)
 		r.messages = append(r.messages, toolResultMsg)
+
+		// Track tool results for microcompact triggering
+		if r.ctxManager != nil {
+			r.ctxManager.IncrementToolResults(len(toolCalls))
+		}
 
 		// Loop back to send tool results to the LLM
 	}
