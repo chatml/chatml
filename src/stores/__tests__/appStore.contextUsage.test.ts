@@ -1,6 +1,11 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 import { useAppStore } from '../appStore';
 
+/** Minimal streaming state stub with just turnStartMeta for context window tests */
+function streamingStateWithModel(model: string) {
+  return { turnStartMeta: { model } } as unknown as ReturnType<typeof useAppStore.getState>['streamingState'][string];
+}
+
 const CONV_ID = 'conv-1';
 const CONV_ID_2 = 'conv-2';
 
@@ -127,7 +132,7 @@ describe('appStore — contextUsage', () => {
     it('clamps SDK contextWindow to 1M for [1m] extended context models', () => {
       useAppStore.setState({
         streamingState: {
-          [CONV_ID]: { turnStartMeta: { model: 'claude-opus-4-6[1m]' } } as any,
+          [CONV_ID]: streamingStateWithModel('claude-opus-4-6[1m]'),
         },
       });
 
@@ -145,7 +150,7 @@ describe('appStore — contextUsage', () => {
     it('allows SDK contextWindow for non-[1m] models', () => {
       useAppStore.setState({
         streamingState: {
-          [CONV_ID]: { turnStartMeta: { model: 'claude-sonnet-4-6-20250514' } } as any,
+          [CONV_ID]: streamingStateWithModel('claude-sonnet-4-6-20250514'),
         },
       });
 
@@ -157,7 +162,7 @@ describe('appStore — contextUsage', () => {
     it('passes through 1M contextWindow for [1m] models without clamping', () => {
       useAppStore.setState({
         streamingState: {
-          [CONV_ID]: { turnStartMeta: { model: 'claude-opus-4-6[1m]' } } as any,
+          [CONV_ID]: streamingStateWithModel('claude-opus-4-6[1m]'),
         },
       });
 
