@@ -1,6 +1,11 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 import { useAppStore } from '../appStore';
 
+/** Minimal streaming state stub with just turnStartMeta for context window tests */
+function streamingStateWithModel(model: string) {
+  return { turnStartMeta: { model } } as unknown as ReturnType<typeof useAppStore.getState>['streamingState'][string];
+}
+
 const CONV_ID = 'conv-1';
 const CONV_ID_2 = 'conv-2';
 
@@ -122,6 +127,47 @@ describe('appStore — contextUsage', () => {
       expect(state[CONV_ID].contextWindow).toBe(200000);
       expect(state[CONV_ID_2].inputTokens).toBe(80000);
       expect(state[CONV_ID_2].contextWindow).toBe(1000000);
+    });
+
+    it('clamps SDK contextWindow to 1M for [1m] extended context models', () => {
+      useAppStore.setState({
+        streamingState: {
+          [CONV_ID]: streamingStateWithModel('claude-opus-4-6[1m]'),
+        },
+      });
+
+      // First call creates entry with 1M default
+      useAppStore.getState().setContextUsage(CONV_ID, { inputTokens: 1000 });
+      expect(useAppStore.getState().contextUsage[CONV_ID].contextWindow).toBe(1_000_000);
+
+      // SDK sends contextWindow: 200000 — should be clamped to 1M
+      useAppStore.getState().setContextUsage(CONV_ID, { contextWindow: 200000 });
+      expect(useAppStore.getState().contextUsage[CONV_ID].contextWindow).toBe(1_000_000);
+      // Token counts should be preserved
+      expect(useAppStore.getState().contextUsage[CONV_ID].inputTokens).toBe(1000);
+    });
+
+    it('allows SDK contextWindow for non-[1m] models', () => {
+      useAppStore.setState({
+        streamingState: {
+          [CONV_ID]: streamingStateWithModel('claude-sonnet-4-6-20250514'),
+        },
+      });
+
+      useAppStore.getState().setContextUsage(CONV_ID, { inputTokens: 1000 });
+      useAppStore.getState().setContextUsage(CONV_ID, { contextWindow: 200000 });
+      expect(useAppStore.getState().contextUsage[CONV_ID].contextWindow).toBe(200000);
+    });
+
+    it('passes through 1M contextWindow for [1m] models without clamping', () => {
+      useAppStore.setState({
+        streamingState: {
+          [CONV_ID]: streamingStateWithModel('claude-opus-4-6[1m]'),
+        },
+      });
+
+      useAppStore.getState().setContextUsage(CONV_ID, { contextWindow: 1_000_000 });
+      expect(useAppStore.getState().contextUsage[CONV_ID].contextWindow).toBe(1_000_000);
     });
 
     it('does not affect other conversations when updating one', () => {
