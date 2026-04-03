@@ -300,7 +300,7 @@ func ensureToolResultPairing(messages []provider.Message) []provider.Message {
 		// Check which tool_use IDs have matching tool_result blocks
 		for _, b := range messages[nextUserIdx].Content {
 			if b.Type == provider.BlockToolResult {
-				delete(toolUseIDs, b.ToolUseID)
+				delete(toolUseIDs, b.ForToolUseID) // ForToolUseID, not ToolUseID
 			}
 		}
 
