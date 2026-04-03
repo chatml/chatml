@@ -575,7 +575,7 @@ export function SessionToolbarContent() {
                     }
                   }}
                 >
-                  <div className="stagger-children">
+                  <div>
                     {REVIEW_TYPES.map((type) => {
                       const colors = REVIEW_COLOR_CLASSES[type.color];
                       return (
