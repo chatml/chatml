@@ -2592,6 +2592,12 @@ updateFileTabContent: (id, content) => set((state) => ({
     const isExtendedContext = model?.includes('[1m]');
     const defaultContextWindow = isExtendedContext ? 1_000_000 : 200_000;
 
+    // If the model is a [1m] variant, don't allow the SDK-reported contextWindow
+    // to downgrade from 1M (the SDK reports the base 200K window, not the extended one)
+    const sanitizedUsage = (isExtendedContext && usage.contextWindow !== undefined && usage.contextWindow < 1_000_000)
+      ? { ...usage, contextWindow: 1_000_000 }
+      : usage;
+
     const existing = state.contextUsage[conversationId] || {
       inputTokens: 0,
       outputTokens: 0,
@@ -2603,7 +2609,7 @@ updateFileTabContent: (id, content) => set((state) => ({
     return {
       contextUsage: {
         ...state.contextUsage,
-        [conversationId]: { ...existing, ...usage, lastUpdated: Date.now() },
+        [conversationId]: { ...existing, ...sanitizedUsage, lastUpdated: Date.now() },
       },
     };
   }),
