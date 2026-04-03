@@ -38,6 +38,7 @@ import { CopyButton } from '@/components/shared/CopyButton';
 import { TodoToolDetail } from '@/components/conversation/tool-details/TodoToolDetail';
 import { getMessage, toStoreMessage } from '@/lib/api';
 import type { ToolMetadata } from '@/lib/types';
+import { calculateEditStats } from '@/lib/fileChangeUtils';
 
 // Lazy-load heavy Pierre-based components (only loaded when user expands a tool block)
 const EditToolDetail = lazy(() => import('@/components/conversation/tool-details/EditToolDetail').then(m => ({ default: m.EditToolDetail })));
@@ -72,30 +73,6 @@ interface ToolUsageBlockProps {
   compacted?: boolean;
 }
 
-// Helper to calculate line stats for Edit tool
-function calculateEditStats(params?: Record<string, unknown>): { additions: number; deletions: number } | null {
-  if (!params) return null;
-
-  const oldString = params.old_string as string | undefined;
-  const newString = params.new_string as string | undefined;
-
-  // Only calculate if we have at least one of the strings
-  if (oldString === undefined && newString === undefined) return null;
-
-  // Count lines in a string (number of newlines + 1 for non-empty, 0 for empty)
-  const countLines = (s: string | undefined) => {
-    if (!s) return 0;
-    return s.split('\n').length;
-  };
-
-  const oldLines = countLines(oldString);
-  const newLines = countLines(newString);
-
-  return {
-    additions: Math.max(0, newLines - oldLines),
-    deletions: Math.max(0, oldLines - newLines),
-  };
-}
 
 export const ToolUsageBlock = memo(function ToolUsageBlock({
   id,

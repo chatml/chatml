@@ -35,6 +35,7 @@ import { ApprovedPlanBlock } from '@/components/conversation/ApprovedPlanBlock';
 import { CompactBoundaryCard } from '@/components/conversation/CompactBoundaryCard';
 import { TurnStatusIndicator } from '@/components/conversation/TurnStatusIndicator';
 import { MessageTokenFooter } from '@/components/conversation/MessageTokenFooter';
+import { FileChangePills } from '@/components/conversation/FileChangePills';
 
 // Collapsed tool summary with individual ToolUsageBlock instances when expanded
 const ToolUsageSummary = memo(function ToolUsageSummary({ tools, worktreePath, conversationId, messageId, compacted }: { tools: ToolUsage[]; worktreePath?: string; conversationId?: string; messageId?: string; compacted?: boolean }) {
@@ -350,9 +351,13 @@ export const MessageBlock = memo(function MessageBlock({
           <VerificationBlock results={message.verificationResults} />
         )}
 
-        {/* File Changes */}
-        {message.fileChanges && message.fileChanges.length > 0 && (
+        {/* File Changes — prefer authoritative git-diff summary when available, fall back to tool-usage pills */}
+        {message.fileChanges && message.fileChanges.length > 0 ? (
           <FileChangesBlock changes={message.fileChanges} worktreePath={worktreePath} />
+        ) : (
+          message.toolUsage && message.toolUsage.length > 0 && (
+            <FileChangePills toolUsage={message.toolUsage} />
+          )
         )}
 
         {/* Per-message token/cost footer */}
