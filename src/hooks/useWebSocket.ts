@@ -1004,7 +1004,15 @@ export function useWebSocket(enabled: boolean = true) {
 
       case 'task_stopped':
         if (event?.taskId) {
-          store.stopBackgroundTask(conversationId, event.taskId as string);
+          const stoppedTaskId = event.taskId as string;
+          const existing = store.backgroundTasks[conversationId]?.find(t => t.taskId === stoppedTaskId);
+          if (existing?.status !== 'stopped') {
+            store.stopBackgroundTask(conversationId, stoppedTaskId);
+          }
+          // Remove completed task after a brief delay so the user sees the green completion indicator
+          setTimeout(() => {
+            store.removeBackgroundTask(conversationId, stoppedTaskId);
+          }, 2000);
         }
         break;
 
