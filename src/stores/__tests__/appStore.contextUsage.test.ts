@@ -11,7 +11,7 @@ const CONV_ID_2 = 'conv-2';
 
 describe('appStore — contextUsage', () => {
   beforeEach(() => {
-    useAppStore.setState({ contextUsage: {} });
+    useAppStore.setState({ contextUsage: {}, streamingState: {}, conversations: [] });
   });
 
   afterEach(() => {
@@ -167,6 +167,43 @@ describe('appStore — contextUsage', () => {
       });
 
       useAppStore.getState().setContextUsage(CONV_ID, { contextWindow: 1_000_000 });
+      expect(useAppStore.getState().contextUsage[CONV_ID].contextWindow).toBe(1_000_000);
+    });
+
+    it('does NOT clamp when turnStartMeta is cleared (regression: result after finalization)', () => {
+      // Simulate turn 1: turnStartMeta has [1m] model, context_usage sets 1M default
+      useAppStore.setState({
+        streamingState: {
+          [CONV_ID]: streamingStateWithModel('claude-opus-4-6[1m]'),
+        },
+      });
+      useAppStore.getState().setContextUsage(CONV_ID, { inputTokens: 5000 });
+      expect(useAppStore.getState().contextUsage[CONV_ID].contextWindow).toBe(1_000_000);
+
+      // Simulate finalization clearing turnStartMeta (and no [1m] on conversation.model)
+      useAppStore.setState({
+        streamingState: { [CONV_ID]: {} as ReturnType<typeof useAppStore.getState>['streamingState'][string] },
+        conversations: [{ id: CONV_ID, model: 'claude-opus-4-6' } as ReturnType<typeof useAppStore.getState>['conversations'][number]],
+      });
+
+      // SDK-reported contextWindow arrives AFTER finalization — no [1m] detected, NOT clamped
+      useAppStore.getState().setContextUsage(CONV_ID, { contextWindow: 200000 });
+      // Store correctly downgrades — it has no [1m] info once turnStartMeta is cleared.
+      // The fix is in useWebSocket.ts: call setContextUsage BEFORE finalizeStreamingMessage.
+      expect(useAppStore.getState().contextUsage[CONV_ID].contextWindow).toBe(200000);
+    });
+
+    it('clamps correctly when called BEFORE finalization clears turnStartMeta', () => {
+      // Simulate the FIXED flow: setContextUsage called while turnStartMeta still exists
+      useAppStore.setState({
+        streamingState: {
+          [CONV_ID]: streamingStateWithModel('claude-opus-4-6[1m]'),
+        },
+      });
+      useAppStore.getState().setContextUsage(CONV_ID, { inputTokens: 5000 });
+
+      // SDK contextWindow arrives BEFORE finalization — [1m] detected, clamped to 1M
+      useAppStore.getState().setContextUsage(CONV_ID, { contextWindow: 200000 });
       expect(useAppStore.getState().contextUsage[CONV_ID].contextWindow).toBe(1_000_000);
     });
 

@@ -376,6 +376,21 @@ export function useWebSocket(enabled: boolean = true) {
           ? (event.permissionDenials as Array<{ toolName: string; toolUseId: string }>)
           : undefined;
 
+        // Extract context window size BEFORE finalization — finalizeStreamingMessage
+        // clears turnStartMeta, which setContextUsage needs to detect [1m] models
+        // and clamp the SDK-reported 200K window to the correct 1M.
+        const resultModelUsage = event.modelUsage as Record<string, { contextWindow?: number }> | undefined;
+        if (resultModelUsage) {
+          for (const key of Object.keys(resultModelUsage)) {
+            if (resultModelUsage[key]?.contextWindow) {
+              freshStore.setContextUsage(conversationId, {
+                contextWindow: resultModelUsage[key].contextWindow!,
+              });
+              break;
+            }
+          }
+        }
+
         freshStore.finalizeStreamingMessage(conversationId, {
           durationMs,
           toolUsage: toolUsage.length > 0 ? toolUsage : undefined,
@@ -398,17 +413,6 @@ export function useWebSocket(enabled: boolean = true) {
         // Mark that result already finalized — turn_complete should skip re-finalization
         resultFinalizedSet.add(conversationId);
 
-        const resultModelUsage = event.modelUsage as Record<string, { contextWindow?: number }> | undefined;
-        if (resultModelUsage) {
-          for (const key of Object.keys(resultModelUsage)) {
-            if (resultModelUsage[key]?.contextWindow) {
-              freshStore.setContextUsage(conversationId, {
-                contextWindow: resultModelUsage[key].contextWindow!,
-              });
-              break;
-            }
-          }
-        }
         // Only mark completed if there were no queued messages at the time of result.
         // If there were queued messages, the agent will pick them up for the next turn.
         // Note: freshStore is a pre-finalization snapshot, so this checks the pre-commit count.
