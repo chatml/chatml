@@ -59,6 +59,11 @@ const TaskRow = memo(function TaskRow({ task, conversationId }: TaskRowProps) {
       await stopBackgroundTask(conversationId, task.taskId);
       // Optimistically reflect stopped state; task_stopped WS event will confirm
       useAppStore.getState().stopBackgroundTask(conversationId, task.taskId);
+      // Safety net: if the task_stopped WS event never arrives (e.g. connection drop),
+      // still remove the task after showing the completion indicator.
+      setTimeout(() => {
+        useAppStore.getState().removeBackgroundTask(conversationId, task.taskId);
+      }, 2000);
     } catch {
       showError('Failed to stop background task');
     }

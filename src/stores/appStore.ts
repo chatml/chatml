@@ -540,6 +540,7 @@ interface AppState {
   updateBackgroundTask: (conversationId: string, taskId: string, update: Partial<import('@/lib/types').BackgroundTask>) => void;
   stopBackgroundTask: (conversationId: string, taskId: string) => void;
   clearBackgroundTasks: (conversationId: string) => void;
+  removeBackgroundTask: (conversationId: string, taskId: string) => void;
 
   restoreStreamingFromSnapshot: (conversationId: string, snapshot: {
     text: string;
@@ -2081,6 +2082,16 @@ updateFileTabContent: (id, content) => set((state) => ({
       [conversationId]: [],
     },
   })),
+  removeBackgroundTask: (conversationId, taskId) => set((state) => {
+    const tasks = state.backgroundTasks[conversationId] || [];
+    if (!tasks.some((t) => t.taskId === taskId)) return state;
+    return {
+      backgroundTasks: {
+        ...state.backgroundTasks,
+        [conversationId]: tasks.filter((t) => t.taskId !== taskId),
+      },
+    };
+  }),
   restoreStreamingFromSnapshot: (conversationId, snapshot) => {
     // Restore streaming state from a backend snapshot after WebSocket reconnection.
     // When textSegments are available, restore individual segments to preserve
