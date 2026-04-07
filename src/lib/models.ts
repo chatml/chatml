@@ -223,12 +223,14 @@ export function getModelDisplayName(modelId: string): string {
 }
 
 /** Build the turn-start config label from init event metadata. */
-export function buildTurnConfigLabel(meta: { model?: string; effort?: string; permissionMode?: string; fastModeState?: 'off' | 'cooldown' | 'on' }): string | null {
+export function buildTurnConfigLabel(meta: { model?: string; effort?: string; permissionMode?: string; fastModeState?: 'off' | 'cooldown' | 'on'; backendType?: string }): string | null {
   const parts: string[] = [];
   if (meta.model) parts.push(getModelDisplayName(meta.model));
   if (meta.effort) parts.push(`${meta.effort} effort`);
   if (meta.fastModeState === 'on') parts.push('fast');
   else if (meta.fastModeState === 'cooldown') parts.push('fast (cooldown)');
   if (meta.permissionMode === 'plan') parts.push('plan mode');
+  if (meta.backendType === 'native') parts.push('Native Loop');
+  else if (meta.backendType === 'agent-runner') parts.push('Agent Runner');
   return parts.length > 0 ? parts.join(' \u00b7 ') : null;
 }

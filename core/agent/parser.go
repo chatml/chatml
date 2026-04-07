@@ -42,6 +42,7 @@ type AgentEvent struct {
 	Plugins        []PluginInfo      `json:"plugins,omitempty"`
 	Agents         []string          `json:"agents,omitempty"`
 	PermissionMode string            `json:"permissionMode,omitempty"`
+	BackendType    string            `json:"backendType,omitempty"`
 	ClaudeCodeVer  string            `json:"claudeCodeVersion,omitempty"`
 	ApiKeySource   string            `json:"apiKeySource,omitempty"`
 	Betas          []string          `json:"betas,omitempty"`

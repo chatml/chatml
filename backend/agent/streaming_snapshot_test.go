@@ -49,7 +49,7 @@ func TestHandleConversationOutput_SnapshotOnAssistantText(t *testing.T) {
 	close(ch)
 
 	// Run the output handler synchronously
-	manager.handleConversationOutput("conv-1", proc)
+	manager.handleConversationOutput("conv-1", proc, BackendAgentRunner)
 
 	// After handler exits, snapshot should be cleared (process exited)
 	snapshot, err := s.GetStreamingSnapshot(ctx, "conv-1")
@@ -80,7 +80,7 @@ func TestHandleConversationOutput_SnapshotTracksToolState(t *testing.T) {
 	sendJSONEvent(t, ch, map[string]interface{}{"type": "assistant_text", "content": "Done."})
 	close(ch)
 
-	manager.handleConversationOutput("conv-1", proc)
+	manager.handleConversationOutput("conv-1", proc, BackendAgentRunner)
 
 	// Verify events were forwarded
 	assert.True(t, len(capturedEvents) >= 4, "expected at least 4 events forwarded")
@@ -106,7 +106,7 @@ func TestHandleConversationOutput_SnapshotClearedOnResult(t *testing.T) {
 	sendJSONEvent(t, ch, map[string]interface{}{"type": "result", "content": "done"})
 	close(ch)
 
-	manager.handleConversationOutput("conv-1", proc)
+	manager.handleConversationOutput("conv-1", proc, BackendAgentRunner)
 
 	// Snapshot should be cleared because result event clears it
 	snapshot, err := s.GetStreamingSnapshot(ctx, "conv-1")
@@ -133,7 +133,7 @@ func TestHandleConversationOutput_SnapshotClearedOnComplete(t *testing.T) {
 	sendJSONEvent(t, ch, map[string]interface{}{"type": "complete"})
 	close(ch)
 
-	manager.handleConversationOutput("conv-1", proc)
+	manager.handleConversationOutput("conv-1", proc, BackendAgentRunner)
 
 	snapshot, err := s.GetStreamingSnapshot(ctx, "conv-1")
 	require.NoError(t, err)
@@ -153,7 +153,7 @@ func TestHandleConversationOutput_DebouncedFlush(t *testing.T) {
 	// Run handler in goroutine since we need the channel to stay open
 	done := make(chan struct{})
 	go func() {
-		manager.handleConversationOutput("conv-1", proc)
+		manager.handleConversationOutput("conv-1", proc, BackendAgentRunner)
 		close(done)
 	}()
 
@@ -192,7 +192,7 @@ func TestHandleConversationOutput_SnapshotIncludesActiveTools(t *testing.T) {
 
 	done := make(chan struct{})
 	go func() {
-		manager.handleConversationOutput("conv-1", proc)
+		manager.handleConversationOutput("conv-1", proc, BackendAgentRunner)
 		close(done)
 	}()
 
@@ -230,7 +230,7 @@ func TestHandleConversationOutput_SnapshotIncludesThinking(t *testing.T) {
 
 	done := make(chan struct{})
 	go func() {
-		manager.handleConversationOutput("conv-1", proc)
+		manager.handleConversationOutput("conv-1", proc, BackendAgentRunner)
 		close(done)
 	}()
 
@@ -265,7 +265,7 @@ func TestHandleConversationOutput_ToolEndRemovesFromSnapshot(t *testing.T) {
 
 	done := make(chan struct{})
 	go func() {
-		manager.handleConversationOutput("conv-1", proc)
+		manager.handleConversationOutput("conv-1", proc, BackendAgentRunner)
 		close(done)
 	}()
 

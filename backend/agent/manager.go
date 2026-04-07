@@ -423,7 +423,7 @@ func (m *Manager) StartConversation(ctx context.Context, sessionID, conversation
 	}
 
 	// Handle output streaming
-	go m.handleConversationOutput(convID, backend)
+	go m.handleConversationOutput(convID, backend, backendType)
 
 	// Handle completion
 	go m.handleConversationCompletion(convID, backend)
@@ -507,7 +507,7 @@ func (m *Manager) storePendingUserMessage(ctx context.Context, convID string, pe
 // handleConversationOutput processes output from the agent process.
 // Note: Uses the app-level context so background work is cancelled on shutdown.
 // Store errors are logged but not propagated since this is async processing.
-func (m *Manager) handleConversationOutput(convID string, proc ConversationBackend) {
+func (m *Manager) handleConversationOutput(convID string, proc ConversationBackend, backendType string) {
 	ctx := m.ctx
 	var currentAssistantMessage string
 	var lastReportedDrops uint64
@@ -1356,6 +1356,12 @@ outer:
 				}
 			}
 
+			// Stamp init events with the actual backend type so the frontend
+			// can display which loop is running (native Go vs agent-runner).
+			if event.Type == EventTypeInit && backendType != "" {
+				event.BackendType = backendType
+			}
+
 			// Forward event to handler
 			if m.onConversationEvent != nil {
 				m.onConversationEvent(convID, event)
@@ -1842,7 +1848,7 @@ func (m *Manager) SendConversationMessage(ctx context.Context, convID, message s
 			}
 
 			// Set up handlers for the new process
-			go m.handleConversationOutput(convID, newProc)
+			go m.handleConversationOutput(convID, newProc, BackendAgentRunner)
 			go m.handleConversationCompletion(convID, newProc)
 
 			// Update status
@@ -2061,7 +2067,7 @@ func (m *Manager) ResumeConversation(ctx context.Context, convID string) error {
 		return fmt.Errorf("failed to start resumed agent process: %w", err)
 	}
 
-	go m.handleConversationOutput(convID, newProc)
+	go m.handleConversationOutput(convID, newProc, BackendAgentRunner)
 	go m.handleConversationCompletion(convID, newProc)
 
 	newStatus := models.ConversationStatusActive
