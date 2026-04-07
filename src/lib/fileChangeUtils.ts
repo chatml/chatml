@@ -20,6 +20,11 @@ export function calculateEditStats(params?: Record<string, unknown>): { addition
   // Only calculate if we have at least one of the strings
   if (oldString === undefined && newString === undefined) return null;
 
+  // No-op edit — same content, no stats
+  if (oldString !== undefined && oldString === newString) {
+    return { additions: 0, deletions: 0 };
+  }
+
   // Count lines in a string — strip trailing newline to avoid phantom line
   const countLines = (s: string | undefined) => {
     if (!s) return 0;
@@ -31,8 +36,8 @@ export function calculateEditStats(params?: Record<string, unknown>): { addition
   const newLines = countLines(newString);
 
   return {
-    additions: Math.max(0, newLines - oldLines),
-    deletions: Math.max(0, oldLines - newLines),
+    additions: newLines,
+    deletions: oldLines,
   };
 }
 
