@@ -9,28 +9,28 @@ import type { FileContents } from '@/lib/pierre';
 import { useResolvedThemeType } from '@/hooks/useResolvedThemeType';
 import { getShikiLanguage } from '@/lib/languageMapping';
 import { useApprovalTimer, useApprovalKeyboard, type ApprovalAction } from '@/hooks/useApprovalPrompt';
-import { Terminal, FilePlus2, Pencil, Globe, Search, Wrench, Plug, type LucideIcon } from 'lucide-react';
+import { Terminal, FilePlus2, Pencil, Globe, Search, Wrench, Plug } from 'lucide-react';
 
 const MAX_PREVIEW_LINES = 200;
 
 const ensureTrailingNewline = (s: string) => s.endsWith('\n') ? s : s + '\n';
 
-function getToolIcon(toolName: string): LucideIcon {
+function ToolIcon({ toolName, className }: { toolName: string; className?: string }) {
   switch (toolName) {
     case 'Bash':
-      return Terminal;
+      return <Terminal className={className} />;
     case 'Write':
-      return FilePlus2;
+      return <FilePlus2 className={className} />;
     case 'Edit':
     case 'NotebookEdit':
-      return Pencil;
+      return <Pencil className={className} />;
     case 'WebFetch':
-      return Globe;
+      return <Globe className={className} />;
     case 'WebSearch':
-      return Search;
+      return <Search className={className} />;
     default:
-      if (toolName.startsWith('mcp__')) return Plug;
-      return Wrench;
+      if (toolName.startsWith('mcp__')) return <Plug className={className} />;
+      return <Wrench className={className} />;
   }
 }
 
@@ -294,7 +294,6 @@ export function ToolApprovalPrompt({ conversationId }: ToolApprovalPromptProps) 
 
   if (!pending) return null;
 
-  const ToolIcon = getToolIcon(pending.toolName);
   const toolLabel = getToolLabel(pending.toolName);
   const subtitle = getSubtitle(pending.toolName, pending.toolInput);
   const showPreview = pending.toolName !== 'WebSearch';
@@ -305,7 +304,7 @@ export function ToolApprovalPrompt({ conversationId }: ToolApprovalPromptProps) 
         {/* Header */}
         <div className="flex items-start gap-3 px-5 pt-4 pb-2">
           <div className="flex items-center justify-center h-8 w-8 rounded-lg bg-muted/50 shrink-0 mt-0.5">
-            <ToolIcon className="h-4 w-4 text-muted-foreground" />
+            <ToolIcon toolName={pending.toolName} className="h-4 w-4 text-muted-foreground" />
           </div>
           <div className="min-w-0 flex-1">
             <p className="text-sm font-semibold text-foreground leading-snug">
@@ -443,12 +442,11 @@ export function BatchToolApprovalPrompt({ conversationId }: BatchToolApprovalPro
         {/* Tool list */}
         <div className="px-5 pb-2 space-y-1">
           {pending.items.map((item) => {
-            const ItemIcon = getToolIcon(item.toolName);
             const verb = getActionVerb(item.toolName);
             const target = getTargetName(item.toolName, item.toolInput);
             return (
               <div key={item.toolUseId} className="flex items-center gap-2.5 py-1 text-xs">
-                <ItemIcon className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                <ToolIcon toolName={item.toolName} className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
                 <span className="font-medium">{verb}</span>
                 <span className="text-muted-foreground font-mono truncate">{target}</span>
               </div>
