@@ -180,7 +180,7 @@ describe('getModelInfo', () => {
     for (const model of MODELS) {
       const info = getModelInfo(model.id);
       expect(info).toBeDefined();
-      expect(info!.provider).toBe('claude');
+      expect(info!.provider).toBe(model.provider);
       expect(info!.supportsThinking).toBe(model.supportsThinking);
       expect(info!.supportsEffort).toBe(model.supportsEffort);
       expect(info!.supportsFastMode).toBe(model.supportsFastMode);

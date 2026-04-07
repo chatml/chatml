@@ -16,11 +16,12 @@ import (
 	"github.com/chatml/chatml-backend/agent"
 	"github.com/chatml/chatml-backend/appdir"
 	"github.com/chatml/chatml-backend/branch"
-	"github.com/chatml/chatml-backend/loop"
-	"github.com/chatml/chatml-backend/loop/chatml"
 	"github.com/chatml/chatml-backend/git"
 	"github.com/chatml/chatml-backend/github"
 	"github.com/chatml/chatml-backend/linear"
+	"github.com/chatml/chatml-backend/loop"
+	"github.com/chatml/chatml-backend/loop/chatml"
+	ollamapkg "github.com/chatml/chatml-backend/ollama"
 	"github.com/chatml/chatml-backend/logger"
 	"github.com/chatml/chatml-backend/models"
 	"github.com/chatml/chatml-backend/naming"
@@ -155,6 +156,17 @@ func main() {
 	// The factory closure captures the pointer so it sees the updated field.
 	nativeSvc := &chatml.Services{Store: s}
 	agentMgr.SetNativeBackendFactory(loop.NewBackendFactory(nativeSvc, git.NewRepoManager()))
+
+	// Initialize Ollama manager for local model support.
+	// Progress events are broadcast to all connected WebSocket clients.
+	ollamaDir := filepath.Join(appdir.Root(), "ollama")
+	ollamaMgr := ollamapkg.NewManager(ollamaDir, func(evt ollamapkg.ProgressEvent) {
+		hub.Broadcast(server.Event{
+			Type:    evt.Type,
+			Payload: evt,
+		})
+	})
+	agentMgr.SetOllamaManager(ollamaMgr)
 	if err := agentMgr.Init(ctx); err != nil {
 		logger.Main.Errorf("Agent manager init: %v", err)
 	}
@@ -537,7 +549,7 @@ func main() {
 	// AI client: nil at init — handlers.getAIClient() resolves dynamically via
 	// agentMgr.CreateAIClient() on each call, picking up credentials as they
 	// become available (env var, keychain, credentials file, cached SDK token).
-	router, handlers, routerCleanup := server.NewRouter(ctx, s, hub, agentMgr, ghClient, linearClient, branchWatcher, prWatcher, prCache, issueCache, statsCache, diffCache, snapshotCache, nil, scriptRunner)
+	router, handlers, routerCleanup := server.NewRouter(ctx, s, hub, agentMgr, ghClient, linearClient, branchWatcher, prWatcher, prCache, issueCache, statsCache, diffCache, snapshotCache, nil, scriptRunner, ollamaMgr)
 	defer routerCleanup()
 
 	// Initialize and start the scheduled task scheduler

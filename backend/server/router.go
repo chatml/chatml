@@ -12,6 +12,7 @@ import (
 	"github.com/chatml/chatml-backend/github"
 	"github.com/chatml/chatml-backend/linear"
 	"github.com/chatml/chatml-backend/models"
+	"github.com/chatml/chatml-backend/ollama"
 	"github.com/chatml/chatml-backend/scripts"
 	"github.com/chatml/chatml-backend/store"
 	"github.com/go-chi/chi/v5"
@@ -20,7 +21,7 @@ import (
 	"github.com/rs/cors"
 )
 
-func NewRouter(ctx context.Context, s *store.SQLiteStore, hub *Hub, agentMgr *agent.Manager, ghClient *github.Client, linearClient *linear.Client, bw *branch.Watcher, prw *branch.PRWatcher, prCache *github.PRCache, issueCache *github.IssueCache, statsCache *SessionStatsCache, diffCache *DiffCache, snapshotCache *SnapshotCache, aiClient ai.Provider, scriptRunner *scripts.Runner) (http.Handler, *Handlers, func()) {
+func NewRouter(ctx context.Context, s *store.SQLiteStore, hub *Hub, agentMgr *agent.Manager, ghClient *github.Client, linearClient *linear.Client, bw *branch.Watcher, prw *branch.PRWatcher, prCache *github.PRCache, issueCache *github.IssueCache, statsCache *SessionStatsCache, diffCache *DiffCache, snapshotCache *SnapshotCache, aiClient ai.Provider, scriptRunner *scripts.Runner, ollamaMgr *ollama.Manager) (http.Handler, *Handlers, func()) {
 	r := chi.NewRouter()
 	dirCacheConfig := LoadDirListingCacheConfig()
 	h := NewHandlers(ctx, s, agentMgr, dirCacheConfig, bw, prw, hub, ghClient, prCache, issueCache, statsCache, diffCache, snapshotCache, aiClient, scriptRunner)
@@ -319,6 +320,18 @@ func NewRouter(ctx context.Context, s *store.SQLiteStore, hub *Hub, agentMgr *ag
 		r.Delete("/{id}/uninstall", h.UninstallSkill)
 		r.Get("/{id}/content", h.GetSkillContent)
 	})
+
+	// Ollama lifecycle endpoints (local model management)
+	if ollamaMgr != nil {
+		ollamaH := NewOllamaHandlers(ollamaMgr, hub)
+		r.Route("/api/ollama", func(r chi.Router) {
+			r.Get("/status", ollamaH.GetStatus)
+			r.Post("/install", ollamaH.Install)
+			r.Post("/pull", ollamaH.Pull)
+			r.Post("/stop", ollamaH.Stop)
+			r.Get("/models", ollamaH.ListModels)
+		})
+	}
 
 	// Relay endpoints for mobile remote control (only when relay is configured)
 	if relayH != nil {

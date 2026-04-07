@@ -41,6 +41,10 @@ export { markPlanModeExited };
 // setting isStreaming=false in the gap before the next turn's `init`.
 const resultFinalizedSet = new Set<string>();
 
+// Timer for clearing Ollama progress after completion — tracked so new events
+// can cancel a pending clear and avoid clobbering a new operation's progress.
+let ollamaProgressClearTimer: ReturnType<typeof setTimeout> | null = null;
+
 /**
  * Clean up module-level state for a conversation that is being removed.
  * Call this when deleting sessions to prevent stale entries from lingering
@@ -50,6 +54,14 @@ export function cleanupConversationState(conversationId: string) {
   clearReconciliationState(conversationId);
   clearPlanModeState(conversationId);
   resultFinalizedSet.delete(conversationId);
+}
+
+/** Clean up the module-level Ollama progress timer to prevent HMR leaks. */
+export function cleanupOllamaProgressTimer() {
+  if (ollamaProgressClearTimer !== null) {
+    clearTimeout(ollamaProgressClearTimer);
+    ollamaProgressClearTimer = null;
+  }
 }
 
 
@@ -1330,6 +1342,62 @@ export function useWebSocket(enabled: boolean = true) {
           return;
         }
 
+        // Handle Ollama progress events (binary download or model pull)
+        if (data.type === 'ollama_download' || data.type === 'ollama_pull') {
+          const payload = data.payload as Record<string, unknown> | undefined;
+          if (payload) {
+            // Cancel any pending clear timer so a new operation isn't clobbered
+            if (ollamaProgressClearTimer !== null) {
+              clearTimeout(ollamaProgressClearTimer);
+              ollamaProgressClearTimer = null;
+            }
+            const rawPercent = typeof payload.percent === 'number' ? payload.percent : 0;
+
+            // Negative percent signals an error from the backend (see ollama_handlers.go broadcastError)
+            if (rawPercent < 0) {
+              getStore().setOllamaProgress({
+                type: data.type as 'ollama_download' | 'ollama_pull',
+                status: typeof payload.status === 'string' ? payload.status : 'Error',
+                percent: 0,
+                downloaded: 0,
+                total: 0,
+                timestamp: Date.now(),
+              });
+              ollamaProgressClearTimer = setTimeout(() => {
+                getStore().setOllamaProgress(null);
+                ollamaProgressClearTimer = null;
+              }, 5000);
+              return;
+            }
+
+            const percent = rawPercent;
+            // Throttle non-final updates to ~3/s — the CSS transition (duration-300)
+            // smooths the visual, so more frequent React re-renders add no benefit.
+            const now = Date.now();
+            const lastUpdate = getStore().ollamaProgress?.timestamp ?? 0;
+            if (percent < 100 && now - lastUpdate < 300) {
+              return;
+            }
+            getStore().setOllamaProgress({
+              type: data.type as 'ollama_download' | 'ollama_pull',
+              status: typeof payload.status === 'string' ? payload.status : '',
+              model: typeof payload.model === 'string' ? payload.model : undefined,
+              percent,
+              downloaded: typeof payload.downloaded === 'number' ? payload.downloaded : 0,
+              total: typeof payload.total === 'number' ? payload.total : 0,
+              timestamp: now,
+            });
+            // Clear progress when complete (after brief display)
+            if (percent >= 100) {
+              ollamaProgressClearTimer = setTimeout(() => {
+                getStore().setOllamaProgress(null);
+                ollamaProgressClearTimer = null;
+              }, 1500);
+            }
+          }
+          return;
+        }
+
         // Handle session name update (auto-naming based on conversation context)
         if (data.type === 'session_name_update' && data.sessionId) {
           const payload = data.payload as Record<string, unknown> | undefined;
@@ -1638,6 +1706,7 @@ export function useWebSocket(enabled: boolean = true) {
       }
       wsRef.current?.close();
       batcherRef.current?.destroy();
+      cleanupOllamaProgressTimer();
     };
   }, [enabled, connect]);
 

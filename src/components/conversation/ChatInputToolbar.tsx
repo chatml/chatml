@@ -36,6 +36,7 @@ import { ContextMeter } from './ContextMeter';
 import { THINKING_LEVELS, type ThinkingLevel, canDisableThinking } from '@/lib/thinkingLevels';
 import type { LinearIssueDTO } from '@/lib/api';
 import type { ModelEntry } from '@/lib/models';
+import { isLocalModel } from '@/lib/models';
 
 export interface ModelProps {
   selected: ModelEntry;
@@ -109,12 +110,106 @@ interface ChatInputToolbarProps {
   fastModeEnabled: boolean;
   onFastModeToggle: () => void;
   showFastMode: boolean;
+  showThinking: boolean;
   selectedConversationId: string | null;
   selectedSessionId: string | null;
   attachments: AttachmentMenuProps;
   action: ActionButtonProps;
   showInfo: (msg: string) => void;
   dictation?: DictationProps;
+}
+
+/** Model dropdown menu items, split into Cloud and Local sections with continuous shortcut indices. */
+function ModelDropdownItems({ models, selected, defaultId, setSelected, setDefault, showInfo }: {
+  models: ModelEntry[];
+  selected: ModelEntry;
+  defaultId: string;
+  setSelected: (m: ModelEntry) => void;
+  setDefault: (id: string) => void;
+  showInfo: (msg: string) => void;
+}) {
+  const cloudModels = models.filter((m) => !isLocalModel(m.id));
+  const localModels = models.filter((m) => isLocalModel(m.id));
+
+  // Build a flat ordered list so shortcut indices are continuous across sections
+  const allOrdered = [...cloudModels, ...localModels];
+
+  const renderItem = (m: ModelEntry, idx: number) => {
+    const isDefault = m.id === defaultId;
+    const isSelected = m.id === selected.id;
+    return (
+      <DropdownMenuItem
+        key={m.id}
+        className="group flex items-start gap-2 pr-1.5 py-2"
+        onClick={() => setSelected(m)}
+      >
+        <span className="flex flex-1 flex-col min-w-0">
+          <span className="truncate font-medium">{m.name}</span>
+          {m.description && (
+            <span className="text-xs text-muted-foreground leading-tight">
+              {m.description}
+            </span>
+          )}
+        </span>
+        <span className="mt-0.5 flex shrink-0 items-center gap-1">
+          {isSelected && <Check className="h-3.5 w-3.5" />}
+          {isDefault ? (
+            <Star className="h-3 w-3 fill-current text-amber-500" />
+          ) : (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span
+                  role="button"
+                  aria-label={`Set ${m.name} as default`}
+                  className="flex items-center justify-center rounded p-0.5 text-muted-foreground/50 opacity-0 transition-opacity group-hover:opacity-100 hover:text-foreground"
+                  onPointerDown={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                  }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setDefault(m.id);
+                    showInfo(`${m.name} set as default for new conversations`);
+                  }}
+                >
+                  <Star className="h-3 w-3" />
+                </span>
+              </TooltipTrigger>
+              <TooltipContent side="right" sideOffset={8}>Set as default</TooltipContent>
+            </Tooltip>
+          )}
+          {idx < 9 && (
+            <kbd className="text-[10px] text-muted-foreground/50 min-w-[1ch] text-right ml-1">{idx + 1}</kbd>
+          )}
+        </span>
+      </DropdownMenuItem>
+    );
+  };
+
+  return (
+    <>
+      {cloudModels.length > 0 && (
+        <DropdownMenuLabel className="text-2xs font-normal text-muted-foreground uppercase tracking-wider">
+          Cloud
+        </DropdownMenuLabel>
+      )}
+      {allOrdered.map((m, idx) => {
+        // Insert section header before the first local model
+        if (idx === cloudModels.length && localModels.length > 0) {
+          return (
+            <Fragment key={m.id}>
+              <DropdownMenuSeparator />
+              <DropdownMenuLabel className="text-2xs font-normal text-muted-foreground uppercase tracking-wider">
+                Local
+              </DropdownMenuLabel>
+              {renderItem(m, idx)}
+            </Fragment>
+          );
+        }
+        return renderItem(m, idx);
+      })}
+    </>
+  );
 }
 
 export function ChatInputToolbar({
@@ -126,6 +221,7 @@ export function ChatInputToolbar({
   fastModeEnabled,
   onFastModeToggle,
   showFastMode,
+  showThinking,
   selectedConversationId,
   selectedSessionId,
   attachments,
@@ -154,60 +250,7 @@ export function ChatInputToolbar({
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start" className="w-64">
-          <DropdownMenuLabel className="text-2xs font-normal text-muted-foreground uppercase tracking-wider">
-            Claude Code
-          </DropdownMenuLabel>
-          {model.models.map((m, index) => {
-            const isDefault = m.id === model.defaultId;
-            const isSelected = m.id === model.selected.id;
-            return (
-              <DropdownMenuItem
-                key={m.id}
-                className="group flex items-start gap-2 pr-1.5 py-2"
-                onClick={() => model.setSelected(m)}
-              >
-                <span className="flex flex-1 flex-col min-w-0">
-                  <span className="truncate font-medium">{m.name}</span>
-                  {m.description && (
-                    <span className="text-xs text-muted-foreground leading-tight">
-                      {m.description}
-                    </span>
-                  )}
-                </span>
-                <span className="mt-0.5 flex shrink-0 items-center gap-1">
-                  {isSelected && <Check className="h-3.5 w-3.5" />}
-                  {isDefault ? (
-                    <Star className="h-3 w-3 fill-current text-amber-500" />
-                  ) : (
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <span
-                          role="button"
-                          aria-label={`Set ${m.name} as default`}
-                          className="flex items-center justify-center rounded p-0.5 text-muted-foreground/50 opacity-0 transition-opacity group-hover:opacity-100 hover:text-foreground"
-                          onPointerDown={(e) => {
-                            e.preventDefault();
-                            e.stopPropagation();
-                          }}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            model.setDefault(m.id);
-                            showInfo(`${m.name} set as default for new conversations`);
-                          }}
-                        >
-                          <Star className="h-3 w-3" />
-                        </span>
-                      </TooltipTrigger>
-                      <TooltipContent side="right" sideOffset={8}>Set as default</TooltipContent>
-                    </Tooltip>
-                  )}
-                  {index < 9 && (
-                    <kbd className="text-[10px] text-muted-foreground/50 min-w-[1ch] text-right ml-1">{index + 1}</kbd>
-                  )}
-                </span>
-              </DropdownMenuItem>
-            );
-          })}
+          <ModelDropdownItems models={model.models} selected={model.selected} defaultId={model.defaultId} setSelected={model.setSelected} setDefault={model.setDefault} showInfo={showInfo} />
         </DropdownMenuContent>
       </DropdownMenu>
 
@@ -247,8 +290,8 @@ export function ChatInputToolbar({
         {planModeEnabled && <span className="text-xs font-medium">Plan</span>}
       </Button>
 
-      {/* Unified Thinking Level Dropdown */}
-      <DropdownMenu>
+      {/* Unified Thinking Level Dropdown — hidden for models that don't support thinking */}
+      {showThinking && <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button
             variant="ghost"
@@ -328,7 +371,7 @@ export function ChatInputToolbar({
               );
             })}
         </DropdownMenuContent>
-      </DropdownMenu>
+      </DropdownMenu>}
 
       {/* Permission Mode Dropdown */}
       <DropdownMenu>

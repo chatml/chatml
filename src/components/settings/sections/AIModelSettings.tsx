@@ -6,14 +6,17 @@ import { Button } from '@/components/ui/button';
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
+  SelectSeparator,
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
 import { Eye, EyeOff } from 'lucide-react';
 import { useSettingsStore, SETTINGS_DEFAULTS } from '@/stores/settingsStore';
 import { useAppStore } from '@/stores/appStore';
-import { MODELS as SHARED_MODELS, toShortDisplayName, getModelDescription, isDefaultRecommended, deduplicateById, deduplicateByName, sortModelEntries } from '@/lib/models';
+import { MODELS as SHARED_MODELS, toShortDisplayName, getModelDescription, isDefaultRecommended, deduplicateById, deduplicateByName, sortModelEntries, isLocalModel } from '@/lib/models';
 import type { ThinkingLevel } from '@/lib/thinkingLevels';
 import { getAnthropicApiKey, setAnthropicApiKey } from '@/lib/api';
 import { useToast } from '@/components/ui/toast';
@@ -48,6 +51,9 @@ export function AIModelSettings() {
     return sortModelEntries(deduplicateByName(deduplicateById(entries)));
   }, [dynamicModels]);
 
+  const cloudModels = useMemo(() => modelOptions.filter((m) => !isLocalModel(m.id)), [modelOptions]);
+  const localModels = useMemo(() => modelOptions.filter((m) => isLocalModel(m.id)), [modelOptions]);
+
   return (
     <div>
       <h2 className="text-xl font-semibold mb-5">AI & Models</h2>
@@ -65,16 +71,7 @@ export function AIModelSettings() {
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {modelOptions.map((m) => (
-                <SelectItem key={m.id} value={m.id} textValue={m.name}>
-                  <div className="flex flex-col">
-                    <span>{m.name}</span>
-                    {m.description && (
-                      <span className="text-xs text-muted-foreground">{m.description}</span>
-                    )}
-                  </div>
-                </SelectItem>
-              ))}
+              <ModelSelectItems cloud={cloudModels} local={localModels} />
             </SelectContent>
           </Select>
         </SettingsRow>
@@ -91,16 +88,7 @@ export function AIModelSettings() {
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {modelOptions.map((m) => (
-                <SelectItem key={m.id} value={m.id} textValue={m.name}>
-                  <div className="flex flex-col">
-                    <span>{m.name}</span>
-                    {m.description && (
-                      <span className="text-xs text-muted-foreground">{m.description}</span>
-                    )}
-                  </div>
-                </SelectItem>
-              ))}
+              <ModelSelectItems cloud={cloudModels} local={localModels} />
             </SelectContent>
           </Select>
         </SettingsRow>
@@ -199,6 +187,35 @@ export function AIModelSettings() {
         <ApiKeySection />
       </SettingsGroup>
     </div>
+  );
+}
+
+function ModelSelectItems({ cloud, local }: { cloud: { id: string; name: string; description?: string }[]; local: { id: string; name: string; description?: string }[] }) {
+  const renderItem = (m: { id: string; name: string; description?: string }) => (
+    <SelectItem key={m.id} value={m.id} textValue={m.name}>
+      <div className="flex flex-col">
+        <span>{m.name}</span>
+        {m.description && (
+          <span className="text-xs text-muted-foreground">{m.description}</span>
+        )}
+      </div>
+    </SelectItem>
+  );
+
+  return (
+    <>
+      <SelectGroup>
+        <SelectLabel>Cloud</SelectLabel>
+        {cloud.map(renderItem)}
+      </SelectGroup>
+      {local.length > 0 && (
+        <SelectGroup>
+          <SelectSeparator />
+          <SelectLabel>Local</SelectLabel>
+          {local.map(renderItem)}
+        </SelectGroup>
+      )}
+    </>
   );
 }
 

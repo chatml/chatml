@@ -24,7 +24,7 @@ import { LinearIssuePicker } from './LinearIssuePicker';
 import { WorkspacePicker } from './WorkspacePicker';
 import type { LinearIssueDTO } from '@/lib/api';
 import { PlateInput, type PlateInputHandle } from './PlateInput';
-import { MODELS as SHARED_MODELS, type ModelEntry, toShortDisplayName, getModelDescription, isDefaultRecommended, deduplicateById, deduplicateByName, deduplicateByFamily, sortModelEntries } from '@/lib/models';
+import { MODELS as SHARED_MODELS, type ModelEntry, toShortDisplayName, getModelDescription, isDefaultRecommended, deduplicateById, deduplicateByName, deduplicateByFamily, sortModelEntries, isLocalModel } from '@/lib/models';
 import type { MentionItem } from '@/components/ui/mention-node';
 import { trackEvent } from '@/lib/telemetry';
 import { playSound } from '@/lib/sounds';
@@ -111,10 +111,17 @@ const STATIC_MODELS: ModelEntry[] = SHARED_MODELS.map((m) => ({
   name: m.name,
   description: m.description,
   icon: Sparkles,
+  provider: m.provider,
   supportsThinking: m.supportsThinking,
   supportsEffort: m.supportsEffort,
   supportsFastMode: m.supportsFastMode,
 }));
+
+/** Resolve the backend type. Called from event handlers (not render), so getState() is correct. */
+function resolveBackend(modelId: string): 'native' | undefined {
+  if (isLocalModel(modelId)) return 'native';
+  return useSettingsStore.getState().defaultBackend === 'native' ? 'native' : undefined;
+}
 
 /** Build the model list from SDK-reported dynamic models, with static fallback. */
 function buildModelList(dynamic: ReturnType<typeof useAppStore.getState>['supportedModels']): ModelEntry[] {
@@ -667,7 +674,7 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
         type: 'task',
         message: pendingPlanApproval.planContent,
         model: selectedModel.id,
-        backend: useSettingsStore.getState().defaultBackend === 'native' ? 'native' : undefined,
+        backend: resolveBackend(selectedModel.id),
       });
 
       addConversation({
@@ -858,7 +865,7 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
             labels: linkedLinearIssue.labels,
           } : undefined,
           linkedWorkspaceIds: linkedWorkspaceIds.length > 0 ? linkedWorkspaceIds : undefined,
-          backend: useSettingsStore.getState().defaultBackend === 'native' ? 'native' : undefined,
+          backend: resolveBackend(selectedModel.id),
         });
 
         // Clear streaming on placeholder before removing it
@@ -1240,6 +1247,7 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
           fastModeEnabled={fastModeEnabled}
           onFastModeToggle={handleFastModeToggle}
           showFastMode={selectedModel.supportsFastMode === true}
+          showThinking={selectedModel.supportsThinking !== false}
           selectedConversationId={selectedConversationId}
           selectedSessionId={selectedSessionId}
           attachments={{

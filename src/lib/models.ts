@@ -12,9 +12,15 @@ interface ModelCatalogEntry {
 
 /** Canonical display names and descriptions, keyed by base model ID. */
 const MODEL_CATALOG: Record<string, ModelCatalogEntry> = {
+  // Cloud models (Anthropic)
   'claude-opus-4-6':   { displayName: 'Opus 4.6 (1M context)', description: 'Most capable for ambitious work' },
   'claude-sonnet-4-6': { displayName: 'Sonnet 4.6',            description: 'Most efficient for everyday tasks' },
   'claude-haiku-4-5':  { displayName: 'Haiku 4.5',             description: 'Fastest for quick answers' },
+  // Local models (Ollama) — keep in sync with backend/ollama/models.go
+  'gemma-4-e2b':       { displayName: 'Gemma 4 E2B',           description: 'Ultra-light local model (2B)' },
+  'gemma-4-e4b':       { displayName: 'Gemma 4 E4B',           description: 'Fast local model (4B)' },
+  'gemma-4-27b':       { displayName: 'Gemma 4 27B',           description: 'Local MoE model (4B active)' },
+  'gemma-4-31b':       { displayName: 'Gemma 4 31B',           description: 'Most capable local model' },
 };
 
 /**
@@ -64,9 +70,15 @@ export function isDefaultRecommended(sdkDisplayName: string): boolean {
 // the dated variant and stored user settings reference it. catalogLookup via
 // toBaseId handles the mapping transparently.
 export const MODELS = [
-  { id: 'claude-opus-4-6', name: MODEL_CATALOG['claude-opus-4-6'].displayName, description: MODEL_CATALOG['claude-opus-4-6'].description, provider: 'claude', supportsThinking: true, supportsEffort: true, supportsFastMode: true },
-  { id: 'claude-sonnet-4-6', name: MODEL_CATALOG['claude-sonnet-4-6'].displayName, description: MODEL_CATALOG['claude-sonnet-4-6'].description, provider: 'claude', supportsThinking: true, supportsEffort: true, supportsFastMode: true },
-  { id: 'claude-haiku-4-5-20251001', name: MODEL_CATALOG['claude-haiku-4-5'].displayName, description: MODEL_CATALOG['claude-haiku-4-5'].description, provider: 'claude', supportsThinking: true, supportsEffort: false, supportsFastMode: false },
+  // Cloud models
+  { id: 'claude-opus-4-6', name: MODEL_CATALOG['claude-opus-4-6'].displayName, description: MODEL_CATALOG['claude-opus-4-6'].description, provider: 'claude' as const, supportsThinking: true, supportsEffort: true, supportsFastMode: true },
+  { id: 'claude-sonnet-4-6', name: MODEL_CATALOG['claude-sonnet-4-6'].displayName, description: MODEL_CATALOG['claude-sonnet-4-6'].description, provider: 'claude' as const, supportsThinking: true, supportsEffort: true, supportsFastMode: true },
+  { id: 'claude-haiku-4-5-20251001', name: MODEL_CATALOG['claude-haiku-4-5'].displayName, description: MODEL_CATALOG['claude-haiku-4-5'].description, provider: 'claude' as const, supportsThinking: true, supportsEffort: false, supportsFastMode: false },
+  // Local models
+  { id: 'gemma-4-e2b', name: MODEL_CATALOG['gemma-4-e2b'].displayName, description: MODEL_CATALOG['gemma-4-e2b'].description, provider: 'ollama' as const, supportsThinking: false, supportsEffort: false, supportsFastMode: false },
+  { id: 'gemma-4-e4b', name: MODEL_CATALOG['gemma-4-e4b'].displayName, description: MODEL_CATALOG['gemma-4-e4b'].description, provider: 'ollama' as const, supportsThinking: false, supportsEffort: false, supportsFastMode: false },
+  { id: 'gemma-4-27b', name: MODEL_CATALOG['gemma-4-27b'].displayName, description: MODEL_CATALOG['gemma-4-27b'].description, provider: 'ollama' as const, supportsThinking: false, supportsEffort: false, supportsFastMode: false },
+  { id: 'gemma-4-31b', name: MODEL_CATALOG['gemma-4-31b'].displayName, description: MODEL_CATALOG['gemma-4-31b'].description, provider: 'ollama' as const, supportsThinking: false, supportsEffort: false, supportsFastMode: false },
 ] as const;
 
 export type ModelId = (typeof MODELS)[number]['id'];
@@ -134,12 +146,15 @@ export function deduplicateByFamily<T extends { id: string }>(entries: T[]): T[]
   return entries.filter((entry) => familyMap.get(toModelFamily(entry.id)) === entry);
 }
 
-/** Tier rank for sorting: Opus=0, Sonnet=1, Haiku=2, unknown=3 */
+/** Tier rank for sorting: Opus=0, Sonnet=1, Haiku=2, unknown cloud=3, local=4+ */
 function modelTierRank(id: string): number {
   const family = toModelFamily(id);
   if (family === 'opus') return 0;
   if (family === 'sonnet') return 1;
   if (family === 'haiku') return 2;
+  const lower = id.toLowerCase();
+  if (lower.startsWith('gemma-')) return 4;
+  if (lower.startsWith('ollama/')) return 5;
   return 3;
 }
 
@@ -182,12 +197,15 @@ export function buildDeduplicatedModelIds(dynamic: SdkModelEntry[]): string[] {
 // Model entry types
 // ---------------------------------------------------------------------------
 
+export type ModelProvider = 'claude' | 'ollama';
+
 /** Model entry used for UI model selectors and keyboard shortcut cycling. */
 export interface ModelEntry {
   id: string;
   name: string;
   description?: string;
   icon: React.ComponentType<{ className?: string }>;
+  provider?: ModelProvider;
   supportsThinking: boolean;
   supportsEffort: boolean;
   supportedEffortLevels?: ('low' | 'medium' | 'high' | 'max')[];
@@ -206,6 +224,20 @@ export interface DynamicModelInfo {
 }
 
 // ---------------------------------------------------------------------------
+// Local model detection
+// ---------------------------------------------------------------------------
+
+/** Local model IDs — derived from the MODELS array to stay in sync automatically. */
+const LOCAL_MODEL_IDS: Set<string> = new Set(
+  MODELS.filter(m => m.provider === 'ollama').map(m => m.id)
+);
+
+/** Check whether a model ID refers to a locally-run model (Ollama). */
+export function isLocalModel(modelId: string): boolean {
+  return LOCAL_MODEL_IDS.has(modelId) || modelId.startsWith('ollama/');
+}
+
+// ---------------------------------------------------------------------------
 // Model info lookups
 // ---------------------------------------------------------------------------
 
@@ -221,8 +253,8 @@ export function getModelInfo(modelId: string): DynamicModelInfo | undefined {
       id: sdkModel.value,
       name: toShortDisplayName(sdkModel.value, sdkModel.displayName),
       description: getModelDescription(sdkModel.value),
-      provider: 'claude',
-      supportsThinking: sdkModel.supportsAdaptiveThinking ?? true,
+      provider: isLocalModel(sdkModel.value) ? 'ollama' : 'claude',
+      supportsThinking: sdkModel.supportsAdaptiveThinking ?? !isLocalModel(sdkModel.value),
       supportsEffort: sdkModel.supportsEffort ?? false,
       supportedEffortLevels: sdkModel.supportedEffortLevels,
       supportsFastMode: sdkModel.supportsFastMode,
@@ -262,10 +294,14 @@ export function getModelDisplayName(modelId: string): string {
 /** Build the turn-start config label from init event metadata. */
 export function buildTurnConfigLabel(meta: { model?: string; effort?: string; permissionMode?: string; fastModeState?: 'off' | 'cooldown' | 'on'; backendType?: string }): string | null {
   const parts: string[] = [];
+  const info = meta.model ? getModelInfo(meta.model) : undefined;
   if (meta.model) parts.push(getModelDisplayName(meta.model));
-  if (meta.effort) parts.push(`${meta.effort} effort`);
-  if (meta.fastModeState === 'on') parts.push('fast');
-  else if (meta.fastModeState === 'cooldown') parts.push('fast (cooldown)');
+  // Only show effort/fast when the model actually supports them
+  if ((info?.supportsEffort !== false) && meta.effort) parts.push(`${meta.effort} effort`);
+  if (info?.supportsFastMode !== false) {
+    if (meta.fastModeState === 'on') parts.push('fast');
+    else if (meta.fastModeState === 'cooldown') parts.push('fast (cooldown)');
+  }
   if (meta.permissionMode === 'plan') parts.push('plan mode');
   if (meta.backendType === 'native') parts.push('Native Loop');
   else if (meta.backendType === 'agent-runner') parts.push('Agent Runner');

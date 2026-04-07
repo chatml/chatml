@@ -18,8 +18,9 @@ import (
 	"github.com/chatml/chatml-core/prompt"
 	"github.com/chatml/chatml-core/provider"
 	"github.com/chatml/chatml-core/provider/anthropic"
-	"github.com/chatml/chatml-core/task"
+	ollamaprov "github.com/chatml/chatml-core/provider/ollama"
 	"github.com/chatml/chatml-core/provider/openai"
+	"github.com/chatml/chatml-core/task"
 	"github.com/chatml/chatml-core/tool"
 	"github.com/chatml/chatml-core/tool/builtin"
 )
@@ -29,7 +30,7 @@ import (
 func NewBackendFactory() agent.NativeBackendFactory {
 	return func(opts agent.ProcessOptions, apiKey, oauthToken string) (agent.ConversationBackend, error) {
 		// Select provider based on model name
-		prov, err := createProvider(opts.Model, apiKey, oauthToken)
+		prov, err := createProvider(opts.Model, apiKey, oauthToken, opts.OllamaEndpoint)
 		if err != nil {
 			return nil, fmt.Errorf("create provider: %w", err)
 		}
@@ -132,7 +133,8 @@ func NewBackendFactory() agent.NativeBackendFactory {
 		// Both are Anthropic models so reusing runner.provider is safe.
 		// If fallback ever crosses provider boundaries, a new provider
 		// instance must be created (see createProvider).
-		if strings.HasPrefix(opts.Model, "claude-opus") {
+		// Local models have no fallback — there's no equivalent cloud model to fall back to.
+		if strings.HasPrefix(opts.Model, "claude-opus") && !isLocalModel(opts.Model) {
 			runner.fallbackModel = "claude-sonnet-4-6"
 		}
 
@@ -228,11 +230,22 @@ func NewBackendFactory() agent.NativeBackendFactory {
 }
 
 // createProvider selects and creates the appropriate LLM provider based on model name.
+// Local models (gemma-4-*, ollama/*) use the Ollama provider.
 // OpenAI models (gpt-*, o1-/o1.*, o3-/o3.*, o4-/o4.*) use the OpenAI provider.
 // Everything else defaults to Anthropic.
-func createProvider(model, apiKey, oauthToken string) (provider.Provider, error) {
+func createProvider(model, apiKey, oauthToken, ollamaEndpoint string) (provider.Provider, error) {
+	if isLocalModel(model) {
+		if ollamaEndpoint == "" {
+			return nil, fmt.Errorf("ollama endpoint required for local model %q", model)
+		}
+		cfg := ollamaprov.Config{
+			Model:    toOllamaModelName(model),
+			Endpoint: ollamaEndpoint,
+		}
+		return ollamaprov.New(cfg)
+	}
+
 	if isOpenAIModel(model) {
-		// OpenAI models use the API key directly
 		cfg := openai.Config{
 			APIKey: apiKey,
 			Model:  model,
@@ -251,6 +264,11 @@ func createProvider(model, apiKey, oauthToken string) (provider.Provider, error)
 
 // modelInfo returns the marketing name, model ID, and knowledge cutoff for known models.
 func modelInfo(model string) (marketingName, modelID, cutoff string) {
+	// Check local models first via canonical catalog
+	if def := ollamaprov.LookupByID(model); def != nil {
+		return def.DisplayName, model, def.Cutoff
+	}
+
 	switch {
 	case strings.Contains(model, "opus-4-6"):
 		return "Opus 4.6 (1M context)", model, "May 2025"
@@ -265,6 +283,16 @@ func modelInfo(model string) (marketingName, modelID, cutoff string) {
 	default:
 		return model, model, ""
 	}
+}
+
+// isLocalModel delegates to the canonical catalog in core/provider/ollama.
+func isLocalModel(model string) bool {
+	return ollamaprov.IsLocalModel(model)
+}
+
+// toOllamaModelName delegates to the canonical catalog in core/provider/ollama.
+func toOllamaModelName(model string) string {
+	return ollamaprov.ToOllamaName(model)
 }
 
 // resolveModelAlias converts short model aliases to full Anthropic model IDs.
