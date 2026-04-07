@@ -9,10 +9,48 @@ import type { FileContents } from '@/lib/pierre';
 import { useResolvedThemeType } from '@/hooks/useResolvedThemeType';
 import { getShikiLanguage } from '@/lib/languageMapping';
 import { useApprovalTimer, useApprovalKeyboard, type ApprovalAction } from '@/hooks/useApprovalPrompt';
+import { Terminal, FilePlus2, Pencil, Globe, Search, Wrench, Plug, type LucideIcon } from 'lucide-react';
 
 const MAX_PREVIEW_LINES = 200;
 
 const ensureTrailingNewline = (s: string) => s.endsWith('\n') ? s : s + '\n';
+
+function getToolIcon(toolName: string): LucideIcon {
+  switch (toolName) {
+    case 'Bash':
+      return Terminal;
+    case 'Write':
+      return FilePlus2;
+    case 'Edit':
+    case 'NotebookEdit':
+      return Pencil;
+    case 'WebFetch':
+      return Globe;
+    case 'WebSearch':
+      return Search;
+    default:
+      if (toolName.startsWith('mcp__')) return Plug;
+      return Wrench;
+  }
+}
+
+function getToolLabel(toolName: string): string {
+  switch (toolName) {
+    case 'Bash':
+      return 'Run command';
+    case 'Write':
+      return 'Write file';
+    case 'Edit':
+    case 'NotebookEdit':
+      return 'Edit file';
+    case 'WebFetch':
+      return 'Fetch URL';
+    case 'WebSearch':
+      return 'Search web';
+    default:
+      return `Use ${toolName}`;
+  }
+}
 
 function getActionVerb(toolName: string): string {
   switch (toolName) {
@@ -65,6 +103,8 @@ function getSubtitle(toolName: string, toolInput: Record<string, unknown>): stri
       return (toolInput.description as string) || null;
     case 'WebFetch':
       return (toolInput.url as string) || null;
+    case 'WebSearch':
+      return (toolInput.query as string) || null;
     default:
       return null;
   }
@@ -254,78 +294,88 @@ export function ToolApprovalPrompt({ conversationId }: ToolApprovalPromptProps) 
 
   if (!pending) return null;
 
-  const verb = getActionVerb(pending.toolName);
-  const targetName = getTargetName(pending.toolName, pending.toolInput);
+  const ToolIcon = getToolIcon(pending.toolName);
+  const toolLabel = getToolLabel(pending.toolName);
   const subtitle = getSubtitle(pending.toolName, pending.toolInput);
+  const showPreview = pending.toolName !== 'WebSearch';
 
   return (
     <div className="pt-1 px-3 pb-3">
       <div className="relative rounded-xl border border-border bg-card dark:bg-input overflow-hidden">
         {/* Header */}
-        <div className="px-5 pt-4 pb-2">
-          <p className="text-base leading-relaxed">
-            Allow Claude to <strong>{verb}</strong> {targetName}?
-          </p>
-          {subtitle && subtitle !== targetName && (
-            <p className="text-sm text-muted-foreground font-mono mt-1 break-all">{subtitle}</p>
-          )}
+        <div className="flex items-start gap-3 px-5 pt-4 pb-2">
+          <div className="flex items-center justify-center h-8 w-8 rounded-lg bg-muted/50 shrink-0 mt-0.5">
+            <ToolIcon className="h-4 w-4 text-muted-foreground" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-semibold text-foreground leading-snug">
+              {toolLabel}
+            </p>
+            {subtitle && (
+              <p className="text-xs text-muted-foreground font-mono mt-0.5 truncate">{subtitle}</p>
+            )}
+          </div>
         </div>
 
         {/* Content preview */}
-        <div className="px-5 pb-3">
-          {isBash ? (
-            <textarea
-              ref={textareaRef}
-              className="w-full rounded-lg border border-border bg-muted/30 p-3 text-sm font-mono resize-none overflow-auto focus:outline-none focus:ring-1 focus:ring-ring max-h-40"
-              value={editedCommand}
-              onChange={(e) => setEditedCommand(e.target.value)}
-              rows={Math.min(6, Math.max(1, editedCommand.split('\n').length))}
-              spellCheck={false}
-            />
-          ) : (
-            <ApprovalDiffPreview toolName={pending.toolName} toolInput={pending.toolInput} />
-          )}
-        </div>
+        {showPreview && (
+          <div className="px-5 pb-2">
+            {isBash ? (
+              <textarea
+                ref={textareaRef}
+                className="w-full rounded-lg border border-border bg-muted/30 p-3 text-sm font-mono resize-none overflow-auto focus:outline-none focus:ring-1 focus:ring-ring max-h-40"
+                value={editedCommand}
+                onChange={(e) => setEditedCommand(e.target.value)}
+                rows={Math.min(6, Math.max(1, editedCommand.split('\n').length))}
+                spellCheck={false}
+              />
+            ) : (
+              <ApprovalDiffPreview toolName={pending.toolName} toolInput={pending.toolInput} />
+            )}
+          </div>
+        )}
 
         {/* Timeout progress bar */}
-        <div className="h-0.5 bg-muted">
+        <div className="h-1 mx-5 mb-1 rounded-full bg-muted/60 overflow-hidden">
           <div
-            className="h-full bg-orange-500/40 transition-all duration-200"
+            className="h-full rounded-full bg-orange-500/70 transition-all duration-200 ease-linear"
             style={{ width: `${100 - progressPct}%` }}
           />
         </div>
 
         {/* Footer: action buttons */}
-        <div className="flex items-center justify-center gap-2 px-5 py-3">
+        <div className="flex items-center justify-between px-5 py-3">
           <Button
-            variant="outline"
+            variant="ghost"
             size="sm"
-            className="h-8 text-xs"
+            className="h-8 text-xs text-muted-foreground"
             disabled={submitting}
             onClick={() => handleAction('deny_once')}
           >
             Deny
             <kbd className="ml-1.5 px-1 py-0.5 rounded bg-muted text-2xs font-mono">Esc</kbd>
           </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-8 text-xs"
-            disabled={submitting}
-            onClick={() => handleAction('allow_session')}
-          >
-            Always allow for session
-            <kbd className="ml-1.5 px-1 py-0.5 rounded bg-muted text-2xs font-mono">⌘↵</kbd>
-          </Button>
-          <Button
-            size="sm"
-            className="h-8 text-xs font-semibold bg-foreground text-background hover:bg-foreground/80"
-            disabled={submitting}
-            onClick={() => handleAction('allow_once')}
-          >
-            Allow once
-            <kbd className="ml-1.5 px-1 py-0.5 rounded bg-background/20 text-background text-2xs font-mono">↵</kbd>
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 text-xs"
+              disabled={submitting}
+              onClick={() => handleAction('allow_session')}
+            >
+              Always allow
+              <kbd className="ml-1.5 px-1 py-0.5 rounded bg-muted text-2xs font-mono">⌘↵</kbd>
+            </Button>
+            <Button
+              size="sm"
+              className="h-8 text-xs font-semibold bg-foreground text-background hover:bg-foreground/80"
+              disabled={submitting}
+              onClick={() => handleAction('allow_once')}
+            >
+              Allow
+              <kbd className="ml-1.5 px-1 py-0.5 rounded bg-background/20 text-background text-2xs font-mono">↵</kbd>
+            </Button>
+          </div>
         </div>
 
         {error && (
@@ -385,18 +435,20 @@ export function BatchToolApprovalPrompt({ conversationId }: BatchToolApprovalPro
       <div className="relative rounded-xl border border-border bg-card dark:bg-input overflow-hidden">
         {/* Header */}
         <div className="px-5 pt-4 pb-2">
-          <p className="text-base leading-relaxed">
-            Allow Claude to run <strong>{pending.items.length} tools</strong>?
+          <p className="text-sm font-semibold text-foreground leading-snug">
+            Run {pending.items.length} tools
           </p>
         </div>
 
         {/* Tool list */}
-        <div className="px-5 pb-3 space-y-1.5">
+        <div className="px-5 pb-2 space-y-1">
           {pending.items.map((item) => {
+            const ItemIcon = getToolIcon(item.toolName);
             const verb = getActionVerb(item.toolName);
             const target = getTargetName(item.toolName, item.toolInput);
             return (
-              <div key={item.toolUseId} className="flex items-center gap-2 text-sm">
+              <div key={item.toolUseId} className="flex items-center gap-2.5 py-1 text-xs">
+                <ItemIcon className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
                 <span className="font-medium">{verb}</span>
                 <span className="text-muted-foreground font-mono truncate">{target}</span>
               </div>
@@ -405,44 +457,46 @@ export function BatchToolApprovalPrompt({ conversationId }: BatchToolApprovalPro
         </div>
 
         {/* Timeout progress bar */}
-        <div className="h-0.5 bg-muted">
+        <div className="h-1 mx-5 mb-1 rounded-full bg-muted/60 overflow-hidden">
           <div
-            className="h-full bg-orange-500/40 transition-all duration-200"
+            className="h-full rounded-full bg-orange-500/70 transition-all duration-200 ease-linear"
             style={{ width: `${100 - progressPct}%` }}
           />
         </div>
 
         {/* Footer: action buttons */}
-        <div className="flex items-center justify-center gap-2 px-5 py-3">
+        <div className="flex items-center justify-between px-5 py-3">
           <Button
-            variant="outline"
+            variant="ghost"
             size="sm"
-            className="h-8 text-xs"
+            className="h-8 text-xs text-muted-foreground"
             disabled={submitting}
             onClick={() => handleAction('deny_once')}
           >
             Deny all
             <kbd className="ml-1.5 px-1 py-0.5 rounded bg-muted text-2xs font-mono">Esc</kbd>
           </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-8 text-xs"
-            disabled={submitting}
-            onClick={() => handleAction('allow_session')}
-          >
-            Always allow for session
-            <kbd className="ml-1.5 px-1 py-0.5 rounded bg-muted text-2xs font-mono">⌘↵</kbd>
-          </Button>
-          <Button
-            size="sm"
-            className="h-8 text-xs font-semibold bg-foreground text-background hover:bg-foreground/80"
-            disabled={submitting}
-            onClick={() => handleAction('allow_once')}
-          >
-            Allow all once
-            <kbd className="ml-1.5 px-1 py-0.5 rounded bg-background/20 text-background text-2xs font-mono">↵</kbd>
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 text-xs"
+              disabled={submitting}
+              onClick={() => handleAction('allow_session')}
+            >
+              Always allow
+              <kbd className="ml-1.5 px-1 py-0.5 rounded bg-muted text-2xs font-mono">⌘↵</kbd>
+            </Button>
+            <Button
+              size="sm"
+              className="h-8 text-xs font-semibold bg-foreground text-background hover:bg-foreground/80"
+              disabled={submitting}
+              onClick={() => handleAction('allow_once')}
+            >
+              Allow all
+              <kbd className="ml-1.5 px-1 py-0.5 rounded bg-background/20 text-background text-2xs font-mono">↵</kbd>
+            </Button>
+          </div>
         </div>
 
         {error && (
