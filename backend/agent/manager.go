@@ -1936,9 +1936,7 @@ func (m *Manager) SendConversationMessage(ctx context.Context, convID, message s
 	if err := proc.SendMessageWithAttachments(message, attachments); err != nil {
 		// Discard the pending message — it was never delivered to the agent,
 		// so it should not be flushed to the DB later.
-		if p, isProcess := proc.(*Process); isProcess {
-			p.TakePendingUserMessage()
-		}
+		proc.TakePendingUserMessage()
 		logger.Manager.Errorf("Failed to send message to conv %s: %v (attachments=%d)", convID, err, len(attachments))
 		return err
 	}
@@ -2274,6 +2272,12 @@ func (m *Manager) InsertProcessForTest(convID string, proc *Process) {
 
 // GetConversationProcess returns the process for a conversation.
 // Returns nil if the conversation is not running or is not backed by a Process.
+//
+// Deprecated: Prefer GetConversationBackend for code that works with both
+// Process and Runner backends. This method silently returns nil for Runner-backed
+// conversations even though the conversation is alive. Only use this method when
+// you genuinely need Process-specific functionality (e.g., DroppedMessages,
+// GetSupportedCommands) that has no ConversationBackend equivalent.
 func (m *Manager) GetConversationProcess(convID string) *Process {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -2946,11 +2950,21 @@ func (m *Manager) generateInputSuggestion(convID string) {
 		return
 	}
 
+	// Marshal pills to json.RawMessage (core's AgentEvent uses json.RawMessage for Pills)
+	var pillsJSON json.RawMessage
+	if len(safePills) > 0 {
+		var err error
+		if pillsJSON, err = json.Marshal(safePills); err != nil {
+			logger.Manager.Warnf("generateInputSuggestion: failed to marshal pills: %v", err)
+			pillsJSON = nil
+		}
+	}
+
 	if m.onConversationEvent != nil {
 		m.onConversationEvent(convID, &AgentEvent{
 			Type:      EventTypeInputSuggestion,
 			GhostText: suggestion.GhostText,
-			Pills:     suggestion.Pills,
+			Pills:     pillsJSON,
 		})
 	}
 }

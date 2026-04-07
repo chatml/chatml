@@ -264,6 +264,7 @@ func NewRouter(ctx context.Context, s *store.SQLiteStore, hub *Hub, agentMgr *ag
 		r.Post("/{convId}/max-thinking-tokens", h.SetConversationMaxThinkingTokens)
 		r.Post("/{convId}/approve-plan", h.ApprovePlan)
 		r.Post("/{convId}/approve-tool", h.ApproveTool)
+		r.Post("/{convId}/approve-batch-tools", h.ApproveBatchTools)
 		r.Post("/{convId}/answer-question", h.AnswerConversationQuestion)
 		r.Post("/{convId}/answer-qa-handoff", h.AnswerQAHandoff)
 		r.Post("/{convId}/resume-agent", h.ResumeAgent)

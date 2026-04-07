@@ -8,7 +8,7 @@ import (
 	"strings"
 
 	"github.com/chatml/chatml-backend/logger"
-	"github.com/chatml/chatml-backend/paths"
+	"github.com/chatml/chatml-core/paths"
 	"github.com/go-chi/chi/v5"
 )
 

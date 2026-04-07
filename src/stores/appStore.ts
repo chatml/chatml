@@ -189,6 +189,7 @@ const DEFAULT_STREAMING: StreamingState = {
   planModeActive: false,
   pendingPlanApproval: null,
   pendingToolApproval: null,
+  pendingBatchToolApproval: null,
   startTime: undefined,
 };
 
@@ -255,7 +256,8 @@ interface StreamingState {
   startTime?: number; // When streaming started (for elapsed time)
   planModeActive: boolean; // Whether plan mode is active for this conversation
   pendingPlanApproval: { requestId: string; planContent?: string } | null; // Pending ExitPlanMode approval request
-  pendingToolApproval: { requestId: string; toolName: string; toolInput: Record<string, unknown>; specifier?: string; timestamp: number } | null; // Pending tool approval request
+  pendingToolApproval: { requestId: string; toolName: string; toolInput: Record<string, unknown>; specifier?: string; timestamp: number } | null; // Pending single tool approval request
+  pendingBatchToolApproval: { requestId: string; items: Array<{ toolUseId: string; toolName: string; toolInput: Record<string, unknown>; specifier?: string }>; timestamp: number } | null; // Pending batch tool approval
   approvedPlanContent?: string; // Plan content to persist after approval
   approvedPlanTimestamp?: number; // When the plan was approved (for timeline ordering)
   recovery?: { attempt: number; maxAttempts: number }; // Agent crash recovery in progress
@@ -519,6 +521,8 @@ interface AppState {
   clearPendingPlanApproval: (conversationId: string) => void;
   setPendingToolApproval: (conversationId: string, requestId: string, toolName: string, toolInput: Record<string, unknown>, specifier?: string) => void;
   clearPendingToolApproval: (conversationId: string) => void;
+  setPendingBatchToolApproval: (conversationId: string, requestId: string, items: Array<{ toolUseId: string; toolName: string; toolInput: Record<string, unknown>; specifier?: string }>) => void;
+  clearPendingBatchToolApproval: (conversationId: string) => void;
   setApprovedPlanContent: (conversationId: string, content: string) => void;
   clearApprovedPlanContent: (conversationId: string) => void;
   addActiveTool: (conversationId: string, tool: ActiveTool, opts?: { skipTimeout?: boolean }) => void;
@@ -1741,6 +1745,7 @@ updateFileTabContent: (id, content) => set((state) => ({
       // only be dismissed explicitly by terminal events, not as a side effect.
       pendingPlanApproval: state.streamingState[conversationId]?.pendingPlanApproval ?? null,
       pendingToolApproval: state.streamingState[conversationId]?.pendingToolApproval ?? null,
+      pendingBatchToolApproval: state.streamingState[conversationId]?.pendingBatchToolApproval ?? null,
       startTime: undefined,
       recovery: undefined,
     }),
@@ -1798,6 +1803,7 @@ updateFileTabContent: (id, content) => set((state) => ({
       // Preserve pending approvals — see setStreamingError comment.
       pendingPlanApproval: state.streamingState[conversationId]?.pendingPlanApproval ?? null,
       pendingToolApproval: state.streamingState[conversationId]?.pendingToolApproval ?? null,
+      pendingBatchToolApproval: state.streamingState[conversationId]?.pendingBatchToolApproval ?? null,
       startTime: undefined,
       compactBoundary: undefined,
     }),
@@ -1859,6 +1865,16 @@ updateFileTabContent: (id, content) => set((state) => ({
   clearPendingToolApproval: (conversationId: string) => set((state) => ({
     streamingState: updateStreamingConv(state.streamingState, conversationId, {
       pendingToolApproval: null,
+    }),
+  })),
+  setPendingBatchToolApproval: (conversationId: string, requestId: string, items: Array<{ toolUseId: string; toolName: string; toolInput: Record<string, unknown>; specifier?: string }>) => set((state) => ({
+    streamingState: updateStreamingConv(state.streamingState, conversationId, {
+      pendingBatchToolApproval: { requestId, items, timestamp: Date.now() },
+    }),
+  })),
+  clearPendingBatchToolApproval: (conversationId: string) => set((state) => ({
+    streamingState: updateStreamingConv(state.streamingState, conversationId, {
+      pendingBatchToolApproval: null,
     }),
   })),
   setApprovedPlanContent: (conversationId, content) => set((state) => ({
@@ -2206,6 +2222,7 @@ updateFileTabContent: (id, content) => set((state) => ({
         // explicitly by terminal event handlers, not by finalization side effects.
         pendingPlanApproval: streaming?.pendingPlanApproval ?? null,
         pendingToolApproval: streaming?.pendingToolApproval ?? null,
+        pendingBatchToolApproval: streaming?.pendingBatchToolApproval ?? null,
         approvedPlanContent: undefined,
         approvedPlanTimestamp: undefined,
       };

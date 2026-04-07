@@ -1,0 +1,226 @@
+package provider
+
+import "encoding/json"
+
+// Role represents a message role in the conversation.
+type Role string
+
+const (
+	RoleUser      Role = "user"
+	RoleAssistant Role = "assistant"
+)
+
+// Message represents a single conversation message with typed content blocks.
+type Message struct {
+	Role    Role           `json:"role"`
+	Content []ContentBlock `json:"content"`
+}
+
+// ContentBlockType identifies the kind of content block.
+type ContentBlockType string
+
+const (
+	BlockText             ContentBlockType = "text"
+	BlockToolUse          ContentBlockType = "tool_use"
+	BlockToolResult       ContentBlockType = "tool_result"
+	BlockThinking         ContentBlockType = "thinking"
+	BlockImage            ContentBlockType = "image"
+	BlockServerToolUse    ContentBlockType = "server_tool_use"
+	BlockWebSearchResult  ContentBlockType = "web_search_tool_result"
+)
+
+// WebSearchHit represents a single search result from server-side web search.
+type WebSearchHit struct {
+	Title string `json:"title"`
+	URL   string `json:"url"`
+}
+
+// ContentBlock is a union-style struct. Only fields relevant to Type are populated.
+// This mirrors the Anthropic Messages API content block format and is translated
+// to/from other provider formats internally.
+type ContentBlock struct {
+	Type ContentBlockType `json:"type"`
+
+	// Text block fields
+	Text string `json:"text,omitempty"`
+
+	// ToolUse block fields
+	ToolUseID string          `json:"id,omitempty"`
+	ToolName  string          `json:"name,omitempty"`
+	Input     json.RawMessage `json:"input,omitempty"`
+
+	// ToolResult block fields
+	ForToolUseID string `json:"tool_use_id,omitempty"`
+	// NOTE: The "content" JSON tag on ResultContent collides with Anthropic API's nested
+	// content arrays. This is safe because API response parsing uses json.RawMessage
+	// intermediaries, but direct unmarshaling of API responses into this struct would
+	// produce incorrect results.
+	ResultContent string `json:"content,omitempty"` // Tool output text
+	IsError      bool   `json:"is_error,omitempty"`
+
+	// Thinking block fields
+	Thinking string `json:"thinking,omitempty"`
+
+	// Image block fields
+	MediaType  string `json:"media_type,omitempty"`
+	Base64Data string `json:"data,omitempty"`
+
+	// Server tool use (web search) block fields
+	ServerToolUseID string `json:"server_tool_use_id,omitempty"`
+	ServerToolName  string `json:"server_tool_name,omitempty"`
+
+	// Web search result block fields
+	WebSearchResults []WebSearchHit `json:"web_search_results,omitempty"`
+	WebSearchError   string         `json:"web_search_error,omitempty"`
+}
+
+// ToolDef is the tool definition passed to the LLM in the API request.
+type ToolDef struct {
+	Name        string          `json:"name"`
+	Description string          `json:"description"`
+	InputSchema json.RawMessage `json:"input_schema"` // JSON Schema
+}
+
+// StreamEventType identifies the kind of streaming event.
+type StreamEventType int
+
+const (
+	// EventTextDelta is a partial text content delta.
+	EventTextDelta StreamEventType = iota
+
+	// EventThinkingDelta is a partial thinking content delta.
+	EventThinkingDelta
+
+	// EventToolUseStart signals the beginning of a tool_use block.
+	EventToolUseStart
+
+	// EventToolUseInputDelta is a partial JSON input delta for a tool_use block.
+	EventToolUseInputDelta
+
+	// EventToolUseEnd signals the end of a tool_use block (input is complete).
+	EventToolUseEnd
+
+	// EventContentBlockStop signals the end of any content block.
+	EventContentBlockStop
+
+	// EventMessageStart signals the beginning of the assistant message.
+	EventMessageStart
+
+	// EventMessageDelta contains message-level metadata (stop_reason, usage).
+	EventMessageDelta
+
+	// EventMessageStop signals the end of the entire message.
+	EventMessageStop
+
+	// EventError signals an error during streaming.
+	EventError
+
+	// EventServerToolUseStart signals the beginning of a server-managed tool execution (web search).
+	EventServerToolUseStart
+
+	// EventWebSearchResult signals the completion of a server-side web search with results.
+	EventWebSearchResult
+)
+
+// StreamEvent represents a single event from the streaming LLM response.
+type StreamEvent struct {
+	Type StreamEventType
+
+	// For EventTextDelta
+	Text string
+
+	// For EventThinkingDelta
+	Thinking string
+
+	// For EventToolUseStart — the tool block with name and ID (input not yet complete)
+	ToolUse *ToolUseBlock
+
+	// For EventToolUseInputDelta — partial JSON input string
+	InputDelta string
+
+	// For EventMessageDelta
+	StopReason string
+	Usage      *Usage
+
+	// For EventError
+	Error error
+
+	// For EventServerToolUseStart
+	ServerToolUseID string
+	ServerToolName  string
+
+	// For EventWebSearchResult
+	WebSearchResults []WebSearchHit
+	WebSearchError   string
+}
+
+// ToolUseBlock represents a complete or partial tool use from the assistant.
+type ToolUseBlock struct {
+	ID    string          `json:"id"`
+	Name  string          `json:"name"`
+	Input json.RawMessage `json:"input"` // Complete JSON input (populated after all deltas)
+}
+
+// Usage contains token usage information for a response.
+type Usage struct {
+	InputTokens              int `json:"input_tokens"`
+	OutputTokens             int `json:"output_tokens"`
+	CacheReadInputTokens     int `json:"cache_read_input_tokens,omitempty"`
+	CacheCreationInputTokens int `json:"cache_creation_input_tokens,omitempty"`
+}
+
+// NewTextBlock creates a text content block.
+func NewTextBlock(text string) ContentBlock {
+	return ContentBlock{Type: BlockText, Text: text}
+}
+
+// NewToolUseBlock creates a tool_use content block.
+func NewToolUseBlock(id, name string, input json.RawMessage) ContentBlock {
+	return ContentBlock{Type: BlockToolUse, ToolUseID: id, ToolName: name, Input: input}
+}
+
+// NewToolResultBlock creates a tool_result content block.
+func NewToolResultBlock(toolUseID, content string, isError bool) ContentBlock {
+	return ContentBlock{Type: BlockToolResult, ForToolUseID: toolUseID, ResultContent: content, IsError: isError}
+}
+
+// NewImageToolResultBlock creates a tool_result content block that contains
+// an image. The Anthropic API supports multi-content tool results; this block
+// carries both the base64 image data and a text description so the LLM can
+// see the image visually.
+func NewImageToolResultBlock(toolUseID, textContent, mediaType, base64Data string) ContentBlock {
+	return ContentBlock{
+		Type:         BlockToolResult,
+		ForToolUseID: toolUseID,
+		ResultContent: textContent,
+		MediaType:    mediaType,
+		Base64Data:   base64Data,
+	}
+}
+
+// NewThinkingBlock creates a thinking content block.
+func NewThinkingBlock(thinking string) ContentBlock {
+	return ContentBlock{Type: BlockThinking, Thinking: thinking}
+}
+
+// TextContent extracts all text from a message's content blocks, concatenated.
+func (m *Message) TextContent() string {
+	var result string
+	for _, b := range m.Content {
+		if b.Type == BlockText {
+			result += b.Text
+		}
+	}
+	return result
+}
+
+// ToolUseBlocks extracts all tool_use blocks from a message.
+func (m *Message) ToolUseBlocks() []ContentBlock {
+	var blocks []ContentBlock
+	for _, b := range m.Content {
+		if b.Type == BlockToolUse {
+			blocks = append(blocks, b)
+		}
+	}
+	return blocks
+}

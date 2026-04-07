@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 	"sync"
 
-	"github.com/chatml/chatml-backend/provider"
-	"github.com/chatml/chatml-backend/tool"
+	"github.com/chatml/chatml-core/provider"
+	"github.com/chatml/chatml-core/tool"
 )
 
 // StreamingToolExecutor starts executing tool calls as they arrive during

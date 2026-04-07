@@ -7,8 +7,8 @@ import (
 
 	"github.com/chatml/chatml-backend/agent"
 	"github.com/chatml/chatml-backend/models"
-	"github.com/chatml/chatml-backend/permission"
-	"github.com/chatml/chatml-backend/tool/builtin"
+	"github.com/chatml/chatml-core/permission"
+	"github.com/chatml/chatml-core/tool/builtin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

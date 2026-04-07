@@ -153,7 +153,7 @@ export const useSessionActivityState = (sessionId: string): SessionActivityState
 
           const convId = c.id;
           if (state.pendingUserQuestion[convId]) return 'awaiting_input';
-          if (state.streamingState[convId]?.pendingPlanApproval || state.streamingState[convId]?.pendingToolApproval) {
+          if (state.streamingState[convId]?.pendingPlanApproval || state.streamingState[convId]?.pendingToolApproval || state.streamingState[convId]?.pendingBatchToolApproval) {
             highestState = 'awaiting_approval';
           } else if (state.streamingState[convId]?.isStreaming && highestState === 'idle') {
             highestState = 'working';
@@ -186,7 +186,7 @@ export const useActiveSessions = <T extends { id: string }>(sessions: T[]): T[] 
               if (c.status !== 'active') continue;
               const convId = c.id;
               if (state.pendingUserQuestion[convId]) { activity = 'awaiting_input'; break; }
-              if (state.streamingState[convId]?.pendingPlanApproval || state.streamingState[convId]?.pendingToolApproval) {
+              if (state.streamingState[convId]?.pendingPlanApproval || state.streamingState[convId]?.pendingToolApproval || state.streamingState[convId]?.pendingBatchToolApproval) {
                 activity = 'awaiting_approval';
               } else if (state.streamingState[convId]?.isStreaming && activity === 'idle') {
                 activity = 'working';
@@ -345,6 +345,7 @@ export const useStreamingChatInput = (conversationId: string | null) =>
         isStreaming: st?.isStreaming ?? false,
         pendingPlanApproval: st?.pendingPlanApproval ?? null,
         pendingToolApproval: st?.pendingToolApproval ?? null,
+        pendingBatchToolApproval: st?.pendingBatchToolApproval ?? null,
         planModeActive: st?.planModeActive ?? false,
       };
     })

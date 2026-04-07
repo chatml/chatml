@@ -16,19 +16,42 @@ import (
 	"time"
 
 	"github.com/chatml/chatml-backend/agent"
-	ctxpkg "github.com/chatml/chatml-backend/context"
+	ctxpkg "github.com/chatml/chatml-core/context"
 	"github.com/chatml/chatml-backend/models"
-	"github.com/chatml/chatml-backend/permission"
-	"github.com/chatml/chatml-backend/prompt"
-	"github.com/chatml/chatml-backend/provider"
-	"github.com/chatml/chatml-backend/tool"
-	"github.com/chatml/chatml-backend/tool/builtin"
+	"github.com/chatml/chatml-core/permission"
+	"github.com/chatml/chatml-core/prompt"
+	"github.com/chatml/chatml-core/provider"
+	"github.com/chatml/chatml-core/tool"
+	"github.com/chatml/chatml-core/tool/builtin"
 )
 
 // Runner implements agent.ConversationBackend using the native Go agentic loop.
 // It replaces the agent-runner child process for conversations that opt into the
 // "native" backend, while emitting the exact same AgentEvent types so the rest
 // of the system (Manager, WebSocket hub, frontend) requires zero changes.
+//
+// NOTE ON BackendStateTracker: Runner does NOT embed agent.DefaultBackendState,
+// even though the ConversationBackend docs recommend it for new backends. The
+// agentic loop's hot path reads/writes multiple state fields (inActiveTurn,
+// turnCancel, etc.) under a single r.mu acquisition for atomicity. Embedding
+// DefaultBackendState would split these into two mutexes, introducing both
+// per-field lock overhead and risk of inconsistent state between the two locks.
+// The duplication is intentional: bug fixes to these ~14 methods must be applied
+// to both Runner and DefaultBackendState.
+//
+// sawErrorEvent and producedOutput use atomic.Bool instead of mu — they are
+// written on every streaming delta (hot path) but only need simple flag semantics.
+//
+// ARCHITECTURE NOTE: A parallel Runner implementation exists in core/loop/runner.go
+// (module: github.com/chatml/chatml-core). The core module is an extracted standalone
+// version intended for the NativeLoop CLI and future headless use cases. It has
+// additional capabilities (hook engine, read tracker, transcript persistence, MCP
+// manager, sub-agents) that this backend runner does not yet have.
+//
+// The intended migration path is for this backend runner to eventually import and
+// thin-wrap core/loop.Runner, eliminating the duplication. Until then, bug fixes
+// and features must be applied to BOTH implementations. The backend/go.mod already
+// has a `replace` directive pointing to ../core in preparation for this migration.
 type Runner struct {
 	// Immutable configuration
 	opts         agent.ProcessOptions
@@ -56,6 +79,17 @@ type Runner struct {
 	messages                 []provider.Message // Full conversation history
 	streamingToolExecEnabled bool              // Enable streaming tool execution
 
+	// Normalized message cache — avoids deep-cloning + 7-pass normalization on
+	// every LLM call when the message history hasn't changed (e.g., retries).
+	// Only accessed from the runLoop goroutine, so no mutex needed.
+	normalizedCache []provider.Message
+	messagesDirty   bool // Set when r.messages is mutated; cleared after normalization
+
+	// Atomic flags — written on the streaming hot path, read between turns.
+	// Using atomic.Bool avoids mutex contention on every text/error delta.
+	sawErrorEvent  atomic.Bool
+	producedOutput atomic.Bool
+
 	// Mutable state protected by mu
 	mu                 sync.Mutex
 	running            bool
@@ -64,8 +98,6 @@ type Runner struct {
 	planModeActive     bool
 	permissionMode     string
 	fastMode           bool
-	sawErrorEvent      bool
-	producedOutput     bool
 	inActiveTurn       bool
 	pendingUserMessage *models.Message
 
@@ -91,7 +123,8 @@ type Runner struct {
 
 	// Permission engine
 	permEngine       *permission.Engine
-	pendingApprovals sync.Map // requestID -> chan permission.ApprovalResponse
+	pendingApprovals      sync.Map // requestID -> chan permission.ApprovalResponse
+	pendingBatchApprovals sync.Map // requestID -> chan permission.BatchApprovalResponse
 	approvalCounter  int64
 
 	// Tool result persistence for large outputs
@@ -190,11 +223,8 @@ func (r *Runner) Start() error {
 		r.mu.Unlock()
 		return fmt.Errorf("runner already started")
 	}
-	r.running = true
-	r.mu.Unlock()
-
 	ctx, cancel := context.WithCancel(context.Background())
-	r.mu.Lock()
+	r.running = true
 	r.cancel = cancel
 	r.mu.Unlock()
 
@@ -230,7 +260,13 @@ func (r *Runner) runLoop(ctx context.Context) {
 	r.SetSessionID(sessionID)
 	r.emitter.emitSessionStarted(sessionID, "startup")
 
-	// Main message loop — wait for user messages and execute turns
+	// Main message loop — wait for user messages and execute turns.
+	// NOTE: executeTurn is called synchronously, so the select loop is blocked
+	// during a turn. Messages like set_model, set_fast_mode, set_max_thinking_tokens
+	// have a dual-path design: the Manager's direct methods (SetModel, etc.) mutate
+	// state under r.mu immediately (affecting the current turn's buildChatRequest),
+	// while the queued messages here are processed only between turns.
+	// Stop/interrupt work via context cancellation, not the message queue.
 	for {
 		select {
 		case <-ctx.Done():
@@ -339,11 +375,13 @@ func (r *Runner) executeTurn(ctx context.Context, userContent string, attachment
 		Content: contentBlocks,
 	}
 	r.messages = append(r.messages, userMsg)
+	r.messagesDirty = true
 
 	turnCount := 0
 	maxOutputRecoveryCount := 0
 	const maxOutputRecoveryLimit = 3
 	promptTooLongRetried := false
+	contextOverflowRetried := false
 	var escalatedMaxTokens int  // Non-zero when we've escalated max output tokens
 	thinkingBudgetAttempts := 0 // Adaptive thinking: tracks retry attempts
 	const maxThinkingAttempts = 2
@@ -355,9 +393,11 @@ func (r *Runner) executeTurn(ctx context.Context, userContent string, attachment
 	for {
 		turnCount++
 
-		// Check max turns limit. Note: turnCount increments per inner loop
-		// iteration (each LLM API call), not per user message. A user turn
-		// that triggers 5 tool calls consumes 6 turnCount units.
+		// Check max turns limit. MaxTurns limits the number of LLM API calls
+		// per user message (consistent with the SDK's maxTurns semantics).
+		// A user turn that triggers 5 tool calls consumes 6 turnCount units
+		// (1 initial + 5 tool-result follow-ups). MaxTurns=1 allows exactly
+		// 1 LLM call because the check uses > (not >=).
 		if r.opts.MaxTurns > 0 && turnCount > r.opts.MaxTurns {
 			r.emitter.emitAssistantText("\n\n[Max turns reached]")
 			break
@@ -375,8 +415,9 @@ func (r *Runner) executeTurn(ctx context.Context, userContent string, attachment
 			lastTokens := r.ctxManager.LastTokenCount()
 
 			// Microcompact FIRST (cheap). May free enough to skip auto-compact.
-			if r.ctxManager.ShouldMicrocompact(lastTokens, 2*time.Minute) {
+			if r.ctxManager.ShouldMicrocompact(2*time.Minute) {
 				r.messages = ctxpkg.Microcompact(r.messages, 10)
+				r.messagesDirty = true
 				r.ctxManager.RecordCompaction()
 				lastTokens = ctxpkg.EstimateTokens(r.messages)
 				r.ctxManager.UpdateTokenCount(lastTokens)
@@ -390,6 +431,7 @@ func (r *Runner) executeTurn(ctx context.Context, userContent string, attachment
 					r.emitter.emitError(fmt.Sprintf("Auto-compact failed: %v", compErr))
 				} else {
 					r.messages = compResult.Messages
+					r.messagesDirty = true
 					r.ctxManager.RecordCompaction()
 					r.ctxManager.ResetCompactFailures()
 				}
@@ -421,6 +463,9 @@ func (r *Runner) executeTurn(ctx context.Context, userContent string, attachment
 				r.mu.Lock()
 				r.fastModeCooldownUntil = time.Now().Add(30 * time.Second)
 				r.mu.Unlock()
+				// Don't reset sawErrorEvent here — if a genuine streaming error occurred
+				// earlier in this turn, we must preserve it for the crash-recovery path
+				// in handleConversationCompletion.
 				r.emitter.emitError("Fast mode cooldown triggered — retrying at standard speed")
 				continue // Retry the turn at standard speed
 			}
@@ -448,6 +493,7 @@ func (r *Runner) executeTurn(ctx context.Context, userContent string, attachment
 				compResult, compErr := ctxpkg.Compact(turnCtx, r.provider, r.messages, 4)
 				if compErr == nil {
 					r.messages = compResult.Messages
+					r.messagesDirty = true
 					if r.ctxManager != nil {
 						r.ctxManager.RecordCompaction()
 						r.ctxManager.ResetCompactFailures()
@@ -458,8 +504,9 @@ func (r *Runner) executeTurn(ctx context.Context, userContent string, attachment
 			}
 
 			// Token budget adjustment: on context overflow, parse the error to compute
-			// the correct max_tokens rather than blindly halving.
-			if err != nil && isContextOverflow(err) {
+			// the correct max_tokens rather than blindly halving (single-shot guard).
+			if err != nil && isContextOverflow(err) && !contextOverflowRetried {
+				contextOverflowRetried = true
 				r.emitter.emitError("Context overflow — retrying with reduced token budget")
 				req = r.buildChatRequest()
 
@@ -485,9 +532,7 @@ func (r *Runner) executeTurn(ctx context.Context, userContent string, attachment
 
 			if err != nil {
 				r.emitter.emitError(fmt.Sprintf("LLM API error: %v", err))
-				r.mu.Lock()
-				r.sawErrorEvent = true
-				r.mu.Unlock()
+				r.sawErrorEvent.Store(true)
 				break
 			}
 		} else {
@@ -510,14 +555,20 @@ func (r *Runner) executeTurn(ctx context.Context, userContent string, attachment
 				break
 			}
 		}
-		r.mu.Lock()
-		sawError := r.sawErrorEvent
-		r.mu.Unlock()
-		if !hasContent && sawError {
-			// Skip appending empty/partial message from a failed stream
+		if !hasContent {
+			if r.sawErrorEvent.Load() {
+				// Skip appending empty/partial message from a failed stream
+				break
+			}
+			// Stream completed cleanly but produced no content (e.g., empty end_turn).
+			// Don't append an empty assistant message — it creates invalid consecutive
+			// user-role messages that the API will reject on the next turn.
+			log.Printf("warning: assistant returned empty content with stop_reason=%q, ending turn", stopReason)
 			break
 		}
+		assistantMsgIdx := len(r.messages)
 		r.messages = append(r.messages, assistantMsg)
+		r.messagesDirty = true
 
 		// Track cost and context usage (update token count for next iteration's proactive check)
 		if usage != nil {
@@ -525,11 +576,19 @@ func (r *Runner) executeTurn(ctx context.Context, userContent string, attachment
 			model := r.opts.Model
 			r.mu.Unlock()
 			cumulativeCost += provider.CalculateCost(model, *usage)
-			r.emitter.emitContextUsage(usage.InputTokens, usage.OutputTokens, r.provider.MaxContextWindow())
 
+			// Update context manager BEFORE emitting so cumulative count is current
 			if r.ctxManager != nil {
 				r.ctxManager.UpdateFromUsage(usage)
+			}
+			cumulativeTokens := 0
+			if r.ctxManager != nil {
+				cumulativeTokens = r.ctxManager.LastTokenCount()
+			}
+			r.emitter.emitContextUsage(usage.InputTokens, usage.OutputTokens,
+				r.provider.MaxContextWindow(), cumulativeTokens)
 
+			if r.ctxManager != nil {
 				// Emit context warning when approaching limit
 				tokens := r.ctxManager.LastTokenCount()
 				if r.ctxManager.ShouldWarn(tokens) {
@@ -571,10 +630,11 @@ func (r *Runner) executeTurn(ctx context.Context, userContent string, attachment
 					log.Printf("adaptive thinking: increasing budget %d → %d (attempt %d/%d)",
 						currentBudget, newBudget, thinkingBudgetAttempts, maxThinkingAttempts)
 
-					// Remove the truncated assistant message and retry.
+					// Remove the truncated assistant message (at tracked index) and retry.
 					// Reset maxOutputRecoveryCount so the continuation prompt path
 					// doesn't fire incorrectly when the retry produces actual output.
-					r.messages = r.messages[:len(r.messages)-1]
+					r.messages = r.messages[:assistantMsgIdx]
+					r.messagesDirty = true
 					maxOutputRecoveryCount = 0
 					continue
 				}
@@ -584,6 +644,24 @@ func (r *Runner) executeTurn(ctx context.Context, userContent string, attachment
 		// Max output tokens recovery: if the model hit the output limit,
 		// escalate max_tokens and inject a continuation prompt (up to 3 retries).
 		if stopReason == "max_tokens" && len(toolCalls) == 0 {
+			// Check if the truncated assistant message contains incomplete tool_use blocks.
+			// If so, remove the incomplete message instead of injecting a continuation prompt,
+			// because an unmatched tool_use without a tool_result creates invalid history.
+			hasIncompleteToolUse := false
+			for _, b := range assistantMsg.Content {
+				if b.Type == provider.BlockToolUse {
+					hasIncompleteToolUse = true
+					break
+				}
+			}
+			if hasIncompleteToolUse {
+				// Remove the truncated assistant message with incomplete tool calls
+				r.messages = r.messages[:assistantMsgIdx]
+				r.messagesDirty = true
+				log.Printf("warning: max_tokens hit mid-tool-call, removing truncated assistant message")
+				break
+			}
+
 			maxOutputRecoveryCount++
 			if maxOutputRecoveryCount == 1 {
 				// First hit: escalate max output tokens (8k → 64k)
@@ -595,6 +673,7 @@ func (r *Runner) executeTurn(ctx context.Context, userContent string, attachment
 					Content: []provider.ContentBlock{provider.NewTextBlock("Your response was cut off. Please continue from where you stopped.")},
 				}
 				r.messages = append(r.messages, recoveryMsg)
+				r.messagesDirty = true
 				continue // Retry the turn
 			}
 			// Exhausted recovery attempts — fall through to end turn
@@ -614,6 +693,7 @@ func (r *Runner) executeTurn(ctx context.Context, userContent string, attachment
 		// Execute tool calls and collect results
 		toolResultMsg := r.executeTools(turnCtx, toolCalls, streamExec)
 		r.messages = append(r.messages, toolResultMsg)
+		r.messagesDirty = true
 
 		// Track tool results for microcompact triggering
 		if r.ctxManager != nil {
@@ -623,7 +703,11 @@ func (r *Runner) executeTurn(ctx context.Context, userContent string, attachment
 		// Loop back to send tool results to the LLM
 	}
 
-	// Background memory extraction (non-blocking)
+	// Background memory extraction (non-blocking).
+	// Uses context.Background() as parent intentionally: extraction should complete
+	// even after the runner stops, bounded by a 30s timeout. This means Done() may
+	// fire while extraction is still writing to the memory directory. Callers that
+	// tear down the workspace should allow a brief grace period after Done().
 	if r.memoryExtractor != nil {
 		r.memoryExtractor.IncrementTurn()
 		if r.memoryExtractor.ShouldExtract() {
@@ -664,9 +748,18 @@ func (r *Runner) buildChatRequest() provider.ChatRequest {
 		systemPrompt = r.promptBuilder.Build()
 	}
 
-	// Normalize messages and apply tool result budget before sending
-	normalizedMsgs := normalizeMessages(r.messages)
-	normalizedMsgs = applyToolResultBudget(normalizedMsgs, 0)
+	// Normalize messages and apply tool result budget before sending.
+	// Cached: skip the deep-clone + 7-pass normalization when messages haven't
+	// changed since the last call (common during retries on 429/529/overflow).
+	var normalizedMsgs []provider.Message
+	if !r.messagesDirty && r.normalizedCache != nil {
+		normalizedMsgs = r.normalizedCache
+	} else {
+		normalizedMsgs = normalizeMessages(r.messages)
+		normalizedMsgs = applyToolResultBudget(normalizedMsgs, 0)
+		r.normalizedCache = normalizedMsgs
+		r.messagesDirty = false
+	}
 
 	// Enable prompt caching for Anthropic provider
 	enableCache := false
@@ -719,7 +812,10 @@ func (r *Runner) processStream(ctx context.Context, stream <-chan provider.Strea
 	for event := range stream {
 		select {
 		case <-ctx.Done():
-			// Drain remaining events
+			// Drain remaining events so the provider's goroutine can exit.
+			// Contract: providers MUST close their stream channel promptly when
+			// ctx is cancelled (e.g., by closing the HTTP response body). If a
+			// provider ignores cancellation, this drain blocks until it closes.
 			for range stream {
 			}
 			break streamLoop
@@ -730,9 +826,7 @@ func (r *Runner) processStream(ctx context.Context, stream <-chan provider.Strea
 		case provider.EventTextDelta:
 			textAccum.WriteString(event.Text)
 			r.emitter.emitAssistantText(event.Text)
-			r.mu.Lock()
-			r.producedOutput = true
-			r.mu.Unlock()
+			r.producedOutput.Store(true)
 
 		case provider.EventThinkingDelta:
 			thinkingAccum.WriteString(event.Thinking)
@@ -761,9 +855,7 @@ func (r *Runner) processStream(ctx context.Context, stream <-chan provider.Strea
 		case provider.EventError:
 			if event.Error != nil {
 				r.emitter.emitError(event.Error.Error())
-				r.mu.Lock()
-				r.sawErrorEvent = true
-				r.mu.Unlock()
+				r.sawErrorEvent.Store(true)
 			}
 		}
 	}
@@ -815,12 +907,19 @@ func (r *Runner) processStream(ctx context.Context, stream <-chan provider.Strea
 //
 // tool_start events are emitted during processStream (EventToolUseStart), so we do NOT
 // re-emit them here. We only emit tool_end after execution or denial.
+//
+// TODO(batch-approval): Batch approval — when multiple serial tools need approval in
+// the same turn, they should be batched into a single requestBatchApproval call that
+// emits a tool_batch_approval_request event and waits on pendingBatchApprovals.
+// The frontend UI (BatchToolApprovalPrompt) and API endpoint (ApproveBatchTools) are
+// already wired
+// up; this is the missing backend piece. Currently each tool is approved individually.
 func (r *Runner) executeTools(ctx context.Context, toolCalls []provider.ToolUseBlock, streamExec *StreamingToolExecutor) provider.Message {
 	if r.toolExecutor == nil {
 		var resultBlocks []provider.ContentBlock
 		for _, tc := range toolCalls {
 			result := fmt.Sprintf("Tool %q is not available (no tool registry configured).", tc.Name)
-			r.emitter.emitToolEnd(tc.ID, tc.Name, false, result)
+			r.emitter.emitToolEnd(tc.ID, tc.Name, false, result, rawToMap(tc.Input))
 			resultBlocks = append(resultBlocks, provider.NewToolResultBlock(tc.ID, result, true))
 		}
 		return provider.Message{Role: provider.RoleUser, Content: resultBlocks}
@@ -858,7 +957,7 @@ func (r *Runner) executeTools(ctx context.Context, toolCalls []provider.ToolUseB
 				if len(summary) > 200 {
 					summary = summary[:200] + "..."
 				}
-				r.emitter.emitToolEnd(tcr.ToolCall.ID, tcr.ToolCall.Name, !isError, summary)
+				r.emitter.emitToolEnd(tcr.ToolCall.ID, tcr.ToolCall.Name, !isError, summary, rawToMap(tcr.ToolCall.Input))
 				resultsByID[tc.ID] = toolResultBlock(tcr.ToolCall.ID, content, isError, tcr.Result)
 				continue
 			}
@@ -878,12 +977,15 @@ func (r *Runner) executeTools(ctx context.Context, toolCalls []provider.ToolUseB
 			approvedCalls = append(approvedCalls, tool.ToolCall{ID: tc.ID, Name: tc.Name, Input: input})
 		case permission.Deny:
 			msg := fmt.Sprintf("Permission denied: %s", check.DenyMessage)
-			r.emitter.emitToolEnd(tc.ID, tc.Name, false, msg)
+			r.emitter.emitToolEnd(tc.ID, tc.Name, false, msg, rawToMap(tc.Input))
 			resultsByID[tc.ID] = provider.NewToolResultBlock(tc.ID, msg, true)
 		case permission.NeedApproval:
-			// This shouldn't happen — checkPermission resolves NeedApproval via requestApproval
-			msg := "Permission check returned unexpected NeedApproval"
-			r.emitter.emitToolEnd(tc.ID, tc.Name, false, msg)
+			// BUG: checkPermission always resolves NeedApproval internally via
+			// requestApproval, returning only Allow or Deny. If we reach here,
+			// there is a programmer error in checkPermission.
+			msg := fmt.Sprintf("BUG: checkPermission returned unresolved NeedApproval for tool %q — denying as safety fallback", tc.Name)
+			log.Printf("ERROR: %s", msg)
+			r.emitter.emitToolEnd(tc.ID, tc.Name, false, msg, rawToMap(tc.Input))
 			resultsByID[tc.ID] = provider.NewToolResultBlock(tc.ID, msg, true)
 		}
 	}
@@ -908,7 +1010,7 @@ func (r *Runner) executeTools(ctx context.Context, toolCalls []provider.ToolUseB
 			if len(summary) > 200 {
 				summary = summary[:200] + "..."
 			}
-			r.emitter.emitToolEnd(tcr.ToolCall.ID, tcr.ToolCall.Name, !isError, summary)
+			r.emitter.emitToolEnd(tcr.ToolCall.ID, tcr.ToolCall.Name, !isError, summary, rawToMap(tcr.ToolCall.Input))
 			resultsByID[tcr.ToolCall.ID] = toolResultBlock(tcr.ToolCall.ID, content, isError, tcr.Result)
 		}
 	}
@@ -927,6 +1029,18 @@ func (r *Runner) executeTools(ctx context.Context, toolCalls []provider.ToolUseB
 }
 
 // toolResultBlock creates the appropriate tool_result content block.
+// rawToMap converts json.RawMessage to map[string]interface{} for event params.
+func rawToMap(raw json.RawMessage) map[string]interface{} {
+	if len(raw) == 0 {
+		return nil
+	}
+	var m map[string]interface{}
+	if err := json.Unmarshal(raw, &m); err != nil {
+		return nil
+	}
+	return m
+}
+
 // If the result contains image data, it creates an image tool result block
 // so the LLM can see the image visually. Otherwise, creates a text result.
 func toolResultBlock(toolUseID, content string, isError bool, result *tool.Result) provider.ContentBlock {
@@ -979,7 +1093,9 @@ func (r *Runner) requestApproval(ctx context.Context, tc provider.ToolUseBlock, 
 
 	// Unmarshal input for the event (frontend expects an object, not raw JSON string)
 	var toolInputObj interface{}
-	json.Unmarshal(tc.Input, &toolInputObj)
+	if err := json.Unmarshal(tc.Input, &toolInputObj); err != nil {
+		log.Printf("warning: failed to unmarshal tool input for approval display: %v", err)
+	}
 
 	// Emit approval request to frontend
 	r.emitter.emitToolApprovalRequest(requestID, tc.Name, toolInputObj, check.Specifier)
@@ -1095,6 +1211,12 @@ func (r *Runner) Output() <-chan string {
 	return r.output
 }
 
+// Done returns a channel that's closed when the runner has fully exited and
+// cleanup() has completed. Note: background memory extraction goroutines may
+// still be running for up to 30s after Done() fires (they use
+// context.Background as parent to survive runner shutdown). Callers that
+// tear down the workspace directory should allow a brief grace period or
+// accept that the best-effort extraction write may silently fail.
 func (r *Runner) Done() <-chan struct{} {
 	return r.done
 }
@@ -1234,28 +1356,28 @@ func (r *Runner) EndTurnAndTakePending() *models.Message {
 	return msg
 }
 
-func (r *Runner) SetSawErrorEvent() {
+func (r *Runner) TakePendingUserMessage() *models.Message {
 	r.mu.Lock()
-	r.sawErrorEvent = true
-	r.mu.Unlock()
+	defer r.mu.Unlock()
+	msg := r.pendingUserMessage
+	r.pendingUserMessage = nil
+	return msg
+}
+
+func (r *Runner) SetSawErrorEvent() {
+	r.sawErrorEvent.Store(true)
 }
 
 func (r *Runner) SawErrorEvent() bool {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	return r.sawErrorEvent
+	return r.sawErrorEvent.Load()
 }
 
 func (r *Runner) SetProducedOutput() {
-	r.mu.Lock()
-	r.producedOutput = true
-	r.mu.Unlock()
+	r.producedOutput.Store(true)
 }
 
 func (r *Runner) ProducedOutput() bool {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	return r.producedOutput
+	return r.producedOutput.Load()
 }
 
 func (r *Runner) StopTask(taskId string) error {
@@ -1290,6 +1412,50 @@ func (r *Runner) SendToolApprovalResponse(requestId, action, specifier string, u
 	}
 }
 
+// SendBatchToolApprovalResponse handles a batch tool approval/denial from the user.
+//
+// WARNING: This method currently ALWAYS returns an error because pendingBatchApprovals
+// is never populated — executeTools processes tools individually via requestApproval,
+// not in batches (see TODO(batch-approval) in executeTools). The Load() call on line
+// below will always return !ok, producing an error that propagates as HTTP 500 from
+// the ApproveBatchTools handler.
+//
+// The frontend BatchToolApprovalPrompt and ApproveBatchTools endpoint are wired up;
+// this runner-side emission is the missing piece. Until implemented, the UI will never
+// be shown because no tool_batch_approval_request event is emitted.
+func (r *Runner) SendBatchToolApprovalResponse(requestId string, action string, perTool map[string]agent.ToolApprovalOverride) error {
+	val, ok := r.pendingBatchApprovals.Load(requestId)
+	if !ok {
+		return fmt.Errorf("no pending batch approval request with ID %q (batch approval flow is not yet fully implemented in the native runner)", requestId)
+	}
+	ch, ok2 := val.(chan permission.BatchApprovalResponse)
+	if !ok2 {
+		return fmt.Errorf("invalid pending batch approval state for request %q", requestId)
+	}
+	var permPerTool map[string]permission.ApprovalResponse
+	if len(perTool) > 0 {
+		permPerTool = make(map[string]permission.ApprovalResponse, len(perTool))
+		for id, override := range perTool {
+			permPerTool[id] = permission.ApprovalResponse{
+				Action:       override.Action,
+				Specifier:    override.Specifier,
+				UpdatedInput: override.UpdatedInput,
+			}
+		}
+	}
+	resp := permission.BatchApprovalResponse{
+		Action:  action,
+		PerTool: permPerTool,
+	}
+	select {
+	case ch <- resp:
+		return nil
+	default:
+		log.Printf("warning: duplicate batch approval response for request %q — ignoring", requestId)
+		return nil
+	}
+}
+
 func (r *Runner) SendUserQuestionResponse(requestId string, answers map[string]string) error {
 	val, ok := r.pendingQuestions.Load(requestId)
 	if !ok {
@@ -1299,6 +1465,9 @@ func (r *Runner) SendUserQuestionResponse(requestId string, answers map[string]s
 	if !ok2 {
 		return fmt.Errorf("invalid pending question state for request %q", requestId)
 	}
+	// Delete before send to prevent duplicate responses from concurrent callers.
+	// Matches the pattern in SendToolApprovalResponse.
+	r.pendingQuestions.Delete(requestId)
 	select {
 	case ch <- answers:
 		return nil
@@ -1316,6 +1485,9 @@ func (r *Runner) SendPlanApprovalResponse(requestId string, approved bool, reaso
 	if !ok2 {
 		return fmt.Errorf("invalid pending plan approval state for request %q", requestId)
 	}
+	// Delete before send to prevent duplicate responses from concurrent callers.
+	// Matches the pattern in SendToolApprovalResponse.
+	r.pendingPlanApprovals.Delete(requestId)
 	select {
 	case ch <- builtin.PlanApprovalResult{Approved: approved, Reason: reason}:
 		return nil
@@ -1341,12 +1513,15 @@ func (r *Runner) EmitQuestionRequest(requestID string, questions []builtin.Quest
 	return ch
 }
 
+// convertQuestions maps builtin.QuestionDef to agent.UserQuestion for the event protocol.
+// q.ID → Header: the frontend uses question.header as the answer map key, and
+// AskUserQuestionTool.Execute looks up answers by q.ID, so the contract is consistent.
 func convertQuestions(qs []builtin.QuestionDef) []agent.UserQuestion {
 	result := make([]agent.UserQuestion, len(qs))
 	for i, q := range qs {
 		result[i] = agent.UserQuestion{
 			Question: q.Text,
-			Header:   q.ID,
+			Header:   q.ID, // Used as the answer map key on both frontend and backend
 		}
 	}
 	return result
@@ -1367,6 +1542,14 @@ func (r *Runner) EmitPlanApprovalRequest(requestID string, planContent string) <
 	})
 
 	return ch
+}
+
+// PrePlanPermissionMode implements builtin.PlanModeCallback.
+func (r *Runner) PrePlanPermissionMode() string {
+	if r.permEngine != nil {
+		return r.permEngine.PrePlanMode()
+	}
+	return ""
 }
 
 // SetPermissionModeDirect implements builtin.PlanModeCallback.
@@ -1394,7 +1577,9 @@ func (r *Runner) cleanup() {
 			if memDir, err := r.memoryExtractor.memoryDir(); err == nil {
 				os.MkdirAll(memDir, 0755)
 				notesPath := filepath.Join(memDir, "session_notes.md")
-				os.WriteFile(notesPath, []byte(notes), 0644)
+				if err := os.WriteFile(notesPath, []byte(notes), 0644); err != nil {
+					log.Printf("warning: failed to write session notes to %s: %v", notesPath, err)
+				}
 			}
 		}
 	}
@@ -1412,6 +1597,26 @@ func (r *Runner) cleanup() {
 	if r.resultPersister != nil {
 		r.resultPersister.Cleanup()
 	}
+
+	// Drain pending request maps to prevent sync.Map leaks from cancelled requests.
+	// Normal completions are cleaned up in Send*Response; this catches entries
+	// orphaned by context cancellation (tool's select hit ctx.Done()).
+	r.pendingQuestions.Range(func(key, _ any) bool {
+		r.pendingQuestions.Delete(key)
+		return true
+	})
+	r.pendingPlanApprovals.Range(func(key, _ any) bool {
+		r.pendingPlanApprovals.Delete(key)
+		return true
+	})
+	r.pendingApprovals.Range(func(key, _ any) bool {
+		r.pendingApprovals.Delete(key)
+		return true
+	})
+	r.pendingBatchApprovals.Range(func(key, _ any) bool {
+		r.pendingBatchApprovals.Delete(key)
+		return true
+	})
 }
 
 func (r *Runner) Options() agent.ProcessOptions {
@@ -1456,7 +1661,11 @@ func is529Error(err error) bool {
 	if isAPIStatusCode(err, 529) {
 		return true
 	}
-	return strings.Contains(err.Error(), "529")
+	// Fallback for wrapped errors without typed *APIError. Require "overloaded"
+	// keyword to avoid false positives on unrelated messages containing "529"
+	// (e.g., port numbers, IDs).
+	msg := err.Error()
+	return strings.Contains(msg, "529") && strings.Contains(msg, "overloaded")
 }
 
 func is429Error(err error) bool {

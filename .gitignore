@@ -50,6 +50,9 @@ next-env.d.ts
 # Go
 backend/chatml-backend
 backend/cmd/relay/relay
+backend/nativeloop
+core/chatml
+core/nativeloop
 
 # Tauri
 src-tauri/target/

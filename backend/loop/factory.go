@@ -8,13 +8,13 @@ import (
 	"strings"
 
 	"github.com/chatml/chatml-backend/agent"
-	"github.com/chatml/chatml-backend/permission"
-	"github.com/chatml/chatml-backend/prompt"
-	"github.com/chatml/chatml-backend/provider"
-	"github.com/chatml/chatml-backend/provider/anthropic"
-	"github.com/chatml/chatml-backend/provider/openai"
-	"github.com/chatml/chatml-backend/tool"
-	"github.com/chatml/chatml-backend/tool/builtin"
+	"github.com/chatml/chatml-core/permission"
+	"github.com/chatml/chatml-core/prompt"
+	"github.com/chatml/chatml-core/provider"
+	"github.com/chatml/chatml-core/provider/anthropic"
+	"github.com/chatml/chatml-core/provider/openai"
+	"github.com/chatml/chatml-core/tool"
+	"github.com/chatml/chatml-core/tool/builtin"
 )
 
 // NewBackendFactory returns an agent.NativeBackendFactory that creates Runner instances

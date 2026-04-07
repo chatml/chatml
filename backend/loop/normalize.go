@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/chatml/chatml-backend/provider"
+	"github.com/chatml/chatml-core/provider"
 )
 
 const (

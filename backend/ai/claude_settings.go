@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/chatml/chatml-backend/paths"
+	"github.com/chatml/chatml-core/paths"
 )
 
 // ClaudeCodeSettings represents the relevant fields from ~/.claude/settings.json.

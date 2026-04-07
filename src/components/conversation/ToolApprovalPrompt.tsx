@@ -3,13 +3,13 @@
 import { useCallback, useEffect, useMemo, useState, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { useAppStore } from '@/stores/appStore';
-import { approveTool } from '@/lib/api/conversations';
+import { approveTool, approveBatchTools } from '@/lib/api/conversations';
 import { FileDiff, parseDiffFromFile, PIERRE_THEMES } from '@/lib/pierre';
 import type { FileContents } from '@/lib/pierre';
 import { useResolvedThemeType } from '@/hooks/useResolvedThemeType';
 import { getShikiLanguage } from '@/lib/languageMapping';
+import { useApprovalTimer, useApprovalKeyboard, type ApprovalAction } from '@/hooks/useApprovalPrompt';
 
-const TIMEOUT_MS = 55_000; // 55s — 5s before agent-runner's 60s timeout so our deny arrives first
 const MAX_PREVIEW_LINES = 200;
 
 const ensureTrailingNewline = (s: string) => s.endsWith('\n') ? s : s + '\n';
@@ -181,62 +181,38 @@ interface ToolApprovalPromptProps {
   conversationId: string;
 }
 
+interface BatchToolApprovalPromptProps {
+  conversationId: string;
+}
+
 export function ToolApprovalPrompt({ conversationId }: ToolApprovalPromptProps) {
   const streamingState = useAppStore((s) => s.streamingState[conversationId]);
   const clearPendingToolApproval = useAppStore((s) => s.clearPendingToolApproval);
   const pending = streamingState?.pendingToolApproval;
 
   const [error, setError] = useState<string | null>(null);
-  const [elapsed, setElapsed] = useState(0);
-  const [submitting, setSubmitting] = useState(false);
-  const submittingRef = useRef(false);
   const [editedCommand, setEditedCommand] = useState('');
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const autoDeniedRef = useRef(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const handleActionRef = useRef<(action: 'allow_once' | 'allow_session' | 'allow_always' | 'deny_once' | 'deny_always') => void>(() => {});
 
   const isBash = pending?.toolName === 'Bash';
 
-  // Reset state when a new request arrives (render-time adjustment — not an effect)
-  const [prevRequestId, setPrevRequestId] = useState<string>();
-  if (pending?.requestId !== prevRequestId) {
-    setPrevRequestId(pending?.requestId);
-    if (pending) {
-      setSubmitting(false);
-      setError(null);
-      setElapsed(0);
-      if (pending.toolName === 'Bash') {
-        setEditedCommand((pending.toolInput.command as string) || '');
-      }
-    }
-  }
+  // Timer + auto-deny: declared before handleAction so submittingRef/setSubmitting
+  // are available in handleAction's closure without a forward-reference.
+  // useApprovalTimer captures onAction via an internal ref that syncs each render,
+  // so passing handleAction (defined below) works: on first render the ref holds the
+  // initial closure, and subsequent renders update it.
+  const handleActionRef = useRef<(action: ApprovalAction) => void>(() => {});
+  const { progressPct, submitting, setSubmitting, submittingRef } = useApprovalTimer(
+    pending?.requestId,
+    useCallback((action: ApprovalAction) => handleActionRef.current(action), []),
+  );
 
-  // Reset refs when request changes (refs must be updated in effects, not during render)
-  useEffect(() => {
-    if (pending) {
-      submittingRef.current = false;
-      autoDeniedRef.current = false;
-    }
-  }, [pending?.requestId, pending]);
-
-  // Auto-focus textarea for Bash commands
-  useEffect(() => {
-    if (isBash && textareaRef.current) {
-      textareaRef.current.focus();
-      // Move cursor to end
-      const len = textareaRef.current.value.length;
-      textareaRef.current.setSelectionRange(len, len);
-    }
-  }, [isBash, pending?.requestId]);
-
-  const handleAction = useCallback(async (action: 'allow_once' | 'allow_session' | 'allow_always' | 'deny_once' | 'deny_always') => {
+  const handleAction = useCallback(async (action: ApprovalAction) => {
     if (!pending || submittingRef.current) return;
     setSubmitting(true);
     submittingRef.current = true;
     try {
       setError(null);
-      // Build updatedInput if user edited the Bash command
       let updatedInput: Record<string, unknown> | undefined;
       if (isBash && action.startsWith('allow') && editedCommand !== (pending.toolInput.command as string)) {
         updatedInput = { ...pending.toolInput, command: editedCommand };
@@ -248,64 +224,34 @@ export function ToolApprovalPrompt({ conversationId }: ToolApprovalPromptProps) 
       submittingRef.current = false;
       setError(err instanceof Error ? err.message : 'Failed to send tool approval');
     }
-  }, [conversationId, pending, clearPendingToolApproval, isBash, editedCommand]);
+  }, [conversationId, pending, clearPendingToolApproval, isBash, editedCommand, submittingRef, setSubmitting]);
+  useEffect(() => { handleActionRef.current = handleAction; }, [handleAction]);
 
-  // Keep ref in sync so the interval callback always has the latest handleAction
+  // Reset edited command when request changes.
+  // Intentionally depend only on requestId — pending identity always changes
+  // with requestId, and we don't want to re-run for unrelated field updates.
   useEffect(() => {
-    handleActionRef.current = handleAction;
-  }, [handleAction]);
+    if (pending?.toolName === 'Bash') {
+      setEditedCommand((pending.toolInput.command as string) || '');
+    }
+    setError(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pending?.requestId]);
 
-  // Progress bar timer + auto-deny on timeout
+  // Auto-focus textarea for Bash commands
   useEffect(() => {
-    if (!pending) return;
-    const startTime = pending.timestamp;
-    timerRef.current = setInterval(() => {
-      const now = Date.now() - startTime;
-      setElapsed(now);
-      if (now >= TIMEOUT_MS && !autoDeniedRef.current) {
-        autoDeniedRef.current = true;
-        handleActionRef.current('deny_once');
-      }
-    }, 200);
-    return () => {
-      if (timerRef.current) clearInterval(timerRef.current);
-    };
-  }, [pending]);
+    if (isBash && textareaRef.current) {
+      textareaRef.current.focus();
+      const len = textareaRef.current.value.length;
+      textareaRef.current.setSelectionRange(len, len);
+    }
+  }, [isBash, pending?.requestId]);
 
-  // Keyboard shortcuts
-  useEffect(() => {
-    if (!pending) return;
-
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        handleAction('deny_once');
-        return;
-      }
-
-      // Cmd/Ctrl+Enter = Always allow for session
-      if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
-        e.preventDefault();
-        handleAction('allow_session');
-        return;
-      }
-
-      // Plain Enter = Allow once (but NOT inside textarea — textarea needs Enter for newlines)
-      const target = e.target as HTMLElement;
-      const isTextarea = target.tagName === 'TEXTAREA';
-      if (e.key === 'Enter' && !e.shiftKey && !isTextarea) {
-        e.preventDefault();
-        handleAction('allow_once');
-      }
-    };
-
-    window.addEventListener('keydown', handler, { capture: true });
-    return () => window.removeEventListener('keydown', handler, { capture: true });
-  }, [pending, handleAction]);
+  // Shared keyboard shortcuts (skip Enter action inside the Bash command textarea)
+  useApprovalKeyboard(!!pending, handleAction, { skipEnterInTextarea: true });
 
   if (!pending) return null;
 
-  const progressPct = Math.min(100, (elapsed / TIMEOUT_MS) * 100);
   const verb = getActionVerb(pending.toolName);
   const targetName = getTargetName(pending.toolName, pending.toolInput);
   const subtitle = getSubtitle(pending.toolName, pending.toolInput);
@@ -376,6 +322,120 @@ export function ToolApprovalPrompt({ conversationId }: ToolApprovalPromptProps) 
             onClick={() => handleAction('allow_once')}
           >
             Allow once
+            <kbd className="ml-1.5 px-1 py-0.5 rounded bg-background/20 text-background text-2xs font-mono">↵</kbd>
+          </Button>
+        </div>
+
+        {error && (
+          <div className="px-5 pb-3 text-xs text-destructive">{error}</div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+export function BatchToolApprovalPrompt({ conversationId }: BatchToolApprovalPromptProps) {
+  const streamingState = useAppStore((s) => s.streamingState[conversationId]);
+  const clearPendingBatchToolApproval = useAppStore((s) => s.clearPendingBatchToolApproval);
+  const pending = streamingState?.pendingBatchToolApproval;
+
+  const [error, setError] = useState<string | null>(null);
+
+  // Timer + auto-deny: declared before handleAction so submittingRef/setSubmitting
+  // are available in handleAction's closure without a forward-reference.
+  const handleActionRef = useRef<(action: ApprovalAction) => void>(() => {});
+  const { progressPct, submitting, setSubmitting, submittingRef } = useApprovalTimer(
+    pending?.requestId,
+    useCallback((action: ApprovalAction) => handleActionRef.current(action), []),
+  );
+
+  const handleAction = useCallback(async (action: ApprovalAction) => {
+    if (!pending || submittingRef.current) return;
+    setSubmitting(true);
+    submittingRef.current = true;
+    try {
+      setError(null);
+      await approveBatchTools(conversationId, pending.requestId, action);
+      clearPendingBatchToolApproval(conversationId);
+    } catch (err) {
+      setSubmitting(false);
+      submittingRef.current = false;
+      setError(err instanceof Error ? err.message : 'Failed to send batch tool approval');
+    }
+  }, [conversationId, pending, clearPendingBatchToolApproval, submittingRef, setSubmitting]);
+  useEffect(() => { handleActionRef.current = handleAction; }, [handleAction]);
+
+  // Reset error when request changes
+  useEffect(() => {
+    if (pending) setError(null);
+  }, [pending?.requestId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Shared keyboard shortcuts (no textarea — Enter always triggers allow)
+  useApprovalKeyboard(!!pending, handleAction, { skipEnterInTextarea: false });
+
+  if (!pending) return null;
+
+  return (
+    <div className="pt-1 px-3 pb-3">
+      <div className="relative rounded-xl border border-border bg-card dark:bg-input overflow-hidden">
+        {/* Header */}
+        <div className="px-5 pt-4 pb-2">
+          <p className="text-base leading-relaxed">
+            Allow Claude to run <strong>{pending.items.length} tools</strong>?
+          </p>
+        </div>
+
+        {/* Tool list */}
+        <div className="px-5 pb-3 space-y-1.5">
+          {pending.items.map((item) => {
+            const verb = getActionVerb(item.toolName);
+            const target = getTargetName(item.toolName, item.toolInput);
+            return (
+              <div key={item.toolUseId} className="flex items-center gap-2 text-sm">
+                <span className="font-medium">{verb}</span>
+                <span className="text-muted-foreground font-mono truncate">{target}</span>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Timeout progress bar */}
+        <div className="h-0.5 bg-muted">
+          <div
+            className="h-full bg-orange-500/40 transition-all duration-200"
+            style={{ width: `${100 - progressPct}%` }}
+          />
+        </div>
+
+        {/* Footer: action buttons */}
+        <div className="flex items-center justify-center gap-2 px-5 py-3">
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-8 text-xs"
+            disabled={submitting}
+            onClick={() => handleAction('deny_once')}
+          >
+            Deny all
+            <kbd className="ml-1.5 px-1 py-0.5 rounded bg-muted text-2xs font-mono">Esc</kbd>
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-8 text-xs"
+            disabled={submitting}
+            onClick={() => handleAction('allow_session')}
+          >
+            Always allow for session
+            <kbd className="ml-1.5 px-1 py-0.5 rounded bg-muted text-2xs font-mono">⌘↵</kbd>
+          </Button>
+          <Button
+            size="sm"
+            className="h-8 text-xs font-semibold bg-foreground text-background hover:bg-foreground/80"
+            disabled={submitting}
+            onClick={() => handleAction('allow_once')}
+          >
+            Allow all once
             <kbd className="ml-1.5 px-1 py-0.5 rounded bg-background/20 text-background text-2xs font-mono">↵</kbd>
           </Button>
         </div>

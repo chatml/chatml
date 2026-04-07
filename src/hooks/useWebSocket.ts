@@ -125,7 +125,7 @@ export function useWebSocket(enabled: boolean = true) {
           // canUseTool/hooks pause the agent, so the backend may report idle even
           // though the session is actually waiting for user interaction.
           const streaming = store.streamingState[conversationId];
-          if (streaming?.pendingToolApproval || streaming?.pendingPlanApproval || store.pendingUserQuestion[conversationId]) {
+          if (streaming?.pendingToolApproval || streaming?.pendingBatchToolApproval || streaming?.pendingPlanApproval || store.pendingUserQuestion[conversationId]) {
             return;
           }
           resultFinalizedSet.delete(conversationId);
@@ -578,6 +578,25 @@ export function useWebSocket(enabled: boolean = true) {
           );
           notifyBackgroundSession(conversationId);
           notifyDesktop(conversationId, 'Tool approval needed', `${event.toolName} requires permission`);
+        }
+        break;
+
+      case 'tool_batch_approval_request':
+        // Batch approval: multiple tools need user approval at once
+        if (event?.requestId && Array.isArray(event.batchApprovalItems)) {
+          const rawItems = event.batchApprovalItems as unknown[];
+          const items = rawItems.filter((i): i is { toolUseId: string; toolName: string; toolInput: Record<string, unknown>; specifier?: string } =>
+            typeof i === 'object' && i !== null &&
+            'toolUseId' in i && 'toolName' in i && 'toolInput' in i
+          );
+          if (items.length !== rawItems.length) {
+            console.warn(`batch approval: ${rawItems.length - items.length} item(s) had unexpected shape and were filtered out`);
+          }
+          if (items.length === 0) break;
+          store.setPendingBatchToolApproval(conversationId, event.requestId as string, items);
+          const toolNames = items.map((i) => i.toolName).join(', ');
+          notifyBackgroundSession(conversationId);
+          notifyDesktop(conversationId, 'Tools need approval', `${items.length} tools: ${toolNames}`);
         }
         break;
 

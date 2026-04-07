@@ -1,7 +1,7 @@
 package agent
 
 import (
-	"github.com/chatml/chatml-backend/paths"
+	"github.com/chatml/chatml-core/paths"
 )
 
 // ClaudeMemoryDir returns the path to the auto-memory directory for the given

@@ -26,6 +26,7 @@ import {
   ListTodo,
   Circle,
   Plug,
+  NotebookPen,
   type LucideIcon,
 } from 'lucide-react';
 import { cn, toRelativePath } from '@/lib/utils';
@@ -54,6 +55,10 @@ interface ToolUsageBlockProps {
   worktreePath?: string;
   isActive?: boolean;
   success?: boolean;
+  /** True when the tool was denied by the user (not an error) */
+  denied?: boolean;
+  /** True when the tool was canceled before completion */
+  canceled?: boolean;
   summary?: string;
   duration?: number;
   /** stdout from Bash command execution */
@@ -104,6 +109,8 @@ export const ToolUsageBlock = memo(function ToolUsageBlock({
   worktreePath,
   isActive = false,
   success,
+  denied = false,
+  canceled = false,
   summary,
   duration,
   stdout,
@@ -179,6 +186,8 @@ export const ToolUsageBlock = memo(function ToolUsageBlock({
         return ListTodo;
       case 'ExitPlanMode':
         return ClipboardCheck;
+      case 'EnterPlanMode':
+        return NotebookPen;
       default:
         if (tool.startsWith('mcp__')) return Plug;
         return Terminal;
@@ -202,6 +211,7 @@ export const ToolUsageBlock = memo(function ToolUsageBlock({
       case 'execute_command':
         return 'Run';
       case 'Grep':
+      case 'search':
         return 'Search';
       case 'Glob':
         return 'Find';
@@ -370,6 +380,9 @@ export const ToolUsageBlock = memo(function ToolUsageBlock({
   const additionalParams = formatParams();
   const showExpandable = hasDetails || hasOutput;
   const isPlanDenial = tool === 'ExitPlanMode' && success === false;
+  // Neutral (non-error) failure: plan denial, user-denied permission, or cancellation
+  const isNeutralOutcome = isPlanDenial || denied || canceled;
+  const isError = success === false && !isNeutralOutcome;
 
   return (
     <>
@@ -387,21 +400,29 @@ export const ToolUsageBlock = memo(function ToolUsageBlock({
             <span className="block w-2 h-2 rounded-full border-[1.5px] border-primary border-t-transparent animate-spin" />
           ) : success === true ? (
             <Circle className="w-2 h-2 fill-text-success text-text-success" />
-          ) : success === false && !isPlanDenial ? (
+          ) : isError ? (
             <Circle className="w-2 h-2 fill-text-error text-text-error" />
-          ) : success === false && isPlanDenial ? (
-            <Circle className="w-2 h-2 fill-muted-foreground/50 text-muted-foreground/50" />
           ) : (
             <Circle className="w-2 h-2 fill-muted-foreground/50 text-muted-foreground/50" />
           )}
         </span>
 
         {/* Tool icon and label */}
-        <ToolIcon className={cn('w-3 h-3 shrink-0', success === false && !isPlanDenial ? 'text-text-error' : 'text-muted-foreground')} />
-        <span className={cn('font-medium shrink-0 whitespace-nowrap', success === false && !isPlanDenial ? 'text-text-error' : 'text-foreground')}>{getToolLabel()}</span>
-        {success === false && !isPlanDenial && (
+        <ToolIcon className={cn('w-3 h-3 shrink-0', isError ? 'text-text-error' : 'text-muted-foreground')} />
+        <span className={cn('font-medium shrink-0 whitespace-nowrap', isError ? 'text-text-error' : 'text-foreground')}>{getToolLabel()}</span>
+        {isError && (
           <span className="text-2xs px-1 py-0.5 rounded bg-text-error/10 text-text-error font-medium shrink-0">
             Error
+          </span>
+        )}
+        {denied && (
+          <span className="text-2xs px-1 py-0.5 rounded bg-muted text-muted-foreground font-medium shrink-0">
+            Denied
+          </span>
+        )}
+        {canceled && !denied && (
+          <span className="text-2xs px-1 py-0.5 rounded bg-muted text-muted-foreground font-medium shrink-0">
+            Canceled
           </span>
         )}
         {mcpInfo && (
@@ -412,7 +433,7 @@ export const ToolUsageBlock = memo(function ToolUsageBlock({
 
         {/* Description (if available, shows instead of/before target) */}
         {description && (
-          <span className={cn('italic truncate shrink-0', success === false ? 'text-text-error/70' : 'text-muted-foreground')}>
+          <span className={cn('italic truncate shrink-0', isError ? 'text-text-error/70' : 'text-muted-foreground')}>
             {description}
           </span>
         )}
@@ -421,7 +442,7 @@ export const ToolUsageBlock = memo(function ToolUsageBlock({
         {!truncatedTarget && !description && summary && (
           <span className={cn(
             'text-2xs truncate shrink-0',
-            success === false ? 'text-text-error/80' : 'text-muted-foreground'
+            isError ? 'text-text-error/80' : 'text-muted-foreground'
           )}>
             {summary}
           </span>
@@ -608,14 +629,14 @@ export const ToolUsageBlock = memo(function ToolUsageBlock({
                 /* Generic fallback for all other tools */
                 <>
                   {/* Full command for Bash tools */}
-                  {isBashTool && fullTarget && (
+                  {isBashTool && target && (
                     <div className="rounded border bg-muted p-2">
                       <div className="flex items-center justify-between mb-1">
                         <div className="text-2xs text-muted-foreground/60">Command</div>
-                        <CopyButton getText={() => fullTarget!} />
+                        <CopyButton getText={() => target!} />
                       </div>
                       <pre className="font-mono text-2xs text-text-success whitespace-pre-wrap break-all">
-                        $ {fullTarget}
+                        $ {target}
                       </pre>
                     </div>
                   )}
@@ -624,7 +645,7 @@ export const ToolUsageBlock = memo(function ToolUsageBlock({
                   {summary && !stdout && (
                     <div className={cn(
                       'text-2xs px-2 py-1 rounded',
-                      success === false ? 'text-text-error bg-text-error/10' : 'text-muted-foreground bg-muted/30'
+                      isError ? 'text-text-error bg-text-error/10' : 'text-muted-foreground bg-muted/30'
                     )}>
                       {summary}
                     </div>

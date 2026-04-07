@@ -442,6 +442,9 @@ export interface AgentEvent {
   // Plan approval fields (ExitPlanMode tool)
   planContent?: string;
 
+  // Batch tool approval fields (native runner)
+  batchApprovalItems?: unknown[];
+
   // Input suggestion fields
   ghostText?: string;
   pills?: SuggestionPill[];

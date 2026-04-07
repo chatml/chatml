@@ -9,7 +9,7 @@ import (
 	"strings"
 
 	"github.com/chatml/chatml-backend/models"
-	"github.com/chatml/chatml-backend/paths"
+	"github.com/chatml/chatml-core/paths"
 	"github.com/chatml/chatml-backend/skills"
 	"github.com/go-chi/chi/v5"
 	"gopkg.in/yaml.v3"

@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"github.com/chatml/chatml-backend/agent"
-	"github.com/chatml/chatml-backend/provider"
+	"github.com/chatml/chatml-core/provider"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -77,7 +77,7 @@ func TestEmitter_EmitToolStart(t *testing.T) {
 
 func TestEmitter_EmitToolEnd(t *testing.T) {
 	e, ch := newTestEmitter()
-	e.emitToolEnd("tu_123", "Bash", true, "Listed files successfully")
+	e.emitToolEnd("tu_123", "Bash", true, "Listed files successfully", map[string]interface{}{"command": "ls"})
 
 	event := readEvent(t, ch)
 	assert.Equal(t, "tool_end", event.Type)
@@ -89,7 +89,7 @@ func TestEmitter_EmitToolEnd(t *testing.T) {
 
 func TestEmitter_EmitToolEnd_Failure(t *testing.T) {
 	e, ch := newTestEmitter()
-	e.emitToolEnd("tu_456", "Write", false, "permission denied")
+	e.emitToolEnd("tu_456", "Write", false, "permission denied", nil)
 
 	event := readEvent(t, ch)
 	assert.Equal(t, "tool_end", event.Type)
@@ -153,13 +153,14 @@ func TestEmitter_EmitError(t *testing.T) {
 
 func TestEmitter_EmitContextUsage(t *testing.T) {
 	e, ch := newTestEmitter()
-	e.emitContextUsage(50000, 2000, 200000)
+	e.emitContextUsage(50000, 2000, 200000, 120000)
 
 	event := readEvent(t, ch)
 	assert.Equal(t, "context_usage", event.Type)
 	assert.Equal(t, 50000, event.InputTokens)
 	assert.Equal(t, 2000, event.OutputTokens)
 	assert.Equal(t, 200000, event.ContextWindow)
+	assert.Equal(t, 120000, event.CumulativeTokens)
 }
 
 func TestEmitter_EmitPermissionModeChanged(t *testing.T) {

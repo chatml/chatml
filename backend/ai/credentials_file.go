@@ -6,7 +6,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/chatml/chatml-backend/paths"
+	"github.com/chatml/chatml-core/paths"
 )
 
 // ReadClaudeCodeCredentialsFile reads Claude Code OAuth credentials from

@@ -6,10 +6,10 @@ package loop
 
 import (
 	"encoding/json"
-	"fmt"
+	"log"
 
 	"github.com/chatml/chatml-backend/agent"
-	"github.com/chatml/chatml-backend/provider"
+	"github.com/chatml/chatml-core/provider"
 )
 
 // Event type constants matching the agent-runner's stdout JSON protocol.
@@ -38,15 +38,31 @@ type emitter struct {
 }
 
 // emit serializes an AgentEvent to JSON and sends it on the output channel.
-// This mirrors how the agent-runner emits events on stdout.
+// Uses a non-blocking send: if the channel is full (1024 buffer exhausted),
+// the event is dropped with a warning log rather than blocking the agentic loop.
+// This prevents a slow WebSocket consumer from stalling tool execution.
 func (e *emitter) emit(event *agent.AgentEvent) {
 	data, err := json.Marshal(event)
 	if err != nil {
-		// Should never happen with our well-typed events
-		e.ch <- fmt.Sprintf(`{"type":"error","message":"failed to marshal event: %s"}`, err.Error())
+		// Should never happen with our well-typed events, but use json.Marshal
+		// to safely escape the error message (fmt.Sprintf would produce invalid
+		// JSON if the error contains quotes or backslashes).
+		if errJSON, jsonErr := json.Marshal(map[string]string{
+			"type":    "error",
+			"message": "failed to marshal event: " + err.Error(),
+		}); jsonErr == nil {
+			select {
+			case e.ch <- string(errJSON):
+			default:
+			}
+		}
 		return
 	}
-	e.ch <- string(data)
+	select {
+	case e.ch <- string(data):
+	default:
+		log.Printf("warning: output channel full, dropping event type=%s", event.Type)
+	}
 }
 
 // emitReady signals that the runner is initialized and ready to accept messages.
@@ -94,13 +110,14 @@ func (e *emitter) emitToolStart(toolUseID, toolName string, params map[string]in
 }
 
 // emitToolEnd signals the completion of a tool execution.
-func (e *emitter) emitToolEnd(toolUseID, toolName string, success bool, summary string) {
+func (e *emitter) emitToolEnd(toolUseID, toolName string, success bool, summary string, params map[string]interface{}) {
 	e.emit(&agent.AgentEvent{
 		Type:    eventToolEnd,
 		ID:      toolUseID,
 		Tool:    toolName,
 		Success: success,
 		Summary: summary,
+		Params:  params,
 	})
 }
 
@@ -148,12 +165,13 @@ func (e *emitter) emitError(message string) {
 }
 
 // emitContextUsage reports current context window usage.
-func (e *emitter) emitContextUsage(inputTokens, outputTokens, contextWindow int) {
+func (e *emitter) emitContextUsage(inputTokens, outputTokens, contextWindow, cumulativeTokens int) {
 	e.emit(&agent.AgentEvent{
-		Type:          eventContextUsage,
-		InputTokens:  inputTokens,
-		OutputTokens: outputTokens,
-		ContextWindow: contextWindow,
+		Type:             eventContextUsage,
+		InputTokens:     inputTokens,
+		OutputTokens:    outputTokens,
+		ContextWindow:   contextWindow,
+		CumulativeTokens: cumulativeTokens,
 	})
 }
 

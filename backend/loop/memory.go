@@ -9,8 +9,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/chatml/chatml-backend/paths"
-	"github.com/chatml/chatml-backend/provider"
+	"github.com/chatml/chatml-core/paths"
+	"github.com/chatml/chatml-core/provider"
 )
 
 // MemoryExtractor runs in the background and periodically analyzes the conversation
