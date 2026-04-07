@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/chatml/chatml-backend/crypto"
+	"github.com/chatml/chatml-core/crypto"
 	"github.com/chatml/chatml-backend/linear"
 	"github.com/chatml/chatml-backend/store"
 )

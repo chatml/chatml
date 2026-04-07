@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/chatml/chatml-backend/git"
+	"github.com/chatml/chatml-core/git"
 	"github.com/stretchr/testify/require"
 )
 

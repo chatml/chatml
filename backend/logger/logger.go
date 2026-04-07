@@ -1,18 +1,24 @@
-// Package logger provides colorful, component-specific logging for the ChatML backend.
+// Package logger defines backend-specific loggers using the core logger factory.
+// Core loggers (Main, Cleanup, Scripts, DirCache) are re-exported for convenience
+// so backend files only need a single logger import.
 package logger
 
 import (
-	"os"
-
-	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/log"
+	corelogger "github.com/chatml/chatml-core/logger"
 )
 
-// Component loggers with distinct colored prefixes
+// Re-exported core loggers (pointer snapshots captured during init;
+// these will not track later reassignments to the core variables).
 var (
-	// Core application
-	Main *log.Logger
+	Main     *log.Logger
+	Cleanup  *log.Logger
+	Scripts  *log.Logger
+	DirCache *log.Logger
+)
 
+// Backend-specific loggers.
+var (
 	// Branch and PR watching
 	BranchWatcher *log.Logger
 	PRWatcher     *log.Logger
@@ -33,100 +39,40 @@ var (
 	Manager *log.Logger
 	Process *log.Logger
 
-	// Scripts
-	Scripts *log.Logger
-
-	// Caching
-	DirCache *log.Logger
-
 	// Relay
 	Relay *log.Logger
 
-	// Utilities
-	Cleanup *log.Logger
-	GitHub  *log.Logger
-	Linear  *log.Logger
-)
-
-// Define colors for different component categories
-var (
-	// Category colors (using lipgloss for styled prefixes)
-	colorCore    = lipgloss.NewStyle().Foreground(lipgloss.Color("#4ade80")) // green
-	colorWatch   = lipgloss.NewStyle().Foreground(lipgloss.Color("#60a5fa")) // blue
-	colorStorage = lipgloss.NewStyle().Foreground(lipgloss.Color("#c084fc")) // purple
-	colorHTTP    = lipgloss.NewStyle().Foreground(lipgloss.Color("#22d3ee")) // cyan
-	colorAgent   = lipgloss.NewStyle().Foreground(lipgloss.Color("#fbbf24")) // amber
-	colorUtil    = lipgloss.NewStyle().Foreground(lipgloss.Color("#a3a3a3")) // gray
+	// External services
+	GitHub *log.Logger
+	Linear *log.Logger
 )
 
 func init() {
-	// Base styles
-	styles := log.DefaultStyles()
+	// Re-export core loggers so backend files need only one import.
+	Main = corelogger.Main
+	Cleanup = corelogger.Cleanup
+	Scripts = corelogger.Scripts
+	DirCache = corelogger.DirCache
 
-	// Customize level styles
-	styles.Levels[log.DebugLevel] = lipgloss.NewStyle().
-		SetString("DEBUG").
-		Foreground(lipgloss.Color("#737373")).
-		Bold(true)
-	styles.Levels[log.InfoLevel] = lipgloss.NewStyle().
-		SetString("INFO").
-		Foreground(lipgloss.Color("#22d3ee")).
-		Bold(true)
-	styles.Levels[log.WarnLevel] = lipgloss.NewStyle().
-		SetString("WARN").
-		Foreground(lipgloss.Color("#eab308")).
-		Bold(true)
-	styles.Levels[log.ErrorLevel] = lipgloss.NewStyle().
-		SetString("ERROR").
-		Foreground(lipgloss.Color("#ef4444")).
-		Bold(true)
-	styles.Levels[log.FatalLevel] = lipgloss.NewStyle().
-		SetString("FATAL").
-		Foreground(lipgloss.Color("#ef4444")).
-		Bold(true).
-		Background(lipgloss.Color("#450a0a"))
+	// Backend-specific loggers
+	BranchWatcher = corelogger.New("branch-watcher", corelogger.ColorWatch)
+	PRWatcher = corelogger.New("pr-watcher", corelogger.ColorWatch)
+	StatsWatcher = corelogger.New("stats-watcher", corelogger.ColorWatch)
 
-	// Create base logger
-	base := log.NewWithOptions(os.Stderr, log.Options{
-		TimeFormat:      "15:04:05",
-		ReportTimestamp: true,
-	})
-	base.SetStyles(styles)
+	Store = corelogger.New("store", corelogger.ColorStorage)
+	SQLite = corelogger.New("sqlite", corelogger.ColorStorage)
+	DBRetry = corelogger.New("db-retry", corelogger.ColorStorage)
 
-	// Core application
-	Main = base.WithPrefix(colorCore.Render("main"))
+	Handlers = corelogger.New("handlers", corelogger.ColorHTTP)
+	WebSocket = corelogger.New("websocket", corelogger.ColorHTTP)
+	Config = corelogger.New("config", corelogger.ColorHTTP)
+	Error = corelogger.New("error", corelogger.ColorHTTP)
 
-	// Branch and PR watching
-	BranchWatcher = base.WithPrefix(colorWatch.Render("branch-watcher"))
-	PRWatcher = base.WithPrefix(colorWatch.Render("pr-watcher"))
-	StatsWatcher = base.WithPrefix(colorWatch.Render("stats-watcher"))
+	Manager = corelogger.New("manager", corelogger.ColorAgent)
+	Process = corelogger.New("process", corelogger.ColorAgent)
 
-	// Storage
-	Store = base.WithPrefix(colorStorage.Render("store"))
-	SQLite = base.WithPrefix(colorStorage.Render("sqlite"))
-	DBRetry = base.WithPrefix(colorStorage.Render("db-retry"))
+	Relay = corelogger.New("relay", corelogger.ColorHTTP)
 
-	// HTTP and WebSocket
-	Handlers = base.WithPrefix(colorHTTP.Render("handlers"))
-	WebSocket = base.WithPrefix(colorHTTP.Render("websocket"))
-	Config = base.WithPrefix(colorHTTP.Render("config"))
-	Error = base.WithPrefix(colorHTTP.Render("error"))
-
-	// Agent management
-	Manager = base.WithPrefix(colorAgent.Render("manager"))
-	Process = base.WithPrefix(colorAgent.Render("process"))
-
-	// Scripts
-	Scripts = base.WithPrefix(colorAgent.Render("scripts"))
-
-	// Caching
-	DirCache = base.WithPrefix(colorWatch.Render("dir-cache"))
-
-	// Relay
-	Relay = base.WithPrefix(colorHTTP.Render("relay"))
-
-	// Utilities
-	Cleanup = base.WithPrefix(colorUtil.Render("cleanup"))
-	GitHub = base.WithPrefix(colorUtil.Render("github"))
-	Linear = base.WithPrefix(colorUtil.Render("linear"))
+	GitHub = corelogger.New("github", corelogger.ColorUtil)
+	Linear = corelogger.New("linear", corelogger.ColorUtil)
 }

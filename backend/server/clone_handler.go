@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	gitpkg "github.com/chatml/chatml-backend/git"
+	gitpkg "github.com/chatml/chatml-core/git"
 	"github.com/chatml/chatml-backend/models"
 	"github.com/google/uuid"
 )

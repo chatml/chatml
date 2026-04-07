@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/chatml/chatml-backend/logger"
+	"github.com/chatml/chatml-core/logger"
 )
 
 // Clone retry configuration

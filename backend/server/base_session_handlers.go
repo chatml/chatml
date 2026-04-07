@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/chatml/chatml-backend/git"
+	"github.com/chatml/chatml-core/git"
 	"github.com/chatml/chatml-backend/logger"
 	"github.com/chatml/chatml-backend/models"
 	"github.com/go-chi/chi/v5"

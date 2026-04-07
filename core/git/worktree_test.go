@@ -10,7 +10,6 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/chatml/chatml-backend/appdir"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -22,7 +21,8 @@ func TestMain(m *testing.M) {
 		os.Exit(1)
 	}
 	os.Setenv("HOME", tmpHome)
-	appdir.Init()
+	// Set CHATML_DATA_DIR so WorkspacesBaseDir resolves without appdir.Init()
+	os.Setenv("CHATML_DATA_DIR", filepath.Join(tmpHome, "ChatML"))
 
 	code := m.Run()
 	os.RemoveAll(tmpHome)

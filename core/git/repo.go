@@ -13,8 +13,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/chatml/chatml-backend/logger"
-	"github.com/chatml/chatml-backend/models"
+	"github.com/chatml/chatml-core/logger"
 )
 
 // Git command timeout tiers — choose the appropriate tier at each call site.
@@ -1662,8 +1661,8 @@ func (rm *RepoManager) GetFileDiffUnified(ctx context.Context, repoPath, baseRef
 // ============================================================================
 
 // CheckPreflight inspects the repository for states that block base session usage.
-func (rm *RepoManager) CheckPreflight(ctx context.Context, repoPath string) (*models.PreflightStatus, error) {
-	status := &models.PreflightStatus{OK: true}
+func (rm *RepoManager) CheckPreflight(ctx context.Context, repoPath string) (*PreflightStatus, error) {
+	status := &PreflightStatus{OK: true}
 
 	// Resolve git dir (handles both regular repos and worktrees)
 	cmd, cancel := gitCmdWithContext(ctx, TimeoutFast, repoPath, "rev-parse", "--git-dir")
@@ -1794,7 +1793,7 @@ func (e *DirtyWorkingTreeError) Error() string {
 }
 
 // ListStashes returns all stash entries for the repository.
-func (rm *RepoManager) ListStashes(ctx context.Context, repoPath string) ([]models.StashEntry, error) {
+func (rm *RepoManager) ListStashes(ctx context.Context, repoPath string) ([]StashEntry, error) {
 	cmd, cancel := gitCmdWithContext(ctx, TimeoutMedium, repoPath, "stash", "list", "--format=%gd\t%gs")
 	defer cancel()
 	out, err := cmd.Output()
@@ -1804,10 +1803,10 @@ func (rm *RepoManager) ListStashes(ctx context.Context, repoPath string) ([]mode
 
 	raw := strings.TrimSpace(string(out))
 	if raw == "" {
-		return []models.StashEntry{}, nil
+		return []StashEntry{}, nil
 	}
 
-	var entries []models.StashEntry
+	var entries []StashEntry
 	for _, line := range strings.Split(raw, "\n") {
 		parts := strings.SplitN(line, "\t", 2)
 		if len(parts) < 2 {
@@ -1831,7 +1830,7 @@ func (rm *RepoManager) ListStashes(ctx context.Context, repoPath string) ([]mode
 			}
 		}
 
-		entries = append(entries, models.StashEntry{
+		entries = append(entries, StashEntry{
 			Index:   idx,
 			Branch:  branch,
 			Message: msg,

@@ -8,7 +8,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/chatml/chatml-backend/git"
+	"github.com/chatml/chatml-core/git"
 	"github.com/chatml/chatml-backend/logger"
 	"github.com/fsnotify/fsnotify"
 )

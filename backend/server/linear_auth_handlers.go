@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/chatml/chatml-backend/crypto"
+	"github.com/chatml/chatml-core/crypto"
 	"github.com/chatml/chatml-backend/linear"
 	"github.com/chatml/chatml-backend/logger"
 	"github.com/chatml/chatml-backend/store"

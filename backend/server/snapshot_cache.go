@@ -4,7 +4,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/chatml/chatml-backend/git"
+	"github.com/chatml/chatml-core/git"
 )
 
 // SessionSnapshot holds the consolidated git data for a session.

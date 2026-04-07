@@ -1,6 +1,10 @@
 package models
 
-import "time"
+import (
+	"time"
+
+	coregit "github.com/chatml/chatml-core/git"
+)
 
 type Repo struct {
 	ID           string    `json:"id"`
@@ -526,22 +530,12 @@ type BranchSyncResult struct {
 }
 
 // PreflightStatus reports git state issues that block base session usage.
-type PreflightStatus struct {
-	OK               bool   `json:"ok"`
-	ActiveRebase     bool   `json:"activeRebase,omitempty"`
-	ActiveMerge      bool   `json:"activeMerge,omitempty"`
-	ActiveCherryPick bool   `json:"activeCherryPick,omitempty"`
-	DetachedHead     bool   `json:"detachedHead,omitempty"`
-	CorruptedIndex   bool   `json:"corruptedIndex,omitempty"`
-	ErrorMessage     string `json:"errorMessage,omitempty"`
-}
+// Type alias — canonical definition lives in core/git.
+type PreflightStatus = coregit.PreflightStatus
 
 // StashEntry represents a single git stash entry.
-type StashEntry struct {
-	Index   int    `json:"index"`
-	Branch  string `json:"branch"`
-	Message string `json:"message"`
-}
+// Type alias — canonical definition lives in core/git.
+type StashEntry = coregit.StashEntry
 
 // Checkpoint represents a file state snapshot created by the Claude Agent SDK at message boundaries.
 type Checkpoint struct {
