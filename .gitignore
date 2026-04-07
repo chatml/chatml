@@ -53,6 +53,7 @@ backend/cmd/relay/relay
 backend/nativeloop
 core/chatml
 core/nativeloop
+core/cmd/nativeloop/nativeloop
 
 # Tauri
 src-tauri/target/

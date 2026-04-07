@@ -6,6 +6,7 @@ package permission
 import (
 	"encoding/json"
 	"net/url"
+	"path/filepath"
 	"strings"
 )
 
@@ -18,10 +19,10 @@ func BuildSpecifier(toolName string, input json.RawMessage) string {
 		return extractStringField(input, "command")
 
 	case "Read", "Write", "Edit":
-		return extractStringField(input, "file_path")
+		return cleanFilePath(extractStringField(input, "file_path"))
 
 	case "NotebookEdit":
-		return extractStringField(input, "notebook_path")
+		return cleanFilePath(extractStringField(input, "notebook_path"))
 
 	case "WebFetch":
 		rawURL := extractStringField(input, "url")
@@ -51,6 +52,16 @@ func BuildSpecifier(toolName string, input json.RawMessage) string {
 		}
 		return ""
 	}
+}
+
+// cleanFilePath normalizes a file path to prevent traversal attacks.
+// Applies filepath.Clean to collapse ".." sequences so that "src/../../.bashrc"
+// becomes "../.bashrc" and no longer matches a wildcard rule like "src/*".
+func cleanFilePath(path string) string {
+	if path == "" {
+		return ""
+	}
+	return filepath.Clean(path)
 }
 
 // extractStringField unmarshals a JSON object and returns the value of the named field.

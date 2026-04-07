@@ -6,6 +6,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/chatml/chatml-core/permission"
 )
 
 // renderInput renders the input area: bar → input → bar (Claude Code style).
@@ -21,7 +22,12 @@ func renderInput(m *model) string {
 	case stateRunning:
 		inputLine = m.s.gray.Render("  (running — Ctrl+C to interrupt)")
 	case stateApproval:
-		approvalOpts := []string{"Yes, allow this", "Yes, always allow", "No, deny this"}
+		// Smart wildcard label for option 2 (always allow — persisted to settings)
+		alwaysLabel := "Yes, always allow"
+		if suggestion := permission.SuggestWildcard(m.prompt.approvalToolName, m.prompt.approvalSpecifier); suggestion != nil {
+			alwaysLabel = suggestion.Label
+		}
+		approvalOpts := []string{"Yes, allow this", alwaysLabel, "Yes, for this session", "No, deny this"}
 		var optLines []string
 		for i, opt := range approvalOpts {
 			if i == m.prompt.approvalSel {

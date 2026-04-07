@@ -61,9 +61,11 @@ type streamState struct {
 
 // promptState holds approval/question/plan interaction state.
 type promptState struct {
-	approvalID  string
-	approvalSel int // 0=yes, 1=always, 2=deny
-	questionID  string
+	approvalID        string
+	approvalSel       int // 0=yes, 1=always, 2=session, 3=deny
+	approvalToolName  string
+	approvalSpecifier string
+	questionID        string
 	questions   []agent.UserQuestion
 	planID      string
 	selectedOpt int

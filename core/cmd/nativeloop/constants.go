@@ -24,6 +24,6 @@ const (
 
 // Approval constants
 const (
-	approvalOptionCount = 3 // yes, always, deny
+	approvalOptionCount = 4 // yes, always, session, deny
 	planOptionCount     = 2 // approve, reject
 )

@@ -348,6 +348,8 @@ func handleToolEnd(m *model, e agent.AgentEvent) tea.Cmd {
 func handleApprovalRequest(m *model, e agent.AgentEvent) tea.Cmd {
 	m.flushAssistantText()
 	m.prompt.approvalID = e.RequestID
+	m.prompt.approvalToolName = e.ToolName
+	m.prompt.approvalSpecifier = e.Specifier
 	m.appendActive(&displayMessage{
 		kind:   msgApproval,
 		tool:   e.ToolName,

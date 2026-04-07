@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 
 const TIMEOUT_MS = 55_000; // 55s — 5s before agent-runner's 60s timeout so our deny arrives first
 
-export type ApprovalAction = 'allow_once' | 'allow_session' | 'deny_once' | 'deny_always';
+export type ApprovalAction = 'allow_once' | 'allow_session' | 'allow_always' | 'deny_once' | 'deny_always';
 
 /**
  * Shared approval timer + auto-deny logic for both single-tool and batch-tool
@@ -71,19 +71,23 @@ export function useApprovalTimer(
 /**
  * Shared keyboard shortcut handler for approval prompts.
  * - Escape → deny_once
- * - Cmd/Ctrl+Enter → allow_session
+ * - Cmd/Ctrl+Enter → configurable action (default: allow_always)
  * - Enter (plain, outside textarea) → allow_once
  *
  * Set `skipEnterInTextarea` to true (default) to let Enter pass through to
  * textareas without triggering an action. Set to false when there are no
  * editable fields (e.g., batch approval) so Enter always triggers allow_once.
+ *
+ * Set `cmdEnterAction` to control what Cmd/Ctrl+Enter sends. Defaults to
+ * 'allow_always' (persisted to settings). Batch approval uses 'allow_session'.
  */
 export function useApprovalKeyboard(
   active: boolean,
   onAction: (action: ApprovalAction) => void,
-  opts?: { skipEnterInTextarea?: boolean },
+  opts?: { skipEnterInTextarea?: boolean; cmdEnterAction?: ApprovalAction },
 ) {
   const skipEnterInTextarea = opts?.skipEnterInTextarea ?? true;
+  const cmdEnterAction = opts?.cmdEnterAction ?? 'allow_always';
 
   // Stable ref so the event listener doesn't re-register on every render
   const onActionRef = useRef(onAction);
@@ -101,7 +105,7 @@ export function useApprovalKeyboard(
 
       if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
         e.preventDefault();
-        onActionRef.current('allow_session');
+        onActionRef.current(cmdEnterAction);
         return;
       }
 
@@ -118,7 +122,7 @@ export function useApprovalKeyboard(
 
     window.addEventListener('keydown', handler, { capture: true });
     return () => window.removeEventListener('keydown', handler, { capture: true });
-  }, [active, skipEnterInTextarea]);
+  }, [active, skipEnterInTextarea, cmdEnterAction]);
 }
 
 export { TIMEOUT_MS };

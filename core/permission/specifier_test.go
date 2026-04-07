@@ -80,3 +80,35 @@ func TestBuildSpecifier_MissingField(t *testing.T) {
 	input := json.RawMessage(`{"description":"test"}`)
 	assert.Equal(t, "", BuildSpecifier("Bash", input))
 }
+
+// --- Path traversal normalization tests ---
+
+func TestBuildSpecifier_Write_CleansTraversal(t *testing.T) {
+	input := json.RawMessage(`{"file_path":"src/../../.bashrc","content":"malicious"}`)
+	spec := BuildSpecifier("Write", input)
+	assert.Equal(t, "../.bashrc", spec, "traversal should be cleaned to ../.bashrc")
+}
+
+func TestBuildSpecifier_Edit_CleansTraversal(t *testing.T) {
+	input := json.RawMessage(`{"file_path":"src/../../etc/passwd","old_string":"a","new_string":"b"}`)
+	spec := BuildSpecifier("Edit", input)
+	assert.Equal(t, "../etc/passwd", spec, "traversal should be cleaned")
+}
+
+func TestBuildSpecifier_Write_CleansDotSlash(t *testing.T) {
+	input := json.RawMessage(`{"file_path":"./src/main.go","content":"pkg"}`)
+	spec := BuildSpecifier("Write", input)
+	assert.Equal(t, "src/main.go", spec, "leading ./ should be removed")
+}
+
+func TestBuildSpecifier_Write_NormalPath_Unchanged(t *testing.T) {
+	input := json.RawMessage(`{"file_path":"/home/user/project/src/main.go","content":"pkg"}`)
+	spec := BuildSpecifier("Write", input)
+	assert.Equal(t, "/home/user/project/src/main.go", spec, "clean path should be unchanged")
+}
+
+func TestBuildSpecifier_NotebookEdit_CleansTraversal(t *testing.T) {
+	input := json.RawMessage(`{"notebook_path":"notebooks/../../.bashrc"}`)
+	spec := BuildSpecifier("NotebookEdit", input)
+	assert.Equal(t, "../.bashrc", spec, "traversal should be cleaned")
+}

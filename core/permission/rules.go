@@ -77,10 +77,15 @@ func NewRuleSet(rules []Rule) *RuleSet {
 	return &RuleSet{rules: rules}
 }
 
-// AddRule appends a rule to the set. Thread-safe.
+// AddRule appends a rule to the set, skipping duplicates. Thread-safe.
 func (rs *RuleSet) AddRule(r Rule) {
 	rs.mu.Lock()
 	defer rs.mu.Unlock()
+	for _, existing := range rs.rules {
+		if existing.Tool == r.Tool && existing.Specifier == r.Specifier && existing.Action == r.Action {
+			return // Already exists
+		}
+	}
 	rs.rules = append(rs.rules, r)
 }
 

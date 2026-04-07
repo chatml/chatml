@@ -9,6 +9,7 @@ import type { FileContents } from '@/lib/pierre';
 import { useResolvedThemeType } from '@/hooks/useResolvedThemeType';
 import { getShikiLanguage } from '@/lib/languageMapping';
 import { useApprovalTimer, useApprovalKeyboard, type ApprovalAction } from '@/hooks/useApprovalPrompt';
+import { suggestWildcard } from '@/lib/permission/wildcardSuggestion';
 import { Terminal, FilePlus2, Pencil, Globe, Search, Wrench, Plug } from 'lucide-react';
 
 const MAX_PREVIEW_LINES = 200;
@@ -260,6 +261,12 @@ export function ToolApprovalPrompt({ conversationId }: ToolApprovalPromptProps) 
     useCallback((action: ApprovalAction) => handleActionRef.current(action), []),
   );
 
+  // Compute smart wildcard suggestion for "Allow always" button
+  const wildcardSuggestion = useMemo(
+    () => pending ? suggestWildcard(pending.toolName, pending.specifier || '') : null,
+    [pending],
+  );
+
   const handleAction = useCallback(async (action: ApprovalAction) => {
     if (!pending || submittingRef.current) return;
     setSubmitting(true);
@@ -270,14 +277,18 @@ export function ToolApprovalPrompt({ conversationId }: ToolApprovalPromptProps) 
       if (isBash && action.startsWith('allow') && editedCommand !== (pending.toolInput.command as string)) {
         updatedInput = { ...pending.toolInput, command: editedCommand };
       }
-      await approveTool(conversationId, pending.requestId, action, pending.specifier, updatedInput);
+      // For allow_always, use the wildcard specifier if available
+      const specifier = action === 'allow_always' && wildcardSuggestion
+        ? wildcardSuggestion.specifier
+        : pending.specifier;
+      await approveTool(conversationId, pending.requestId, action, specifier, updatedInput);
       clearPendingToolApproval(conversationId);
     } catch (err) {
       setSubmitting(false);
       submittingRef.current = false;
       setError(err instanceof Error ? err.message : 'Failed to send tool approval');
     }
-  }, [conversationId, pending, clearPendingToolApproval, isBash, editedCommand, submittingRef, setSubmitting]);
+  }, [conversationId, pending, clearPendingToolApproval, isBash, editedCommand, wildcardSuggestion, submittingRef, setSubmitting]);
   useEffect(() => { handleActionRef.current = handleAction; }, [handleAction]);
 
   // Auto-focus textarea for Bash commands
@@ -360,9 +371,9 @@ export function ToolApprovalPrompt({ conversationId }: ToolApprovalPromptProps) 
               size="sm"
               className="h-8 text-xs"
               disabled={submitting}
-              onClick={() => handleAction('allow_session')}
+              onClick={() => handleAction('allow_always')}
             >
-              Always allow
+              {wildcardSuggestion ? wildcardSuggestion.label : 'Always allow'}
               <kbd className="ml-1.5 px-1 py-0.5 rounded bg-muted text-2xs font-mono">⌘↵</kbd>
             </Button>
             <Button
@@ -425,7 +436,7 @@ export function BatchToolApprovalPrompt({ conversationId }: BatchToolApprovalPro
   useEffect(() => { handleActionRef.current = handleAction; }, [handleAction]);
 
   // Shared keyboard shortcuts (no textarea — Enter always triggers allow)
-  useApprovalKeyboard(!!pending, handleAction, { skipEnterInTextarea: false });
+  useApprovalKeyboard(!!pending, handleAction, { skipEnterInTextarea: false, cmdEnterAction: 'allow_session' });
 
   if (!pending) return null;
 
@@ -482,7 +493,7 @@ export function BatchToolApprovalPrompt({ conversationId }: BatchToolApprovalPro
               disabled={submitting}
               onClick={() => handleAction('allow_session')}
             >
-              Always allow
+              Allow for session
               <kbd className="ml-1.5 px-1 py-0.5 rounded bg-muted text-2xs font-mono">⌘↵</kbd>
             </Button>
             <Button
