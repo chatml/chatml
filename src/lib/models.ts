@@ -97,12 +97,49 @@ export function deduplicateByName<T extends { name: string }>(entries: T[]): T[]
   });
 }
 
+/**
+ * Extract model family key for dedup: all Opus variants → 'opus',
+ * Sonnet → 'sonnet', Haiku → 'haiku'.
+ * Unknown models keep their full ID as family key (no aggressive collapsing).
+ */
+export function toModelFamily(id: string): string {
+  const lower = id.toLowerCase();
+  if (!lower.startsWith('claude-')) return id;
+  if (lower.includes('opus')) return 'opus';
+  if (lower.includes('sonnet')) return 'sonnet';
+  if (lower.includes('haiku')) return 'haiku';
+  return id;
+}
+
+/**
+ * Deduplicate by model family (opus/sonnet/haiku), keeping the best entry
+ * per family. When two entries share a family, prefers the one with a catalog
+ * match. This catches variants with different IDs AND different display names
+ * that belong to the same family (e.g., claude-opus-4 vs claude-opus-4-6).
+ */
+export function deduplicateByFamily<T extends { id: string }>(entries: T[]): T[] {
+  const familyMap = new Map<string, T>();
+  for (const entry of entries) {
+    const family = toModelFamily(entry.id);
+    if (!familyMap.has(family)) {
+      familyMap.set(family, entry);
+    } else {
+      // Prefer the entry that matches the catalog (has a canonical display name)
+      const existing = familyMap.get(family)!;
+      if (!catalogLookup(existing.id) && catalogLookup(entry.id)) {
+        familyMap.set(family, entry);
+      }
+    }
+  }
+  return entries.filter((entry) => familyMap.get(toModelFamily(entry.id)) === entry);
+}
+
 /** Tier rank for sorting: Opus=0, Sonnet=1, Haiku=2, unknown=3 */
 function modelTierRank(id: string): number {
-  const lower = id.toLowerCase();
-  if (lower.includes('opus')) return 0;
-  if (lower.includes('sonnet')) return 1;
-  if (lower.includes('haiku')) return 2;
+  const family = toModelFamily(id);
+  if (family === 'opus') return 0;
+  if (family === 'sonnet') return 1;
+  if (family === 'haiku') return 2;
   return 3;
 }
 
@@ -128,7 +165,7 @@ interface SdkModelEntry {
 /**
  * Build a deduplicated model ID list from SDK-reported models.
  * Filters out the "Default (recommended)" pseudo-model, deduplicates by ID,
- * then deduplicates by resolved display name (dated variants collapse).
+ * then by resolved display name, then by model family (opus/sonnet/haiku).
  * Falls back to static MODELS when no SDK models are available.
  */
 export function buildDeduplicatedModelIds(dynamic: SdkModelEntry[]): string[] {
@@ -138,7 +175,7 @@ export function buildDeduplicatedModelIds(dynamic: SdkModelEntry[]): string[] {
       .filter((m) => !isDefaultRecommended(m.displayName))
       .map((m) => ({ id: m.value, name: toShortDisplayName(m.value, m.displayName) }))
   );
-  return deduplicateByName(entries).map((e) => e.id);
+  return deduplicateByFamily(deduplicateByName(entries)).map((e) => e.id);
 }
 
 // ---------------------------------------------------------------------------
