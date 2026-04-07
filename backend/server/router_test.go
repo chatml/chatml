@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/chatml/chatml-backend/agent"
-	gitpkg "github.com/chatml/chatml-backend/git"
+	gitpkg "github.com/chatml/chatml-core/git"
 	"github.com/chatml/chatml-backend/github"
 	"github.com/chatml/chatml-backend/linear"
 	"github.com/chatml/chatml-backend/store"

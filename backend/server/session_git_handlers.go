@@ -10,10 +10,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/chatml/chatml-backend/git"
+	"github.com/chatml/chatml-core/git"
 	"github.com/chatml/chatml-backend/logger"
 	"github.com/chatml/chatml-backend/models"
-	"github.com/chatml/chatml-backend/naming"
+	"github.com/chatml/chatml-core/naming"
 	"github.com/go-chi/chi/v5"
 )
 

@@ -9,8 +9,8 @@ import (
 	"os"
 
 	"github.com/chatml/chatml-backend/ai"
-	"github.com/chatml/chatml-backend/crypto"
-	"github.com/chatml/chatml-backend/git"
+	"github.com/chatml/chatml-core/crypto"
+	"github.com/chatml/chatml-core/git"
 	"github.com/chatml/chatml-backend/models"
 	"github.com/chatml/chatml-backend/store"
 	"github.com/stretchr/testify/assert"

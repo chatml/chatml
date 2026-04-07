@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"github.com/chatml/chatml-backend/scripts"
+	"github.com/chatml/chatml-core/scripts"
 	"github.com/go-chi/chi/v5"
 )
 

@@ -11,7 +11,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/chatml/chatml-backend/git"
+	"github.com/chatml/chatml-core/git"
 	"github.com/go-chi/chi/v5"
 )
 

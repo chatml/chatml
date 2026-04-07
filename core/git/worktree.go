@@ -6,10 +6,10 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 
-	"github.com/chatml/chatml-backend/appdir"
-	"github.com/chatml/chatml-backend/logger"
+	"github.com/chatml/chatml-core/logger"
 )
 
 // ErrDirectoryExists indicates a name collision during atomic directory creation
@@ -21,10 +21,36 @@ var ErrBranchAlreadyCheckedOut = errors.New("branch is already checked out in an
 // ErrLocalBranchExists indicates the local branch already exists (but is not checked out in a worktree)
 var ErrLocalBranchExists = errors.New("local branch already exists")
 
-// WorkspacesBaseDir returns the default base directory for session worktrees:
-// ~/Library/Application Support/ChatML/workspaces
+// WorkspacesBaseDir returns the default base directory for session worktrees.
+// It derives the path from the CHATML_DATA_DIR environment variable if set,
+// otherwise uses the platform-specific default data directory + "/workspaces".
 func WorkspacesBaseDir() (string, error) {
-	return appdir.WorkspacesDir(), nil
+	var root string
+	if override := os.Getenv("CHATML_DATA_DIR"); override != "" {
+		root = override
+	} else {
+		homeDir, err := os.UserHomeDir()
+		if err != nil {
+			return "", fmt.Errorf("get home directory: %w", err)
+		}
+		switch runtime.GOOS {
+		case "darwin":
+			root = filepath.Join(homeDir, "Library", "Application Support", "ChatML")
+		case "windows":
+			if localAppData := os.Getenv("LOCALAPPDATA"); localAppData != "" {
+				root = filepath.Join(localAppData, "ChatML")
+			} else {
+				root = filepath.Join(homeDir, "AppData", "Local", "ChatML")
+			}
+		default:
+			if xdgData := os.Getenv("XDG_DATA_HOME"); xdgData != "" {
+				root = filepath.Join(xdgData, "ChatML")
+			} else {
+				root = filepath.Join(homeDir, ".local", "share", "ChatML")
+			}
+		}
+	}
+	return filepath.Join(root, "workspaces"), nil
 }
 
 // WorkspacesBaseDirWithOverride returns the configured base directory if non-empty,

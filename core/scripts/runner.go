@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/chatml/chatml-backend/logger"
+	"github.com/chatml/chatml-core/logger"
 	"github.com/google/uuid"
 )
 

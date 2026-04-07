@@ -14,7 +14,7 @@ import (
 
 	"github.com/chatml/chatml-backend/agent"
 	"github.com/chatml/chatml-backend/ai"
-	"github.com/chatml/chatml-backend/crypto"
+	"github.com/chatml/chatml-core/crypto"
 	"github.com/chatml/chatml-backend/models"
 	"github.com/chatml/chatml-backend/store"
 	"github.com/go-chi/chi/v5"

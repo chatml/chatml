@@ -13,7 +13,7 @@ import (
 	"github.com/chatml/chatml-backend/linear"
 	"github.com/chatml/chatml-backend/models"
 	"github.com/chatml/chatml-backend/ollama"
-	"github.com/chatml/chatml-backend/scripts"
+	"github.com/chatml/chatml-core/scripts"
 	"github.com/chatml/chatml-backend/store"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"

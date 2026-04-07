@@ -14,11 +14,11 @@ import (
 	"github.com/chatml/chatml-backend/agent"
 	"github.com/chatml/chatml-backend/ai"
 	"github.com/chatml/chatml-backend/branch"
-	"github.com/chatml/chatml-backend/git"
+	"github.com/chatml/chatml-core/git"
 	"github.com/chatml/chatml-backend/github"
 	"github.com/chatml/chatml-backend/logger"
 	"github.com/chatml/chatml-backend/models"
-	"github.com/chatml/chatml-backend/scripts"
+	"github.com/chatml/chatml-core/scripts"
 	"github.com/chatml/chatml-backend/store"
 	"github.com/fsnotify/fsnotify"
 )
