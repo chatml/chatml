@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 const TIMEOUT_MS = 55_000; // 55s — 5s before agent-runner's 60s timeout so our deny arrives first
 
@@ -22,28 +22,34 @@ export function useApprovalTimer(
   const autoDeniedRef = useRef(false);
   const onActionRef = useRef(onAction);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const timestampRef = useRef(0);
+
+  // Track previous requestId with useState (not useRef) so we can derive
+  // state resets during render without violating react-hooks/refs.
+  const [prevRequestId, setPrevRequestId] = useState<string>();
 
   // Keep the action ref in sync
   useEffect(() => {
     onActionRef.current = onAction;
   }, [onAction]);
 
-  // Reset state when request changes
-  useEffect(() => {
+  // Reset state when request changes — render-time derivation pattern
+  // (React's official "adjusting state based on props" approach).
+  // Ref resets and Date.now() are deferred to the timer effect below.
+  if (requestId !== prevRequestId) {
+    setPrevRequestId(requestId);
     if (requestId) {
       setSubmitting(false);
       setElapsed(0);
-      submittingRef.current = false;
-      autoDeniedRef.current = false;
-      timestampRef.current = Date.now();
     }
-  }, [requestId]);
+  }
 
-  // Timer + auto-deny
+  // Timer + auto-deny. Also resets refs when requestId changes (effects
+  // run after render, so the render-time setState above is already batched).
   useEffect(() => {
     if (!requestId) return;
-    const startTime = timestampRef.current || Date.now();
+    submittingRef.current = false;
+    autoDeniedRef.current = false;
+    const startTime = Date.now();
     timerRef.current = setInterval(() => {
       const now = Date.now() - startTime;
       setElapsed(now);

@@ -194,6 +194,19 @@ export function ToolApprovalPrompt({ conversationId }: ToolApprovalPromptProps) 
   const [editedCommand, setEditedCommand] = useState('');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
+  // Reset edited command and error when request changes — render-time
+  // derivation to avoid react-hooks/set-state-in-effect.
+  const [prevSingleRequestId, setPrevSingleRequestId] = useState<string>();
+  if (pending?.requestId !== prevSingleRequestId) {
+    setPrevSingleRequestId(pending?.requestId);
+    if (pending) {
+      if (pending.toolName === 'Bash') {
+        setEditedCommand((pending.toolInput.command as string) || '');
+      }
+      setError(null);
+    }
+  }
+
   const isBash = pending?.toolName === 'Bash';
 
   // Timer + auto-deny: declared before handleAction so submittingRef/setSubmitting
@@ -226,17 +239,6 @@ export function ToolApprovalPrompt({ conversationId }: ToolApprovalPromptProps) 
     }
   }, [conversationId, pending, clearPendingToolApproval, isBash, editedCommand, submittingRef, setSubmitting]);
   useEffect(() => { handleActionRef.current = handleAction; }, [handleAction]);
-
-  // Reset edited command when request changes.
-  // Intentionally depend only on requestId — pending identity always changes
-  // with requestId, and we don't want to re-run for unrelated field updates.
-  useEffect(() => {
-    if (pending?.toolName === 'Bash') {
-      setEditedCommand((pending.toolInput.command as string) || '');
-    }
-    setError(null);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pending?.requestId]);
 
   // Auto-focus textarea for Bash commands
   useEffect(() => {
@@ -341,6 +343,14 @@ export function BatchToolApprovalPrompt({ conversationId }: BatchToolApprovalPro
 
   const [error, setError] = useState<string | null>(null);
 
+  // Reset error when request changes — render-time derivation to
+  // avoid react-hooks/set-state-in-effect.
+  const [prevBatchRequestId, setPrevBatchRequestId] = useState<string>();
+  if (pending?.requestId !== prevBatchRequestId) {
+    setPrevBatchRequestId(pending?.requestId);
+    if (pending) setError(null);
+  }
+
   // Timer + auto-deny: declared before handleAction so submittingRef/setSubmitting
   // are available in handleAction's closure without a forward-reference.
   const handleActionRef = useRef<(action: ApprovalAction) => void>(() => {});
@@ -364,11 +374,6 @@ export function BatchToolApprovalPrompt({ conversationId }: BatchToolApprovalPro
     }
   }, [conversationId, pending, clearPendingBatchToolApproval, submittingRef, setSubmitting]);
   useEffect(() => { handleActionRef.current = handleAction; }, [handleAction]);
-
-  // Reset error when request changes
-  useEffect(() => {
-    if (pending) setError(null);
-  }, [pending?.requestId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Shared keyboard shortcuts (no textarea — Enter always triggers allow)
   useApprovalKeyboard(!!pending, handleAction, { skipEnterInTextarea: false });
