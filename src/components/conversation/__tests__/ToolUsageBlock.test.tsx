@@ -161,7 +161,8 @@ describe('ToolUsageBlock', () => {
       />
     );
 
-    // Should show +2 lines added
-    expect(screen.getByText('+2')).toBeInTheDocument();
+    // Should show +4 additions (new lines) and -2 deletions (old lines)
+    expect(screen.getByText('+4')).toBeInTheDocument();
+    expect(screen.getByText('-2')).toBeInTheDocument();
   });
 });
