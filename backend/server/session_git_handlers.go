@@ -252,6 +252,17 @@ func (h *Handlers) GetSessionFileDiff(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// If an absolute path was sent, strip the worktree prefix to make it relative
+	if filepath.IsAbs(filePath) {
+		prefix := workingPath
+		if !strings.HasSuffix(prefix, "/") {
+			prefix += "/"
+		}
+		if strings.HasPrefix(filePath, prefix) {
+			filePath = filePath[len(prefix):]
+		}
+	}
+
 	// Validate and clean the path
 	cleanPath, err := validatePath(workingPath, filePath)
 	if err != nil {
