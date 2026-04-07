@@ -184,6 +184,17 @@ export interface ActiveTool {
   agentId?: string; // Sub-agent that owns this tool (undefined = parent agent)
 }
 
+// Ollama progress (binary download or model pull)
+export interface OllamaProgress {
+  type: 'ollama_download' | 'ollama_pull';
+  status: string;
+  model?: string;
+  percent: number;
+  downloaded: number;
+  total: number;
+  timestamp: number;
+}
+
 // Sub-agent usage stats from SDK task_notification
 export interface SubAgentUsage {
   totalTokens: number;

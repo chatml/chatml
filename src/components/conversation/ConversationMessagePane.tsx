@@ -15,6 +15,7 @@ import { ChevronDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { Message } from '@/lib/types';
 import { StreamingMessage } from '@/components/conversation/StreamingMessage';
+import { OllamaProgressBlock } from '@/components/conversation/OllamaProgressBlock';
 import { QueuedMessageBubble } from '@/components/conversation/QueuedMessageBubble';
 import { VirtualizedMessageList, type VirtualizedMessageListHandle } from '@/components/conversation/VirtualizedMessageList';
 import { ChatSearchBar, countSearchMatches } from '@/components/conversation/ChatSearchBar';
@@ -277,6 +278,7 @@ export function ConversationMessagePane({
   // Footer for VirtualizedMessageList
   const messageListFooter = useMemo(() => (
     <div className="pl-5 pr-12 pb-16">
+      <OllamaProgressBlock />
       <StreamingMessageGate
         conversationId={conversationId}
         worktreePath={worktreePath}

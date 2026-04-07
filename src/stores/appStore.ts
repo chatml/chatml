@@ -330,6 +330,9 @@ interface AppState {
   mcpToolsByServer: Record<string, string[]>; // server name → tool names
   mcpServerSources: Record<string, string>;   // server name → source origin
 
+  // Ollama progress (global — shown while binary download or model pull is active)
+  ollamaProgress: import('@/lib/types').OllamaProgress | null;
+
   // Checkpoint timeline state
   checkpoints: CheckpointInfo[];
   // Pending checkpoint UUID per conversation (set on checkpoint_created, consumed by finalizeStreamingMessage).
@@ -604,6 +607,9 @@ interface AppState {
   fetchMcpServerConfigs: (workspaceId: string) => Promise<void>;
   saveMcpServerConfigs: (workspaceId: string, configs: McpServerConfig[]) => Promise<void>;
 
+  // Ollama progress actions
+  setOllamaProgress: (progress: import('@/lib/types').OllamaProgress | null) => void;
+
   // Query response actions
   setSupportedModels: (models: Array<{
     value: string;
@@ -706,6 +712,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   mcpConfigLoading: false,
   mcpToolsByServer: {},
   mcpServerSources: {},
+  ollamaProgress: null,
   checkpoints: [],
   pendingCheckpointUuid: {},
   contextUsage: {},
@@ -2598,6 +2605,9 @@ updateFileTabContent: (id, content) => set((state) => ({
   },
 
   // Query response actions
+  // Ollama progress
+  setOllamaProgress: (progress) => set({ ollamaProgress: progress }),
+
   setSupportedModels: (models) => set({ supportedModels: models }),
   setSupportedCommands: (commands) => set({ supportedCommands: commands }),
   setAccountInfo: (info) => set({ accountInfo: info }),

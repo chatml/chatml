@@ -32,4 +32,5 @@ type ProcessOptions struct {
 	McpServersJSON      string            // JSON array of MCP server configs
 	AgentsJSON          string            // JSON object of programmatic agent definitions (SDK 0.2.62+)
 	PermissionRulesFile string            // Path to JSON file with persistent permission rules
+	OllamaEndpoint      string            // Ollama server endpoint for local model inference (e.g., "http://127.0.0.1:39421")
 }

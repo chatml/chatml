@@ -18,6 +18,7 @@ import (
 	"github.com/chatml/chatml-backend/git"
 	"github.com/chatml/chatml-backend/logger"
 	"github.com/chatml/chatml-backend/models"
+	"github.com/chatml/chatml-backend/ollama"
 	"github.com/chatml/chatml-backend/store"
 	"github.com/google/uuid"
 )
@@ -123,6 +124,10 @@ type Manager struct {
 	// nativeBackendFactory creates native Go loop backends. Set at startup
 	// via SetNativeBackendFactory to avoid circular imports.
 	nativeBackendFactory NativeBackendFactory
+
+	// ollamaMgr manages the lifecycle of the bundled Ollama binary for local model inference.
+	// Set at startup via SetOllamaManager. Nil means local models are unavailable.
+	ollamaMgr OllamaManager
 }
 
 func NewManager(ctx context.Context, s *store.SQLiteStore, wm *git.WorktreeManager, backendPort int) *Manager {
@@ -384,8 +389,32 @@ func (m *Manager) StartConversation(ctx context.Context, sessionID, conversation
 	}
 
 	// Determine which backend to use for this conversation.
+	// Local models (Gemma, etc.) always use the native loop — agent-runner only supports Anthropic.
 	backendType := BackendAgentRunner
-	if opts != nil && opts.Backend == BackendNative {
+	if IsLocalModel(procOpts.Model) {
+		backendType = BackendNative
+		if m.ollamaMgr == nil {
+			return nil, fmt.Errorf("local model %q requested but Ollama manager not configured", procOpts.Model)
+		}
+		// Fast path: if Ollama is already running and process is alive, resolve
+		// the endpoint immediately so the conversation can start without delay.
+		// IsAlive is a cheap process-state check (no HTTP call).
+		if m.ollamaMgr.IsAlive() {
+			if err := m.ollamaMgr.EnsureModelAvailable(ctx, procOpts.Model); err == nil {
+				procOpts.OllamaEndpoint = m.ollamaMgr.Endpoint()
+				m.ollamaMgr.TouchActivity()
+			}
+			// If EnsureModelAvailable fails, fall through to the slow path below.
+		}
+		// Slow path: Install, start, and pull happen in a goroutine so the HTTP
+		// response returns immediately. The conversation is created in an "idle"
+		// state and the backend starts once preparation finishes. Progress is
+		// streamed via WebSocket (OllamaProgressBlock).
+		if procOpts.OllamaEndpoint == "" {
+			go m.prepareOllamaAndStart(convID, sessionID, session, procOpts, initialMessage, conversationType, opts)
+			return conv, nil
+		}
+	} else if opts != nil && opts.Backend == BackendNative {
 		backendType = BackendNative
 	} else if os.Getenv("CHATML_NATIVE_LOOP") == "1" {
 		backendType = BackendNative
@@ -396,6 +425,10 @@ func (m *Manager) StartConversation(ctx context.Context, sessionID, conversation
 	if backendType == BackendNative {
 		nativeBackend, provErr := m.createNativeBackend(ctx, procOpts)
 		if provErr != nil {
+			// Local models require the native backend — agent-runner only supports Anthropic.
+			if IsLocalModel(procOpts.Model) {
+				return nil, fmt.Errorf("native backend required for local model %q: %w", procOpts.Model, provErr)
+			}
 			logger.Manager.Warnf("Failed to create native backend, falling back to agent-runner: %v", provErr)
 			backendType = BackendAgentRunner
 		} else {
@@ -3529,10 +3562,145 @@ func (m *Manager) SetNativeBackendFactory(factory NativeBackendFactory) {
 	m.nativeBackendFactory = factory
 }
 
+// OllamaManager is the interface for managing a bundled Ollama process.
+// Defined as an interface to avoid circular imports between agent and ollama packages.
+type OllamaManager interface {
+	IsInstalled() bool
+	IsRunning() bool
+	IsAlive() bool // Cheap process-state check (no HTTP call)
+	Endpoint() string
+	EnsureRunning(ctx context.Context) error
+	Install(ctx context.Context) error
+	EnsureModelAvailable(ctx context.Context, model string) error
+	TouchActivity()
+}
+
+// SetOllamaManager registers the Ollama lifecycle manager.
+// Call this at app startup after creating the ollama.Manager.
+func (m *Manager) SetOllamaManager(mgr OllamaManager) {
+	m.ollamaMgr = mgr
+}
+
+// prepareOllamaAndStart runs Ollama installation, startup, and model pull in
+// the background, then creates the native backend and starts the conversation.
+// This avoids blocking the StartConversation HTTP handler for multi-minute
+// download/pull operations. Progress is streamed via WebSocket events.
+func (m *Manager) prepareOllamaAndStart(convID, sessionID string, session *models.Session, procOpts ProcessOptions, initialMessage string, conversationType string, opts *StartConversationOptions) {
+	ctx := context.Background()
+
+	fail := func(reason string) {
+		logger.Manager.Errorf("ollama prepare failed for conversation %s: %s", convID, reason)
+		if err := m.store.UpdateConversation(ctx, convID, func(c *models.Conversation) {
+			c.Status = models.ConversationStatusIdle
+		}); err != nil {
+			logger.Manager.Errorf("Failed to update conversation status after ollama failure: %v", err)
+		}
+		if m.onConversationStatus != nil {
+			m.onConversationStatus(convID, models.ConversationStatusIdle)
+		}
+	}
+
+	if err := m.ollamaMgr.Install(ctx); err != nil {
+		fail(fmt.Sprintf("install ollama: %v", err))
+		return
+	}
+	if err := m.ollamaMgr.EnsureRunning(ctx); err != nil {
+		fail(fmt.Sprintf("start ollama: %v", err))
+		return
+	}
+	if err := m.ollamaMgr.EnsureModelAvailable(ctx, procOpts.Model); err != nil {
+		fail(fmt.Sprintf("ensure model available: %v", err))
+		return
+	}
+	procOpts.OllamaEndpoint = m.ollamaMgr.Endpoint()
+	m.ollamaMgr.TouchActivity()
+
+	// Create and start the native backend
+	backend, err := m.createNativeBackend(ctx, procOpts)
+	if err != nil {
+		fail(fmt.Sprintf("create native backend: %v", err))
+		return
+	}
+
+	m.mu.Lock()
+	m.convProcesses[convID] = backend
+	m.mu.Unlock()
+
+	if err := backend.Start(); err != nil {
+		fail(fmt.Sprintf("start backend: %v", err))
+		return
+	}
+
+	go m.handleConversationOutput(convID, backend, BackendNative)
+	go m.handleConversationCompletion(convID, backend)
+
+	// Auto-transition session taskStatus
+	if session.TaskStatus == models.TaskStatusBacklog {
+		if err := m.store.UpdateSession(ctx, sessionID, func(s *models.Session) {
+			if s.TaskStatus == models.TaskStatusBacklog {
+				s.TaskStatus = models.TaskStatusInProgress
+			}
+		}); err != nil {
+			logger.Manager.Errorf("Failed to auto-update taskStatus for session %s: %v", sessionID, err)
+		} else if m.onSessionEvent != nil {
+			m.onSessionEvent(sessionID, map[string]interface{}{
+				"type":       "session_task_status_update",
+				"taskStatus": models.TaskStatusInProgress,
+			})
+		}
+	}
+
+	// Send the initial message
+	if initialMessage != "" {
+		var attachments []models.Attachment
+		if opts != nil && len(opts.Attachments) > 0 {
+			attachments = opts.Attachments
+		}
+
+		msg := models.Message{
+			ID:          uuid.New().String()[:8],
+			Role:        "user",
+			Content:     initialMessage,
+			Attachments: attachments,
+			Timestamp:   time.Now(),
+		}
+		if err := m.store.AddMessageToConversation(ctx, convID, msg); err != nil {
+			logger.Manager.Errorf("Failed to store initial user message: %v", err)
+		}
+
+		if len(attachments) > 0 {
+			if err := m.store.SaveAttachments(ctx, msg.ID, attachments); err != nil {
+				logger.Manager.Errorf("Failed to save attachments: %v", err)
+			}
+		}
+
+		if err := backend.SendMessageWithAttachments(initialMessage, attachments); err != nil {
+			logger.Manager.Errorf("Failed to send initial message for conversation %s: %v", convID, err)
+		}
+
+		// Generate session title
+		if conversationType == models.ConversationTypeTask && m.claimAutoName(ctx, sessionID) {
+			go m.generateAndApplySessionTitle(sessionID, convID, initialMessage)
+		}
+	}
+}
+
+// IsLocalModel returns true if the model ID corresponds to a local Ollama model.
+// Delegates to ollama.IsLocalModel which is the single source of truth for the
+// local model catalog.
+func IsLocalModel(model string) bool {
+	return ollama.IsLocalModel(model)
+}
+
 // createNativeBackend creates a ConversationBackend backed by the native Go agentic loop.
 func (m *Manager) createNativeBackend(ctx context.Context, opts ProcessOptions) (ConversationBackend, error) {
 	if m.nativeBackendFactory == nil {
 		return nil, fmt.Errorf("native backend factory not registered")
+	}
+
+	// Local models don't require cloud API credentials
+	if IsLocalModel(opts.Model) {
+		return m.nativeBackendFactory(opts, "", "")
 	}
 
 	// Extract credentials from the ai.Client
