@@ -9,7 +9,7 @@ vi.mock('@/stores/appStore', () => ({
   },
 }));
 
-const { getModelDisplayName, getModelInfo, getModelDescription, buildTurnConfigLabel, MODELS, toShortDisplayName, isDefaultRecommended } = await import('../models');
+const { getModelDisplayName, getModelInfo, getModelDescription, buildTurnConfigLabel, MODELS, toShortDisplayName, isDefaultRecommended, toModelFamily, deduplicateByFamily, buildDeduplicatedModelIds } = await import('../models');
 
 describe('getModelDisplayName', () => {
   it('returns short display name for known static models', () => {
@@ -244,5 +244,80 @@ describe('buildTurnConfigLabel', () => {
   it('omits fast label when fastModeState is off', () => {
     const label = buildTurnConfigLabel({ model: 'claude-opus-4-6', fastModeState: 'off' });
     expect(label).toBe('Opus 4.6 (1M context)');
+  });
+});
+
+describe('toModelFamily', () => {
+  it('returns "opus" for opus variants', () => {
+    expect(toModelFamily('claude-opus-4-6')).toBe('opus');
+    expect(toModelFamily('claude-opus-4')).toBe('opus');
+    expect(toModelFamily('claude-opus-4-6[1m]')).toBe('opus');
+  });
+
+  it('returns "sonnet" for sonnet variants', () => {
+    expect(toModelFamily('claude-sonnet-4-6')).toBe('sonnet');
+    expect(toModelFamily('claude-sonnet-4-6-20260301')).toBe('sonnet');
+  });
+
+  it('returns "haiku" for haiku variants', () => {
+    expect(toModelFamily('claude-haiku-4-5-20251001')).toBe('haiku');
+  });
+
+  it('returns full ID for unknown models', () => {
+    expect(toModelFamily('custom-model')).toBe('custom-model');
+    expect(toModelFamily('arn:aws:bedrock:us-east-1:123:profile/abc')).toBe('arn:aws:bedrock:us-east-1:123:profile/abc');
+  });
+});
+
+describe('deduplicateByFamily', () => {
+  it('collapses two opus variants into one, preferring catalog match', () => {
+    const input = [
+      { id: 'claude-opus-4', name: 'Opus (1M context)' },
+      { id: 'claude-opus-4-6', name: 'Opus 4.6 (1M context)' },
+    ];
+    const result = deduplicateByFamily(input);
+    expect(result).toHaveLength(1);
+    expect(result[0].id).toBe('claude-opus-4-6');
+  });
+
+  it('keeps first entry when both match catalog', () => {
+    const input = [
+      { id: 'claude-opus-4-6', name: 'Opus 4.6 (1M context)' },
+      { id: 'claude-opus-4-6[1m]', name: 'Opus 4.6 (1M context)' },
+    ];
+    const result = deduplicateByFamily(input);
+    expect(result).toHaveLength(1);
+    expect(result[0].id).toBe('claude-opus-4-6');
+  });
+
+  it('preserves different tiers', () => {
+    const input = [
+      { id: 'claude-opus-4-6', name: 'Opus 4.6' },
+      { id: 'claude-sonnet-4-6', name: 'Sonnet 4.6' },
+      { id: 'claude-haiku-4-5', name: 'Haiku 4.5' },
+    ];
+    expect(deduplicateByFamily(input)).toHaveLength(3);
+  });
+
+  it('does not collapse unknown models with different IDs', () => {
+    const input = [
+      { id: 'custom-model-a', name: 'Model A' },
+      { id: 'custom-model-b', name: 'Model B' },
+    ];
+    expect(deduplicateByFamily(input)).toHaveLength(2);
+  });
+});
+
+describe('buildDeduplicatedModelIds — family dedup', () => {
+  it('collapses opus variants that produce different display names', () => {
+    const dynamic = [
+      { value: 'claude-opus-4-6', displayName: 'Claude Opus 4.6 (1M context)' },
+      { value: 'claude-opus-4', displayName: 'Claude Opus (1M context)' },
+      { value: 'claude-sonnet-4-6', displayName: 'Claude Sonnet 4.6' },
+    ];
+    const result = buildDeduplicatedModelIds(dynamic);
+    const opusEntries = result.filter((id) => id.toLowerCase().includes('opus'));
+    expect(opusEntries).toHaveLength(1);
+    expect(opusEntries[0]).toBe('claude-opus-4-6');
   });
 });
