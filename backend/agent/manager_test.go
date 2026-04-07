@@ -806,7 +806,7 @@ func TestHandleConversationOutput_EmitsDropWarning(t *testing.T) {
 	// Run handler (blocking, returns when channel closed)
 	done := make(chan struct{})
 	go func() {
-		m.handleConversationOutput("conv-warn", proc)
+		m.handleConversationOutput("conv-warn", proc, BackendAgentRunner)
 		close(done)
 	}()
 
@@ -853,7 +853,7 @@ func TestHandleConversationOutput_NoWarningWhenNoDrops(t *testing.T) {
 
 	done := make(chan struct{})
 	go func() {
-		m.handleConversationOutput("conv-no-drop", proc)
+		m.handleConversationOutput("conv-no-drop", proc, BackendAgentRunner)
 		close(done)
 	}()
 
@@ -893,7 +893,7 @@ func TestHandleConversationOutput_ForwardsEvents(t *testing.T) {
 
 	done := make(chan struct{})
 	go func() {
-		m.handleConversationOutput("conv-forward", proc)
+		m.handleConversationOutput("conv-forward", proc, BackendAgentRunner)
 		close(done)
 	}()
 
@@ -937,7 +937,7 @@ func TestHandleConversationOutput_FinalDropReport(t *testing.T) {
 
 	done := make(chan struct{})
 	go func() {
-		m.handleConversationOutput("conv-final", proc)
+		m.handleConversationOutput("conv-final", proc, BackendAgentRunner)
 		close(done)
 	}()
 

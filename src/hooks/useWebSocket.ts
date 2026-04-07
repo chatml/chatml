@@ -232,6 +232,7 @@ export function useWebSocket(enabled: boolean = true) {
           effort: (event?.budgetConfig as Record<string, unknown> | undefined)?.effort as string | undefined,
           permissionMode: event?.permissionMode as string | undefined,
           fastModeState: event?.fastModeState as 'off' | 'cooldown' | 'on' | undefined,
+          backendType: event?.backendType as string | undefined,
         });
         // Extract MCP tools grouped by server from the tools list
         if (event?.tools && Array.isArray(event.tools)) {

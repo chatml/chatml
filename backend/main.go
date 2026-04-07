@@ -15,8 +15,9 @@ import (
 
 	"github.com/chatml/chatml-backend/agent"
 	"github.com/chatml/chatml-backend/appdir"
-	"github.com/chatml/chatml-backend/loop"
 	"github.com/chatml/chatml-backend/branch"
+	"github.com/chatml/chatml-backend/loop"
+	"github.com/chatml/chatml-backend/loop/chatml"
 	"github.com/chatml/chatml-backend/git"
 	"github.com/chatml/chatml-backend/github"
 	"github.com/chatml/chatml-backend/linear"
@@ -149,7 +150,11 @@ func main() {
 	}()
 
 	agentMgr := agent.NewManager(ctx, s, wm, actualPort)
-	agentMgr.SetNativeBackendFactory(loop.NewBackendFactory())
+	// Services for native loop ChatML tools. PRWatcher is set later (line ~410)
+	// because it depends on ghClient which is created after this point.
+	// The factory closure captures the pointer so it sees the updated field.
+	nativeSvc := &chatml.Services{Store: s}
+	agentMgr.SetNativeBackendFactory(loop.NewBackendFactory(nativeSvc, git.NewRepoManager()))
 	if err := agentMgr.Init(ctx); err != nil {
 		logger.Main.Errorf("Agent manager init: %v", err)
 	}
@@ -453,6 +458,10 @@ func main() {
 		}()
 	})
 	defer prWatcher.Close()
+	// Backfill for native loop ChatML tools. Safe because HTTP handlers
+	// (which invoke the factory) are registered after this assignment,
+	// guaranteeing happens-before ordering per the Go memory model.
+	nativeSvc.PRWatcher = prWatcher
 
 	// Initialize PR watches for existing sessions
 	// Include archived sessions since PRs may still exist for them

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -135,36 +136,84 @@ func NewBackendFactory() agent.NativeBackendFactory {
 			runner.fallbackModel = "claude-sonnet-4-6"
 		}
 
-		// Connect to MCP servers from .mcp.json and register their tools
-		if opts.Workdir != "" && !opts.SkipDotMcp {
-			mcpMgr := mcp.NewManager()
-			configs, err := mcp.LoadMCPConfig(opts.Workdir)
-			if err != nil {
-				log.Printf("warning: failed to load .mcp.json: %v", err)
-			}
+		// Connect to external MCP servers and register their tools.
+		// Config sources in merge order (earlier name wins on collision):
+		// 1. .mcp.json (project-level, if trusted)
+		// 2. ~/.claude/settings.json mcpServers (user-level, always trusted)
+		// 3. .claude/settings.json mcpServers (project-level, if trusted)
+		// 4. opts.McpServersJSON (backend-provided user configs)
+		mcpMgr := mcp.NewManager()
+		var allConfigs []mcp.ServerConfig
+		seen := make(map[string]bool)
+		addConfigs := func(configs []mcp.ServerConfig) {
 			for _, cfg := range configs {
-				if !cfg.Enabled {
-					continue
+				if !seen[cfg.Name] {
+					seen[cfg.Name] = true
+					allConfigs = append(allConfigs, cfg)
 				}
-				if cfg.Type != "" && cfg.Type != "stdio" {
-					log.Printf("warning: skipping MCP server %q (unsupported transport: %s)", cfg.Name, cfg.Type)
-					continue
-				}
-				connCtx, connCancel := context.WithTimeout(context.Background(), 15*time.Second)
-				if _, err := mcpMgr.ConnectServer(connCtx, cfg); err != nil {
-					log.Printf("warning: failed to connect MCP server %q: %v", cfg.Name, err)
-				} else {
-					log.Printf("Connected MCP server: %s", cfg.Name)
-				}
-				connCancel()
 			}
-			count := mcpMgr.RegisterTools(registry)
-			if count > 0 {
-				log.Printf("Registered %d MCP tools from %d servers", count, len(mcpMgr.ConnectedServers()))
-			}
-			// Store manager for cleanup
-			runner.mcpManager = mcpMgr
 		}
+
+		// 1. .mcp.json from workspace (project-level, gated by trust)
+		if opts.Workdir != "" && !opts.SkipDotMcp {
+			if configs, err := mcp.LoadMCPConfig(opts.Workdir); err != nil {
+				log.Printf("warning: failed to load .mcp.json: %v", err)
+			} else {
+				addConfigs(configs)
+			}
+		}
+
+		// 2. ~/.claude/settings.json (user-level, always trusted)
+		if home, err := os.UserHomeDir(); err == nil {
+			if configs, err := mcp.LoadMCPConfigFromSettings(filepath.Join(home, ".claude", "settings.json")); err == nil {
+				addConfigs(configs)
+			}
+		}
+
+		// 3. .claude/settings.json (project-level, gated by trust)
+		if opts.Workdir != "" && !opts.SkipDotMcp {
+			if configs, err := mcp.LoadMCPConfigFromSettings(filepath.Join(opts.Workdir, ".claude", "settings.json")); err == nil {
+				addConfigs(configs)
+			}
+		}
+
+		// 4. Backend-provided MCP servers from user settings. Trusted because
+		//    configs are validated by the backend before storage (the settings
+		//    API only accepts well-formed server configs) and only the session
+		//    owner can write to their own settings. The Command field is
+		//    executed via exec.Command — do not expose this path to untrusted input.
+		if opts.McpServersJSON != "" {
+			var backendConfigs []mcp.ServerConfig
+			if err := json.Unmarshal([]byte(opts.McpServersJSON), &backendConfigs); err != nil {
+				log.Printf("warning: failed to parse McpServersJSON: %v", err)
+			} else {
+				addConfigs(backendConfigs)
+			}
+		}
+
+		// Connect to each enabled server
+		for _, cfg := range allConfigs {
+			if !cfg.Enabled {
+				continue
+			}
+			if cfg.Type != "" && cfg.Type != "stdio" {
+				log.Printf("warning: skipping MCP server %q (unsupported transport: %s)", cfg.Name, cfg.Type)
+				continue
+			}
+			connCtx, connCancel := context.WithTimeout(context.Background(), 15*time.Second)
+			if _, err := mcpMgr.ConnectServer(connCtx, cfg); err != nil {
+				log.Printf("warning: failed to connect MCP server %q: %v", cfg.Name, err)
+			} else {
+				log.Printf("Connected MCP server: %s", cfg.Name)
+			}
+			connCancel()
+		}
+
+		count := mcpMgr.RegisterTools(registry)
+		if count > 0 {
+			log.Printf("Registered %d MCP tools from %d servers", count, len(mcpMgr.ConnectedServers()))
+		}
+		runner.mcpManager = mcpMgr
 
 		// Initialize hook engine from multiple sources:
 		// 1. User-level hooks (~/.claude/settings.json)

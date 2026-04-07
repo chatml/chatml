@@ -1638,6 +1638,23 @@ func (r *Runner) EndTurnAndTakePending() *core.Message {
 	return msg
 }
 
+// TakePendingUserMessage returns and clears the pending user message
+// without changing the active turn state. Returns nil if no message is pending.
+// Used to discard a deferred message when SendMessage fails.
+func (r *Runner) TakePendingUserMessage() *core.Message {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	msg := r.pendingUserMessage
+	r.pendingUserMessage = nil
+	return msg
+}
+
+// RegisterTool adds a tool to the runner's tool registry.
+// Used by the backend adapter to register ChatML-specific tools after core initialization.
+func (r *Runner) RegisterTool(t tool.Tool) {
+	r.toolRegistry.Register(t)
+}
+
 func (r *Runner) SetSawErrorEvent() {
 	r.mu.Lock()
 	r.sawErrorEvent = true

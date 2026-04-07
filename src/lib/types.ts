@@ -348,6 +348,7 @@ export interface AgentEvent {
     effort?: string;
   };
   fastModeState?: 'off' | 'cooldown' | 'on';
+  backendType?: string;
 
   // Tool approval fields
   toolInput?: Record<string, unknown>;
