@@ -1227,7 +1227,7 @@ const preToolUseHook: HookCallback = async (input, toolUseId) => {
       }
     } else if (hookInput.tool_name === "Read") {
       const readInput = hookInput.tool_input as { file_path?: string };
-      if (readInput.file_path?.includes("/.claude/plans/")) {
+      if (readInput.file_path?.includes("/.claude/plans/") || readInput.file_path?.includes("/.chatml/plans/")) {
         lastPlanFilePath = readInput.file_path;
       }
     }

@@ -50,6 +50,9 @@ export function extractTurnFileChanges(toolUsage: ToolUsage[]): TurnFileChange[]
     const filePath = tu.params?.file_path as string | undefined;
     if (!filePath) continue;
 
+    // Skip internal agent files (plans, memory, settings, etc.)
+    if (filePath.includes('/.chatml/') || filePath.includes('/.claude/')) continue;
+
     if (WRITE_TOOLS.has(tu.tool)) {
       const content = tu.params?.content as string | undefined;
       const trimmed = content?.endsWith('\n') ? content.slice(0, -1) : content;
