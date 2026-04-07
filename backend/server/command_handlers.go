@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/chatml/chatml-backend/logger"
+	"github.com/chatml/chatml-core/paths"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -47,63 +48,70 @@ func (h *Handlers) ListUserCommands(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	commandsDir := filepath.Join(workingPath, ".claude", "commands")
+	// Check both .chatml/commands and .claude/commands directories
+	primaryDir, fallbackDir := paths.CommandsDirPaths(workingPath)
 
 	commands := []UserCommand{}
+	seenNames := make(map[string]bool)
 
-	entries, err := os.ReadDir(commandsDir)
-	if err != nil {
-		if os.IsNotExist(err) {
-			// No commands directory — return empty list
-			writeJSON(w, commands)
-			return
-		}
-		writeInternalError(w, "failed to read commands directory", err)
-		return
-	}
-
-	for _, entry := range entries {
-		if entry.IsDir() {
-			continue
-		}
-		if !strings.HasSuffix(entry.Name(), ".md") {
-			continue
-		}
-
-		name := strings.TrimSuffix(entry.Name(), ".md")
-		fullPath := filepath.Join(commandsDir, entry.Name())
-
-		// Skip symlinks to prevent reading files outside the worktree
-		if entry.Type()&os.ModeSymlink != 0 {
-			logger.Handlers.Warnf("Skipping symlink command file %s", fullPath)
-			continue
-		}
-
-		// Skip files that exceed the size limit
-		info, err := entry.Info()
+	for _, commandsDir := range []string{primaryDir, fallbackDir} {
+		entries, err := os.ReadDir(commandsDir)
 		if err != nil {
-			logger.Handlers.Warnf("Failed to stat command file %s: %v", fullPath, err)
-			continue
-		}
-		if info.Size() > maxCommandFileSize {
-			logger.Handlers.Warnf("Skipping oversized command file %s (%d bytes, limit %d)", fullPath, info.Size(), maxCommandFileSize)
 			continue
 		}
 
-		content, err := os.ReadFile(fullPath)
-		if err != nil {
-			logger.Handlers.Warnf("Failed to read command file %s: %v", fullPath, err)
-			continue
+		for _, entry := range entries {
+			if entry.IsDir() {
+				continue
+			}
+			if !strings.HasSuffix(entry.Name(), ".md") {
+				continue
+			}
+
+			name := strings.TrimSuffix(entry.Name(), ".md")
+
+			// Dedup: primary dir wins over fallback
+			if seenNames[name] {
+				continue
+			}
+
+			fullPath := filepath.Join(commandsDir, entry.Name())
+
+			// Skip symlinks to prevent reading files outside the worktree
+			if entry.Type()&os.ModeSymlink != 0 {
+				logger.Handlers.Warnf("Skipping symlink command file %s", fullPath)
+				continue
+			}
+
+			// Skip files that exceed the size limit
+			info, err := entry.Info()
+			if err != nil {
+				logger.Handlers.Warnf("Failed to stat command file %s: %v", fullPath, err)
+				continue
+			}
+			if info.Size() > maxCommandFileSize {
+				logger.Handlers.Warnf("Skipping oversized command file %s (%d bytes, limit %d)", fullPath, info.Size(), maxCommandFileSize)
+				continue
+			}
+
+			content, err := os.ReadFile(fullPath)
+			if err != nil {
+				logger.Handlers.Warnf("Failed to read command file %s: %v", fullPath, err)
+				continue
+			}
+
+			seenNames[name] = true
+			description := extractFirstLine(string(content))
+
+			// Compute relative path from workspace
+			relDir, _ := filepath.Rel(workingPath, commandsDir)
+			commands = append(commands, UserCommand{
+				Name:        name,
+				Description: description,
+				FilePath:    filepath.Join(relDir, entry.Name()),
+				Content:     string(content),
+			})
 		}
-
-		description := extractFirstLine(string(content))
-
-		commands = append(commands, UserCommand{
-			Name:        name,
-			Description: description,
-			FilePath:    filepath.Join(".claude", "commands", entry.Name()),
-			Content:     string(content),
-		})
 	}
 
 	writeJSON(w, commands)

@@ -4,20 +4,21 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"path/filepath"
 	"time"
+
+	"github.com/chatml/chatml-core/paths"
 )
 
 // ReadClaudeCodeCredentialsFile reads Claude Code OAuth credentials from
 // ~/.claude/.credentials.json. This serves as a fallback when keychain/
 // secret-service access fails (e.g., due to ACL restrictions in release builds).
 func ReadClaudeCodeCredentialsFile() (string, error) {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", fmt.Errorf("resolving home directory: %w", err)
+	// Check .chatml first, then .claude fallback
+	primary, fallback := paths.CredentialsPaths()
+	path := paths.FindFirst(primary, fallback)
+	if path == "" {
+		return "", fmt.Errorf("no credentials file found")
 	}
-
-	path := filepath.Join(home, ".claude", ".credentials.json")
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return "", fmt.Errorf("reading credentials file: %w", err)

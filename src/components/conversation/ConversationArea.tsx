@@ -527,7 +527,11 @@ export function ConversationArea({ children }: ConversationAreaProps) {
 
     try {
       // Call backend API to create conversation with proper setupInfo
-      const newConv = await createConversation(selectedWorkspaceId, selectedSessionId, { type });
+      const defaultBackend = useSettingsStore.getState().defaultBackend;
+      const newConv = await createConversation(selectedWorkspaceId, selectedSessionId, {
+        type,
+        backend: defaultBackend !== 'agent-runner' ? defaultBackend : undefined,
+      });
 
       // Add to store with messages from backend (includes setupInfo)
       // addConversation automatically adds conversation.messages to the messages array

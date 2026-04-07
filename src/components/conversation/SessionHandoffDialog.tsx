@@ -11,6 +11,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Loader2, ArrowRight } from 'lucide-react';
 import { useAppStore } from '@/stores/appStore';
+import { useSettingsStore } from '@/stores/settingsStore';
 import { generateSummary, createConversation, toStoreMessage } from '@/lib/api';
 
 interface SessionHandoffDialogProps {
@@ -46,9 +47,11 @@ export function SessionHandoffDialog({
 
       // Step 2: Create a new conversation with the summary linked
       setStatus('creating');
+      const defaultBackend = useSettingsStore.getState().defaultBackend;
       const newConv = await createConversation(workspaceId, sessionId, {
         type: 'task',
         summaryIds: [summary.conversationId],
+        backend: defaultBackend !== 'agent-runner' ? defaultBackend : undefined,
       });
 
       // Step 3: Add to store and navigate

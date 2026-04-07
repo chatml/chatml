@@ -301,11 +301,13 @@ export function useReviewTrigger() {
           isInstruction: true,
         };
 
+        const defaultBackend = useSettingsStore.getState().defaultBackend;
         const conv = await createConversation(selectedWorkspaceId, selectedSessionId, {
           type: 'review',
           message: shortContent,
           model: reviewModel,
           attachments: [templateAttachment],
+          backend: defaultBackend !== 'agent-runner' ? defaultBackend : undefined,
         });
         trackEvent('review_started', { type: reviewType });
 

@@ -1,0 +1,8 @@
+# Build artifacts (root-level binaries only)
+/nativeloop
+/chatml-backend
+cmd/relay/relay
+
+# Go test artifacts
+*.test
+*.out

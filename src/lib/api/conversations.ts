@@ -220,6 +220,7 @@ export async function createConversation(
       labels: string[];
     };
     linkedWorkspaceIds?: string[];
+    backend?: 'agent-runner' | 'native';
   }
 ): Promise<ConversationDTO> {
   const res = await fetchWithAuth(
@@ -429,7 +430,7 @@ export async function setConversationPermissionMode(
 export async function approveTool(
   convId: string,
   requestId: string,
-  action: 'allow_once' | 'allow_session' | 'allow_always' | 'deny_once' | 'deny_always',
+  action: 'allow_once' | 'allow_session' | 'deny_once' | 'deny_always',
   specifier?: string,
   updatedInput?: Record<string, unknown>,
 ): Promise<void> {
@@ -441,6 +442,28 @@ export async function approveTool(
       action,
       ...(specifier && { specifier }),
       ...(updatedInput && { updatedInput }),
+    }),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new ApiError(text || `HTTP ${res.status}`, res.status, text);
+  }
+}
+
+// Approve or deny multiple pending tool execution requests in a batch
+export async function approveBatchTools(
+  convId: string,
+  requestId: string,
+  action: 'allow_once' | 'allow_session' | 'deny_once' | 'deny_always',
+  perTool?: Record<string, { action: string; specifier?: string; updatedInput?: Record<string, unknown> }>,
+): Promise<void> {
+  const res = await fetchWithAuth(`${getApiBase()}/api/conversations/${convId}/approve-batch-tools`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      requestId,
+      action,
+      ...(perTool && { perTool }),
     }),
   });
   if (!res.ok) {

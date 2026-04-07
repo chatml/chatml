@@ -71,6 +71,7 @@ type CreateConversationRequest struct {
 		Labels      []string `json:"labels"`
 	} `json:"linearIssue,omitempty"` // Linked Linear issue (optional)
 	LinkedWorkspaceIDs []string `json:"linkedWorkspaceIds,omitempty"` // Additional workspace IDs for context (optional)
+	Backend            string   `json:"backend,omitempty"`            // "agent-runner" (default) or "native" (Go loop)
 }
 
 func (h *Handlers) CreateConversation(w http.ResponseWriter, r *http.Request) {
@@ -95,6 +96,12 @@ func (h *Handlers) CreateConversation(w http.ResponseWriter, r *http.Request) {
 	// Default to "task" type if not specified
 	if req.Type == "" {
 		req.Type = "task"
+	}
+
+	// Validate backend field
+	if req.Backend != "" && req.Backend != "agent-runner" && req.Backend != "native" {
+		writeValidationError(w, `backend must be "agent-runner" or "native"`)
+		return
 	}
 
 	// Build instructions from attached summaries
@@ -196,7 +203,7 @@ func (h *Handlers) CreateConversation(w http.ResponseWriter, r *http.Request) {
 
 	// Build options for starting the conversation
 	var opts *agent.StartConversationOptions
-	if req.MaxThinkingTokens > 0 || len(req.Attachments) > 0 || req.PlanMode || req.FastMode || instructions != "" || req.Model != "" || req.Effort != "" || req.PermissionMode != "" {
+	if req.MaxThinkingTokens > 0 || len(req.Attachments) > 0 || req.PlanMode || req.FastMode || instructions != "" || req.Model != "" || req.Effort != "" || req.PermissionMode != "" || req.Backend != "" {
 		opts = &agent.StartConversationOptions{
 			MaxThinkingTokens: req.MaxThinkingTokens,
 			Effort:            req.Effort,
@@ -206,6 +213,7 @@ func (h *Handlers) CreateConversation(w http.ResponseWriter, r *http.Request) {
 			FastMode:          req.FastMode,
 			Instructions:      instructions,
 			Model:             req.Model,
+			Backend:           req.Backend,
 		}
 	}
 
@@ -823,7 +831,7 @@ func (h *Handlers) ApprovePlan(w http.ResponseWriter, r *http.Request) {
 // ToolApprovalRequest represents user approval/denial of a tool execution request
 type ToolApprovalRequest struct {
 	RequestID    string          `json:"requestId"`
-	Action       string          `json:"action"`                 // allow_once, allow_session, allow_always, deny_once, deny_always
+	Action       string          `json:"action"`                 // allow_once, allow_session, deny_once, deny_always
 	Specifier    string          `json:"specifier,omitempty"`    // Tool-specific specifier (e.g., "npm run *")
 	UpdatedInput json.RawMessage `json:"updatedInput,omitempty"` // User-edited tool input (e.g., modified Bash command)
 }
@@ -843,11 +851,11 @@ func (h *Handlers) ApproveTool(w http.ResponseWriter, r *http.Request) {
 	}
 
 	validActions := map[string]bool{
-		"allow_once": true, "allow_session": true, "allow_always": true,
+		"allow_once": true, "allow_session": true,
 		"deny_once": true, "deny_always": true,
 	}
 	if !validActions[req.Action] {
-		writeValidationError(w, "action must be one of: allow_once, allow_session, allow_always, deny_once, deny_always")
+		writeValidationError(w, "action must be one of: allow_once, allow_session, deny_once, deny_always")
 		return
 	}
 
@@ -856,16 +864,88 @@ func (h *Handlers) ApproveTool(w http.ResponseWriter, r *http.Request) {
 		req.UpdatedInput = nil
 	}
 
-	// Get the process for this conversation
-	proc := h.agentManager.GetConversationProcess(convID)
-	if proc == nil {
-		writeNotFound(w, "no active process for conversation")
+	// Get the backend for this conversation (works for both Process and Runner)
+	backend := h.agentManager.GetConversationBackend(convID)
+	if backend == nil {
+		writeNotFound(w, "no active backend for conversation")
 		return
 	}
 
-	// Send the approval/denial to the agent process
-	if err := proc.SendToolApprovalResponse(req.RequestID, req.Action, req.Specifier, req.UpdatedInput); err != nil {
+	// Send the approval/denial to the conversation backend
+	if err := backend.SendToolApprovalResponse(req.RequestID, req.Action, req.Specifier, req.UpdatedInput); err != nil {
 		writeInternalError(w, "failed to send tool approval", err)
+		return
+	}
+
+	writeJSON(w, map[string]string{"action": req.Action})
+}
+
+// BatchToolApprovalRequest represents user approval/denial of multiple tools at once.
+type BatchToolApprovalRequest struct {
+	RequestID string                          `json:"requestId"`
+	Action    string                          `json:"action"`              // Default action for all tools
+	PerTool   map[string]ToolApprovalOverride `json:"perTool,omitempty"`   // Per-tool overrides keyed by tool use ID
+}
+
+// ToolApprovalOverride is a per-tool decision in a batch response.
+type ToolApprovalOverride struct {
+	Action       string          `json:"action"`
+	Specifier    string          `json:"specifier,omitempty"`
+	UpdatedInput json.RawMessage `json:"updatedInput,omitempty"`
+}
+
+func (h *Handlers) ApproveBatchTools(w http.ResponseWriter, r *http.Request) {
+	convID := chi.URLParam(r, "convId")
+
+	var req BatchToolApprovalRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeValidationError(w, "invalid request body")
+		return
+	}
+
+	if req.RequestID == "" {
+		writeValidationError(w, "requestId is required")
+		return
+	}
+
+	validActions := map[string]bool{
+		"allow_once": true, "allow_session": true,
+		"deny_once": true, "deny_always": true,
+	}
+	if !validActions[req.Action] {
+		writeValidationError(w, "action must be one of: allow_once, allow_session, deny_once, deny_always")
+		return
+	}
+
+	// Validate per-tool action overrides
+	for id, override := range req.PerTool {
+		if !validActions[override.Action] {
+			writeValidationError(w, fmt.Sprintf("invalid action %q for tool %q in perTool", override.Action, id))
+			return
+		}
+	}
+
+	backend := h.agentManager.GetConversationBackend(convID)
+	if backend == nil {
+		writeNotFound(w, "no active backend for conversation")
+		return
+	}
+
+	// Convert handler-level overrides to agent-level overrides
+	var agentPerTool map[string]agent.ToolApprovalOverride
+	if len(req.PerTool) > 0 {
+		agentPerTool = make(map[string]agent.ToolApprovalOverride, len(req.PerTool))
+		for id, override := range req.PerTool {
+			agentPerTool[id] = agent.ToolApprovalOverride{
+				Action:       override.Action,
+				Specifier:    override.Specifier,
+				UpdatedInput: override.UpdatedInput,
+			}
+		}
+	}
+
+	if err := backend.SendBatchToolApprovalResponse(req.RequestID, req.Action, agentPerTool); err != nil {
+		writeInternalError(w, "failed to send batch tool approval", err)
 		return
 	}
 

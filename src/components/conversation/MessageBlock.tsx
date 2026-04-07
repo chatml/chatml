@@ -38,12 +38,14 @@ import { MessageTokenFooter } from '@/components/conversation/MessageTokenFooter
 import { FileChangePills } from '@/components/conversation/FileChangePills';
 
 // Collapsed tool summary with individual ToolUsageBlock instances when expanded
-const ToolUsageSummary = memo(function ToolUsageSummary({ tools, worktreePath, conversationId, messageId, compacted }: { tools: ToolUsage[]; worktreePath?: string; conversationId?: string; messageId?: string; compacted?: boolean }) {
+const ToolUsageSummary = memo(function ToolUsageSummary({ tools, worktreePath, conversationId, messageId, compacted, permissionDenials }: { tools: ToolUsage[]; worktreePath?: string; conversationId?: string; messageId?: string; compacted?: boolean; permissionDenials?: import('@/lib/types').PermissionDenial[] }) {
   const [isOpen, setIsOpen] = useState(false);
   if (tools.length === 0) return null;
 
-  const successCount = tools.filter(t => t.success !== false).length;
-  const failCount = tools.filter(t => t.success === false).length;
+  const deniedIds = new Set(permissionDenials?.map(d => d.toolUseId) ?? []);
+  const successCount = tools.filter(t => t.success !== false && !deniedIds.has(t.id)).length;
+  const failCount = tools.filter(t => t.success === false && !deniedIds.has(t.id)).length;
+  const deniedCount = deniedIds.size;
 
   return (
     <Collapsible open={isOpen} onOpenChange={setIsOpen}>
@@ -53,6 +55,7 @@ const ToolUsageSummary = memo(function ToolUsageSummary({ tools, worktreePath, c
         <span>{tools.length} tool{tools.length !== 1 ? 's' : ''}</span>
         {successCount > 0 && <span className="text-text-success">{successCount} passed</span>}
         {failCount > 0 && <span className="text-destructive">{failCount} failed</span>}
+        {deniedCount > 0 && <span className="text-muted-foreground">{deniedCount} denied</span>}
       </CollapsibleTrigger>
       <CollapsibleContent>
         <div className="mt-1 space-y-0.5">
@@ -65,6 +68,7 @@ const ToolUsageSummary = memo(function ToolUsageSummary({ tools, worktreePath, c
               worktreePath={worktreePath}
               isActive={false}
               success={tool.success}
+              denied={deniedIds.has(tool.id)}
               summary={tool.summary}
               duration={tool.durationMs}
               stdout={tool.stdout}
@@ -222,6 +226,7 @@ export const MessageBlock = memo(function MessageBlock({
                   } else if (entry.type === 'tool') {
                     const tool = message.toolUsage!.find(t => t.id === entry.toolId);
                     if (!tool) return null;
+                    const isDenied = message.runSummary?.permissionDenials?.some(d => d.toolUseId === tool.id) ?? false;
                     return (
                       <ToolUsageBlock
                         key={`tl-tool-${entry.toolId}`}
@@ -230,6 +235,7 @@ export const MessageBlock = memo(function MessageBlock({
                         params={tool.params}
                         isActive={false}
                         success={tool.success}
+                        denied={isDenied}
                         summary={tool.summary}
                         duration={tool.durationMs}
                         stdout={tool.stdout}
@@ -300,7 +306,7 @@ export const MessageBlock = memo(function MessageBlock({
                 section="ToolUsage"
                 fallback={<InlineErrorFallback message="Unable to display tool usage" />}
               >
-                <ToolUsageSummary tools={message.toolUsage} worktreePath={worktreePath} conversationId={message.conversationId} messageId={message.id} compacted={message.compacted} />
+                <ToolUsageSummary tools={message.toolUsage} worktreePath={worktreePath} conversationId={message.conversationId} messageId={message.id} compacted={message.compacted} permissionDenials={message.runSummary?.permissionDenials} />
               </ErrorBoundary>
             )}
 

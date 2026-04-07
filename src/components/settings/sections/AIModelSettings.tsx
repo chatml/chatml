@@ -31,6 +31,8 @@ export function AIModelSettings() {
   const setDefaultPlanMode = useSettingsStore((s) => s.setDefaultPlanMode);
   const defaultFastMode = useSettingsStore((s) => s.defaultFastMode);
   const setDefaultFastMode = useSettingsStore((s) => s.setDefaultFastMode);
+  const defaultBackend = useSettingsStore((s) => s.defaultBackend);
+  const setDefaultBackend = useSettingsStore((s) => s.setDefaultBackend);
   const maxThinkingTokens = useSettingsStore((s) => s.maxThinkingTokens);
   const setMaxThinkingTokens = useSettingsStore((s) => s.setMaxThinkingTokens);
 
@@ -144,6 +146,24 @@ export function AIModelSettings() {
           onReset={() => setDefaultFastMode(SETTINGS_DEFAULTS.defaultFastMode)}
         >
           <Switch checked={defaultFastMode} onCheckedChange={setDefaultFastMode} aria-label="Default to fast mode" />
+        </SettingsRow>
+
+        <SettingsRow
+          settingId="defaultBackend"
+          title="Agentic backend"
+          description="Choose between the existing Agent Runner (Node.js) or the native Go agentic loop"
+          isModified={defaultBackend !== SETTINGS_DEFAULTS.defaultBackend}
+          onReset={() => setDefaultBackend(SETTINGS_DEFAULTS.defaultBackend)}
+        >
+          <Select value={defaultBackend} onValueChange={(v) => setDefaultBackend(v as 'agent-runner' | 'native')}>
+            <SelectTrigger className="w-[200px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="agent-runner">Agent Runner (Node.js)</SelectItem>
+              <SelectItem value="native">Native Go Loop</SelectItem>
+            </SelectContent>
+          </Select>
         </SettingsRow>
 
         {defaultThinkingLevel !== 'off' && (

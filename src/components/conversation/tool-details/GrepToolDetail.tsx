@@ -18,8 +18,9 @@ interface GrepFileGroup {
 
 /**
  * Parse ripgrep-style "content" output into file-grouped matches.
- * Expected format: `filepath:linenum:content` or `filepath-linenum-content` (context lines)
+ * Expected format: `filepath:linenum:content` (ripgrep default with -n)
  * Also handles `filepath` only lines (files_with_matches mode).
+ * Context separator lines (`--`) are skipped.
  */
 function parseGrepOutput(stdout: string, outputMode?: string): GrepFileGroup[] {
   const lines = stdout.split('\n').filter(Boolean);
@@ -35,14 +36,22 @@ function parseGrepOutput(stdout: string, outputMode?: string): GrepFileGroup[] {
   }
 
   // Content mode: parse filepath:linenum:content
+  // ripgrep always uses colon delimiters; the `--` separator between context blocks is skipped
   const groups = new Map<string, GrepMatch[]>();
   const order: string[] = [];
 
   for (const line of lines) {
-    // Match `filepath:linenum:content` or `filepath-linenum-content`
-    const match = line.match(/^(.+?)[:\-](\d+)[:\-](.*)$/);
-    if (match) {
-      const [, filePath, lineStr, content] = match;
+    // Skip context separator lines
+    if (line === '--') continue;
+
+    // Find the first colon that is followed by digits and another colon: filepath:N:content
+    // Walk forward to find the boundary between path and line number.
+    // NOTE: On Windows, paths like C:\foo:42:content would mis-match (lazy .+? stops at
+    // the drive letter colon). Not an issue on macOS, but if Windows support is added,
+    // use /^(?:[A-Za-z]:)?(.+?):(\d+):(.*)$/ to allow a drive-letter prefix.
+    const colonMatch = line.match(/^(.+?):(\d+):(.*)$/);
+    if (colonMatch) {
+      const [, filePath, lineStr, content] = colonMatch;
       const lineNum = parseInt(lineStr, 10);
       if (!groups.has(filePath)) {
         groups.set(filePath, []);

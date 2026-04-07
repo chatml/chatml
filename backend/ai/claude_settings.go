@@ -8,6 +8,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"time"
+
+	"github.com/chatml/chatml-core/paths"
 )
 
 // ClaudeCodeSettings represents the relevant fields from ~/.claude/settings.json.
@@ -21,12 +23,12 @@ type ClaudeCodeSettings struct {
 // ReadClaudeCodeSettings reads Bedrock-related configuration from ~/.claude/settings.json.
 // Returns nil with no error if the file does not exist (it is optional).
 func ReadClaudeCodeSettings() (*ClaudeCodeSettings, error) {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return nil, fmt.Errorf("resolving home directory: %w", err)
+	// Check .chatml first, then .claude fallback
+	primary, fallback := paths.SettingsPaths()
+	path := paths.FindFirst(primary, fallback)
+	if path == "" {
+		return nil, nil // Neither settings file exists
 	}
-
-	path := filepath.Join(home, ".claude", "settings.json")
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {

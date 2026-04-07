@@ -36,7 +36,7 @@ import { useChatInputAttachments } from './useChatInputAttachments';
 import { useChatInputKeyboardShortcuts } from './useChatInputKeyboardShortcuts';
 import { ChatInputPillSuggestions } from './ChatInputPillSuggestions';
 import { ChatInputPlanApproval } from './ChatInputPlanApproval';
-import { ToolApprovalPrompt } from './ToolApprovalPrompt';
+import { ToolApprovalPrompt, BatchToolApprovalPrompt } from './ToolApprovalPrompt';
 import { ChatInputToolbar, type PermissionMode } from './ChatInputToolbar';
 import { DictationWaveform } from './DictationWaveform';
 import { useDictation } from '@/hooks/useDictation';
@@ -459,8 +459,9 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
   // Check if there's a pending plan approval request
   const pendingPlanApproval = streamingInput.pendingPlanApproval;
 
-  // Check if there's a pending tool approval request
+  // Check if there's a pending tool approval request (single or batch)
   const pendingToolApproval = streamingInput.pendingToolApproval;
+  const pendingBatchToolApproval = streamingInput.pendingBatchToolApproval;
 
   // Derive compose button mode from streaming + text + queue state
   const hasText = message.trim().length > 0;
@@ -666,6 +667,7 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
         type: 'task',
         message: pendingPlanApproval.planContent,
         model: selectedModel.id,
+        backend: useSettingsStore.getState().defaultBackend === 'native' ? 'native' : undefined,
       });
 
       addConversation({
@@ -856,6 +858,7 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
             labels: linkedLinearIssue.labels,
           } : undefined,
           linkedWorkspaceIds: linkedWorkspaceIds.length > 0 ? linkedWorkspaceIds : undefined,
+          backend: useSettingsStore.getState().defaultBackend === 'native' ? 'native' : undefined,
         });
 
         // Clear streaming on placeholder before removing it
@@ -1022,9 +1025,15 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
   }
 
   // If there's a pending tool approval, replace the entire composer with the approval UI.
-  // This takes priority over plan approval (which renders inline in the fall-through composer).
-  // In practice, tool approval and plan approval cannot be pending simultaneously: the agent
-  // is blocked waiting for the tool approval before it can emit further plan content.
+  // Batch approval takes priority over single-tool approval to prevent the batch timeout
+  // from expiring while the single-tool prompt is displayed.
+  // NOTE: Both batch and single approvals pending simultaneously should be impossible —
+  // the runner processes approvals sequentially. If it happens due to a state desync,
+  // the single-tool prompt is hidden and will auto-deny after its 55s timeout.
+  if (pendingBatchToolApproval && selectedConversationId) {
+    return <BatchToolApprovalPrompt conversationId={selectedConversationId} />;
+  }
+
   if (pendingToolApproval && selectedConversationId) {
     return <ToolApprovalPrompt conversationId={selectedConversationId} />;
   }

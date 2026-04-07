@@ -3,8 +3,6 @@ package agent
 import (
 	"encoding/json"
 	"strings"
-
-	"github.com/chatml/chatml-backend/ai"
 )
 
 // AgentEvent represents a parsed event from the agent-runner stdout
@@ -91,6 +89,7 @@ type AgentEvent struct {
 	CacheReadInputTokens     int `json:"cacheReadInputTokens,omitempty"`
 	CacheCreationInputTokens int `json:"cacheCreationInputTokens,omitempty"`
 	ContextWindow            int `json:"contextWindow,omitempty"`
+	CumulativeTokens         int `json:"cumulativeTokens,omitempty"`
 
 	// Status fields
 	Status string `json:"status,omitempty"`
@@ -140,12 +139,13 @@ type AgentEvent struct {
 	PlanContent string `json:"planContent,omitempty"`
 
 	// Tool approval fields (non-bypass permission modes)
-	ToolInput interface{} `json:"toolInput,omitempty"`
-	Specifier string     `json:"specifier,omitempty"`
+	ToolInput          interface{}          `json:"toolInput,omitempty"`
+	Specifier          string               `json:"specifier,omitempty"`
+	BatchApprovalItems []BatchApprovalItem  `json:"batchApprovalItems,omitempty"`
 
 	// Input suggestion fields (Haiku-generated prompt suggestions)
 	GhostText string              `json:"ghostText,omitempty"`
-	Pills     []ai.SuggestionPill `json:"pills,omitempty"`
+	Pills json.RawMessage `json:"pills,omitempty"`
 
 	// Tool metadata (structured data extracted from tool results)
 	Metadata map[string]interface{} `json:"metadata,omitempty"`
@@ -247,6 +247,14 @@ type AgentEvent struct {
 type PermissionDenial struct {
 	ToolName  string `json:"toolName"`
 	ToolUseId string `json:"toolUseId"`
+}
+
+// BatchApprovalItem describes a single tool awaiting approval in a batch request.
+type BatchApprovalItem struct {
+	ToolUseID string      `json:"toolUseId"`
+	ToolName  string      `json:"toolName"`
+	ToolInput interface{} `json:"toolInput"`
+	Specifier string      `json:"specifier,omitempty"`
 }
 
 // FilePersistedEntry represents a file that was successfully checkpointed (SDK 0.2.51+)

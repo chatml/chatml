@@ -390,7 +390,11 @@ export function SessionToolbarContent() {
   const handleNewConversation = useCallback(async () => {
     if (!selectedWorkspaceId || !selectedSessionId) return;
     try {
-      const newConv = await createConversation(selectedWorkspaceId, selectedSessionId, { type: 'task' });
+      const defaultBackend = useSettingsStore.getState().defaultBackend;
+      const newConv = await createConversation(selectedWorkspaceId, selectedSessionId, {
+        type: 'task',
+        backend: defaultBackend !== 'agent-runner' ? defaultBackend : undefined,
+      });
       addConversation(toStoreConversation(newConv));
       selectConversation(newConv.id);
     } catch (error) {

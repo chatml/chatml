@@ -9,18 +9,25 @@ import (
 	"strings"
 
 	"github.com/chatml/chatml-backend/models"
+	"github.com/chatml/chatml-core/paths"
 	"github.com/chatml/chatml-backend/skills"
 	"github.com/go-chi/chi/v5"
 	"gopkg.in/yaml.v3"
 )
 
-// skillFileDir returns the path to ~/.claude/skills/chatml-{id}/
+// skillFileDir returns the path to the skill directory.
+// Uses ~/.chatml/skills/{id}/ as primary, falls back to ~/.claude/skills/chatml-{id}/.
 func skillFileDir(skillID string) (string, error) {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", fmt.Errorf("cannot determine home directory: %w", err)
+	primary := paths.SkillDir(skillID)
+	if primary != "" {
+		return primary, nil
 	}
-	return filepath.Join(home, ".claude", "skills", "chatml-"+skillID), nil
+	// Fallback
+	fb := paths.SkillDirFallback(skillID)
+	if fb != "" {
+		return fb, nil
+	}
+	return "", fmt.Errorf("cannot determine home directory for skills")
 }
 
 // writeSkillFile writes a SKILL.md file to ~/.claude/skills/chatml-{id}/SKILL.md
