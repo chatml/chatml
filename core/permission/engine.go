@@ -184,29 +184,29 @@ func (e *Engine) Check(toolName string, input json.RawMessage) CheckResult {
 	}
 
 	// 1.5. Safety checks for bypass mode: dangerous paths/commands require explicit
-	// approval even when all other permissions are bypassed.
-	// NOTE: There is a companion check at step 6.5 for non-bypass modes that runs
-	// AFTER session cache and persistent rules. This split is intentional:
-	// - In bypass mode: no session cache or rules are checked, so we must catch here.
-	// - In other modes: session cache/rules may already allow the command, so we
-	//   defer to step 6.5 (after those lookups) to avoid redundant prompts.
-	// In bypass mode, catch dangerous file writes and commands here (before step 2 allows everything).
-	// For non-bypass modes, companion checks at step 6.5 run AFTER session/rules lookups.
+	// approval even when all other permissions are bypassed — UNLESS the user has
+	// already approved them via session approval or persistent rules (e.g., allow_always).
+	// Without this, approvals for dangerous commands (git, npm, curl, etc.) would be
+	// lost on every new tool call even within the same session.
 	if effectiveMode == ModeBypassPermissions {
+		isDangerous := false
 		if writesToFile(toolName) && specifier != "" && IsDangerousPath(specifier) {
+			isDangerous = true
+		}
+		if toolName == "Bash" && specifier != "" && IsDangerousCommandAST(specifier) {
+			isDangerous = true
+		}
+		if isDangerous {
+			// Check session approvals and persistent rules before prompting.
+			if decision, denyMsg, found := e.checkApprovalsAndRules(ruleKey, toolName, specifier); found {
+				result.Decision = decision
+				result.DenyMessage = denyMsg
+				return result
+			}
 			result.Decision = NeedApproval
 			return result
 		}
-	}
-	if toolName == "Bash" && specifier != "" && IsDangerousCommandAST(specifier) {
-		if effectiveMode == ModeBypassPermissions {
-			result.Decision = NeedApproval
-			return result
-		}
-	}
-
-	// 2. Bypass mode: allow everything (safety checks already handled above)
-	if effectiveMode == ModeBypassPermissions {
+		// Non-dangerous: allow everything
 		result.Decision = Allow
 		return result
 	}
@@ -227,8 +227,9 @@ func (e *Engine) Check(toolName string, input json.RawMessage) CheckResult {
 	}
 
 	// 5. Session approvals cache
-	// NOTE: Session-approved dangerous commands (via allow_session) bypass the 6.5 safety
-	// check for that session. This is by design — session approvals are explicit user decisions.
+	// NOTE: Session-approved dangerous commands (via allow_session) bypass the
+	// dangerous-path safety checks. This is by design — session approvals are
+	// explicit user decisions made during this session.
 	e.mu.RLock()
 	if action, ok := e.sessionApprovals[ruleKey]; ok {
 		e.mu.RUnlock()
@@ -255,7 +256,20 @@ func (e *Engine) Check(toolName string, input json.RawMessage) CheckResult {
 	}
 	e.mu.RUnlock()
 
-	// 6. Persistent rules: deny -> ask -> allow
+	// 6. Dangerous path check for file tools: MUST run BEFORE persistent rules so
+	// that wildcard rules like Write(src/*) cannot silently approve dangerous files
+	// (e.g., src/.bashrc). Session approvals (step 5) are trusted because they
+	// are explicit user decisions made during this session.
+	// NOTE: Bash dangerous-command checks run AFTER persistent rules (step 7.5)
+	// because Bash wildcard rules (e.g., "npm *") are explicit user decisions to
+	// allow command families — unlike file wildcards where the user may not expect
+	// dangerous files to be covered.
+	if writesToFile(toolName) && specifier != "" && IsDangerousPath(specifier) {
+		result.Decision = NeedApproval
+		return result
+	}
+
+	// 7. Persistent rules: deny -> ask -> allow
 	ruleAction := e.rules.Evaluate(toolName, specifier)
 	switch ruleAction {
 	case "deny":
@@ -269,19 +283,15 @@ func (e *Engine) Check(toolName string, input json.RawMessage) CheckResult {
 		// Fall through to NeedApproval
 	}
 
-	// 6.5. Dangerous path/command checks for non-bypass modes. These are the
-	// companions to step 1.5 and catch dangerous operations that were NOT already
-	// allowed by session cache (step 5) or persistent rules (step 6).
-	if writesToFile(toolName) && specifier != "" && IsDangerousPath(specifier) {
-		result.Decision = NeedApproval
-		return result
-	}
+	// 7.5. Dangerous command checks for Bash (after persistent rules).
+	// Unlike file tools, Bash wildcard rules are explicit user choices to allow
+	// command families, so they take priority over the dangerous-command heuristic.
 	if toolName == "Bash" && specifier != "" && IsDangerousCommandAST(specifier) {
 		result.Decision = NeedApproval
 		return result
 	}
 
-	// 7. acceptEdits mode: auto-allow Write/Edit/NotebookEdit WITHIN working directory only
+	// 8. acceptEdits mode: auto-allow Write/Edit/NotebookEdit WITHIN working directory only
 	if effectiveMode == ModeAcceptEdits && acceptEditsTools[toolName] {
 		e.mu.RLock()
 		workdir := e.workdir
@@ -297,16 +307,59 @@ func (e *Engine) Check(toolName string, input json.RawMessage) CheckResult {
 		// File is outside workdir — fall through to NeedApproval
 	}
 
-	// 8. dontAsk mode: deny anything not already allowed by rules
+	// 9. dontAsk mode: deny anything not already allowed by rules or modes
 	if effectiveMode == ModeDontAsk {
 		result.Decision = Deny
 		result.DenyMessage = "Tool not pre-approved (dontAsk mode)"
 		return result
 	}
 
-	// 9. Default: need user approval
+	// 10. Default: need user approval
 	result.Decision = NeedApproval
 	return result
+}
+
+// checkApprovalsAndRules checks session approvals and persistent rules for a tool.
+// Returns (decision, denyMessage, found). If found is false, neither session nor
+// persistent rules cover this tool call and the caller must decide.
+// Used by bypass mode's dangerous-command check (step 1.5) and could be reused
+// elsewhere to avoid duplicating session + rule lookup logic.
+func (e *Engine) checkApprovalsAndRules(ruleKey, toolName, specifier string) (Decision, string, bool) {
+	// Check session approvals (exact match, then tool-wide)
+	if action, found := e.lookupSessionApproval(ruleKey, toolName, specifier); found {
+		if action == "allow" {
+			return Allow, "", true
+		}
+		return Deny, "Tool denied by session rule", true
+	}
+
+	// Check persistent rules
+	ruleAction := e.rules.Evaluate(toolName, specifier)
+	switch ruleAction {
+	case "allow":
+		return Allow, "", true
+	case "deny":
+		return Deny, "Tool denied by permission rule", true
+	}
+
+	return NeedApproval, "", false
+}
+
+// lookupSessionApproval checks session approvals for an exact ruleKey match
+// and a tool-wide match. Returns (action, found). Thread-safe via defer.
+func (e *Engine) lookupSessionApproval(ruleKey, toolName, specifier string) (string, bool) {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+
+	if action, ok := e.sessionApprovals[ruleKey]; ok {
+		return action, true
+	}
+	if specifier != "" {
+		if action, ok := e.sessionApprovals[toolName]; ok {
+			return action, true
+		}
+	}
+	return "", false
 }
 
 // RecordApproval records a user's approval decision into session state.
@@ -345,6 +398,9 @@ func (e *Engine) RecordApproval(ruleKey string, response ApprovalResponse) {
 		} else if idx := strings.Index(ruleKey, ":"); idx > 0 {
 			rule.Specifier = ruleKey[idx+1:]
 		}
+		// Update in-memory rules so wildcard takes effect immediately
+		// (without this, the wildcard only works after the next session reload)
+		e.rules.AddRule(rule)
 		// Fire-and-forget: don't block on I/O, but log errors
 		go func() {
 			if err := SaveRule(rule); err != nil {
@@ -370,6 +426,8 @@ func (e *Engine) RecordApproval(ruleKey string, response ApprovalResponse) {
 		} else if idx := strings.Index(ruleKey, ":"); idx > 0 {
 			rule.Specifier = ruleKey[idx+1:]
 		}
+		// Update in-memory rules so deny takes effect immediately
+		e.rules.AddRule(rule)
 		go func() {
 			if err := SaveRule(rule); err != nil {
 				log.Printf("permission: failed to persist deny rule %s: %v", ruleKey, err)

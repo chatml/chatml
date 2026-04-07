@@ -831,7 +831,7 @@ func (h *Handlers) ApprovePlan(w http.ResponseWriter, r *http.Request) {
 // ToolApprovalRequest represents user approval/denial of a tool execution request
 type ToolApprovalRequest struct {
 	RequestID    string          `json:"requestId"`
-	Action       string          `json:"action"`                 // allow_once, allow_session, deny_once, deny_always
+	Action       string          `json:"action"`                 // allow_once, allow_session, allow_always, deny_once, deny_always
 	Specifier    string          `json:"specifier,omitempty"`    // Tool-specific specifier (e.g., "npm run *")
 	UpdatedInput json.RawMessage `json:"updatedInput,omitempty"` // User-edited tool input (e.g., modified Bash command)
 }
@@ -851,17 +851,29 @@ func (h *Handlers) ApproveTool(w http.ResponseWriter, r *http.Request) {
 	}
 
 	validActions := map[string]bool{
-		"allow_once": true, "allow_session": true,
+		"allow_once": true, "allow_session": true, "allow_always": true,
 		"deny_once": true, "deny_always": true,
 	}
 	if !validActions[req.Action] {
-		writeValidationError(w, "action must be one of: allow_once, allow_session, deny_once, deny_always")
+		writeValidationError(w, "action must be one of: allow_once, allow_session, allow_always, deny_once, deny_always")
 		return
 	}
 
 	// updatedInput is only meaningful for allow actions — clear it on deny
 	if strings.HasPrefix(req.Action, "deny") {
 		req.UpdatedInput = nil
+	}
+
+	// Validate specifier for persistent actions (defense-in-depth)
+	if (req.Action == "allow_always" || req.Action == "deny_always") && req.Specifier != "" {
+		if req.Specifier == "*" {
+			writeValidationError(w, "specifier cannot be a bare wildcard '*' for persistent rules")
+			return
+		}
+		if strings.Contains(req.Specifier, "..") {
+			writeValidationError(w, "specifier cannot contain path traversal sequences for persistent rules")
+			return
+		}
 	}
 
 	// Get the backend for this conversation (works for both Process and Runner)
@@ -909,11 +921,11 @@ func (h *Handlers) ApproveBatchTools(w http.ResponseWriter, r *http.Request) {
 	}
 
 	validActions := map[string]bool{
-		"allow_once": true, "allow_session": true,
+		"allow_once": true, "allow_session": true, "allow_always": true,
 		"deny_once": true, "deny_always": true,
 	}
 	if !validActions[req.Action] {
-		writeValidationError(w, "action must be one of: allow_once, allow_session, deny_once, deny_always")
+		writeValidationError(w, "action must be one of: allow_once, allow_session, allow_always, deny_once, deny_always")
 		return
 	}
 

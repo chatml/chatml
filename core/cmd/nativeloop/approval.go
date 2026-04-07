@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/chatml/chatml-core/permission"
 )
 
 // handleApprovalKey processes key input during tool approval state.
@@ -29,11 +30,14 @@ func handleApprovalKey(m *model, key tea.KeyMsg) tea.Cmd {
 	case "3":
 		m.prompt.approvalSel = 2
 		return submitApproval(m)
+	case "4":
+		m.prompt.approvalSel = 3
+		return submitApproval(m)
 	case "enter":
 		return submitApproval(m)
 	case "esc":
 		// Esc = deny
-		m.prompt.approvalSel = 2
+		m.prompt.approvalSel = 3
 		return submitApproval(m)
 	// Keep legacy y/n/a as quick shortcuts
 	case "y":
@@ -43,20 +47,28 @@ func handleApprovalKey(m *model, key tea.KeyMsg) tea.Cmd {
 		m.prompt.approvalSel = 1
 		return submitApproval(m)
 	case "n":
-		m.prompt.approvalSel = 2
+		m.prompt.approvalSel = 3
 		return submitApproval(m)
 	}
 	return nil
 }
 
 func submitApproval(m *model) tea.Cmd {
-	actions := []string{"allow_once", "allow_session", "deny_once"}
-	labels := []string{"Allowed", "Always allowed", "Denied"}
+	actions := []string{"allow_once", "allow_always", "allow_session", "deny_once"}
+	labels := []string{"Allowed", "Always allowed", "Allowed for session", "Denied"}
 
 	action := actions[m.prompt.approvalSel]
 	label := labels[m.prompt.approvalSel]
 
-	if err := m.backend.SendToolApprovalResponse(m.prompt.approvalID, action, "", nil); err != nil {
+	// For allow_always, use smart wildcard specifier if available
+	specifier := m.prompt.approvalSpecifier
+	if action == "allow_always" {
+		if suggestion := permission.SuggestWildcard(m.prompt.approvalToolName, m.prompt.approvalSpecifier); suggestion != nil {
+			specifier = suggestion.Specifier
+		}
+	}
+
+	if err := m.backend.SendToolApprovalResponse(m.prompt.approvalID, action, specifier, nil); err != nil {
 		m.appendActive(&displayMessage{kind: msgError, content: err.Error()})
 	} else {
 		m.appendActive(&displayMessage{kind: msgSystem, content: "✓ " + label})

@@ -486,3 +486,219 @@ func TestEngine_AllowAlways_CachesInSession(t *testing.T) {
 	result = e.Check("Bash", bashInput("ls"))
 	assert.Equal(t, Allow, result.Decision)
 }
+
+// --- Bypass mode + approvals for dangerous commands ---
+// These verify that session approvals and persistent rules are checked
+// for dangerous commands in bypass mode (step 1.5), instead of always
+// returning NeedApproval.
+
+func TestEngine_BypassMode_DangerousBash_SessionApprovalAllows(t *testing.T) {
+	e := NewEngine(ModeBypassPermissions, nil)
+
+	// git is a dangerous command — first call should need approval
+	result := e.Check("Bash", bashInput("git status"))
+	assert.Equal(t, NeedApproval, result.Decision)
+
+	// Approve for session
+	e.RecordApproval(result.RuleKey, ApprovalResponse{Action: "allow_session"})
+
+	// Second call — session approval should allow it
+	result = e.Check("Bash", bashInput("git status"))
+	assert.Equal(t, Allow, result.Decision)
+}
+
+func TestEngine_BypassMode_DangerousBash_PersistentRuleAllows(t *testing.T) {
+	rules := NewRuleSet([]Rule{
+		{Tool: "Bash", Specifier: "git *", Action: "allow"},
+	})
+	e := NewEngine(ModeBypassPermissions, rules)
+
+	// git is dangerous but covered by persistent rule — should be allowed
+	result := e.Check("Bash", bashInput("git status"))
+	assert.Equal(t, Allow, result.Decision)
+
+	result = e.Check("Bash", bashInput("git commit -m 'test'"))
+	assert.Equal(t, Allow, result.Decision)
+}
+
+func TestEngine_BypassMode_DangerousBash_NoApproval_StillNeedsApproval(t *testing.T) {
+	e := NewEngine(ModeBypassPermissions, nil)
+
+	// Dangerous command with no session or persistent approval — needs approval
+	result := e.Check("Bash", bashInput("curl http://example.com"))
+	assert.Equal(t, NeedApproval, result.Decision)
+}
+
+func TestEngine_BypassMode_DangerousBash_ToolWideSessionApproval(t *testing.T) {
+	e := NewEngine(ModeBypassPermissions, nil)
+
+	// Approve "Bash" tool-wide
+	e.RecordApproval("Bash", ApprovalResponse{Action: "allow_session"})
+
+	// Any dangerous Bash command should be allowed
+	result := e.Check("Bash", bashInput("git push"))
+	assert.Equal(t, Allow, result.Decision)
+
+	result = e.Check("Bash", bashInput("npm install"))
+	assert.Equal(t, Allow, result.Decision)
+}
+
+func TestEngine_BypassMode_DangerousBash_PersistentDenyRule(t *testing.T) {
+	rules := NewRuleSet([]Rule{
+		{Tool: "Bash", Specifier: "sudo *", Action: "deny"},
+	})
+	e := NewEngine(ModeBypassPermissions, rules)
+
+	// sudo is dangerous AND denied by persistent rule
+	result := e.Check("Bash", bashInput("sudo rm -rf /"))
+	assert.Equal(t, Deny, result.Decision)
+}
+
+func TestEngine_BypassMode_DangerousPath_SessionApprovalAllows(t *testing.T) {
+	e := NewEngine(ModeBypassPermissions, nil)
+
+	// Writing to .git/config is dangerous — first call needs approval
+	result := e.Check("Write", fileInput(".git/config"))
+	assert.Equal(t, NeedApproval, result.Decision)
+
+	// Approve for session
+	e.RecordApproval(result.RuleKey, ApprovalResponse{Action: "allow_session"})
+
+	// Second call — session approval should allow it
+	result = e.Check("Write", fileInput(".git/config"))
+	assert.Equal(t, Allow, result.Decision)
+}
+
+func TestEngine_BypassMode_DangerousPath_PersistentRuleAllows(t *testing.T) {
+	rules := NewRuleSet([]Rule{
+		{Tool: "Write", Specifier: ".git/*", Action: "allow"},
+	})
+	e := NewEngine(ModeBypassPermissions, rules)
+
+	// Writing to .git is dangerous but covered by persistent rule
+	result := e.Check("Write", fileInput(".git/config"))
+	assert.Equal(t, Allow, result.Decision)
+}
+
+func TestEngine_BypassMode_NonDangerous_StillAutoAllowed(t *testing.T) {
+	e := NewEngine(ModeBypassPermissions, nil)
+
+	// Non-dangerous commands should still be auto-allowed without any approvals
+	result := e.Check("Bash", bashInput("ls -la"))
+	assert.Equal(t, Allow, result.Decision)
+
+	result = e.Check("Write", fileInput("src/main.go"))
+	assert.Equal(t, Allow, result.Decision)
+}
+
+func TestEngine_BypassMode_DangerousBash_WildcardRuleAllows(t *testing.T) {
+	rules := NewRuleSet([]Rule{
+		{Tool: "Bash", Specifier: "npm *", Action: "allow"},
+	})
+	e := NewEngine(ModeBypassPermissions, rules)
+
+	// npm is dangerous but covered by wildcard rule
+	result := e.Check("Bash", bashInput("npm run build"))
+	assert.Equal(t, Allow, result.Decision)
+
+	result = e.Check("Bash", bashInput("npm install express"))
+	assert.Equal(t, Allow, result.Decision)
+
+	// yarn is NOT covered by the npm rule
+	result = e.Check("Bash", bashInput("yarn install"))
+	assert.Equal(t, NeedApproval, result.Decision)
+}
+
+func TestEngine_AllowAlways_WildcardTakesEffectImmediately(t *testing.T) {
+	e := NewEngine(ModeDefault, nil)
+
+	// First call — needs approval
+	result := e.Check("Bash", bashInput("git status"))
+	assert.Equal(t, NeedApproval, result.Decision)
+
+	// Approve with allow_always and a wildcard specifier
+	e.RecordApproval(result.RuleKey, ApprovalResponse{
+		Action:    "allow_always",
+		Specifier: "git *",
+	})
+
+	// Same command — should be allowed (cached in session by exact ruleKey)
+	result = e.Check("Bash", bashInput("git status"))
+	assert.Equal(t, Allow, result.Decision)
+
+	// DIFFERENT git command — should also be allowed via in-memory wildcard rule
+	result = e.Check("Bash", bashInput("git push origin main"))
+	assert.Equal(t, Allow, result.Decision)
+
+	// Non-git command — should NOT be allowed
+	result = e.Check("Bash", bashInput("curl http://example.com"))
+	assert.Equal(t, NeedApproval, result.Decision)
+}
+
+func TestEngine_BypassMode_AllowAlways_WildcardTakesEffectImmediately(t *testing.T) {
+	e := NewEngine(ModeBypassPermissions, nil)
+
+	// git is dangerous in bypass mode — needs approval
+	result := e.Check("Bash", bashInput("git status"))
+	assert.Equal(t, NeedApproval, result.Decision)
+
+	// Approve with allow_always and wildcard specifier
+	e.RecordApproval(result.RuleKey, ApprovalResponse{
+		Action:    "allow_always",
+		Specifier: "git *",
+	})
+
+	// Different git command — should be allowed via in-memory wildcard rule
+	result = e.Check("Bash", bashInput("git commit -m 'test'"))
+	assert.Equal(t, Allow, result.Decision)
+}
+
+// --- Path traversal & dangerous-path defense-in-depth tests ---
+
+func TestEngine_DefaultMode_TraversalPath_CleansToSafe(t *testing.T) {
+	// A rule allowing src/* should NOT match traversal paths
+	rules := NewRuleSet([]Rule{
+		{Tool: "Write", Specifier: "src/*", Action: "allow"},
+	})
+	e := NewEngine(ModeDefault, rules)
+
+	// src/../../.bashrc is cleaned to ../.bashrc by BuildSpecifier,
+	// which does NOT match src/* — so dangerous path check catches it
+	result := e.Check("Write", fileInput("src/../../.bashrc"))
+	assert.Equal(t, NeedApproval, result.Decision, "traversal to .bashrc should require approval")
+	assert.Equal(t, "../.bashrc", result.Specifier, "specifier should be cleaned")
+}
+
+func TestEngine_DefaultMode_DangerousFile_InAllowedDir(t *testing.T) {
+	// Even with a wildcard rule, dangerous files should prompt
+	rules := NewRuleSet([]Rule{
+		{Tool: "Write", Specifier: "src/*", Action: "allow"},
+	})
+	e := NewEngine(ModeDefault, rules)
+
+	// src/.bashrc is a dangerous file — should prompt despite src/* rule
+	result := e.Check("Write", fileInput("src/.bashrc"))
+	assert.Equal(t, NeedApproval, result.Decision, "dangerous file in allowed dir should still prompt")
+}
+
+func TestEngine_DefaultMode_SafeFile_InAllowedDir(t *testing.T) {
+	rules := NewRuleSet([]Rule{
+		{Tool: "Write", Specifier: "src/*", Action: "allow"},
+	})
+	e := NewEngine(ModeDefault, rules)
+
+	// Normal file in src/ — should be allowed by the rule
+	result := e.Check("Write", fileInput("src/main.go"))
+	assert.Equal(t, Allow, result.Decision)
+}
+
+func TestEngine_BypassMode_TraversalPath_CleansToSafe(t *testing.T) {
+	rules := NewRuleSet([]Rule{
+		{Tool: "Write", Specifier: "src/*", Action: "allow"},
+	})
+	e := NewEngine(ModeBypassPermissions, rules)
+
+	// Traversal path in bypass mode — cleaned specifier doesn't match rule
+	result := e.Check("Write", fileInput("src/../../.bashrc"))
+	assert.Equal(t, NeedApproval, result.Decision, "traversal should not be auto-allowed in bypass mode")
+}
