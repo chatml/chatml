@@ -97,8 +97,8 @@ export function buildNavigationLabel(
     }
     case 'repositories':
       return 'Repositories';
-    case 'session-manager':
-      return 'Sessions';
+    case 'history':
+      return 'History';
     case 'skills-store':
       return 'Skills';
     case 'scheduled-tasks':
@@ -179,7 +179,7 @@ function isEntryValid(entry: NavigationEntry): boolean {
       }
       return true;
     case 'repositories':
-    case 'session-manager':
+    case 'history':
     case 'skills-store':
     case 'scheduled-tasks':
       return true;

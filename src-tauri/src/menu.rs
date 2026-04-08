@@ -151,7 +151,7 @@ pub fn create_menu(app: &tauri::AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
                 .build(app)?,
         )
         .separator()
-        .item(&MenuItemBuilder::with_id("open_session_manager", "Session Manager").build(app)?)
+        .item(&MenuItemBuilder::with_id("open_history", "History").build(app)?)
         // Hidden for shipping — PR Dashboard menu item
         // .item(&MenuItemBuilder::with_id("open_pr_dashboard", "PR Dashboard").build(app)?)
         .item(&MenuItemBuilder::with_id("open_repositories", "Repositories").build(app)?)

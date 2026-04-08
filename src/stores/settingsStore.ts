@@ -50,7 +50,7 @@ export type ContentView =
   | { type: 'pr-dashboard'; workspaceId?: string }
   | { type: 'branches'; workspaceId: string }
   | { type: 'repositories' }
-  | { type: 'session-manager' }
+  | { type: 'history' }
   | { type: 'skills-store' }
   | { type: 'scheduled-tasks' }
   | { type: 'scheduled-task-detail'; taskId: string };

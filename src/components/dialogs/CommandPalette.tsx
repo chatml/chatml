@@ -28,7 +28,7 @@ import {
   GitBranch,
   MessageSquare,
   Settings,
-  Layers,
+  History,
   GitPullRequest,
   Link,
   Archive,
@@ -173,12 +173,12 @@ const COMMANDS: Command[] = [
     action: () => window.dispatchEvent(new CustomEvent('open-settings')),
   },
   {
-    id: 'open-session-manager',
+    id: 'open-history',
     category: 'Navigation',
-    label: 'Open Session Manager',
-    icon: Layers,
-    keywords: ['sessions', 'worktrees', 'branches', 'overview'],
-    action: () => useSettingsStore.getState().setContentView({ type: 'session-manager' }),
+    label: 'Open History',
+    icon: History,
+    keywords: ['sessions', 'history', 'worktrees', 'branches', 'overview'],
+    action: () => useSettingsStore.getState().setContentView({ type: 'history' }),
   },
   // Hidden for shipping — PR Dashboard command
   // {
