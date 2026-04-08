@@ -1,6 +1,10 @@
 package main
 
-import "github.com/charmbracelet/lipgloss"
+import (
+	"github.com/charmbracelet/glamour/ansi"
+	glamourStyles "github.com/charmbracelet/glamour/styles"
+	"github.com/charmbracelet/lipgloss"
+)
 
 // theme defines all named colors used throughout the TUI.
 type theme struct {
@@ -40,76 +44,81 @@ type theme struct {
 	BorderIdle     lipgloss.Color
 	BorderRunning  lipgloss.Color
 	BorderApproval lipgloss.Color
+
+	// Syntax highlighting
+	ChromaStyle string // Chroma style name for code highlighting
 }
 
 var darkTheme = theme{
 	Name:           "dark",
-	Banner:         lipgloss.Color("#7C3AED"),
-	Prompt:         lipgloss.Color("#22C55E"),
-	Thinking:       lipgloss.Color("#94A3B8"),
-	ToolHead:       lipgloss.Color("#3B82F6"),
-	ToolRes:        lipgloss.Color("#6B7280"),
-	ToolOK:         lipgloss.Color("#22C55E"),
-	ToolFail:       lipgloss.Color("#EF4444"),
-	Error:          lipgloss.Color("#EF4444"),
-	Warn:           lipgloss.Color("#F59E0B"),
-	Gray:           lipgloss.Color("#6B7280"),
-	Cmd:            lipgloss.Color("#A78BFA"),
-	Todo:           lipgloss.Color("#60A5FA"),
-	ToolLine:       lipgloss.Color("#64748B"),
-	DiffAdd:        lipgloss.Color("#22C55E"),
-	DiffDel:        lipgloss.Color("#EF4444"),
-	CtxLow:         lipgloss.Color("#22C55E"),
-	CtxMid:         lipgloss.Color("#F59E0B"),
-	CtxHigh:        lipgloss.Color("#EF4444"),
-	UserMsgFg:      lipgloss.Color("#E2E8F0"),
-	UserMsgBg:      lipgloss.Color("#1E1E2E"),
-	Bullet:         lipgloss.Color("#7C3AED"),
-	ExitOK:         lipgloss.Color("#22C55E"),
-	ExitFail:       lipgloss.Color("#EF4444"),
-	Hint:           lipgloss.Color("#4B5563"),
-	AgentTree:      lipgloss.Color("#4B5563"),
-	AgentMet:       lipgloss.Color("#6B7280"),
-	Cyan:           lipgloss.Color("#06B6D4"),
-	Blue:           lipgloss.Color("#3B82F6"),
-	BorderIdle:     lipgloss.Color("#6B7280"),
-	BorderRunning:  lipgloss.Color("#3B82F6"),
-	BorderApproval: lipgloss.Color("#F59E0B"),
+	Banner:         lipgloss.Color("#D77757"), // Claude Code brand orange
+	Prompt:         lipgloss.Color("#4EBA65"), // CC success green
+	Thinking:       lipgloss.Color("#999999"), // CC inactive
+	ToolHead:       lipgloss.Color("#B1B9F9"), // CC permission (periwinkle)
+	ToolRes:        lipgloss.Color("#999999"), // CC inactive
+	ToolOK:         lipgloss.Color("#4EBA65"), // CC success
+	ToolFail:       lipgloss.Color("#FF6B80"), // CC error (soft red-pink)
+	Error:          lipgloss.Color("#FF6B80"), // CC error
+	Warn:           lipgloss.Color("#FFC107"), // CC warning
+	Gray:           lipgloss.Color("#999999"), // CC inactive
+	Cmd:            lipgloss.Color("#AF87FF"), // CC merged purple
+	Todo:           lipgloss.Color("#B1B9F9"), // CC permission
+	ToolLine:       lipgloss.Color("#505050"), // CC subtle
+	DiffAdd:        lipgloss.Color("#38A660"), // CC diffAddedWord
+	DiffDel:        lipgloss.Color("#B3596B"), // CC diffRemovedWord (soft rose)
+	CtxLow:         lipgloss.Color("#4EBA65"), // CC success
+	CtxMid:         lipgloss.Color("#FFC107"), // CC warning
+	CtxHigh:        lipgloss.Color("#FF6B80"), // CC error
+	UserMsgFg:      lipgloss.Color("#FFFFFF"), // CC text
+	UserMsgBg:      lipgloss.Color("#373737"), // CC userMessageBackground
+	Bullet:         lipgloss.Color("#D77757"), // brand orange
+	ExitOK:         lipgloss.Color("#4EBA65"), // CC success
+	ExitFail:       lipgloss.Color("#FF6B80"), // CC error
+	Hint:           lipgloss.Color("#505050"), // CC subtle
+	AgentTree:      lipgloss.Color("#505050"), // CC subtle
+	AgentMet:       lipgloss.Color("#999999"), // CC inactive
+	Cyan:           lipgloss.Color("#48968C"), // CC planMode teal
+	Blue:           lipgloss.Color("#B1B9F9"), // CC permission
+	BorderIdle:     lipgloss.Color("#888888"), // CC promptBorder
+	BorderRunning:  lipgloss.Color("#B1B9F9"), // CC permission
+	BorderApproval: lipgloss.Color("#FFC107"), // CC warning
+	ChromaStyle:    "monokai",
 }
 
 var lightTheme = theme{
 	Name:           "light",
-	Banner:         lipgloss.Color("#6D28D9"),
-	Prompt:         lipgloss.Color("#16A34A"),
-	Thinking:       lipgloss.Color("#64748B"),
-	ToolHead:       lipgloss.Color("#2563EB"),
-	ToolRes:        lipgloss.Color("#4B5563"),
-	ToolOK:         lipgloss.Color("#16A34A"),
-	ToolFail:       lipgloss.Color("#DC2626"),
-	Error:          lipgloss.Color("#DC2626"),
-	Warn:           lipgloss.Color("#D97706"),
-	Gray:           lipgloss.Color("#4B5563"),
-	Cmd:            lipgloss.Color("#7C3AED"),
-	Todo:           lipgloss.Color("#2563EB"),
-	ToolLine:       lipgloss.Color("#475569"),
-	DiffAdd:        lipgloss.Color("#16A34A"),
-	DiffDel:        lipgloss.Color("#DC2626"),
-	CtxLow:         lipgloss.Color("#16A34A"),
-	CtxMid:         lipgloss.Color("#D97706"),
-	CtxHigh:        lipgloss.Color("#DC2626"),
-	UserMsgFg:      lipgloss.Color("#1E293B"),
-	UserMsgBg:      lipgloss.Color("#F1F5F9"),
-	Bullet:         lipgloss.Color("#6D28D9"),
-	ExitOK:         lipgloss.Color("#16A34A"),
-	ExitFail:       lipgloss.Color("#DC2626"),
-	Hint:           lipgloss.Color("#64748B"),
-	AgentTree:      lipgloss.Color("#64748B"),
-	AgentMet:       lipgloss.Color("#475569"),
-	Cyan:           lipgloss.Color("#0891B2"),
-	Blue:           lipgloss.Color("#2563EB"),
-	BorderIdle:     lipgloss.Color("#64748B"),
-	BorderRunning:  lipgloss.Color("#2563EB"),
-	BorderApproval: lipgloss.Color("#D97706"),
+	Banner:         lipgloss.Color("#D77757"), // CC brand orange
+	Prompt:         lipgloss.Color("#2C7A39"), // CC light success
+	Thinking:       lipgloss.Color("#666666"), // mid-gray for light bg
+	ToolHead:       lipgloss.Color("#5769F7"), // CC light permission
+	ToolRes:        lipgloss.Color("#666666"), // subtle gray
+	ToolOK:         lipgloss.Color("#2C7A39"), // CC light success
+	ToolFail:       lipgloss.Color("#AB2B3F"), // CC light error
+	Error:          lipgloss.Color("#AB2B3F"), // CC light error
+	Warn:           lipgloss.Color("#966C1E"), // CC light warning
+	Gray:           lipgloss.Color("#666666"), // neutral gray
+	Cmd:            lipgloss.Color("#AF87FF"), // CC merged purple
+	Todo:           lipgloss.Color("#5769F7"), // CC light permission
+	ToolLine:       lipgloss.Color("#AFAFAF"), // subtle on light bg
+	DiffAdd:        lipgloss.Color("#2F9D44"), // CC light diffAddedWord
+	DiffDel:        lipgloss.Color("#D1454B"), // CC light diffRemovedWord
+	CtxLow:         lipgloss.Color("#2C7A39"), // CC light success
+	CtxMid:         lipgloss.Color("#966C1E"), // CC light warning
+	CtxHigh:        lipgloss.Color("#AB2B3F"), // CC light error
+	UserMsgFg:      lipgloss.Color("#000000"), // CC text (light)
+	UserMsgBg:      lipgloss.Color("#F0F0F0"), // CC userMessageBackground
+	Bullet:         lipgloss.Color("#D77757"), // brand orange
+	ExitOK:         lipgloss.Color("#2C7A39"), // CC light success
+	ExitFail:       lipgloss.Color("#AB2B3F"), // CC light error
+	Hint:           lipgloss.Color("#AFAFAF"), // subtle
+	AgentTree:      lipgloss.Color("#AFAFAF"), // subtle
+	AgentMet:       lipgloss.Color("#666666"), // inactive
+	Cyan:           lipgloss.Color("#006666"), // CC light planMode
+	Blue:           lipgloss.Color("#5769F7"), // CC light permission
+	BorderIdle:     lipgloss.Color("#999999"), // CC light promptBorder
+	BorderRunning:  lipgloss.Color("#5769F7"), // CC light permission
+	BorderApproval: lipgloss.Color("#966C1E"), // CC light warning
+	ChromaStyle:    "github",
 }
 
 // selectTheme returns the appropriate theme based on name or auto-detection.
@@ -170,3 +179,144 @@ func newStylesFromTheme(t theme) *styles {
 		borderApproval: lipgloss.NewStyle().Foreground(t.BorderApproval),
 	}
 }
+
+// ── Custom Glamour Styles ────────────────────────────────────────────────────
+//
+// These replace glamour's default dark/light styles to align with Claude Code's
+// color palette. The key fix: inline code uses periwinkle (not red-orange ANSI 203)
+// and headings use bold text styling (not colored backgrounds).
+
+func glamourStyleForTheme(themeName string) ansi.StyleConfig {
+	switch themeName {
+	case "light":
+		return glamourLightStyle()
+	default:
+		return glamourDarkStyle()
+	}
+}
+
+func glamourDarkStyle() ansi.StyleConfig {
+	s := glamourStyles.DarkStyleConfig
+
+	// Inline code: periwinkle (not red-orange ANSI 203)
+	s.Code = ansi.StyleBlock{
+		StylePrimitive: ansi.StylePrimitive{
+			Prefix:          " ",
+			Suffix:          " ",
+			Color:           stringPtr("#B1B9F9"),
+			BackgroundColor: stringPtr("#373737"),
+		},
+	}
+
+	// Headings: bold only, no colored backgrounds (matches Claude Code)
+	s.Heading = ansi.StyleBlock{
+		StylePrimitive: ansi.StylePrimitive{
+			BlockSuffix: "\n",
+			Bold:        boolPtr(true),
+		},
+	}
+	s.H1 = ansi.StyleBlock{
+		StylePrimitive: ansi.StylePrimitive{
+			Bold:      boolPtr(true),
+			Underline: boolPtr(true),
+		},
+	}
+
+	// Links: periwinkle
+	s.Link = ansi.StylePrimitive{
+		Color:     stringPtr("#B1B9F9"),
+		Underline: boolPtr(true),
+	}
+	s.LinkText = ansi.StylePrimitive{
+		Color: stringPtr("#B1B9F9"),
+		Bold:  boolPtr(true),
+	}
+
+	// Horizontal rule: subtle
+	s.HorizontalRule = ansi.StylePrimitive{
+		Color:  stringPtr("#505050"),
+		Format: "\n--------\n",
+	}
+
+	// H6: subtle
+	s.H6 = ansi.StyleBlock{
+		StylePrimitive: ansi.StylePrimitive{
+			Prefix: "###### ",
+			Color:  stringPtr("#505050"),
+			Bold:   boolPtr(false),
+		},
+	}
+
+	// Code block background (defensive nil check for future glamour versions)
+	if s.CodeBlock.Chroma != nil {
+		s.CodeBlock.Chroma.Background = ansi.StylePrimitive{
+			BackgroundColor: stringPtr("#373737"),
+		}
+	}
+
+	return s
+}
+
+func glamourLightStyle() ansi.StyleConfig {
+	s := glamourStyles.LightStyleConfig
+
+	// Inline code: medium blue (not red-orange ANSI 203)
+	s.Code = ansi.StyleBlock{
+		StylePrimitive: ansi.StylePrimitive{
+			Prefix:          " ",
+			Suffix:          " ",
+			Color:           stringPtr("#5769F7"),
+			BackgroundColor: stringPtr("#F0F0F0"),
+		},
+	}
+
+	// Headings: bold only, no colored backgrounds
+	s.Heading = ansi.StyleBlock{
+		StylePrimitive: ansi.StylePrimitive{
+			BlockSuffix: "\n",
+			Bold:        boolPtr(true),
+		},
+	}
+	s.H1 = ansi.StyleBlock{
+		StylePrimitive: ansi.StylePrimitive{
+			Bold:      boolPtr(true),
+			Underline: boolPtr(true),
+		},
+	}
+
+	// Links: medium blue
+	s.Link = ansi.StylePrimitive{
+		Color:     stringPtr("#5769F7"),
+		Underline: boolPtr(true),
+	}
+	s.LinkText = ansi.StylePrimitive{
+		Color: stringPtr("#5769F7"),
+		Bold:  boolPtr(true),
+	}
+
+	// Horizontal rule: subtle
+	s.HorizontalRule = ansi.StylePrimitive{
+		Color:  stringPtr("#AFAFAF"),
+		Format: "\n--------\n",
+	}
+
+	// H6: subtle
+	s.H6 = ansi.StyleBlock{
+		StylePrimitive: ansi.StylePrimitive{
+			Prefix: "###### ",
+			Bold:   boolPtr(false),
+		},
+	}
+
+	// Code block background (defensive nil check for future glamour versions)
+	if s.CodeBlock.Chroma != nil {
+		s.CodeBlock.Chroma.Background = ansi.StylePrimitive{
+			BackgroundColor: stringPtr("#F0F0F0"),
+		}
+	}
+
+	return s
+}
+
+func boolPtr(b bool) *bool      { return &b }
+func stringPtr(s string) *string { return &s }

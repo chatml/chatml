@@ -16,7 +16,7 @@ var codeBlockRe = regexp.MustCompile("(?m)^```(\\w*)\\s*\n([\\s\\S]*?)^```\\s*$"
 
 // highlightCodeBlocks finds fenced code blocks in markdown text and replaces
 // them with Chroma syntax-highlighted versions. Non-code text is left as-is.
-func highlightCodeBlocks(text string) string {
+func highlightCodeBlocks(text, chromaStyle string) string {
 	if !strings.Contains(text, "```") {
 		return text
 	}
@@ -29,7 +29,7 @@ func highlightCodeBlocks(text string) string {
 		lang := parts[1]
 		code := parts[2]
 
-		highlighted := highlightCode(code, lang)
+		highlighted := highlightCode(code, lang, chromaStyle)
 		if highlighted == "" {
 			return match // Fallback to original on error
 		}
@@ -38,8 +38,8 @@ func highlightCodeBlocks(text string) string {
 }
 
 // highlightCode renders a code string with Chroma syntax highlighting
-// using terminal256 colors.
-func highlightCode(code, language string) string {
+// using terminal256 colors. chromaStyle selects the Chroma theme (e.g. "monokai", "github").
+func highlightCode(code, language, chromaStyle string) string {
 	// Get lexer
 	var lexer chroma.Lexer
 	if language != "" {
@@ -53,8 +53,8 @@ func highlightCode(code, language string) string {
 	}
 	lexer = chroma.Coalesce(lexer)
 
-	// Use monokai style for dark terminals
-	style := chromaStyles.Get("monokai")
+	// Use theme-aware style
+	style := chromaStyles.Get(chromaStyle)
 	if style == nil {
 		style = chromaStyles.Fallback
 	}
@@ -82,7 +82,7 @@ func highlightCode(code, language string) string {
 
 // highlightToolResult applies syntax highlighting to a tool result string
 // if it appears to contain code (detected by file extension or content heuristics).
-func highlightToolResult(content, toolName string, params map[string]interface{}) string {
+func highlightToolResult(content, toolName, chromaStyle string, params map[string]interface{}) string {
 	// Only highlight for certain tools where output is code
 	switch toolName {
 	case "Read":
@@ -91,7 +91,7 @@ func highlightToolResult(content, toolName string, params map[string]interface{}
 			if path, ok := fp.(string); ok {
 				lang := detectLangFromPath(path)
 				if lang != "" {
-					return highlightCode(content, lang)
+					return highlightCode(content, lang, chromaStyle)
 				}
 			}
 		}

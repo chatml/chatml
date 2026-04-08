@@ -181,10 +181,11 @@ func (m wizardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m wizardModel) View() string {
-	purple := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#7C3AED"))
-	green := lipgloss.NewStyle().Foreground(lipgloss.Color("#22C55E"))
-	gray := lipgloss.NewStyle().Foreground(lipgloss.Color("#6B7280"))
-	yellow := lipgloss.NewStyle().Foreground(lipgloss.Color("#F59E0B"))
+	t := selectTheme("auto")
+	purple := lipgloss.NewStyle().Bold(true).Foreground(t.Banner)
+	green := lipgloss.NewStyle().Foreground(t.Prompt)
+	gray := lipgloss.NewStyle().Foreground(t.Gray)
+	yellow := lipgloss.NewStyle().Foreground(t.Warn)
 
 	var sb strings.Builder
 	sb.WriteString("\n")

@@ -350,6 +350,8 @@ func cmdNotifications(m *model, _ []string) tea.Cmd {
 func cmdTheme(m *model, args []string) tea.Cmd {
 	t := selectTheme(args[0])
 	m.s = newStylesFromTheme(t)
+	m.themeName = t.Name
+	m.mdCache.SetTheme(t.Name, m.width)
 	addSystemMsg(m, "Theme → "+t.Name)
 	return nil
 }
