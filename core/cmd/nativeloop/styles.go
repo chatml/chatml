@@ -22,6 +22,8 @@ type styles struct {
 	toolLine   lipgloss.Style // tool detail lines
 	diffAdd    lipgloss.Style
 	diffDel    lipgloss.Style
+	diffAddHL  lipgloss.Style // highlighted changed words in added lines
+	diffDelHL  lipgloss.Style // highlighted changed words in deleted lines
 	userMsg    lipgloss.Style
 	bullet     lipgloss.Style // ● bullet for assistant text
 	statusFaint lipgloss.Style
