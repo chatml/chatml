@@ -171,7 +171,7 @@ const effort: EffortLevel | undefined = effortArg
   : undefined;
 
 // Permission mode (e.g., "plan" for plan mode at startup)
-const validPermissionModes = ["default", "acceptEdits", "bypassPermissions", "plan", "dontAsk"] as const;
+const validPermissionModes = ["default", "acceptEdits", "bypassPermissions", "plan", "dontAsk", "auto"] as const;
 type PermissionMode = typeof validPermissionModes[number];
 let initialPermissionMode: PermissionMode = "bypassPermissions";
 // Tracks the current permission mode and the mode before plan mode was activated.
@@ -1042,7 +1042,10 @@ function buildUserMessage(msg: QueuedMessage): SDKUserMessage {
     message: { role: "user", content: contentBlocks },
     parent_tool_use_id: null,
     session_id: currentSessionId || "",
-  } as SDKUserMessage;
+  // TODO(sdk-upgrade): Double cast needed because our content block literals don't
+  // satisfy the SDK's MessageParam type (which uses branded Anthropic content types).
+  // Revisit when SDK exports a helper to construct SDKUserMessage from plain objects.
+  } as unknown as SDKUserMessage;
 }
 
 // Buffer for block-level streaming (emit on paragraph breaks)
@@ -2022,6 +2025,27 @@ async function main(): Promise<void> {
   mainLoopRunning = true;
   lifecycle("input queue ready");
 
+  // Pre-warm the CLI subprocess so the first query() is ~20x faster (SDK 0.2.89+)
+  // startup() is exported at runtime but not yet in the SDK's .d.ts — access via require().
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const sdkModule = require("@anthropic-ai/claude-agent-sdk") as Record<string, unknown>;
+    const startupFn = sdkModule.startup as ((opts: { cwd: string }) => Promise<void>) | undefined;
+    if (startupFn) {
+      const STARTUP_TIMEOUT_MS = 5_000;
+      await Promise.race([
+        startupFn({ cwd }),
+        new Promise<void>((_, reject) =>
+          setTimeout(() => reject(new Error("startup() timed out")), STARTUP_TIMEOUT_MS),
+        ),
+      ]);
+      lifecycle("CLI subprocess pre-warmed");
+    }
+  } catch (e) {
+    // Non-fatal: failure or timeout just means normal cold start on first query
+    lifecycle(`startup() pre-warm failed (non-fatal): ${e}`);
+  }
+
   let turnCount = 0;
 
   try {
@@ -2177,6 +2201,9 @@ async function main(): Promise<void> {
       // mode the SDK already allows all tools via a direct mode check, so this
       // flag is not needed. canUseTool provides additional defense-in-depth.
       allowDangerouslySkipPermissions: false,
+      // SDK 0.2.91: sandbox.failIfUnavailable defaults to true — preserve graceful
+      // degradation so workspaces still run when sandbox dependencies are missing.
+      sandbox: { failIfUnavailable: false },
       canUseTool,
       mcpServers: mergedMcpServers,
       includePartialMessages: true,
@@ -2513,7 +2540,9 @@ function handleMessage(message: SDKMessage): void {
 
       const event = message.event;
       if (event.type === "content_block_delta") {
-        const delta = event.delta as Record<string, unknown>;
+        // TODO(sdk-upgrade): SDK 0.2.94 narrowed delta to a union that doesn't
+        // allow generic property access. Cast to Record so we can check text/thinking.
+        const delta = event.delta as unknown as Record<string, unknown>;
         if ("text" in delta && delta.text) {
           processTextChunk(delta.text as string);
         } else if ("thinking" in delta && delta.thinking) {
@@ -2533,8 +2562,10 @@ function handleMessage(message: SDKMessage): void {
         // Text block finished — flush any remaining buffered content so text
         // is fully emitted before subsequent tool events.
         flushBlockBuffer();
-      } else if (event.type === "error") {
-        // Surface API-level errors (e.g., overloaded_error) during streaming
+      } else if ((event.type as string) === "error") {
+        // TODO(sdk-upgrade): SDK 0.2.94 removed "error" from the stream event type union,
+        // but the Anthropic API still emits it at runtime. Cast to string to keep handling it.
+        // Verify in future SDK versions whether errors surface through a different mechanism.
         const errorEvent = event as { error?: { type?: string; message?: string } };
         const errorType = errorEvent.error?.type || "unknown";
         const errorMsg = errorEvent.error?.message || "An API error occurred during streaming";
@@ -2707,6 +2738,7 @@ function handleMessage(message: SDKMessage): void {
           subtype: "success",
           summary: resultMsg.result,
           stopReason: resultMsg.stop_reason,
+          terminalReason: (resultMsg as Record<string, unknown>).terminal_reason,
           cost: resultMsg.total_cost_usd,
           turns: resultMsg.num_turns,
           durationMs: resultMsg.duration_ms,
@@ -2737,6 +2769,7 @@ function handleMessage(message: SDKMessage): void {
           success: false,
           subtype: resultMsg.subtype,
           stopReason: resultMsg.stop_reason,
+          terminalReason: (resultMsg as Record<string, unknown>).terminal_reason,
           errors: resultErrors,
           cost: resultMsg.total_cost_usd,
           turns: resultMsg.num_turns,
