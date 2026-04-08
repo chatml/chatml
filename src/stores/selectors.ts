@@ -21,7 +21,7 @@ import { useAppStore } from './appStore';
 import { useSettingsStore } from './settingsStore';
 import { useNavigationStore } from './navigationStore';
 import { useTabStore } from './tabStore';
-import type { Message, Conversation, AgentTodoItem, CustomTodoItem, TerminalInstance, ReviewComment, ActiveTool, SubAgent, SessionActivityState } from '@/lib/types';
+import type { Message, Conversation, AgentTodoItem, CustomTodoItem, TerminalInstance, ClaudeTerminalInstance, ReviewComment, ActiveTool, SubAgent, SessionActivityState } from '@/lib/types';
 
 // Stable empty arrays to avoid creating new references
 // Using readonly to prevent accidental mutations
@@ -30,6 +30,7 @@ const EMPTY_TOOLS: readonly ActiveTool[] = [];
 const EMPTY_AGENT_TODOS: readonly AgentTodoItem[] = [];
 const EMPTY_CUSTOM_TODOS: readonly CustomTodoItem[] = [];
 const EMPTY_TERMINAL_INSTANCES: readonly TerminalInstance[] = [];
+const EMPTY_CLAUDE_TERMINALS: readonly ClaudeTerminalInstance[] = [];
 const EMPTY_REVIEW_COMMENTS: readonly ReviewComment[] = [];
 const EMPTY_CONVERSATIONS: readonly Conversation[] = [];
 const EMPTY_SUB_AGENTS: readonly SubAgent[] = [];
@@ -440,6 +441,34 @@ export const useTerminalState = (sessionId: string | null) =>
       closeTerminal: s.closeTerminal,
       setActiveTerminal: s.setActiveTerminal,
       markTerminalExited: s.markTerminalExited,
+    }))
+  );
+
+/**
+ * Claude Code terminal tab state for a given session.
+ * Use in: ConversationArea (for Claude Code terminal tabs)
+ */
+export const useClaudeTerminalState = (sessionId: string | null) =>
+  useAppStore(
+    useShallow((s) => ({
+      instances: sessionId ? s.claudeTerminals[sessionId] ?? EMPTY_CLAUDE_TERMINALS : EMPTY_CLAUDE_TERMINALS,
+      activeId: sessionId ? s.activeClaudeTerminalId[sessionId] ?? null : null,
+      createClaudeTerminal: s.createClaudeTerminal,
+      closeClaudeTerminal: s.closeClaudeTerminal,
+      setActiveClaudeTerminal: s.setActiveClaudeTerminal,
+      markClaudeTerminalExited: s.markClaudeTerminalExited,
+    }))
+  );
+
+/**
+ * All Claude Code terminals across all sessions.
+ * Use in: ConversationArea (for persistent PTY rendering across session switches)
+ */
+export const useAllClaudeTerminals = () =>
+  useAppStore(
+    useShallow((s) => ({
+      allClaudeTerminals: s.claudeTerminals,
+      allActiveClaudeTerminalIds: s.activeClaudeTerminalId,
     }))
   );
 

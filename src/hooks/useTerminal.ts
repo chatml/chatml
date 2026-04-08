@@ -107,6 +107,10 @@ function getTerminalTheme(themeType: 'dark' | 'light') {
 export interface UseTerminalOptions {
   workspacePath?: string;
   onExit?: (code: number | null) => void;
+  /** When set, spawn this command instead of a shell (no fallback chain). */
+  command?: string;
+  /** Arguments for the custom command. Ignored when `command` is not set. */
+  commandArgs?: string[];
 }
 
 export interface UseTerminalReturn {
@@ -123,7 +127,7 @@ export interface UseTerminalReturn {
 }
 
 export function useTerminal(options: UseTerminalOptions = {}): UseTerminalReturn {
-  const { workspacePath, onExit } = options;
+  const { workspacePath, onExit, command, commandArgs } = options;
   const themeType = useResolvedThemeType();
 
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -143,8 +147,10 @@ export function useTerminal(options: UseTerminalOptions = {}): UseTerminalReturn
   // eslint-disable-next-line react-hooks/refs -- intentional: keep ref in sync with latest theme
   themeTypeRef.current = themeType;
 
-  // Capture initial workspacePath - we don't want to reinit if it changes
+  // Capture initial options - we don't want to reinit if they change
   const initialWorkspacePathRef = useRef(workspacePath);
+  const initialCommandRef = useRef(command);
+  const initialCommandArgsRef = useRef(commandArgs);
 
   // Initialize terminal and PTY using ResizeObserver to wait for dimensions
   useEffect(() => {
@@ -235,14 +241,63 @@ export function useTerminal(options: UseTerminalOptions = {}): UseTerminalReturn
         }
       });
 
-      // Spawn PTY with shell fallback chain
+      // Wire a spawned PTY to the terminal (I/O, resize, dedup guard).
+      // Shared by both shell-fallback and custom-command paths.
+      const wirePty = (pty: PtyHandle) => {
+        ptyRef.current = pty;
+
+        // Start read + wait loops
+        stopReadingRef.current = startPtyReading(pty, {
+          onData: (data) => {
+            if (!cleanupCalled) {
+              terminal.write(data);
+            }
+          },
+          onExit: (exitCode) => {
+            if (!cleanupCalled) {
+              terminal.write('\r\n[Process exited]\r\n');
+              onExitRef.current?.(exitCode);
+            }
+          },
+        });
+
+        // Terminal input -> PTY
+        // Dedup guard: WKWebView on custom protocols (release builds) may fire
+        // onData twice per keystroke via both keydown and input events.
+        // Real key repeat is ~30-50ms; duplicate events arrive within <2ms.
+        let lastData = '';
+        let lastDataTime = 0;
+        const DEDUP_WINDOW_MS = 10;
+
+        terminal.onData((data: string) => {
+          if (!cleanupCalled && ptyRef.current) {
+            const now = performance.now();
+            if (data.length === 1 && data === lastData && (now - lastDataTime) < DEDUP_WINDOW_MS) {
+              return; // Skip WKWebView duplicate
+            }
+            lastData = data;
+            lastDataTime = now;
+            pty.write(data).catch((e) => {
+              console.warn('PTY write error:', e);
+            });
+          }
+        });
+
+        // Handle terminal resize
+        terminal.onResize(({ cols, rows }) => {
+          if (!cleanupCalled && ptyRef.current) {
+            pty.resize(cols, rows).catch((e) => {
+              console.warn('PTY resize error:', e);
+            });
+          }
+        });
+      };
+
+      // Spawn PTY — either a custom command or a shell with fallback chain
       const initPty = async () => {
         if (cleanupCalled) return;
 
-        const shellChain = await getShellFallbackChain();
-        const shellArgs = getShellArgs();
         let cwd = initialWorkspacePathRef.current || undefined;
-        let lastError: unknown = null;
 
         // Validate CWD exists — if not, fall back to no CWD (inherits parent process CWD).
         // A non-existent CWD would cause ALL shell fallbacks to fail.
@@ -268,25 +323,23 @@ export function useTerminal(options: UseTerminalOptions = {}): UseTerminalReturn
           // Sidecar may not be ready yet — PTY will use inherited PATH
         }
 
-        for (const shell of shellChain) {
-          if (cleanupCalled) return;
+        const env = {
+          TERM: 'xterm-256color',
+          COLORTERM: 'truecolor',
+          TERM_PROGRAM: 'ChatML',
+          LANG: 'en_US.UTF-8',
+          ...(resolvedPath ? { PATH: resolvedPath } : {}),
+        };
 
+        // Custom command path — no fallback chain
+        if (initialCommandRef.current) {
+          if (cleanupCalled) return;
           try {
-            // spawnPty is truly async — rejects if spawn fails,
-            // enabling the fallback chain to catch and try the next shell
-            const pty = await spawnPty(shell, shellArgs, {
+            const pty = await spawnPty(initialCommandRef.current, initialCommandArgsRef.current ?? [], {
               cols: terminal.cols || 80,
               rows: terminal.rows || 24,
               cwd,
-              // Merged with inherited process env by portable-pty —
-              // PATH, HOME, etc. are preserved.
-              env: {
-                TERM: 'xterm-256color',
-                COLORTERM: 'truecolor',
-                TERM_PROGRAM: 'ChatML',
-                LANG: 'en_US.UTF-8',
-                ...(resolvedPath ? { PATH: resolvedPath } : {}),
-              },
+              env,
             });
 
             if (cleanupCalled) {
@@ -294,54 +347,43 @@ export function useTerminal(options: UseTerminalOptions = {}): UseTerminalReturn
               return;
             }
 
-            ptyRef.current = pty;
-
-            // Start read + wait loops
-            stopReadingRef.current = startPtyReading(pty, {
-              onData: (data) => {
-                if (!cleanupCalled) {
-                  terminal.write(data);
-                }
-              },
-              onExit: (exitCode) => {
-                if (!cleanupCalled) {
-                  terminal.write('\r\n[Process exited]\r\n');
-                  onExitRef.current?.(exitCode);
-                }
-              },
-            });
-
-            // Terminal input -> PTY
-            // Dedup guard: WKWebView on custom protocols (release builds) may fire
-            // onData twice per keystroke via both keydown and input events.
-            // Real key repeat is ~30-50ms; duplicate events arrive within <2ms.
-            let lastData = '';
-            let lastDataTime = 0;
-            const DEDUP_WINDOW_MS = 10;
-
-            terminal.onData((data: string) => {
-              if (!cleanupCalled && ptyRef.current) {
-                const now = performance.now();
-                if (data.length === 1 && data === lastData && (now - lastDataTime) < DEDUP_WINDOW_MS) {
-                  return; // Skip WKWebView duplicate
-                }
-                lastData = data;
-                lastDataTime = now;
-                pty.write(data).catch((e) => {
-                  console.warn('PTY write error:', e);
-                });
+            wirePty(pty);
+            return;
+          } catch (err) {
+            console.error(`Failed to spawn command "${initialCommandRef.current}":`, err);
+            if (!cleanupCalled) {
+              terminal.write(`\r\nError: Failed to spawn "${initialCommandRef.current}".\r\n`);
+              if (err instanceof Error) {
+                terminal.write(`${err.message}\r\n`);
               }
+              terminal.write(`\r\nMake sure the command is installed and on your PATH.\r\n`);
+            }
+            return;
+          }
+        }
+
+        // Shell fallback chain path
+        const shellChain = await getShellFallbackChain();
+        const shellArgs = getShellArgs();
+        let lastError: unknown = null;
+
+        for (const shell of shellChain) {
+          if (cleanupCalled) return;
+
+          try {
+            const pty = await spawnPty(shell, shellArgs, {
+              cols: terminal.cols || 80,
+              rows: terminal.rows || 24,
+              cwd,
+              env,
             });
 
-            // Handle terminal resize
-            terminal.onResize(({ cols, rows }) => {
-              if (!cleanupCalled && ptyRef.current) {
-                pty.resize(cols, rows).catch((e) => {
-                  console.warn('PTY resize error:', e);
-                });
-              }
-            });
+            if (cleanupCalled) {
+              pty.kill();
+              return;
+            }
 
+            wirePty(pty);
             return; // Success - exit loop
           } catch (err) {
             lastError = err;

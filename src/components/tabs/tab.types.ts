@@ -1,12 +1,12 @@
 import type { ReactNode, MouseEvent } from 'react';
-import type { FileTab, Conversation } from '@/lib/types';
+import type { FileTab, Conversation, ClaudeTerminalInstance } from '@/lib/types';
 
 /**
  * Common tab item interface used by TabBar
  */
 export interface TabItemData {
   id: string;
-  type: 'file' | 'conversation';
+  type: 'file' | 'conversation' | 'terminal';
   label: string;
   icon?: ReactNode;
   isDirty?: boolean;
@@ -16,6 +16,7 @@ export interface TabItemData {
   // Original data reference for type-specific operations
   fileTab?: FileTab;
   conversation?: Conversation;
+  claudeTerminal?: ClaudeTerminalInstance;
 }
 
 /**
@@ -30,11 +31,12 @@ export interface TabBarProps {
   sessionTabs: TabItemData[];
   conversationTabs: TabItemData[];
   activeTabId: string | null;
-  onSelectTab: (id: string, type: 'file' | 'conversation') => void;
-  onCloseTab: (id: string, type: 'file' | 'conversation', e?: MouseEvent) => void;
+  onSelectTab: (id: string, type: 'file' | 'conversation' | 'terminal') => void;
+  onCloseTab: (id: string, type: 'file' | 'conversation' | 'terminal', e?: MouseEvent) => void;
   onPinTab?: (id: string, pinned: boolean) => void;
   onReorder?: (activeId: string, overId: string) => void;
   onNewSession: () => void;
+  onNewTerminal?: () => void;
   onRenameConversation?: (id: string) => void;
   onRestoreConversation?: (convId: string) => Promise<void>;
   sessionId?: string | null;
