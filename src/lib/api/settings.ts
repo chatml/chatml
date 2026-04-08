@@ -126,9 +126,9 @@ export async function cancelRelayPairing(): Promise<void> {
   await handleResponse(res);
 }
 
-export async function getRelayStatus(): Promise<{ connected: boolean; relayUrl?: string; qrData?: string }> {
+export async function getRelayStatus(): Promise<{ connected: boolean; paired: boolean; relayUrl?: string; qrData?: string }> {
   const res = await fetchWithAuth(`${getApiBase()}/api/relay/status`);
-  return handleResponse<{ connected: boolean; relayUrl?: string; qrData?: string }>(res);
+  return handleResponse<{ connected: boolean; paired: boolean; relayUrl?: string; qrData?: string }>(res);
 }
 
 export async function disconnectRelay(): Promise<void> {

@@ -196,10 +196,12 @@ func (rh *RelayHandlers) GetStatus(w http.ResponseWriter, _ *http.Request) {
 
 	status := map[string]interface{}{
 		"connected": false,
+		"paired":    false,
 	}
 
 	if rh.client != nil && rh.client.IsConnected() {
 		status["connected"] = true
+		status["paired"] = rh.client.IsPaired()
 		if rh.pairingData != nil {
 			status["relayUrl"] = rh.pairingData.RelayURL
 			status["qrData"] = rh.pairingData.QRData

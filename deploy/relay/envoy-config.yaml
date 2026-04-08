@@ -1,0 +1,112 @@
+# Envoy configuration for ChatML Cloud Relay load balancing.
+#
+# Key design: WebSocket paths use consistent hashing on the "token" query
+# parameter so that both /ws/node?token=X and /ws/mobile?token=X route to
+# the same relay pod. API and health paths use round-robin.
+#
+# This can be used as an EnvoyFilter (Istio) or standalone Envoy config.
+
+static_resources:
+  listeners:
+    - name: relay_listener
+      address:
+        socket_address:
+          address: 0.0.0.0
+          port_value: 443
+      filter_chains:
+        - filters:
+            - name: envoy.filters.network.http_connection_manager
+              typed_config:
+                "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
+                stat_prefix: relay
+                upgrade_configs:
+                  - upgrade_type: websocket
+                route_config:
+                  name: relay_routes
+                  virtual_hosts:
+                    - name: relay
+                      domains: ["relay.chatml.com"]
+                      routes:
+                        # WebSocket paths — consistent hash on token query param
+                        - match:
+                            prefix: "/ws/"
+                          route:
+                            cluster: relay_pods
+                            timeout: 0s  # no timeout for WebSocket
+                            hash_policy:
+                              - query_parameter:
+                                  name: "token"
+
+                        # API and health — round-robin
+                        - match:
+                            prefix: "/"
+                          route:
+                            cluster: relay_pods
+
+                http_filters:
+                  - name: envoy.filters.http.router
+                    typed_config:
+                      "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
+
+  clusters:
+    - name: relay_pods
+      connect_timeout: 5s
+      type: STRICT_DNS
+      lb_policy: RING_HASH  # enables consistent hashing
+      ring_hash_lb_config:
+        minimum_ring_size: 1024
+      load_assignment:
+        cluster_name: relay_pods
+        endpoints:
+          - lb_endpoints:
+              - endpoint:
+                  address:
+                    socket_address:
+                      address: chatml-relay  # K8s service DNS
+                      port_value: 8787
+      health_checks:
+        - timeout: 3s
+          interval: 5s
+          unhealthy_threshold: 2
+          healthy_threshold: 1
+          http_health_check:
+            path: /ready
+
+---
+# nginx alternative configuration (for non-Envoy deployments)
+#
+# Place this in /etc/nginx/conf.d/relay.conf
+#
+# map $arg_token $relay_hash_key {
+#     default $arg_token;
+#     ""      $remote_addr;
+# }
+#
+# upstream relay {
+#     hash $relay_hash_key consistent;
+#     server chatml-relay-0.chatml-relay:8787;
+#     server chatml-relay-1.chatml-relay:8787;
+#     server chatml-relay-2.chatml-relay:8787;
+# }
+#
+# server {
+#     listen 443 ssl;
+#     server_name relay.chatml.com;
+#
+#     location /ws/ {
+#         proxy_pass http://relay;
+#         proxy_http_version 1.1;
+#         proxy_set_header Upgrade $http_upgrade;
+#         proxy_set_header Connection "upgrade";
+#         proxy_set_header Host $host;
+#         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+#         proxy_read_timeout 3600s;
+#         proxy_send_timeout 3600s;
+#     }
+#
+#     location / {
+#         proxy_pass http://relay;
+#         proxy_set_header Host $host;
+#         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+#     }
+# }

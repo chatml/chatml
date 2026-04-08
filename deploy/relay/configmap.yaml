@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: chatml-relay-config
+  labels:
+    app: chatml-relay
+data:
+  RELAY_ENV: "production"
+  PORT: "8787"
+  STORE_BACKEND: "redis"
+  MAX_REGISTRATIONS: "1000"
+  MAX_ACTIVE_PAIRS: "500"
+  PAIRING_TTL: "5m"
+  SHUTDOWN_TIMEOUT: "15s"
+  TRUST_PROXY: "true"
+  # ALLOWED_ORIGINS and REDIS_URL should be set via Secret or env override

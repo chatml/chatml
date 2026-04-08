@@ -1,0 +1,61 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: chatml-relay
+  labels:
+    app: chatml-relay
+spec:
+  replicas: 3
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: chatml-relay
+  template:
+    metadata:
+      labels:
+        app: chatml-relay
+    spec:
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: relay
+          image: chatml-relay:latest
+          ports:
+            - containerPort: 8787
+              protocol: TCP
+          envFrom:
+            - configMapRef:
+                name: chatml-relay-config
+          env:
+            # INSTANCE_ID defaults to HOSTNAME, which K8s sets to the pod name
+            - name: REDIS_URL
+              valueFrom:
+                secretKeyRef:
+                  name: chatml-relay-secrets
+                  key: redis-url
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 8787
+            initialDelaySeconds: 2
+            periodSeconds: 5
+            failureThreshold: 2
+            timeoutSeconds: 3
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8787
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            failureThreshold: 3
+            timeoutSeconds: 3
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "100m"
+            limits:
+              memory: "256Mi"
+              cpu: "500m"
