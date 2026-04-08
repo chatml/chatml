@@ -230,7 +230,7 @@ export function McpServersPanel() {
         </Button>
       </div>
 
-      <ScrollArea className="flex-1">
+      <ScrollArea className="flex-1 min-h-0">
         <div className="p-2 space-y-1">
           {mcpConfigLoading && !hasContent && (
             <p className="text-xs text-muted-foreground text-center py-4">Loading...</p>
