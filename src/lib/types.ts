@@ -760,6 +760,9 @@ export interface FileTab {
     newContent: string;
   };
   isBinary?: boolean;
+  isPreviewableImage?: boolean; // true when isBinary && image extension
+  imageUrl?: string;            // raw URL for current image
+  imageOldUrl?: string;         // raw URL for base-ref image (diff view)
   isTooLarge?: boolean;
   unifiedDiff?: string;       // Unified diff fallback for files too large for inline diff
   isEmpty?: boolean;          // File has no content (0 bytes)

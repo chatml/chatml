@@ -109,6 +109,31 @@ export async function fetchAttachmentData(attachmentId: string): Promise<string 
   return json.base64Data || null;
 }
 
+// URL builders for raw image serving — used directly in <img src> tags.
+// Auth token is passed via query param (same mechanism as WebSocket auth).
+export function getSessionFileRawUrl(
+  workspaceId: string,
+  sessionId: string,
+  filePath: string,
+  token?: string | null,
+): string {
+  const params = new URLSearchParams({ path: filePath });
+  if (token) params.set('token', token);
+  return `${getApiBase()}/api/repos/${workspaceId}/sessions/${sessionId}/file-raw?${params}`;
+}
+
+export function getSessionFileRawAtRefUrl(
+  workspaceId: string,
+  sessionId: string,
+  filePath: string,
+  ref: string,
+  token?: string | null,
+): string {
+  const params = new URLSearchParams({ path: filePath, ref });
+  if (token) params.set('token', token);
+  return `${getApiBase()}/api/repos/${workspaceId}/sessions/${sessionId}/file-raw-at-ref?${params}`;
+}
+
 // File save function
 export async function saveFile(
   workspaceId: string,

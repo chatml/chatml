@@ -208,6 +208,8 @@ func NewRouter(ctx context.Context, s *store.SQLiteStore, hub *Hub, agentMgr *ag
 		r.Get("/{id}/sessions/{sessionId}/file-history", h.GetSessionFileHistory)
 		r.Get("/{id}/sessions/{sessionId}/file-at-ref", h.GetSessionFileAtRef)
 		r.Get("/{id}/sessions/{sessionId}/file", h.GetSessionFileContent)
+		r.Get("/{id}/sessions/{sessionId}/file-raw", h.GetSessionFileRaw)
+		r.Get("/{id}/sessions/{sessionId}/file-raw-at-ref", h.GetSessionFileRawAtRef)
 		r.Get("/{id}/sessions/{sessionId}/files", h.ListSessionFiles)
 		r.Get("/{id}/sessions/{sessionId}/commands", h.ListUserCommands)
 		r.With(messageRateLimiter).Post("/{id}/sessions/{sessionId}/message", h.SendSessionMessage)
