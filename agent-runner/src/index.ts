@@ -276,7 +276,7 @@ interface Attachment {
 
 // Input message types from Go backend
 interface InputMessage {
-  type: "message" | "stop" | "interrupt" | "set_model" | "set_permission_mode" | "set_max_thinking_tokens" | "set_fast_mode" | "get_supported_models" | "get_supported_commands" | "get_mcp_status" | "get_account_info" | "rewind_files" | "user_question_response" | "plan_approval_response" | "tool_approval_response" | "reconnect_mcp_server" | "toggle_mcp_server" | "stop_task" | "get_supported_agents" | "set_mcp_servers" | "get_initialization_result" | "fork_session" | "cancel_message";
+  type: "message" | "stop" | "interrupt" | "set_model" | "set_permission_mode" | "set_max_thinking_tokens" | "set_fast_mode" | "set_effort" | "get_supported_models" | "get_supported_commands" | "get_mcp_status" | "get_account_info" | "rewind_files" | "user_question_response" | "plan_approval_response" | "tool_approval_response" | "reconnect_mcp_server" | "toggle_mcp_server" | "stop_task" | "get_supported_agents" | "set_mcp_servers" | "get_initialization_result" | "fork_session" | "cancel_message";
   content?: string;
   model?: string;
   permissionMode?: string;
