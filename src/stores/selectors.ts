@@ -36,6 +36,7 @@ const EMPTY_CONVERSATIONS: readonly Conversation[] = [];
 const EMPTY_SUB_AGENTS: readonly SubAgent[] = [];
 const EMPTY_ACTIVE_IDS: readonly string[] = [];
 const EMPTY_SEGMENT_STUBS: readonly { id: string; timestamp: number }[] = [];
+const EMPTY_SENT_QUEUED: readonly import('./appStore').QueuedMessage[] = [];
 const EMPTY_FILE_COMMENT_STATS = new Map<string, { total: number; unresolved: number }>();
 
 // ============================================================================
@@ -302,6 +303,41 @@ export function useStreamingSegmentIds(conversationId: string | null) {
     if (segmentStubsEqual(prevRef.current, next)) return prevRef.current;
     prevRef.current = next;
     return next;
+  });
+}
+
+/**
+ * Sent queued messages for a conversation — only changes when a message is
+ * marked as sent or removed from the queue. Uses manual ref-equality to avoid
+ * re-renders when unrelated queue state changes.
+ * Use in: StreamingMessage (structural timeline)
+ */
+export function useSentQueuedMessages(conversationId: string | null) {
+  const prevRef = useRef(EMPTY_SENT_QUEUED);
+  return useAppStore((s) => {
+    if (!conversationId) {
+      prevRef.current = EMPTY_SENT_QUEUED;
+      return EMPTY_SENT_QUEUED;
+    }
+    const queue = s.queuedMessages[conversationId];
+    if (!queue || queue.length === 0) {
+      prevRef.current = EMPTY_SENT_QUEUED;
+      return EMPTY_SENT_QUEUED;
+    }
+    const sent = queue.filter(m => m.sent === true);
+    if (sent.length === 0) {
+      prevRef.current = EMPTY_SENT_QUEUED;
+      return EMPTY_SENT_QUEUED;
+    }
+    // Shallow-compare by id list to avoid re-renders when unrelated queue state changes
+    if (
+      prevRef.current.length === sent.length &&
+      prevRef.current.every((m, i) => m.id === sent[i].id)
+    ) {
+      return prevRef.current;
+    }
+    prevRef.current = sent;
+    return sent;
   });
 }
 
