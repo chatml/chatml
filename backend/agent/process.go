@@ -78,7 +78,8 @@ type InputMessage struct {
 	PlanApproved          *bool  `json:"planApproved,omitempty"`
 	PlanApprovalReason    string `json:"planApprovalReason,omitempty"`
 	// Max thinking tokens override (for runtime adjustment)
-	MaxThinkingTokens int `json:"maxThinkingTokens,omitempty"`
+	MaxThinkingTokens int    `json:"maxThinkingTokens,omitempty"`
+	Effort            string `json:"effort,omitempty"`
 	// MCP server management fields (SDK v0.2.21+)
 	ServerName    string `json:"serverName,omitempty"`
 	ServerEnabled *bool  `json:"serverEnabled,omitempty"`
@@ -614,6 +615,14 @@ func (p *Process) SetMaxThinkingTokens(tokens int) error {
 	return p.sendInput(InputMessage{
 		Type:              "set_max_thinking_tokens",
 		MaxThinkingTokens: tokens,
+	})
+}
+
+// SetEffort sends a message to change the reasoning effort level at runtime
+func (p *Process) SetEffort(effort string) error {
+	return p.sendInput(InputMessage{
+		Type:   "set_effort",
+		Effort: effort,
 	})
 }
 

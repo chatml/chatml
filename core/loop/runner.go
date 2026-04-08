@@ -1581,6 +1581,13 @@ func (r *Runner) SetMaxThinkingTokens(tokens int) error {
 	return nil
 }
 
+func (r *Runner) SetEffort(effort string) error {
+	r.mu.Lock()
+	r.opts.Effort = effort
+	r.mu.Unlock()
+	return nil
+}
+
 func (r *Runner) SetPlanModeFromEvent(active bool) {
 	r.mu.Lock()
 	defer r.mu.Unlock()

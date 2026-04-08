@@ -75,8 +75,12 @@ func renderStatus(m *model) string {
 		left += " " + s.gray.Render(strings.Join(extras, " · "))
 	}
 
-	// Right side: mode badge
-	right := s.cyan.Render("/" + modeBadge(m.permMode))
+	// Right side: effort (if set) + mode badge
+	var right string
+	if m.effort != "" {
+		right = s.gray.Render("effort:") + s.cyan.Render(effortBadge(m.effort)) + " "
+	}
+	right += s.cyan.Render("/" + modeBadge(m.permMode))
 
 	// Pad to full width — ensure line fits within terminal
 	leftLen := lipgloss.Width(left)

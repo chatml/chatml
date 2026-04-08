@@ -164,7 +164,7 @@ const maxThinkingTokens = getNumericArg("--max-thinking-tokens");
 const validEffortLevels = ["low", "medium", "high", "max"] as const;
 type EffortLevel = typeof validEffortLevels[number];
 const effortArg = getArg("--effort");
-const effort: EffortLevel | undefined = effortArg
+let effort: EffortLevel | undefined = effortArg
   ? (validEffortLevels as readonly string[]).includes(effortArg)
     ? (effortArg as EffortLevel)
     : (() => { console.error(`Invalid --effort value: "${effortArg}". Ignoring.`); return undefined; })()
@@ -296,6 +296,8 @@ interface InputMessage {
   toolApprovalUpdatedInput?: Record<string, unknown>;
   // Max thinking tokens override
   maxThinkingTokens?: number;
+  // Reasoning effort override
+  effort?: string;
   // MCP server management fields (SDK v0.2.21+)
   serverName?: string;
   serverEnabled?: boolean;
@@ -673,6 +675,19 @@ function setupInputQueue(): void {
         fastModeEnabled = input.fastMode;
         debug(`Fast mode ${fastModeEnabled ? "enabled" : "disabled"} (applies on next query restart)`);
         emit({ type: "fast_mode_changed", fastMode: fastModeEnabled });
+        return;
+      }
+
+      if (input.type === "set_effort" && input.effort) {
+        // No runtime setEffort() on Query — store locally so the next
+        // query() call picks it up via the effort option.
+        if ((validEffortLevels as readonly string[]).includes(input.effort)) {
+          effort = input.effort as EffortLevel;
+          debug(`Effort set to ${effort} (applies on next query restart)`);
+          emit({ type: "effort_changed", effort });
+        } else {
+          emit({ type: "command_error", command: "set_effort", error: `Invalid effort level: "${input.effort}"` });
+        }
         return;
       }
 

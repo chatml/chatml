@@ -66,6 +66,14 @@ func init() {
 			}
 			return nil
 		}, handler: cmdThinking},
+		{name: "effort", desc: "Set reasoning effort", usage: "/effort <low|medium|high|max>", minArgs: 1, validate: func(args []string) error {
+			switch args[0] {
+			case "low", "medium", "high", "max":
+				return nil
+			default:
+				return fmt.Errorf("unknown effort %q — valid levels: low, medium, high, max", args[0])
+			}
+		}, handler: cmdEffort},
 		{name: "status", desc: "Show settings + session stats", usage: "/status", minArgs: 0, handler: cmdStatus},
 		{name: "cost", desc: "Show cost breakdown", usage: "/cost", minArgs: 0, handler: cmdCost},
 		{name: "context", desc: "Show context usage", usage: "/context", minArgs: 0, handler: cmdContext},
@@ -182,6 +190,14 @@ func cmdThinking(m *model, args []string) tea.Cmd {
 	}
 	m.backend.SetMaxThinkingTokens(n)
 	addSystemMsg(m, fmt.Sprintf("Thinking → %d tokens", n))
+	return nil
+}
+
+func cmdEffort(m *model, args []string) tea.Cmd {
+	effort := args[0]
+	m.backend.SetEffort(effort)
+	m.effort = effort
+	addSystemMsg(m, "Effort → "+effortBadge(effort))
 	return nil
 }
 
