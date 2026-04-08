@@ -1569,7 +1569,7 @@ func (r *Runner) SetFastMode(enabled bool) error {
 
 func (r *Runner) SetModel(model string) error {
 	r.mu.Lock()
-	r.opts.Model = model
+	r.opts.Model = strings.TrimSuffix(model, "[1m]")
 	r.mu.Unlock()
 	return nil
 }

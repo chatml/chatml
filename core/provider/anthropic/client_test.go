@@ -268,6 +268,39 @@ func TestBuildRequestBody_AdaptiveThinking(t *testing.T) {
 	assert.Nil(t, thinking["budget_tokens"], "adaptive thinking should not set budget_tokens")
 }
 
+func TestBuildRequestBody_StripContextWindowSuffix(t *testing.T) {
+	// Suffix on client default model (via Config.Model)
+	c, _ := New(Config{APIKey: "sk-test", Model: "claude-opus-4-6[1m]"})
+	req := provider.ChatRequest{
+		Messages: []provider.Message{
+			{Role: provider.RoleUser, Content: []provider.ContentBlock{provider.NewTextBlock("hi")}},
+		},
+	}
+	body := c.buildRequestBody(req)
+	assert.Equal(t, "claude-opus-4-6", body["model"])
+
+	// Suffix on per-request model override
+	c2, _ := New(Config{APIKey: "sk-test", Model: "claude-sonnet-4-6"})
+	req2 := provider.ChatRequest{
+		Model: "claude-opus-4-6[1m]",
+		Messages: []provider.Message{
+			{Role: provider.RoleUser, Content: []provider.ContentBlock{provider.NewTextBlock("hi")}},
+		},
+	}
+	body2 := c2.buildRequestBody(req2)
+	assert.Equal(t, "claude-opus-4-6", body2["model"])
+
+	// No suffix — should pass through unchanged
+	c3, _ := New(Config{APIKey: "sk-test", Model: "claude-sonnet-4-6"})
+	req3 := provider.ChatRequest{
+		Messages: []provider.Message{
+			{Role: provider.RoleUser, Content: []provider.ContentBlock{provider.NewTextBlock("hi")}},
+		},
+	}
+	body3 := c3.buildRequestBody(req3)
+	assert.Equal(t, "claude-sonnet-4-6", body3["model"])
+}
+
 func TestStreamChat_HTTPError(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)

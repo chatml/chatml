@@ -68,7 +68,7 @@ func New(cfg Config) (*Client, error) {
 	}
 
 	c := &Client{
-		model:  cfg.Model,
+		model:  stripContextWindowSuffix(cfg.Model),
 		apiURL: cfg.APIURL,
 	}
 
@@ -305,6 +305,12 @@ func (c *Client) setHeaders(httpReq *http.Request, chatReq *provider.ChatRequest
 	}
 }
 
+// stripContextWindowSuffix removes the "[1m]" context-window suffix that is
+// used for internal tracking but is not a valid API model ID.
+func stripContextWindowSuffix(model string) string {
+	return strings.TrimSuffix(model, "[1m]")
+}
+
 // joinBetas joins beta header values with commas.
 func joinBetas(betas []string) string {
 	result := ""
@@ -323,6 +329,7 @@ func (c *Client) buildRequestBody(req provider.ChatRequest) map[string]interface
 	if model == "" {
 		model = c.model
 	}
+	model = stripContextWindowSuffix(model)
 
 	body := map[string]interface{}{
 		"model":    model,
