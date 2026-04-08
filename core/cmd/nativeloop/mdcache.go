@@ -19,22 +19,25 @@ import (
 const mdCacheMaxEntries = 500
 
 type mdCache struct {
-	mu       sync.RWMutex
-	entries  map[uint64]string
-	order    []uint64 // LRU eviction order (oldest first)
-	renderer *glamour.TermRenderer
-	width    int
+	mu        sync.RWMutex
+	entries   map[uint64]string
+	order     []uint64 // LRU eviction order (oldest first)
+	renderer  *glamour.TermRenderer
+	width     int
+	themeName string
 }
 
-func newMDCache(width int) *mdCache {
+func newMDCache(width int, themeName string) *mdCache {
+	// Error ignored: Render() handles nil renderer by falling back to raw content.
 	r, _ := glamour.NewTermRenderer(
-		glamour.WithAutoStyle(),
+		glamour.WithStyles(glamourStyleForTheme(themeName)),
 		glamour.WithWordWrap(clampWidth(width)),
 	)
 	return &mdCache{
-		entries:  make(map[uint64]string, mdCacheMaxEntries),
-		renderer: r,
-		width:    width,
+		entries:   make(map[uint64]string, mdCacheMaxEntries),
+		renderer:  r,
+		width:     width,
+		themeName: themeName,
 	}
 }
 
@@ -102,6 +105,14 @@ func (c *mdCache) RenderNoCache(content string) string {
 	return content
 }
 
+// SetTheme updates the glamour theme and invalidates the cache.
+func (c *mdCache) SetTheme(themeName string, width int) {
+	c.mu.Lock()
+	c.themeName = themeName
+	c.mu.Unlock()
+	c.Invalidate(width)
+}
+
 // Invalidate clears the cache (e.g., on terminal resize).
 func (c *mdCache) Invalidate(newWidth int) {
 	c.mu.Lock()
@@ -111,7 +122,7 @@ func (c *mdCache) Invalidate(newWidth int) {
 	c.order = c.order[:0]
 	c.width = newWidth
 	c.renderer, _ = glamour.NewTermRenderer(
-		glamour.WithAutoStyle(),
+		glamour.WithStyles(glamourStyleForTheme(c.themeName)),
 		glamour.WithWordWrap(clampWidth(newWidth)),
 	)
 }
@@ -193,3 +204,4 @@ func heightOf(rendered string) int {
 	}
 	return lipgloss.Height(rendered)
 }
+

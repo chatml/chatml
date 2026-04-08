@@ -14,9 +14,9 @@ import (
 )
 
 // printBanner prints the welcome banner directly to stdout before BubbleTea starts.
-func printBanner(modelName, permMode, workdir string) {
-	purpleStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#7C3AED"))
-	asciiArt := purpleStyle.Render("" +
+func printBanner(modelName, permMode, workdir string, t theme) {
+	brandStyle := lipgloss.NewStyle().Foreground(t.Banner)
+	asciiArt := brandStyle.Render("" +
 		"   ██████╗██╗  ██╗ █████╗ ████████╗███╗   ███╗██╗\n" +
 		"  ██╔════╝██║  ██║██╔══██╗╚══██╔══╝████╗ ████║██║\n" +
 		"  ██║     ███████║███████║   ██║   ██╔████╔██║██║\n" +
@@ -115,8 +115,11 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Resolve theme once (avoids repeated terminal background queries)
+	t := selectTheme(*themeFlag)
+
 	// Print welcome banner before BubbleTea starts (avoids Init() Println race)
-	printBanner(*modelFlag, *mode, wd)
+	printBanner(*modelFlag, *mode, wd, t)
 
 	// Create the BubbleTea model
 	m := newModel(backend, modelOpts{
@@ -128,7 +131,7 @@ func main() {
 		promptMode: *prompt != "",
 		promptText: *prompt,
 		maxBudget:  *maxBudget,
-		themeName:  *themeFlag,
+		theme:      t,
 	})
 
 	// Detect git state for status bar

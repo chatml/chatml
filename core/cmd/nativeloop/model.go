@@ -137,8 +137,9 @@ type model struct {
 	lastBell      time.Time
 
 	// Rendering
-	s       *styles
-	mdCache *mdCache
+	s         *styles
+	mdCache   *mdCache
+	themeName string
 
 	// Session picker
 	sessionList     []loop.TranscriptSummary
@@ -170,13 +171,13 @@ func newModel(backend agent.ConversationBackend, opts modelOpts) model {
 	ta.FocusedStyle.CursorLine = lipgloss.NewStyle()
 	ta.CharLimit = 0
 
-	t := selectTheme(opts.themeName)
+	t := opts.theme
 
 	sp := spinner.New()
 	sp.Spinner = spinner.MiniDot
 	sp.Style = lipgloss.NewStyle().Foreground(t.Warn)
 	s := newStylesFromTheme(t)
-	cache := newMDCache(100) // resized on first WindowSizeMsg
+	cache := newMDCache(100, t.Name) // resized on first WindowSizeMsg
 
 	return model{
 		input:     ti,
@@ -195,6 +196,7 @@ func newModel(backend agent.ConversationBackend, opts modelOpts) model {
 		hist:        inputHistory{idx: -1},
 		s:           s,
 		mdCache:     cache,
+		themeName:   t.Name,
 		modelName:   opts.model,
 		permMode:    opts.permMode,
 		fastMode:    opts.fastMode,
@@ -221,7 +223,7 @@ type modelOpts struct {
 	promptMode bool
 	promptText string
 	maxBudget  float64
-	themeName  string
+	theme      theme // resolved theme (avoids re-calling selectTheme)
 }
 
 // submitInput is the shared submit path for both single-line and multi-line input.
