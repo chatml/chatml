@@ -31,8 +31,12 @@ export function PairMobileSettings() {
   useEffect(() => {
     getRelayStatus()
       .then((status) => {
-        if (status.connected) {
+        if (status.paired) {
           setState('connected');
+          if (status.qrData) setQrData(status.qrData);
+          if (status.relayUrl) setRelayUrl(status.relayUrl);
+        } else if (status.connected) {
+          setState('waiting');
           if (status.qrData) setQrData(status.qrData);
           if (status.relayUrl) setRelayUrl(status.relayUrl);
         }
@@ -57,9 +61,13 @@ export function PairMobileSettings() {
     pollRef.current = setInterval(async () => {
       try {
         const status = await getRelayStatus();
-        if (mounted && status.connected) {
+        if (!mounted) return;
+        if (status.paired) {
           setState('connected');
           success('Mobile device connected');
+        } else if (!status.connected) {
+          setState('error');
+          setError('Relay connection lost');
         }
       } catch {
         // Ignore polling errors

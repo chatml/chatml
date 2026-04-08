@@ -17,6 +17,9 @@ import (
 const (
 	rpcErrHTTPClient = -32001 // HTTP 4xx — client error
 	rpcErrHTTPServer = -32002 // HTTP 5xx — server error
+
+	maxRequestBodySize  = 1 * 1024 * 1024  // 1MB — max request body from mobile
+	maxResponseBodySize = 10 * 1024 * 1024 // 10MB — max response body from router
 )
 
 // allowedHTTPMethods is the set of HTTP methods permitted for proxied requests.
@@ -60,7 +63,14 @@ func dispatchHTTPRequest(router http.Handler, authToken string, req *JSONRPCRequ
 		}
 	}
 
-	// Build HTTP request body
+	// Validate and build HTTP request body
+	if len(req.Params.Body) > maxRequestBodySize {
+		return &JSONRPCResponse{
+			JSONRPC: "2.0",
+			ID:      req.ID,
+			Error:   &JSONRPCError{Code: -32602, Message: "request body too large"},
+		}
+	}
 	var body io.Reader
 	if req.Params.Body != nil {
 		body = bytes.NewReader(req.Params.Body)
@@ -89,8 +99,15 @@ func dispatchHTTPRequest(router http.Handler, authToken string, req *JSONRPCRequ
 	router.ServeHTTP(recorder, httpReq)
 
 	result := recorder.Result()
-	respBody, err := io.ReadAll(result.Body)
+	respBody, err := io.ReadAll(io.LimitReader(result.Body, maxResponseBodySize+1))
 	result.Body.Close()
+	if err == nil && len(respBody) > maxResponseBodySize {
+		return &JSONRPCResponse{
+			JSONRPC: "2.0",
+			ID:      req.ID,
+			Error:   &JSONRPCError{Code: -32603, Message: "response too large for relay"},
+		}
+	}
 	if err != nil {
 		logger.Relay.Errorf("Failed to read proxy response body: %v", err)
 		return &JSONRPCResponse{
