@@ -199,6 +199,12 @@ func handleThinking(m *model, e agent.AgentEvent) tea.Cmd {
 }
 
 func handleToolStart(m *model, e agent.AgentEvent) tea.Cmd {
+	// Sub-agents are rendered by handleSubagentStarted/Stopped — skip here.
+	// The SDK tool name is "Task"; we also check "Agent" defensively.
+	if e.Tool == "Task" || e.Tool == "Agent" {
+		return nil
+	}
+
 	m.flushThinking()
 	m.flushAssistantText()
 
@@ -246,6 +252,11 @@ func handleToolStart(m *model, e agent.AgentEvent) tea.Cmd {
 }
 
 func handleToolEnd(m *model, e agent.AgentEvent) tea.Cmd {
+	// Sub-agents are rendered by handleSubagentStarted/Stopped — skip here.
+	if e.Tool == "Task" || e.Tool == "Agent" {
+		return nil
+	}
+
 	duration := time.Duration(0)
 	if e.ID != "" {
 		if start, ok := m.stream.toolStarts[e.ID]; ok {
@@ -550,6 +561,9 @@ func handlePermissionMode(m *model, e agent.AgentEvent) tea.Cmd {
 }
 
 func handleSubagentStarted(m *model, e agent.AgentEvent) tea.Cmd {
+	m.flushThinking()
+	m.flushAssistantText()
+
 	desc := e.AgentDescription
 	if desc == "" {
 		desc = "Sub-agent"
