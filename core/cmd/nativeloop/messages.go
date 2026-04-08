@@ -24,6 +24,7 @@ const (
 	msgApproval
 	msgQuestion
 	msgPlanReview
+	msgTurnSeparator // visual separator between turns
 )
 
 // agentToolCall records a completed inner tool call from a sub-agent.
@@ -222,7 +223,15 @@ func renderToolRunningMessage(b *strings.Builder, s *styles, msg *displayMessage
 		return
 	}
 
-	b.WriteString(s.toolResult.Render("  ⎿ running...") + "\n")
+	// Show elapsed time for running tools (only after 1s to avoid flicker)
+	elapsed := ""
+	if !msg.timestamp.IsZero() {
+		dur := time.Since(msg.timestamp)
+		if dur >= 1*time.Second {
+			elapsed = " (" + formatDuration(dur) + ")"
+		}
+	}
+	b.WriteString(s.toolResult.Render("  ⎿ running..."+elapsed) + "\n")
 }
 
 // renderAgentProgress renders the inner tool call list for a running agent.
@@ -268,7 +277,7 @@ func renderAgentProgress(b *strings.Builder, s *styles, prog *agentProgress) {
 			toolLine += " " + prog.runningParam
 		}
 		b.WriteString(s.toolHeader.Render(toolLine) + "\n")
-		b.WriteString(s.toolResult.Render("     ⎿ running...") + "\n")
+		b.WriteString(s.toolResult.Render("     ⎿ running...") + "\n") // elapsed tracked at parent level
 	}
 
 	// Status line with metrics
@@ -351,6 +360,29 @@ func renderPlanReviewMessage(b *strings.Builder, s *styles, msg *displayMessage,
 	b.WriteString("\n")
 	b.WriteString("  " + s.banner.Render("□ Plan Ready for Review") + "\n")
 	b.WriteString(s.gray.Render("  The agent has finished planning. Review the plan above.") + "\n")
+}
+
+// renderTurnSeparator renders a faint horizontal rule with timestamp.
+func renderTurnSeparator(b *strings.Builder, s *styles, msg *displayMessage, width int) {
+	ts := ""
+	if !msg.timestamp.IsZero() {
+		ts = " " + msg.timestamp.Format("15:04") + " "
+	}
+	// Build: ────── 14:23 ──────
+	tsLen := len(ts)
+	remaining := width - len(msgIndent) - tsLen
+	if remaining < 4 {
+		remaining = 4
+	}
+	// Clamp total line width to terminal width to prevent wrapping
+	maxDashes := width - len(msgIndent) - tsLen
+	if remaining > maxDashes && maxDashes > 0 {
+		remaining = maxDashes
+	}
+	leftDash := remaining / 2
+	rightDash := remaining - leftDash
+	line := msgIndent + strings.Repeat("─", leftDash) + ts + strings.Repeat("─", rightDash)
+	b.WriteString(s.gray.Render(line) + "\n")
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────────────

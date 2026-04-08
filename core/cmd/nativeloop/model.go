@@ -8,6 +8,7 @@ import (
 	"github.com/chatml/chatml-core/agent"
 	"github.com/chatml/chatml-core/loop"
 	"github.com/charmbracelet/bubbles/spinner"
+	"github.com/charmbracelet/bubbles/textarea"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -37,6 +38,7 @@ type sessionStats struct {
 	totalTurns        int
 	lastContextPct    int
 	lastContextWindow int
+	parseErrors       int
 	startTime         time.Time
 }
 
@@ -89,8 +91,12 @@ type inputHistory struct {
 
 type model struct {
 	// BubbleTea sub-models
-	input   textinput.Model
-	spinner spinner.Model
+	input     textinput.Model
+	multiLine textarea.Model
+	spinner   spinner.Model
+
+	// Multi-line mode (toggle with Ctrl+E)
+	multiLineMode bool
 
 	// Layout (defaults set in newModel, updated on WindowSizeMsg)
 	width, height int
@@ -122,6 +128,14 @@ type model struct {
 	startTime time.Time
 	mcpCount  int
 
+	// Git state (refreshed at startup and on cwd_changed)
+	gitBranch string
+	gitDirty  bool
+
+	// Notifications (bell debounce: skip if sent within bellCooldown)
+	notifications bool
+	lastBell      time.Time
+
 	// Rendering
 	s       *styles
 	mdCache *mdCache
@@ -149,17 +163,26 @@ func newModel(backend agent.ConversationBackend, opts modelOpts) model {
 	// produce responses that leak into the focused textinput. Focus is
 	// deferred via a tea.Cmd in Init().
 
+	ta := textarea.New()
+	ta.Prompt = "❯ "
+	ta.SetHeight(4)
+	ta.ShowLineNumbers = false
+	ta.FocusedStyle.CursorLine = lipgloss.NewStyle()
+	ta.CharLimit = 0
+
+	t := selectTheme(opts.themeName)
+
 	sp := spinner.New()
 	sp.Spinner = spinner.MiniDot
-	sp.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("#F59E0B"))
-
-	s := newStyles()
+	sp.Style = lipgloss.NewStyle().Foreground(t.Warn)
+	s := newStylesFromTheme(t)
 	cache := newMDCache(100) // resized on first WindowSizeMsg
 
 	return model{
-		input:   ti,
-		spinner: sp,
-		backend: backend,
+		input:     ti,
+		multiLine: ta,
+		spinner:   sp,
+		backend:   backend,
 		width:   80, // sensible defaults until WindowSizeMsg arrives
 		height:  24,
 		stream: streamState{
@@ -181,7 +204,8 @@ func newModel(backend agent.ConversationBackend, opts modelOpts) model {
 		promptText:  opts.promptText,
 		maxBudget:   opts.maxBudget,
 		startTime:   time.Now(),
-		agentMsgIdx: make(map[string]int),
+		notifications: true,
+		agentMsgIdx:   make(map[string]int),
 		stats: sessionStats{
 			startTime: time.Now(),
 		},
@@ -197,6 +221,30 @@ type modelOpts struct {
 	promptMode bool
 	promptText string
 	maxBudget  float64
+	themeName  string
+}
+
+// submitInput is the shared submit path for both single-line and multi-line input.
+// It formats the user prompt, transitions to stateRunning, and sends the message.
+// displayText is the string shown in scrollback (may differ from text for multi-line).
+func (m *model) submitInput(text, displayText string) (model, tea.Cmd) {
+	userLine := m.s.userMsg.Render("  ❯ " + displayText)
+	m.hist.entries = append(m.hist.entries, text)
+	m.state = stateRunning
+	m.stream.turnStart = now()
+	m.stream.turnVerb = randomVerb()
+	m.stream.turnTokens = 0
+	m.stream.thinkingStart = time.Time{}
+	m.stream.hadAssistant = false
+	m.input.Blur()
+
+	if err := m.backend.SendMessage(text); err != nil {
+		m.appendActive(&displayMessage{kind: msgError, content: "Failed to send: " + err.Error()})
+		m.state = stateIdle
+		m.input.Focus()
+		return *m, tea.Println(userLine)
+	}
+	return *m, tea.Println(userLine)
 }
 
 // ── Message helpers ─────────────────────────────────────────────────────────
@@ -344,6 +392,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width = msg.Width
 		m.height = msg.Height
 		m.input.Width = m.width - inputWidthPadding
+		m.multiLine.SetWidth(m.width - inputWidthPadding)
 		// Update markdown cache width
 		if m.mdCache != nil {
 			m.mdCache.Invalidate(m.width)
@@ -365,6 +414,26 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "ctrl+o":
 			m.verbose = !m.verbose
 			return m, nil
+		case "ctrl+e":
+			if m.state == stateIdle {
+				m.multiLineMode = !m.multiLineMode
+				if m.multiLineMode {
+					// Transfer content from single-line to multi-line
+					m.multiLine.SetValue(m.input.Value())
+					m.input.Blur()
+					m.multiLine.Focus()
+					m.multiLine.SetWidth(m.width - inputWidthPadding)
+				} else {
+					// Transfer back — join lines with spaces to avoid data loss
+					val := m.multiLine.Value()
+					val = strings.ReplaceAll(val, "\n", " ")
+					val = strings.TrimSpace(val)
+					m.input.SetValue(val)
+					m.multiLine.Blur()
+					m.input.Focus()
+				}
+				return m, nil
+			}
 		case "shift+tab":
 			if m.state == stateIdle {
 				newMode := nextPermMode(m.permMode)
@@ -377,6 +446,34 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// State-specific key handling
 		switch m.state {
 		case stateIdle:
+			// Multi-line mode: delegate most keys to textarea
+			if m.multiLineMode {
+				switch msg.String() {
+				case "ctrl+enter":
+					// Submit multi-line input
+					text := strings.TrimSpace(m.multiLine.Value())
+					if text == "" {
+						return m, nil
+					}
+					m.multiLine.SetValue("")
+					m.multiLineMode = false
+					m.multiLine.Blur()
+
+					// Format multi-line prompts: show first line + continuation count
+					lines := strings.Split(text, "\n")
+					displayText := lines[0]
+					if len(lines) > 1 {
+						displayText += fmt.Sprintf(" (+%d lines)", len(lines)-1)
+					}
+					updated, cmd := m.submitInput(text, displayText)
+					return updated, cmd
+				default:
+					var cmd tea.Cmd
+					m.multiLine, cmd = m.multiLine.Update(msg)
+					return m, cmd
+				}
+			}
+
 			switch msg.String() {
 			case "up":
 				if len(m.hist.entries) > 0 {
@@ -448,26 +545,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 
 				// Println the user prompt into scrollback, then start the turn
-				userLine := m.s.userMsg.Render("  ❯ " + text)
-				m.hist.entries = append(m.hist.entries, text)
-				m.state = stateRunning
-				m.stream.turnStart = now()
-				m.stream.turnVerb = randomVerb()
-				m.stream.turnTokens = 0
-				m.stream.thinkingStart = time.Time{}
-				m.stream.hadAssistant = false
-				m.input.Blur()
-
-				if err := m.backend.SendMessage(text); err != nil {
-					m.appendActive(&displayMessage{
-						kind:    msgError,
-						content: "Failed to send: " + err.Error(),
-					})
-					m.state = stateIdle
-					m.input.Focus()
-					return m, tea.Println(userLine)
-				}
-				return m, tea.Println(userLine)
+				updated, cmd := m.submitInput(text, text)
+				return updated, cmd
 
 			default:
 				var cmd tea.Cmd
@@ -510,6 +589,21 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 
+	case gitStateMsg:
+		m.gitBranch = msg.branch
+		m.gitDirty = msg.dirty
+
+	case parseErrorMsg:
+		m.stats.parseErrors++
+		if m.verbose {
+			m.appendActive(&displayMessage{
+				kind:    msgSystem,
+				content: fmt.Sprintf("[parse error #%d] %s — %s", m.stats.parseErrors, msg.err.Error(), truncate(msg.raw, 120)),
+			})
+		}
+		// Continue listening despite the error
+		cmds = append(cmds, waitForEvent(m.backend))
+
 	case agentEventMsg:
 		cmd := processAgentEvent(&m, msg)
 		if cmd != nil {
@@ -550,13 +644,12 @@ func (m model) View() string {
 
 // renderSpinnerLine returns the spinner line shown while the agent is running.
 func (m model) renderSpinnerLine() string {
-	amber := lipgloss.NewStyle().Foreground(lipgloss.Color("#F59E0B"))
-	label := amber.Render("Waiting for response...")
+	label := m.s.warn.Render("Waiting for response...")
 	if m.stream.thinkingBuf.Len() > 0 {
 		elapsed := time.Since(m.stream.thinkingStart).Truncate(time.Second)
 		label = m.s.thinking.Render(fmt.Sprintf("∴ Thinking... (%s)", elapsed))
 	} else if m.stream.turnTokens > 0 {
-		label = amber.Render(fmt.Sprintf("Generating... %s tokens", formatNum(m.stream.turnTokens)))
+		label = m.s.warn.Render(fmt.Sprintf("Generating... %s tokens", formatNum(m.stream.turnTokens)))
 	}
 	return "  " + m.spinner.View() + " " + label
 }

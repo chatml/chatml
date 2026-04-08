@@ -2,7 +2,8 @@ package main
 
 // Layout constants
 const (
-	inputWidthPadding = 6 // space for prompt prefix (❯ + padding)
+	inputWidthPadding = 6    // space for prompt prefix (❯ + padding)
+	msgIndent         = "  " // standard left indent for message content
 )
 
 // Tool rendering constants

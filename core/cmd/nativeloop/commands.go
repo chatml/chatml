@@ -10,11 +10,21 @@ import (
 
 // slashCmd describes a single slash command in the registry.
 type slashCmd struct {
-	name    string
-	desc    string // for /help display
-	usage   string // e.g. "/model <name>"
-	minArgs int    // minimum args required (0 for no-arg commands)
-	handler func(m *model, args []string) tea.Cmd
+	name     string
+	desc     string // for /help display
+	usage    string // e.g. "/model <name>"
+	minArgs  int    // minimum args required (0 for no-arg commands)
+	validate func(args []string) error
+	handler  func(m *model, args []string) tea.Cmd
+}
+
+// known permission modes for validation
+var validPermModes = map[string]bool{
+	"bypassPermissions": true,
+	"default":           true,
+	"acceptEdits":       true,
+	"plan":              true,
+	"dontAsk":           true,
 }
 
 // cmdRegistry is the canonical list of all slash commands.
@@ -26,10 +36,36 @@ func init() {
 		{name: "quit", desc: "Exit", usage: "/quit", minArgs: 0, handler: cmdQuit},
 		{name: "exit", desc: "Exit", usage: "/exit", minArgs: 0, handler: cmdQuit},
 		{name: "help", desc: "Show commands", usage: "/help", minArgs: 0, handler: cmdHelp},
-		{name: "model", desc: "Switch model", usage: "/model <name>", minArgs: 1, handler: cmdModel},
-		{name: "mode", desc: "Permission mode", usage: "/mode <bypass|default|acceptEdits|plan|dontAsk>", minArgs: 1, handler: cmdMode},
+		{name: "model", desc: "Switch model", usage: "/model <name>", minArgs: 1, validate: func(args []string) error {
+			if strings.TrimSpace(args[0]) == "" {
+				return fmt.Errorf("model name cannot be empty")
+			}
+			if strings.Contains(args[0], " ") {
+				return fmt.Errorf("model name cannot contain spaces")
+			}
+			return nil
+		}, handler: cmdModel},
+		{name: "mode", desc: "Permission mode", usage: "/mode <bypass|default|acceptEdits|plan|dontAsk>", minArgs: 1, validate: func(args []string) error {
+			mode := args[0]
+			if mode == "bypass" {
+				mode = "bypassPermissions"
+			}
+			if !validPermModes[mode] {
+				return fmt.Errorf("unknown mode %q — valid modes: bypass, default, acceptEdits, plan, dontAsk", args[0])
+			}
+			return nil
+		}, handler: cmdMode},
 		{name: "fast", desc: "Toggle fast mode", usage: "/fast", minArgs: 0, handler: cmdFast},
-		{name: "thinking", desc: "Set thinking budget", usage: "/thinking <N>", minArgs: 1, handler: cmdThinking},
+		{name: "thinking", desc: "Set thinking budget", usage: "/thinking <N>", minArgs: 1, validate: func(args []string) error {
+			n, err := strconv.Atoi(args[0])
+			if err != nil {
+				return fmt.Errorf("invalid number: %s", args[0])
+			}
+			if n < 0 || n > 65536 {
+				return fmt.Errorf("thinking budget must be 0-65536, got %d", n)
+			}
+			return nil
+		}, handler: cmdThinking},
 		{name: "status", desc: "Show settings + session stats", usage: "/status", minArgs: 0, handler: cmdStatus},
 		{name: "cost", desc: "Show cost breakdown", usage: "/cost", minArgs: 0, handler: cmdCost},
 		{name: "context", desc: "Show context usage", usage: "/context", minArgs: 0, handler: cmdContext},
@@ -47,6 +83,15 @@ func init() {
 		{name: "mcp", desc: "Show MCP server status", usage: "/mcp", minArgs: 0, handler: cmdMcp},
 		{name: "plan", desc: "Enter plan mode", usage: "/plan", minArgs: 0, handler: cmdPlan},
 		{name: "export", desc: "Export conversation to file", usage: "/export", minArgs: 0, handler: cmdExport},
+		{name: "notifications", desc: "Toggle terminal notifications", usage: "/notifications", minArgs: 0, handler: cmdNotifications},
+		{name: "theme", desc: "Switch color theme", usage: "/theme <dark|light|auto>", minArgs: 1, validate: func(args []string) error {
+			switch args[0] {
+			case "dark", "light", "auto":
+				return nil
+			default:
+				return fmt.Errorf("unknown theme %q — valid themes: dark, light, auto", args[0])
+			}
+		}, handler: cmdTheme},
 		{name: "setup", desc: "Run initial setup", usage: "/setup", minArgs: 0, handler: nil}, // placeholder
 	}
 }
@@ -90,8 +135,10 @@ func cmdHelp(m *model, _ []string) tea.Cmd {
 	lines = append(lines, "")
 	lines = append(lines, "  Ctrl+C         Interrupt / quit")
 	lines = append(lines, "  Ctrl+D         Quit")
+	lines = append(lines, "  Ctrl+E         Toggle multi-line input")
 	lines = append(lines, "  Ctrl+O         Toggle verbose mode")
 	lines = append(lines, "  Shift+Tab      Cycle permission modes")
+	lines = append(lines, "  Tab            Expand/collapse last tool output")
 	lines = append(lines, "  PgUp/PgDn      Scroll conversation")
 	addSystemMsg(m, strings.Join(lines, "\n"))
 	return nil
@@ -144,6 +191,9 @@ func cmdStatus(m *model, _ []string) tea.Cmd {
 		m.stats.totalTurns, m.stats.totalCost,
 		formatNum(m.stats.totalInputTokens), formatNum(m.stats.totalOutputTokens),
 		m.stats.lastContextPct)
+	if m.stats.parseErrors > 0 {
+		status += fmt.Sprintf("\nParse errors: %d (use /verbose to see details)", m.stats.parseErrors)
+	}
 	addSystemMsg(m, status)
 	return nil
 }
@@ -284,6 +334,23 @@ func cmdPlan(m *model, _ []string) tea.Cmd {
 	m.backend.SetPermissionMode("plan")
 	m.permMode = "plan"
 	addSystemMsg(m, "Entered plan mode. Write/Edit/Bash tools are restricted. Use ExitPlanMode to exit.")
+	return nil
+}
+
+func cmdNotifications(m *model, _ []string) tea.Cmd {
+	m.notifications = !m.notifications
+	state := "off"
+	if m.notifications {
+		state = "on"
+	}
+	addSystemMsg(m, "Notifications → "+state)
+	return nil
+}
+
+func cmdTheme(m *model, args []string) tea.Cmd {
+	t := selectTheme(args[0])
+	m.s = newStylesFromTheme(t)
+	addSystemMsg(m, "Theme → "+t.Name)
 	return nil
 }
 

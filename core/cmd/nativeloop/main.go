@@ -40,6 +40,7 @@ func main() {
 	verbose := flag.Bool("verbose", false, "Show debug events")
 	prompt := flag.String("prompt", "", "Send a single prompt and exit (non-interactive)")
 	maxBudget := flag.Float64("max-budget", 0, "Maximum session budget in USD (0=unlimited)")
+	themeFlag := flag.String("theme", "auto", "Color theme: dark, light, auto")
 	versionFlag := flag.Bool("version", false, "Print version and exit")
 	flag.Parse()
 
@@ -127,7 +128,24 @@ func main() {
 		promptMode: *prompt != "",
 		promptText: *prompt,
 		maxBudget:  *maxBudget,
+		themeName:  *themeFlag,
 	})
+
+	// Detect git state for status bar
+	m.gitBranch, m.gitDirty = detectGitState(wd)
+
+	// Install panic recovery — writes crash report before exiting.
+	// Note: &m points to the stack-local model; BubbleTea copies it, so crash
+	// reports will contain initial state (not runtime state). The panic message
+	// and stack trace — the most valuable parts — are always accurate.
+	defer setupPanicRecovery(&m)()
+
+	// Clean old crash reports and notify about recent crashes
+	cleanOldCrashReports()
+	if crash := checkRecentCrash(); crash != nil {
+		// Use model styles for themed output (styles are initialized at this point)
+		fmt.Printf("%s %s\n\n", m.s.warn.Render("  ⚠ Previous session crashed:"), truncate(crash.PanicMessage, 60))
+	}
 
 	// Create BubbleTea program — NO alt-screen so terminal scrollbar,
 	// native text selection, and scrollback all work naturally.

@@ -13,20 +13,32 @@ type toolRenderer struct {
 	buildDetails func(params map[string]interface{}, s *styles, workdir string) []string
 	// enrichSummary transforms the raw tool summary into a richer display string
 	enrichSummary func(summary string, params map[string]interface{}) string
+	// collapseAt overrides the default collapse threshold (0 = use default, -1 = never collapse)
+	collapseAt int
 }
 
 // toolRenderers maps tool names to their renderers.
+// collapseAt: 0 = use default collapseThreshold, -1 = never collapse, N = collapse at N lines.
 var toolRenderers = map[string]toolRenderer{
-	"Read":         {readExtractParams, readBuildDetails, readEnrichSummary},
-	"Write":        {writeExtractParams, nil, writeEnrichSummary},
-	"Edit":         {editExtractParams, editBuildDetails, nil},
-	"Bash":         {bashExtractParams, bashBuildDetails, bashEnrichSummary},
-	"Glob":         {globExtractParams, nil, nil},
-	"Grep":         {grepExtractParams, nil, grepEnrichSummary},
-	"WebFetch":     {webFetchExtractParams, nil, webFetchEnrichSummary},
-	"WebSearch":    {webSearchExtractParams, nil, webSearchEnrichSummary},
-	"NotebookEdit": {notebookExtractParams, notebookBuildDetails, nil},
-	"Agent":        {agentExtractParams, nil, nil},
+	"Read":         {readExtractParams, readBuildDetails, readEnrichSummary, -1},
+	"Write":        {writeExtractParams, nil, writeEnrichSummary, -1},
+	"Edit":         {editExtractParams, editBuildDetails, nil, -1},
+	"Bash":         {bashExtractParams, bashBuildDetails, bashEnrichSummary, bashPreviewLines},
+	"Glob":         {globExtractParams, nil, nil, -1},
+	"Grep":         {grepExtractParams, nil, grepEnrichSummary, 10},
+	"WebFetch":     {webFetchExtractParams, nil, webFetchEnrichSummary, 20},
+	"WebSearch":    {webSearchExtractParams, nil, webSearchEnrichSummary, -1},
+	"NotebookEdit": {notebookExtractParams, notebookBuildDetails, nil, 0},
+	"Agent":        {agentExtractParams, nil, nil, 0},
+}
+
+// toolCollapseThreshold returns the collapse threshold for a tool.
+// Returns -1 to never collapse, or the line count threshold.
+func toolCollapseThreshold(tool string) int {
+	if r, ok := toolRenderers[tool]; ok && r.collapseAt != 0 {
+		return r.collapseAt
+	}
+	return collapseThreshold // default from constants.go
 }
 
 // ── Read ────────────────────────────────────────────────────────────────────

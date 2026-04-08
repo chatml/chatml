@@ -33,44 +33,18 @@ type styles struct {
 	agentTree   lipgloss.Style // dimmed tree chars (├─/└─/│)
 	agentMetric lipgloss.Style // metrics line (N tool uses · X tokens)
 
+	// Status bar colors
+	cyan lipgloss.Style
+	blue lipgloss.Style
+
 	// Dynamic border colors for input area
 	borderIdle     lipgloss.Style
 	borderRunning  lipgloss.Style
 	borderApproval lipgloss.Style
 }
 
+// newStyles creates styles with the default dark theme.
+// Prefer newStylesFromTheme(selectTheme(name)) for theme-aware initialization.
 func newStyles() *styles {
-	return &styles{
-		banner:     lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#7C3AED")),
-		prompt:     lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#22C55E")),
-		thinking:   lipgloss.NewStyle().Italic(true).Foreground(lipgloss.Color("#94A3B8")),
-		toolHeader: lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#3B82F6")),
-		toolResult: lipgloss.NewStyle().Foreground(lipgloss.Color("#6B7280")),
-		toolOK:     lipgloss.NewStyle().Foreground(lipgloss.Color("#22C55E")),
-		toolFail:   lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#EF4444")),
-		errStyle:   lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#EF4444")),
-		warn:       lipgloss.NewStyle().Foreground(lipgloss.Color("#F59E0B")),
-		gray:       lipgloss.NewStyle().Foreground(lipgloss.Color("#6B7280")),
-		cmd:        lipgloss.NewStyle().Foreground(lipgloss.Color("#A78BFA")),
-		todo:       lipgloss.NewStyle().Foreground(lipgloss.Color("#60A5FA")),
-		ctxLow:     lipgloss.NewStyle().Foreground(lipgloss.Color("#22C55E")),
-		ctxMid:     lipgloss.NewStyle().Foreground(lipgloss.Color("#F59E0B")),
-		ctxHigh:    lipgloss.NewStyle().Foreground(lipgloss.Color("#EF4444")),
-		toolLine:   lipgloss.NewStyle().Foreground(lipgloss.Color("#64748B")),
-		diffAdd:    lipgloss.NewStyle().Foreground(lipgloss.Color("#22C55E")),
-		diffDel:    lipgloss.NewStyle().Foreground(lipgloss.Color("#EF4444")),
-		userMsg:    lipgloss.NewStyle().Foreground(lipgloss.Color("#E2E8F0")).Background(lipgloss.Color("#1E1E2E")),
-		bullet:     lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#7C3AED")),
-		statusFaint: lipgloss.NewStyle().Faint(true),
-		exitOK:      lipgloss.NewStyle().Foreground(lipgloss.Color("#22C55E")),
-		exitFail:    lipgloss.NewStyle().Foreground(lipgloss.Color("#EF4444")),
-		expandHint:  lipgloss.NewStyle().Foreground(lipgloss.Color("#4B5563")),
-
-		agentTree:   lipgloss.NewStyle().Foreground(lipgloss.Color("#4B5563")),
-		agentMetric: lipgloss.NewStyle().Foreground(lipgloss.Color("#6B7280")),
-
-		borderIdle:     lipgloss.NewStyle().Foreground(lipgloss.Color("#6B7280")),
-		borderRunning:  lipgloss.NewStyle().Foreground(lipgloss.Color("#3B82F6")),
-		borderApproval: lipgloss.NewStyle().Foreground(lipgloss.Color("#F59E0B")),
-	}
+	return newStylesFromTheme(darkTheme)
 }
