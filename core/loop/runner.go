@@ -64,6 +64,7 @@ type Runner struct {
 	stopped            bool
 	sessionID          string
 	planModeActive     bool
+	lastPlanFilePath   string // Path of last plan file written/read during plan mode
 	permissionMode     string
 	fastMode           bool
 	sawErrorEvent      bool
@@ -1097,6 +1098,9 @@ func (r *Runner) executeTools(ctx context.Context, toolCalls []provider.ToolUseB
 				}
 				r.emitter.emitToolEnd(tcr.ToolCall.ID, tcr.ToolCall.Name, !isError, summary, rawToMap(tc.Input))
 				resultsByID[tc.ID] = toolResultBlock(tcr.ToolCall.ID, content, isError, tcr.Result)
+				if r.IsPlanModeActive() && !isError {
+					r.trackPlanFilePath(tcr.ToolCall.Name, tcr.ToolCall.Input)
+				}
 				continue
 			}
 		}
@@ -1194,6 +1198,12 @@ func (r *Runner) executeTools(ctx context.Context, toolCalls []provider.ToolUseB
 			}
 			r.emitter.emitToolEnd(tcr.ToolCall.ID, tcr.ToolCall.Name, !isError, summary, rawToMap(tcr.ToolCall.Input))
 			resultsByID[tcr.ToolCall.ID] = toolResultBlock(tcr.ToolCall.ID, content, isError, tcr.Result)
+
+			// Track Write/Read tool file paths during plan mode so ExitPlanMode
+			// can read the plan content for the approval UI.
+			if r.IsPlanModeActive() && !isError {
+				r.trackPlanFilePath(tcr.ToolCall.Name, tcr.ToolCall.Input)
+			}
 
 			// Run PostToolUse or PostToolUseFailure hooks
 			if r.hookEngine != nil {
@@ -1547,6 +1557,9 @@ func (r *Runner) SetPermissionMode(mode string) error {
 	r.mu.Lock()
 	r.permissionMode = mode
 	r.planModeActive = (mode == "plan")
+	if mode == "plan" {
+		r.lastPlanFilePath = "" // Clear stale path on new plan cycle
+	}
 	r.mu.Unlock()
 
 	// Sync the permission engine
@@ -1593,6 +1606,9 @@ func (r *Runner) SetOptionsPlanMode(enabled bool) {
 	defer r.mu.Unlock()
 	r.opts.PlanMode = enabled
 	r.planModeActive = enabled
+	if enabled {
+		r.lastPlanFilePath = "" // Clear stale path on new plan cycle
+	}
 }
 
 func (r *Runner) SetOptionsPermissionMode(mode string) {
@@ -1605,6 +1621,31 @@ func (r *Runner) IsPlanModeActive() bool {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	return r.planModeActive
+}
+
+// trackPlanFilePath records file paths from Write/Read tools during plan mode
+// so that EmitPlanApprovalRequest can read the plan content for the approval UI.
+func (r *Runner) trackPlanFilePath(toolName string, input json.RawMessage) {
+	var fi struct {
+		FilePath string `json:"file_path"`
+	}
+	if json.Unmarshal(input, &fi) != nil || fi.FilePath == "" {
+		return
+	}
+	switch toolName {
+	case "Write":
+		// Write always sets the path (authoritative source of plan file)
+		r.mu.Lock()
+		r.lastPlanFilePath = fi.FilePath
+		r.mu.Unlock()
+	case "Read":
+		// Read only tracks .claude/plans/ or .chatml/plans/ paths
+		if strings.Contains(fi.FilePath, "/.claude/plans/") || strings.Contains(fi.FilePath, "/.chatml/plans/") {
+			r.mu.Lock()
+			r.lastPlanFilePath = fi.FilePath
+			r.mu.Unlock()
+		}
+	}
 }
 
 func (r *Runner) SetInActiveTurn(active bool) {
@@ -2021,6 +2062,9 @@ func (r *Runner) SendPlanApprovalResponse(requestId string, approved bool, reaso
 	}
 	select {
 	case ch <- builtin.PlanApprovalResult{Approved: approved, Reason: reason}:
+		r.mu.Lock()
+		r.lastPlanFilePath = ""
+		r.mu.Unlock()
 		return nil
 	default:
 		return fmt.Errorf("plan approval response channel full for request %q", requestId)
@@ -2068,15 +2112,49 @@ func convertQuestions(qs []builtin.QuestionDef) []agent.UserQuestion {
 
 // EmitPlanApprovalRequest implements builtin.PlanModeCallback.
 func (r *Runner) EmitPlanApprovalRequest(requestID string, planContent string) <-chan builtin.PlanApprovalResult {
+	// If no explicit plan content, read from the tracked plan file
+	if planContent == "" {
+		r.mu.Lock()
+		planPath := r.lastPlanFilePath
+		r.mu.Unlock()
+
+		if planPath != "" {
+			if !filepath.IsAbs(planPath) {
+				planPath = filepath.Join(r.opts.Workdir, planPath)
+			}
+			if data, err := os.ReadFile(planPath); err == nil {
+				planContent = string(data)
+			} else {
+				log.Printf("Failed to read plan file %s: %v", planPath, err)
+			}
+		}
+	}
+
+	// Auto-approve if no plan content exists (matches agent-runner behavior)
+	if planContent == "" {
+		log.Printf("Auto-approving ExitPlanMode — no plan content to review")
+		ch := make(chan builtin.PlanApprovalResult, 1)
+		ch <- builtin.PlanApprovalResult{Approved: true}
+		r.mu.Lock()
+		r.lastPlanFilePath = ""
+		r.mu.Unlock()
+		return ch
+	}
+
 	ch := make(chan builtin.PlanApprovalResult, 1)
 	r.pendingPlanApprovals.Store(requestID, ch)
 
-	// Emit the plan_approval_request event
+	// Emit the plan_approval_request event with content
 	r.emitter.emit(&agent.AgentEvent{
 		Type:        "plan_approval_request",
 		RequestID:   requestID,
 		PlanContent: planContent,
 	})
+
+	// Clear tracked path after emitting
+	r.mu.Lock()
+	r.lastPlanFilePath = ""
+	r.mu.Unlock()
 
 	return ch
 }
@@ -2094,6 +2172,9 @@ func (r *Runner) SetPermissionModeDirect(mode string) {
 	r.mu.Lock()
 	r.permissionMode = mode
 	r.planModeActive = (mode == "plan")
+	if mode == "plan" {
+		r.lastPlanFilePath = "" // Clear stale path on new plan cycle
+	}
 	r.mu.Unlock()
 
 	if r.permEngine != nil {
