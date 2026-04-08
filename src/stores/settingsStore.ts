@@ -109,6 +109,7 @@ export const SETTINGS_DEFAULTS = {
   // Account
   strictPrivacy: false,
   // Sidebar
+  showBaseBranchSessions: false,
   sidebarGroupBy: 'project' as SidebarGroupBy,
   sidebarSortBy: 'recent' as SidebarSortBy,
   sidebarProjectFilter: null as string | null,
@@ -192,6 +193,7 @@ interface SettingsState {
   hasCompletedGuidedTour: boolean;
 
   // Sidebar grouping/sorting
+  showBaseBranchSessions: boolean;
   sidebarGroupBy: SidebarGroupBy;
   sidebarSortBy: SidebarSortBy;
   sidebarProjectFilter: string | null; // null = all projects, or a workspaceId to filter
@@ -266,6 +268,7 @@ interface SettingsState {
   setHasCompletedGuidedTour: (value: boolean) => void;
   resetOnboarding: () => void;
   resetAllSettings: () => void;
+  setShowBaseBranchSessions: (value: boolean) => void;
   setSidebarGroupBy: (value: SidebarGroupBy) => void;
   setSidebarSortBy: (value: SidebarSortBy) => void;
   setSidebarProjectFilter: (id: string | null) => void;
@@ -449,6 +452,7 @@ export const useSettingsStore = create<SettingsState>()(
       setHasCompletedGuidedTour: (value) => set({ hasCompletedGuidedTour: value }),
       resetOnboarding: () => set({ hasCompletedOnboarding: false, hasCompletedGuidedTour: false }),
       resetAllSettings: () => set({ ...SETTINGS_DEFAULTS, statusGroupOrder: [], workspaceOrder: [] }),
+      setShowBaseBranchSessions: (value) => set({ showBaseBranchSessions: value }),
       setSidebarGroupBy: (value) => set({ sidebarGroupBy: value }),
       setSidebarSortBy: (value) => set({ sidebarSortBy: value }),
       setSidebarProjectFilter: (id) => set({ sidebarProjectFilter: id }),

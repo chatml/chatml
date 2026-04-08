@@ -244,6 +244,16 @@ export const SETTINGS_REGISTRY: SettingMeta[] = [
     categoryLabel: 'Instructions',
   },
 
+  // ── Git: Sessions ──
+  {
+    id: 'showBaseBranchSessions',
+    title: 'Base branch sessions',
+    description: 'Show a session for the base branch in the sidebar',
+    keywords: ['base', 'branch', 'session', 'main', 'sidebar', 'worktree'],
+    category: 'git',
+    categoryLabel: 'Git',
+  },
+
   // ── Git: Sync ──
   {
     id: 'branchSyncBanner',

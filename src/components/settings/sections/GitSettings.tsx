@@ -16,6 +16,8 @@ function OverridableBadge() {
 }
 
 export function GitSettings() {
+  const showBaseBranchSessions = useSettingsStore((s) => s.showBaseBranchSessions);
+  const setShowBaseBranchSessions = useSettingsStore((s) => s.setShowBaseBranchSessions);
   const branchSyncBanner = useSettingsStore((s) => s.branchSyncBanner);
   const setBranchSyncBanner = useSettingsStore((s) => s.setBranchSyncBanner);
   const branchPrefixType = useSettingsStore((s) => s.branchPrefixType);
@@ -33,6 +35,22 @@ export function GitSettings() {
   return (
     <div>
       <h2 className="text-xl font-semibold mb-5">Git</h2>
+
+      <SettingsGroup label="Sessions">
+        <SettingsRow
+          settingId="showBaseBranchSessions"
+          title="Base branch sessions"
+          description="Show a session for the base branch in the sidebar, allowing you to work directly on the main repo without a worktree"
+          isModified={showBaseBranchSessions !== SETTINGS_DEFAULTS.showBaseBranchSessions}
+          onReset={() => setShowBaseBranchSessions(SETTINGS_DEFAULTS.showBaseBranchSessions)}
+        >
+          <Switch
+            checked={showBaseBranchSessions}
+            onCheckedChange={setShowBaseBranchSessions}
+            aria-label="Base branch sessions"
+          />
+        </SettingsRow>
+      </SettingsGroup>
 
       <SettingsGroup label="Sync">
         <SettingsRow
