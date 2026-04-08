@@ -6,8 +6,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/chatml/chatml-core/agent"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/chatml/chatml-core/agent"
 )
 
 // ── Message types for BubbleTea ─────────────────────────────────────────────
@@ -184,7 +184,7 @@ func handleAssistantText(m *model, e agent.AgentEvent) tea.Cmd {
 		msg := m.activeAt(m.stream.streamingMsgIdx)
 		if msg != nil {
 			msg.content = m.stream.assistantBuf.String()
-			
+
 		}
 	}
 	return nil
@@ -237,12 +237,13 @@ func handleToolStart(m *model, e agent.AgentEvent) tea.Cmd {
 
 	// Append a running placeholder
 	idx := m.appendActive(&displayMessage{
-		kind:      msgToolRunning,
-		tool:      e.Tool,
-		params:    param,
-		expanded:  true,
-		details:   details,
-		timestamp: now(),
+		kind:        msgToolRunning,
+		tool:        e.Tool,
+		toolEventID: e.ID,
+		params:      param,
+		expanded:    true,
+		details:     details,
+		timestamp:   now(),
 	})
 
 	// Track the pending tool
@@ -366,6 +367,32 @@ func handleToolEnd(m *model, e agent.AgentEvent) tea.Cmd {
 		replaced = true
 	}
 
+	// Second fallback: match by toolEventID (handles force-finalized messages
+	// that were converted from msgToolRunning to msgTool before their real
+	// tool_end arrived, due to concurrent tool overlap).
+	if !replaced && e.ID != "" {
+		for i := m.activeCount() - 1; i >= 0; i-- {
+			msg := m.activeAt(i)
+			if msg.toolEventID == e.ID {
+				msg.kind = msgTool
+				msg.params = param
+				msg.summary = enrichedSummary
+				msg.success = e.Success
+				if duration > 0 {
+					msg.duration = duration
+				}
+				msg.details = details
+				msg.lineCount = lineCount
+				msg.fullContent = fullContent
+				msg.collapsed = shouldCollapse
+				msg.exitCode = bashExitCode
+				replaced = true
+				break
+			}
+		}
+	}
+
+	// Third fallback: any msgToolRunning (legacy, when IDs are absent)
 	if !replaced {
 		for i := m.activeCount() - 1; i >= 0; i-- {
 			msg := m.activeAt(i)
@@ -647,7 +674,7 @@ func handleSubagentStopped(m *model, e agent.AgentEvent) tea.Cmd {
 				delete(m.stream.toolStarts, e.AgentId)
 			}
 		}
-		
+
 	}
 	return nil
 }
@@ -683,7 +710,6 @@ func handleSubagentOutput(m *model, e agent.AgentEvent) tea.Cmd {
 				case "tool_start":
 					prog.runningTool = subEvent.Tool
 					prog.runningParam = extractToolParams(subEvent.Tool, subEvent.Params, m.workdir)
-					
 
 				case "tool_end":
 					param := extractToolParams(subEvent.Tool, subEvent.Params, m.workdir)
@@ -715,7 +741,6 @@ func handleSubagentOutput(m *model, e agent.AgentEvent) tea.Cmd {
 					prog.toolCount++
 					prog.runningTool = ""
 					prog.runningParam = ""
-					
 
 				case "result":
 					// Update token count from usage data
@@ -730,7 +755,7 @@ func handleSubagentOutput(m *model, e agent.AgentEvent) tea.Cmd {
 						}
 						if tokens > 0 {
 							prog.tokenCount = tokens
-							
+
 						}
 					}
 
@@ -740,7 +765,7 @@ func handleSubagentOutput(m *model, e agent.AgentEvent) tea.Cmd {
 						summary: subEvent.Message,
 						success: false,
 					})
-					
+
 				}
 			}
 		}
