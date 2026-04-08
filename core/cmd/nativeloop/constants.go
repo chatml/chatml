@@ -23,6 +23,11 @@ const (
 	thinkingMaxLines     = 50 // max thinking lines shown when expanded
 )
 
+// Slash menu constants
+const (
+	slashMenuMaxVisible = 10 // max slash command menu items shown at once
+)
+
 // Approval constants
 const (
 	approvalOptionCount = 4 // yes, always, session, deny
