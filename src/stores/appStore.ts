@@ -230,6 +230,7 @@ export interface QueuedMessage {
   content: string;
   attachments?: Attachment[];
   timestamp: string;
+  sent?: boolean; // true after backend acknowledges receipt
 }
 
 /** Convert a QueuedMessage into a store Message for a given conversation. */
@@ -578,6 +579,7 @@ interface AppState {
   // Queued message actions
   addQueuedMessage: (conversationId: string, message: QueuedMessage) => void;
   removeQueuedMessage: (conversationId: string, messageId: string) => void;
+  markQueuedMessageSent: (conversationId: string, messageId: string) => void;
   clearQueuedMessages: (conversationId: string) => void;
 
   // Session handoff dialog state
@@ -2434,6 +2436,15 @@ updateFileTabContent: (id, content) => set((state) => ({
       [conversationId]: (state.queuedMessages[conversationId] ?? []).filter(m => m.id !== messageId),
     },
   })),
+  markQueuedMessageSent: (conversationId, messageId) => set((state) => {
+    const queue = state.queuedMessages[conversationId];
+    if (!queue) return {};
+    const idx = queue.findIndex(m => m.id === messageId);
+    if (idx === -1) return {};
+    const updated = [...queue];
+    updated[idx] = { ...updated[idx], sent: true };
+    return { queuedMessages: { ...state.queuedMessages, [conversationId]: updated } };
+  }),
   clearQueuedMessages: (conversationId) => set((state) => ({
     queuedMessages: { ...state.queuedMessages, [conversationId]: [] },
   })),

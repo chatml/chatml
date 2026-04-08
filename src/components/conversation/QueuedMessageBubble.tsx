@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { Clock, X } from 'lucide-react';
 import { AttachmentGrid } from '@/components/conversation/AttachmentGrid';
 import { AttachmentPreviewModal } from '@/components/conversation/AttachmentPreviewModal';
@@ -12,14 +12,54 @@ interface QueuedMessageBubbleProps {
   onDelete: (messageId: string) => void;
 }
 
+/** Shared attachment grid, preview modal, and message text. */
+function MessageBody({ message }: { message: QueuedMessage }) {
+  const [previewIndex, setPreviewIndex] = useState<number | null>(null);
+
+  return (
+    <>
+      {message.attachments && message.attachments.length > 0 && (
+        <>
+          <AttachmentGrid
+            attachments={message.attachments}
+            onPreview={(i) => setPreviewIndex(i)}
+            readOnly
+          />
+          {previewIndex !== null && (
+            <AttachmentPreviewModal
+              open
+              onOpenChange={(open) => { if (!open) setPreviewIndex(null); }}
+              attachments={message.attachments}
+              initialIndex={previewIndex}
+            />
+          )}
+        </>
+      )}
+      <p className="text-base leading-relaxed whitespace-pre-wrap">
+        <MentionText content={message.content} />
+      </p>
+    </>
+  );
+}
+
+/** Sent message — rendered as a regular user bubble (full opacity, no delete). */
+function SentMessageItem({ message }: { message: QueuedMessage }) {
+  return (
+    <div className="flex justify-end">
+      <div className="bg-surface-2 dark:bg-[#2D1B4E] rounded-lg px-4 py-2.5 relative max-w-[85%]">
+        <MessageBody message={message} />
+      </div>
+    </div>
+  );
+}
+
+/** Unsent queued message — reduced opacity with delete button. */
 function QueuedMessageItem({ message, index, total, onDelete }: {
   message: QueuedMessage;
   index: number;
   total: number;
   onDelete: () => void;
 }) {
-  const [previewIndex, setPreviewIndex] = useState<number | null>(null);
-
   return (
     <div className="flex justify-end group">
       <div className="bg-surface-2 dark:bg-[#2D1B4E] rounded-lg px-4 py-2.5 opacity-70 relative max-w-[85%]">
@@ -32,26 +72,7 @@ function QueuedMessageItem({ message, index, total, onDelete }: {
           <X className="h-4 w-4" />
         </button>
 
-        {message.attachments && message.attachments.length > 0 && (
-          <>
-            <AttachmentGrid
-              attachments={message.attachments}
-              onPreview={(i) => setPreviewIndex(i)}
-              readOnly
-            />
-            {previewIndex !== null && (
-              <AttachmentPreviewModal
-                open
-                onOpenChange={(open) => { if (!open) setPreviewIndex(null); }}
-                attachments={message.attachments}
-                initialIndex={previewIndex}
-              />
-            )}
-          </>
-        )}
-        <p className="text-base leading-relaxed whitespace-pre-wrap">
-          <MentionText content={message.content} />
-        </p>
+        <MessageBody message={message} />
         {total > 1 && (
           <div className="flex items-center gap-1 mt-1 text-xs text-muted-foreground">
             <span>#{index}</span>
@@ -63,29 +84,46 @@ function QueuedMessageItem({ message, index, total, onDelete }: {
 }
 
 export function QueuedMessageBubble({ messages, onDelete }: QueuedMessageBubbleProps) {
+  const [sentMessages, unsentMessages] = useMemo(() => {
+    const sent: QueuedMessage[] = [];
+    const unsent: QueuedMessage[] = [];
+    for (const m of messages) (m.sent ? sent : unsent).push(m);
+    return [sent, unsent] as const;
+  }, [messages]);
+
   if (messages.length === 0) return null;
 
   return (
     <div className="space-y-2 py-2">
-      <div className="flex justify-end">
-        <div className="flex items-center gap-1 text-xs text-muted-foreground px-1">
-          <Clock className="h-3 w-3" />
-          <span>
-            {messages.length === 1
-              ? 'Queued — will be sent after current response'
-              : `${messages.length} messages queued — will be sent in order`}
-          </span>
-        </div>
-      </div>
-      {messages.map((message, i) => (
-        <QueuedMessageItem
-          key={message.id}
-          message={message}
-          index={i + 1}
-          total={messages.length}
-          onDelete={() => onDelete(message.id)}
-        />
+      {/* Sent messages — render as regular user bubbles */}
+      {sentMessages.map((message) => (
+        <SentMessageItem key={message.id} message={message} />
       ))}
+
+      {/* Unsent messages — render with "Queued" header */}
+      {unsentMessages.length > 0 && (
+        <>
+          <div className="flex justify-end">
+            <div className="flex items-center gap-1 text-xs text-muted-foreground px-1">
+              <Clock className="h-3 w-3" />
+              <span>
+                {unsentMessages.length === 1
+                  ? 'Queued — will be sent after current response'
+                  : `${unsentMessages.length} messages queued — will be sent in order`}
+              </span>
+            </div>
+          </div>
+          {unsentMessages.map((message, i) => (
+            <QueuedMessageItem
+              key={message.id}
+              message={message}
+              index={i + 1}
+              total={unsentMessages.length}
+              onDelete={() => onDelete(message.id)}
+            />
+          ))}
+        </>
+      )}
     </div>
   );
 }

@@ -215,6 +215,7 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
     addMessage,
     setStreaming,
     addQueuedMessage,
+    markQueuedMessageSent,
     clearQueuedMessages,
     clearPendingPlanApproval,
     setApprovedPlanContent,
@@ -923,7 +924,8 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
           handledPlanDenial = true;
         }
 
-        if (!handledPlanDenial && isStreaming) {
+        const shouldQueue = !handledPlanDenial && isStreaming;
+        if (shouldQueue) {
           addQueuedMessage(selectedConversationId, {
             id: messageId,
             content: trimmedContent,
@@ -955,6 +957,11 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
           mentionedFiles.length > 0 ? mentionedFiles : undefined,
           planModeEnabled
         );
+        // Mark queued message as sent once backend acknowledges receipt,
+        // so it renders as a regular user message instead of "Queued".
+        if (shouldQueue) {
+          markQueuedMessageSent(selectedConversationId, messageId);
+        }
       }
 
       // Track message sent
