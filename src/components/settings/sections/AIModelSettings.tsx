@@ -138,8 +138,8 @@ export function AIModelSettings() {
 
         <SettingsRow
           settingId="defaultBackend"
-          title="Agentic backend"
-          description="Choose between the existing Agent Runner (Node.js) or the native Go agentic loop"
+          title="AI Engine"
+          description="Select which engine powers your AI sessions. Claude Code uses the official Agent SDK. ChatML Code is our experimental native engine."
           isModified={defaultBackend !== SETTINGS_DEFAULTS.defaultBackend}
           onReset={() => setDefaultBackend(SETTINGS_DEFAULTS.defaultBackend)}
         >
@@ -148,8 +148,8 @@ export function AIModelSettings() {
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="agent-runner">Agent Runner (Node.js)</SelectItem>
-              <SelectItem value="native">Native Go Loop</SelectItem>
+              <SelectItem value="agent-runner">Claude Code</SelectItem>
+              <SelectItem value="native">ChatML Code</SelectItem>
             </SelectContent>
           </Select>
         </SettingsRow>

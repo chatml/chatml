@@ -303,7 +303,6 @@ export function buildTurnConfigLabel(meta: { model?: string; effort?: string; pe
     else if (meta.fastModeState === 'cooldown') parts.push('fast (cooldown)');
   }
   if (meta.permissionMode === 'plan') parts.push('plan mode');
-  if (meta.backendType === 'native') parts.push('Native Loop');
-  else if (meta.backendType === 'agent-runner') parts.push('Agent Runner');
+  if (meta.backendType === 'native') parts.push('ChatML Code');
   return parts.length > 0 ? parts.join(' \u00b7 ') : null;
 }
