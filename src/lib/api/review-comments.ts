@@ -26,11 +26,13 @@ export interface CommentStatsDTO {
 export async function listReviewComments(
   workspaceId: string,
   sessionId: string,
-  filePath?: string
+  filePath?: string,
+  signal?: AbortSignal,
 ): Promise<ReviewCommentDTO[]> {
   const params = filePath ? `?filePath=${encodeURIComponent(filePath)}` : '';
   const res = await fetchWithAuth(
-    `${getApiBase()}/api/repos/${workspaceId}/sessions/${sessionId}/comments${params}`
+    `${getApiBase()}/api/repos/${workspaceId}/sessions/${sessionId}/comments${params}`,
+    signal ? { signal } : undefined,
   );
   return handleResponse<ReviewCommentDTO[]>(res);
 }

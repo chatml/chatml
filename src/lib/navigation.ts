@@ -242,62 +242,91 @@ function applyEntry(entry: NavigationEntry): void {
   runMaybeTransition(entry.sessionId, mutations);
 }
 
+// Debounce rapid session switches: when the user clicks multiple sessions
+// within NAVIGATE_DEBOUNCE_MS, only the last click is processed. The first
+// click in a sequence runs immediately (no perceived delay for single clicks).
+const NAVIGATE_DEBOUNCE_MS = 80;
+let pendingNavigateTimer: ReturnType<typeof setTimeout> | null = null;
+let lastNavigateTime = 0;
+
 /**
  * Navigate to a new state, recording the current state in history.
  * This is the single entry point all navigation call sites should use.
  */
 export function navigate(params: NavigateParams): void {
-  const navStore = useNavigationStore.getState();
+  const executeNavigation = () => {
+    if (params.sessionId) lastNavigateTime = Date.now();
 
-  // If we're restoring (back/forward), skip history push
-  if (!navStore.isRestoring) {
-    const currentEntry = snapshotCurrent();
-    navStore.pushEntry(currentEntry, params.tabId);
-  }
+    const navStore = useNavigationStore.getState();
 
-  // Auto-clear unread when navigating into a workspace or session
-  if (params.sessionId) {
-    const session = useAppStore.getState().sessions.find(s => s.id === params.sessionId && !s.archived);
-    if (session) {
-      useSettingsStore.getState().markWorkspaceRead(session.workspaceId);
-      // Auto-expand collapsed sidebar groups so the selected session is visible
-      expandGroupsForSession(session);
-    }
-    useSettingsStore.getState().markSessionRead(params.sessionId);
-  } else if (params.workspaceId) {
-    useSettingsStore.getState().markWorkspaceRead(params.workspaceId);
-  }
-
-  const applyMutations = () => {
-    const appStore = useAppStore.getState();
-    const settingsStore = useSettingsStore.getState();
-
-    if (params.workspaceId !== undefined) {
-      appStore.selectWorkspace(params.workspaceId);
-    }
-    if (params.sessionId !== undefined) {
-      appStore.selectSession(params.sessionId);
-    }
-    if (params.conversationId !== undefined) {
-      appStore.selectConversation(params.conversationId);
-    }
-    if (params.contentView !== undefined) {
-      settingsStore.setContentView(params.contentView);
+    // Push history entry — inside executeNavigation so debounced-away
+    // navigations don't corrupt the back stack with duplicate entries.
+    if (!navStore.isRestoring) {
+      const currentEntry = snapshotCurrent();
+      navStore.pushEntry(currentEntry, params.tabId);
     }
 
-    // Sync to active browser tab
-    if (ENABLE_BROWSER_TABS) {
-      useTabStore.getState().updateActiveTab({
-        ...(params.workspaceId !== undefined && { selectedWorkspaceId: params.workspaceId }),
-        ...(params.sessionId !== undefined && { selectedSessionId: params.sessionId }),
-        ...(params.conversationId !== undefined && { selectedConversationId: params.conversationId }),
-        ...(params.contentView !== undefined && { contentView: params.contentView }),
-        label: params.label ?? buildLabelForParams(params),
-      });
+    // Auto-clear unread when navigating into a workspace or session
+    if (params.sessionId) {
+      const session = useAppStore.getState().sessions.find(s => s.id === params.sessionId && !s.archived);
+      if (session) {
+        useSettingsStore.getState().markWorkspaceRead(session.workspaceId);
+        // Auto-expand collapsed sidebar groups so the selected session is visible
+        expandGroupsForSession(session);
+      }
+      useSettingsStore.getState().markSessionRead(params.sessionId);
+    } else if (params.workspaceId) {
+      useSettingsStore.getState().markWorkspaceRead(params.workspaceId);
     }
+
+    const applyMutations = () => {
+      const appStore = useAppStore.getState();
+      const settingsStore = useSettingsStore.getState();
+
+      if (params.workspaceId !== undefined) {
+        appStore.selectWorkspace(params.workspaceId);
+      }
+      if (params.sessionId !== undefined) {
+        appStore.selectSession(params.sessionId);
+      }
+      if (params.conversationId !== undefined) {
+        appStore.selectConversation(params.conversationId);
+      }
+      if (params.contentView !== undefined) {
+        settingsStore.setContentView(params.contentView);
+      }
+
+      // Sync to active browser tab
+      if (ENABLE_BROWSER_TABS) {
+        useTabStore.getState().updateActiveTab({
+          ...(params.workspaceId !== undefined && { selectedWorkspaceId: params.workspaceId }),
+          ...(params.sessionId !== undefined && { selectedSessionId: params.sessionId }),
+          ...(params.conversationId !== undefined && { selectedConversationId: params.conversationId }),
+          ...(params.contentView !== undefined && { contentView: params.contentView }),
+          label: params.label ?? buildLabelForParams(params),
+        });
+      }
+    };
+
+    runMaybeTransition(params.sessionId, applyMutations);
   };
 
-  runMaybeTransition(params.sessionId, applyMutations);
+  // Debounce session switches: if another session navigate happened very recently,
+  // defer the expensive mutations so only the final click in a rapid sequence
+  // is processed. Non-session navigations (content views, etc.) run immediately.
+  if (params.sessionId && Date.now() - lastNavigateTime < NAVIGATE_DEBOUNCE_MS) {
+    if (pendingNavigateTimer) clearTimeout(pendingNavigateTimer);
+    pendingNavigateTimer = setTimeout(() => {
+      pendingNavigateTimer = null;
+      executeNavigation();
+    }, NAVIGATE_DEBOUNCE_MS);
+  } else {
+    if (pendingNavigateTimer) {
+      clearTimeout(pendingNavigateTimer);
+      pendingNavigateTimer = null;
+    }
+    executeNavigation();
+  }
 }
 
 /**

@@ -83,7 +83,7 @@ describe('useGitStatus', () => {
 
     await flushAndAdvance();
 
-    expect(mockedGetSessionSnapshot).toHaveBeenCalledWith('ws-1', 'session-1');
+    expect(mockedGetSessionSnapshot).toHaveBeenCalledWith('ws-1', 'session-1', expect.any(AbortSignal));
     expect(result.current.loading).toBe(false);
     expect(result.current.status).toBeTruthy();
     expect(result.current.status?.workingDirectory.hasChanges).toBe(true);
