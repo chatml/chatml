@@ -18,6 +18,7 @@ import (
 	"github.com/chatml/chatml-backend/github"
 	"github.com/chatml/chatml-backend/logger"
 	"github.com/chatml/chatml-backend/models"
+	"github.com/chatml/chatml-backend/stats"
 	"github.com/chatml/chatml-core/scripts"
 	"github.com/chatml/chatml-backend/store"
 	"github.com/fsnotify/fsnotify"
@@ -560,6 +561,7 @@ type Handlers struct {
 	issueCache       *github.IssueCache
 	avatarCache      *github.AvatarCache
 	statsCache       *SessionStatsCache
+	statsComputer    *stats.Computer
 	diffCache        *DiffCache
 	snapshotCache    *SnapshotCache
 	aiClient         ai.Provider
@@ -674,7 +676,7 @@ func (h *Handlers) getWorkspacesBaseDir(ctx context.Context) (string, error) {
 	return git.WorkspacesBaseDirWithOverride(configured)
 }
 
-func NewHandlers(ctx context.Context, s *store.SQLiteStore, am *agent.Manager, dirCacheConfig DirListingCacheConfig, bw *branch.Watcher, prw *branch.PRWatcher, hub *Hub, ghClient *github.Client, prCache *github.PRCache, issueCache *github.IssueCache, statsCache *SessionStatsCache, diffCache *DiffCache, snapshotCache *SnapshotCache, aiClient ai.Provider, scriptRunner *scripts.Runner) *Handlers {
+func NewHandlers(ctx context.Context, s *store.SQLiteStore, am *agent.Manager, dirCacheConfig DirListingCacheConfig, bw *branch.Watcher, prw *branch.PRWatcher, hub *Hub, ghClient *github.Client, prCache *github.PRCache, issueCache *github.IssueCache, statsCache *SessionStatsCache, diffCache *DiffCache, snapshotCache *SnapshotCache, aiClient ai.Provider, scriptRunner *scripts.Runner, rm *git.RepoManager, sc *stats.Computer) *Handlers {
 	serverCtx, serverCancel := context.WithCancel(ctx)
 
 	// Initialize session name cache with workspaces directory
@@ -683,9 +685,20 @@ func NewHandlers(ctx context.Context, s *store.SQLiteStore, am *agent.Manager, d
 	if err != nil {
 		logger.Handlers.Warnf("Failed to get workspaces base directory: %v (session name cache will be disabled)", err)
 	}
+
+	// Use provided RepoManager/StatsComputer or create defaults.
+	if rm == nil {
+		rm = git.NewRepoManager()
+	}
+	if sc == nil {
+		sc = stats.New(rm, s, statsCache)
+		sc.SetDiffCache(diffCache)
+		sc.SetSnapshotCache(snapshotCache)
+	}
+
 	return &Handlers{
 		store:            s,
-		repoManager:      git.NewRepoManager(),
+		repoManager:      rm,
 		worktreeManager:  git.NewWorktreeManager(),
 		agentManager:     am,
 		sessionLocks:     NewSessionLockManager(),
@@ -701,6 +714,7 @@ func NewHandlers(ctx context.Context, s *store.SQLiteStore, am *agent.Manager, d
 		issueCache:       issueCache,
 		avatarCache:      github.NewAvatarCache(24 * time.Hour), // Cache avatars for 24 hours
 		statsCache:       statsCache,
+		statsComputer:    sc,
 		diffCache:        diffCache,
 		snapshotCache:    snapshotCache,
 		aiClient:         aiClient,
@@ -796,55 +810,14 @@ func checkWorktreePath(w http.ResponseWriter, path string) bool {
 	return false
 }
 
-// computeSessionStats calculates total additions/deletions for a session's worktree.
-// Returns nil if the session has no worktree path or no changes.
-// effectiveTargetBranch should be the fully-qualified remote ref (e.g. "origin/main"),
-// matching the logic from SessionWithWorkspace.EffectiveTargetBranch().
-func (h *Handlers) computeSessionStats(ctx context.Context, session *models.Session, effectiveTargetBranch string) *models.SessionStats {
-	workingPath := session.WorktreePath
-	if workingPath == "" {
-		return nil
+// computeSessionStats delegates to the centralized stats.Computer.
+func (h *Handlers) computeSessionStats(ctx context.Context, session *models.Session) *models.SessionStats {
+	// Look up the repo to pass workspace defaults to the computer.
+	var repo *models.Repo
+	if session.WorkspaceID != "" {
+		repo, _ = h.store.GetRepo(ctx, session.WorkspaceID)
 	}
-
-	// Compute merge-base for accurate diff base, consistent with getSessionAndWorkspace.
-	// This avoids phantom file changes when the target branch advances.
-	baseRef, mbErr := h.repoManager.GetMergeBase(ctx, workingPath, effectiveTargetBranch, "HEAD")
-	if mbErr != nil || baseRef == "" {
-		// Fallback: prefer BaseCommitSHA, then effective target branch
-		baseRef = session.BaseCommitSHA
-		if baseRef == "" {
-			baseRef = effectiveTargetBranch
-		}
-	}
-
-	// Get tracked changes
-	changes, err := h.repoManager.GetChangedFilesWithStats(ctx, workingPath, baseRef)
-	if err != nil {
-		// Silently return nil on error - stats are optional
-		return nil
-	}
-
-	// Get untracked files
-	untracked, untrackedErr := h.repoManager.GetUntrackedFiles(ctx, workingPath)
-	if untrackedErr != nil {
-		logger.Handlers.Warnf("computeSessionStats: GetUntrackedFiles failed for %s: %v", workingPath, untrackedErr)
-	}
-
-	// Sum up stats
-	var additions, deletions int
-	for _, c := range changes {
-		additions += c.Additions
-		deletions += c.Deletions
-	}
-	// Untracked files count as additions (new lines)
-	for _, u := range untracked {
-		additions += u.Additions
-	}
-
-	if additions == 0 && deletions == 0 {
-		return nil
-	}
-	return &models.SessionStats{Additions: additions, Deletions: deletions}
+	return h.statsComputer.Compute(ctx, session, repo)
 }
 
 // uncachedSession pairs a session with its workspace for background stats computation.
@@ -882,22 +855,7 @@ func (h *Handlers) computeAndBroadcastStats(sessions []uncachedSession) {
 				return
 			}
 
-			effectiveTarget := s.TargetBranch
-			if effectiveTarget == "" {
-				remote := "origin"
-				branch := "main"
-				if ws != nil {
-					if ws.Remote != "" {
-						remote = ws.Remote
-					}
-					if ws.Branch != "" {
-						branch = ws.Branch
-					}
-				}
-				effectiveTarget = remote + "/" + branch
-			}
-
-			stats := h.computeSessionStats(ctx, s, effectiveTarget)
+			stats := h.computeSessionStats(ctx, s)
 			if ctx.Err() != nil {
 				return // Don't cache or broadcast partial results
 			}

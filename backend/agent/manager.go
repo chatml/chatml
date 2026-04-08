@@ -7,7 +7,6 @@ import (
 	"os"
 	"regexp"
 	"sort"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -26,33 +25,7 @@ import (
 const snapshotDebounceInterval = 500 * time.Millisecond
 const initRetryDelay = 3 * time.Second
 
-// prURLPattern matches GitHub PR URLs in tool output (e.g., "https://github.com/owner/repo/pull/123")
-// Capture group 1 = PR number.
-var prURLPattern = regexp.MustCompile(`github\.com/[^/]+/[^/]+/pull/(\d+)`)
-
-// prJSONPattern matches GitHub API JSON responses that contain a PR URL.
-// e.g., {"html_url": "https://github.com/owner/repo/pull/123", ...}
-// Capture group 1 = full URL, capture group 2 = PR number.
-var prJSONPattern = regexp.MustCompile(`"html_url"\s*:\s*"(https://github\.com/[^/]+/[^/]+/pull/(\d+))"`)
-
-// prCreationCommandPattern matches Bash commands that are likely to create a PR.
-// This prevents false positives from commands that merely display PR URLs (e.g., gh pr view, gh pr list).
-var prCreationCommandPattern = regexp.MustCompile(`(?:gh\s+pr\s+create|curl\s+.*api\.github\.com.*/pulls)`)
-
-// prMergedPattern matches merge confirmation messages in Bash stdout (e.g., "Merged pull request", "successfully merged")
-var prMergedPattern = regexp.MustCompile(`(?i)(merged\s+pull\s+request|pull\s+request\s+.+\s+was\s+already\s+merged|successfully\s+merged)`)
-
-// gitPushPattern matches successful git push output in stderr.
-// Git writes push confirmation to stderr with patterns like:
-//   "* [new branch]      feature -> feature"
-//   "   abc1234..def5678  feature -> feature"       (normal push)
-//   " + abc1234...def5678 feature -> feature"       (force push)
-var gitPushPattern = regexp.MustCompile(`(\[new branch\]|[a-f0-9]+\.\.\.?[a-f0-9]+)\s+.+\s+->\s+`)
-
-// gitPushCommandPattern matches commands that are actually git push (not fetch/pull
-// which produce identical stderr patterns). Without this guard, git fetch/pull
-// would falsely trigger PR detection.
-var gitPushCommandPattern = regexp.MustCompile(`git\s+push\b`)
+// Suggestion filtering patterns (used by suggestion generation, not PR detection).
 
 // dangerousSuggestionPattern matches destructive operations that should never appear in suggestions.
 // These operations could break the worktree-based session model or destroy work.
@@ -61,8 +34,6 @@ var dangerousSuggestionPattern = regexp.MustCompile(`(?i)(delete\s.*branch|git\s
 // bashCommandPattern matches pill values or ghost text that look like terminal commands.
 // Users are chatting with an AI assistant, not typing in a terminal, so suggestions
 // should be natural language instructions, not CLI commands.
-// Note: short ambiguous words (go, make, cat, ls, cd, rm, mv, cp) are matched with
-// subcommand patterns to avoid false positives on natural language like "Make a PR".
 var bashCommandPattern = regexp.MustCompile(`(?i)^(git|gh|npm|yarn|pnpm|bun|docker|kubectl|cargo|pip|curl|wget|mkdir|chmod|chown|sudo|brew|apt|yum)\s|(?i)^make\s+(build|dev|test|clean|install|run|all|backend|frontend)\b|(?i)^go\s+(build|test|run|mod|get|install|vet|fmt|generate|clean)\b`)
 
 // Legacy handlers (for backwards compatibility)
@@ -867,96 +838,62 @@ outer:
 					bashCmd, _ = toolParams["command"].(string)
 				}
 
-				// Detect PR creation from Bash tool output (e.g., gh pr create, curl).
-				// Only trigger for commands that actually create PRs to avoid false
-				// positives from commands that merely display PR URLs (gh pr view, etc.).
+				// Detect PR creation, merge, and git push from Bash tool output.
 				if event.Tool == "Bash" && event.Success {
-					// Check if the command looks like a PR creation command
-					if prCreationCommandPattern.MatchString(bashCmd) {
-						var prNum int
-						var prURL string
+					prDetect := NewPRDetector()
 
-						// Check stdout first (most common: gh pr create prints URL to stdout)
-						if match := prURLPattern.FindStringSubmatch(event.Stdout); match != nil {
-							num, err := strconv.Atoi(match[1])
-							if err != nil {
-								logger.Manager.Warnf("Failed to parse PR number from URL match %q: %v", match[1], err)
-							} else {
-								prNum = num
-								prURL = "https://" + match[0]
-							}
-						} else if match := prURLPattern.FindStringSubmatch(event.Stderr); match != nil {
-							// Fallback: check stderr (some tools write there)
-							num, err := strconv.Atoi(match[1])
-							if err == nil {
-								prNum = num
-								prURL = "https://" + match[0]
-							}
-						} else if jsonMatch := prJSONPattern.FindStringSubmatch(event.Stdout); jsonMatch != nil {
-							// Fallback: detect PR from GitHub API JSON response (e.g., curl)
-							num, err := strconv.Atoi(jsonMatch[2])
-							if err == nil {
-								prNum = num
-								prURL = jsonMatch[1]
-							}
-						}
-
-						if prNum > 0 && m.onPRCreated != nil {
+					// PR creation (gh pr create, curl to GitHub API)
+					if result := prDetect.DetectPRCreation(bashCmd, event.Stdout); result.Detected {
+						if m.onPRCreated != nil {
 							conv, convErr := m.store.GetConversationMeta(ctx, convID)
 							if convErr != nil {
 								logger.Manager.Warnf("Failed to get conversation %s for PR creation detection: %v", convID, convErr)
 							}
 							if conv != nil {
-								go m.onPRCreated(conv.SessionID, prNum, prURL)
+								go m.onPRCreated(conv.SessionID, result.PRNumber, result.PRURL)
 								prDeferredRecheck = m.onPRCreated
 								prActivitySessionID = conv.SessionID
-								prActivityNumber = prNum
-								prActivityURL = prURL
+								prActivityNumber = result.PRNumber
+								prActivityURL = result.PRURL
 							}
 						}
 					}
-				}
 
-				// Detect PR merge from Bash tool stdout (e.g., gh pr merge)
-				if event.Tool == "Bash" && event.Success && prMergedPattern.MatchString(event.Stdout) {
-					if m.onPRMerged != nil {
-						conv, convErr := m.store.GetConversationMeta(ctx, convID)
-						if convErr != nil {
-							logger.Manager.Warnf("Failed to get conversation %s for PR merge detection: %v", convID, convErr)
-						}
-						if conv != nil {
-							go m.onPRMerged(conv.SessionID)
-							mergeHandler := m.onPRMerged
-							prDeferredRecheck = func(sid string, _ int, _ string) { mergeHandler(sid) }
-							prActivitySessionID = conv.SessionID
-							prActivityNumber = 0
-							prActivityURL = ""
-						}
-					}
-				}
-
-				// Detect successful git push from Bash tool stderr.
-				// Git writes push confirmation to stderr (not stdout) with patterns like
-				// "* [new branch] feature -> feature" or "abc123..def456 feature -> feature".
-				// IMPORTANT: git fetch and git pull produce identical stderr patterns, so we
-				// also check the command string to avoid false positives.
-				// When a push is detected and the session has no PR linked yet,
-				// trigger an immediate PR check to pick up externally-created PRs.
-				if event.Tool == "Bash" && event.Success && gitPushCommandPattern.MatchString(bashCmd) && gitPushPattern.MatchString(event.Stderr) {
-					if m.onPRCreated != nil {
-						conv, convErr := m.store.GetConversationMeta(ctx, convID)
-						if convErr != nil {
-							logger.Manager.Warnf("Failed to get conversation %s for git push detection: %v", convID, convErr)
-						}
-						if conv != nil {
-							sess, _ := m.store.GetSession(ctx, conv.SessionID)
-							if sess != nil && sess.PRNumber == 0 {
-								logger.Manager.Infof("Detected git push for session %s (no PR yet), triggering PR check", conv.SessionID)
-								go m.onPRCreated(conv.SessionID, 0, "")
-								prDeferredRecheck = m.onPRCreated
+					// PR merge (gh pr merge)
+					if prDetect.DetectPRMerge(event.Stdout) {
+						if m.onPRMerged != nil {
+							conv, convErr := m.store.GetConversationMeta(ctx, convID)
+							if convErr != nil {
+								logger.Manager.Warnf("Failed to get conversation %s for PR merge detection: %v", convID, convErr)
+							}
+							if conv != nil {
+								go m.onPRMerged(conv.SessionID)
+								mergeHandler := m.onPRMerged
+								prDeferredRecheck = func(sid string, _ int, _ string) { mergeHandler(sid) }
 								prActivitySessionID = conv.SessionID
 								prActivityNumber = 0
 								prActivityURL = ""
+							}
+						}
+					}
+
+					// Git push — trigger PR check for sessions without a PR yet
+					if prDetect.DetectGitPush(bashCmd, event.Stderr) {
+						if m.onPRCreated != nil {
+							conv, convErr := m.store.GetConversationMeta(ctx, convID)
+							if convErr != nil {
+								logger.Manager.Warnf("Failed to get conversation %s for git push detection: %v", convID, convErr)
+							}
+							if conv != nil {
+								sess, _ := m.store.GetSession(ctx, conv.SessionID)
+								if sess != nil && sess.PRNumber == 0 {
+									logger.Manager.Infof("Detected git push for session %s (no PR yet), triggering PR check", conv.SessionID)
+									go m.onPRCreated(conv.SessionID, 0, "")
+									prDeferredRecheck = m.onPRCreated
+									prActivitySessionID = conv.SessionID
+									prActivityNumber = 0
+									prActivityURL = ""
+								}
 							}
 						}
 					}

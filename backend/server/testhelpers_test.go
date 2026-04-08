@@ -50,7 +50,7 @@ func setupTestHandlers(t *testing.T) (*Handlers, *store.SQLiteStore) {
 
 	prCache := github.NewPRCache(5*time.Minute, 10*time.Minute, 100)
 
-	handlers := NewHandlers(context.Background(), sqliteStore, nil, DirListingCacheConfig{TTL: 30 * time.Second}, nil, nil, nil, nil, prCache, nil, nil, nil, nil, nil, nil)
+	handlers := NewHandlers(context.Background(), sqliteStore, nil, DirListingCacheConfig{TTL: 30 * time.Second}, nil, nil, nil, nil, prCache, nil, nil, nil, nil, nil, nil, nil, nil)
 
 	t.Cleanup(func() {
 		handlers.Close()
@@ -77,7 +77,7 @@ func setupTestHandlersWithAgentManager(t *testing.T) (*Handlers, *store.SQLiteSt
 	agentManager := agent.NewManager(context.Background(), sqliteStore, worktreeManager, 9876)
 	prCache := github.NewPRCache(5*time.Minute, 10*time.Minute, 100)
 
-	handlers := NewHandlers(context.Background(), sqliteStore, agentManager, DirListingCacheConfig{TTL: 30 * time.Second}, nil, nil, nil, nil, prCache, nil, nil, nil, nil, nil, nil)
+	handlers := NewHandlers(context.Background(), sqliteStore, agentManager, DirListingCacheConfig{TTL: 30 * time.Second}, nil, nil, nil, nil, prCache, nil, nil, nil, nil, nil, nil, nil, nil)
 
 	t.Cleanup(func() {
 		handlers.Close()
@@ -232,7 +232,7 @@ func setupTestHandlersWithAIClient(t *testing.T, aiServerURL string) (*Handlers,
 	prCache := github.NewPRCache(5*time.Minute, 10*time.Minute, 100)
 	aiClient := ai.NewTestClient("sk-test-key", aiServerURL)
 
-	handlers := NewHandlers(context.Background(), sqliteStore, nil, DirListingCacheConfig{TTL: 30 * time.Second}, nil, nil, nil, nil, prCache, nil, nil, nil, nil, aiClient, nil)
+	handlers := NewHandlers(context.Background(), sqliteStore, nil, DirListingCacheConfig{TTL: 30 * time.Second}, nil, nil, nil, nil, prCache, nil, nil, nil, nil, aiClient, nil, nil, nil)
 
 	t.Cleanup(func() {
 		handlers.Close()
@@ -256,7 +256,7 @@ func setupTestHandlersWithGitHub(t *testing.T, ghServer *httptest.Server) (*Hand
 	ghClient.SetAPIURL(ghServer.URL)
 	ghClient.SetToken("test_token")
 
-	handlers := NewHandlers(context.Background(), sqliteStore, nil, DirListingCacheConfig{TTL: 30 * time.Second}, nil, nil, nil, ghClient, prCache, nil, nil, nil, nil, nil, nil)
+	handlers := NewHandlers(context.Background(), sqliteStore, nil, DirListingCacheConfig{TTL: 30 * time.Second}, nil, nil, nil, ghClient, prCache, nil, nil, nil, nil, nil, nil, nil, nil)
 
 	t.Cleanup(func() {
 		handlers.Close()

@@ -29,6 +29,9 @@ var (
 	SQLite  *log.Logger
 	DBRetry *log.Logger
 
+	// Stats computation
+	Stats *log.Logger
+
 	// HTTP and WebSocket
 	Handlers  *log.Logger
 	WebSocket *log.Logger
@@ -62,6 +65,8 @@ func init() {
 	Store = corelogger.New("store", corelogger.ColorStorage)
 	SQLite = corelogger.New("sqlite", corelogger.ColorStorage)
 	DBRetry = corelogger.New("db-retry", corelogger.ColorStorage)
+
+	Stats = corelogger.New("stats", corelogger.ColorWatch)
 
 	Handlers = corelogger.New("handlers", corelogger.ColorHTTP)
 	WebSocket = corelogger.New("websocket", corelogger.ColorHTTP)

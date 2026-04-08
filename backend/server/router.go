@@ -13,6 +13,8 @@ import (
 	"github.com/chatml/chatml-backend/linear"
 	"github.com/chatml/chatml-backend/models"
 	"github.com/chatml/chatml-backend/ollama"
+	"github.com/chatml/chatml-backend/stats"
+	"github.com/chatml/chatml-core/git"
 	"github.com/chatml/chatml-core/scripts"
 	"github.com/chatml/chatml-backend/store"
 	"github.com/go-chi/chi/v5"
@@ -21,10 +23,37 @@ import (
 	"github.com/rs/cors"
 )
 
-func NewRouter(ctx context.Context, s *store.SQLiteStore, hub *Hub, agentMgr *agent.Manager, ghClient *github.Client, linearClient *linear.Client, bw *branch.Watcher, prw *branch.PRWatcher, prCache *github.PRCache, issueCache *github.IssueCache, statsCache *SessionStatsCache, diffCache *DiffCache, snapshotCache *SnapshotCache, aiClient ai.Provider, scriptRunner *scripts.Runner, ollamaMgr *ollama.Manager) (http.Handler, *Handlers, func()) {
+// RouterOption configures optional dependencies for NewRouter.
+type RouterOption func(*routerOptions)
+
+type routerOptions struct {
+	repoManager   *git.RepoManager
+	statsComputer *stats.Computer
+}
+
+func resolveRouterOptions(opts []RouterOption) routerOptions {
+	var o routerOptions
+	for _, fn := range opts {
+		fn(&o)
+	}
+	return o
+}
+
+// WithRepoManager provides a shared RepoManager instance.
+func WithRepoManager(rm *git.RepoManager) RouterOption {
+	return func(o *routerOptions) { o.repoManager = rm }
+}
+
+// WithStatsComputer provides a shared stats.Computer instance.
+func WithStatsComputer(sc *stats.Computer) RouterOption {
+	return func(o *routerOptions) { o.statsComputer = sc }
+}
+
+func NewRouter(ctx context.Context, s *store.SQLiteStore, hub *Hub, agentMgr *agent.Manager, ghClient *github.Client, linearClient *linear.Client, bw *branch.Watcher, prw *branch.PRWatcher, prCache *github.PRCache, issueCache *github.IssueCache, statsCache *SessionStatsCache, diffCache *DiffCache, snapshotCache *SnapshotCache, aiClient ai.Provider, scriptRunner *scripts.Runner, ollamaMgr *ollama.Manager, opts ...RouterOption) (http.Handler, *Handlers, func()) {
+	ropts := resolveRouterOptions(opts)
 	r := chi.NewRouter()
 	dirCacheConfig := LoadDirListingCacheConfig()
-	h := NewHandlers(ctx, s, agentMgr, dirCacheConfig, bw, prw, hub, ghClient, prCache, issueCache, statsCache, diffCache, snapshotCache, aiClient, scriptRunner)
+	h := NewHandlers(ctx, s, agentMgr, dirCacheConfig, bw, prw, hub, ghClient, prCache, issueCache, statsCache, diffCache, snapshotCache, aiClient, scriptRunner, ropts.repoManager, ropts.statsComputer)
 	auth := NewAuthHandlers(ghClient, s)
 	linearAuth := NewLinearAuthHandlers(linearClient, s)
 	// Relay is only enabled when CHATML_RELAY_URL is set (i.e., a cloud relay
@@ -35,6 +64,7 @@ func NewRouter(ctx context.Context, s *store.SQLiteStore, hub *Hub, agentMgr *ag
 		relayH = NewRelayHandlers(hub, os.Getenv("CHATML_AUTH_TOKEN"))
 	}
 
+	r.Use(RequestIDMiddleware)
 	r.Use(middleware.Compress(5))
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
@@ -43,6 +73,13 @@ func NewRouter(ctx context.Context, s *store.SQLiteStore, hub *Hub, agentMgr *ag
 	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, map[string]string{"status": "ok", "version": buildVersion})
 	})
+
+	// Health status — reports subsystem health (database, agent-runner, auth).
+	// Only the database is required; other checks are informational.
+	r.Get("/health/status", HandleHealthReady(HealthReadyDeps{
+		Store:   s,
+		GHReady: func() bool { return ghClient != nil && ghClient.IsAuthenticated() },
+	}))
 
 	// Provider capabilities endpoint
 	r.Get("/api/provider/capabilities", h.GetProviderCapabilities)
