@@ -2,6 +2,8 @@ package loop
 
 import (
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -384,6 +386,259 @@ func TestRunner_FastModeFromOptions(t *testing.T) {
 	r := NewRunner(opts, nil)
 	r.mu.Lock()
 	assert.True(t, r.fastMode)
+	r.mu.Unlock()
+}
+
+func TestRunner_TrackPlanFilePath_Write(t *testing.T) {
+	r := NewRunner(defaultOpts(), nil)
+	r.planModeActive = true
+
+	input := json.RawMessage(`{"file_path": "/tmp/plans/my-plan.md"}`)
+	r.trackPlanFilePath("Write", input)
+
+	r.mu.Lock()
+	assert.Equal(t, "/tmp/plans/my-plan.md", r.lastPlanFilePath)
+	r.mu.Unlock()
+}
+
+func TestRunner_TrackPlanFilePath_Write_AnyPath(t *testing.T) {
+	r := NewRunner(defaultOpts(), nil)
+	r.planModeActive = true
+
+	// Write tracks any file, not just plan directories
+	input := json.RawMessage(`{"file_path": "/tmp/some-random-file.txt"}`)
+	r.trackPlanFilePath("Write", input)
+
+	r.mu.Lock()
+	assert.Equal(t, "/tmp/some-random-file.txt", r.lastPlanFilePath)
+	r.mu.Unlock()
+}
+
+func TestRunner_TrackPlanFilePath_Read_PlanPath(t *testing.T) {
+	r := NewRunner(defaultOpts(), nil)
+	r.planModeActive = true
+
+	input := json.RawMessage(`{"file_path": "/home/user/.claude/plans/my-plan.md"}`)
+	r.trackPlanFilePath("Read", input)
+
+	r.mu.Lock()
+	assert.Equal(t, "/home/user/.claude/plans/my-plan.md", r.lastPlanFilePath)
+	r.mu.Unlock()
+}
+
+func TestRunner_TrackPlanFilePath_Read_ChatmlPath(t *testing.T) {
+	r := NewRunner(defaultOpts(), nil)
+	r.planModeActive = true
+
+	input := json.RawMessage(`{"file_path": "/home/user/.chatml/plans/my-plan.md"}`)
+	r.trackPlanFilePath("Read", input)
+
+	r.mu.Lock()
+	assert.Equal(t, "/home/user/.chatml/plans/my-plan.md", r.lastPlanFilePath)
+	r.mu.Unlock()
+}
+
+func TestRunner_TrackPlanFilePath_Read_IgnoresNonPlanPaths(t *testing.T) {
+	r := NewRunner(defaultOpts(), nil)
+	r.planModeActive = true
+
+	input := json.RawMessage(`{"file_path": "/home/user/src/main.go"}`)
+	r.trackPlanFilePath("Read", input)
+
+	r.mu.Lock()
+	assert.Equal(t, "", r.lastPlanFilePath)
+	r.mu.Unlock()
+}
+
+func TestRunner_TrackPlanFilePath_InvalidJSON(t *testing.T) {
+	r := NewRunner(defaultOpts(), nil)
+	r.planModeActive = true
+
+	r.trackPlanFilePath("Write", json.RawMessage(`{invalid`))
+
+	r.mu.Lock()
+	assert.Equal(t, "", r.lastPlanFilePath)
+	r.mu.Unlock()
+}
+
+func TestRunner_TrackPlanFilePath_EmptyFilePath(t *testing.T) {
+	r := NewRunner(defaultOpts(), nil)
+	r.planModeActive = true
+
+	r.trackPlanFilePath("Write", json.RawMessage(`{"file_path": ""}`))
+
+	r.mu.Lock()
+	assert.Equal(t, "", r.lastPlanFilePath)
+	r.mu.Unlock()
+}
+
+func TestRunner_TrackPlanFilePath_UnknownTool(t *testing.T) {
+	r := NewRunner(defaultOpts(), nil)
+	r.planModeActive = true
+
+	input := json.RawMessage(`{"file_path": "/tmp/file.md"}`)
+	r.trackPlanFilePath("Edit", input)
+
+	r.mu.Lock()
+	assert.Equal(t, "", r.lastPlanFilePath)
+	r.mu.Unlock()
+}
+
+func TestRunner_SetOptionsPlanMode_ClearsLastPlanFilePath(t *testing.T) {
+	r := NewRunner(defaultOpts(), nil)
+
+	// Simulate a stale path from a previous plan cycle
+	r.mu.Lock()
+	r.lastPlanFilePath = "/old/plan.md"
+	r.mu.Unlock()
+
+	r.SetOptionsPlanMode(true)
+
+	r.mu.Lock()
+	assert.Equal(t, "", r.lastPlanFilePath)
+	r.mu.Unlock()
+	assert.True(t, r.IsPlanModeActive())
+}
+
+func TestRunner_EmitPlanApprovalRequest_AutoApprovesWhenNoContent(t *testing.T) {
+	r := NewRunner(defaultOpts(), nil)
+
+	ch := r.EmitPlanApprovalRequest("req-auto", "")
+
+	select {
+	case result := <-ch:
+		assert.True(t, result.Approved)
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for auto-approval")
+	}
+}
+
+func TestRunner_EmitPlanApprovalRequest_ReadsTrackedFile(t *testing.T) {
+	// Create a temporary plan file
+	tmpDir := t.TempDir()
+	planPath := filepath.Join(tmpDir, "plan.md")
+	require.NoError(t, os.WriteFile(planPath, []byte("# My Plan\n\nStep 1: Do the thing"), 0644))
+
+	r := NewRunner(defaultOpts(), nil)
+	r.mu.Lock()
+	r.lastPlanFilePath = planPath
+	r.mu.Unlock()
+
+	// Drain the output channel to prevent blocking on emit
+	go func() {
+		for range r.output {
+		}
+	}()
+
+	ch := r.EmitPlanApprovalRequest("req-file", "")
+
+	// Should NOT auto-approve — it read content from the file
+	select {
+	case <-ch:
+		t.Fatal("should not have auto-approved — plan content was read from file")
+	case <-time.After(100 * time.Millisecond):
+		// Expected: channel blocks because it's waiting for user approval
+	}
+
+	// Verify the path was cleared after emitting
+	r.mu.Lock()
+	assert.Equal(t, "", r.lastPlanFilePath)
+	r.mu.Unlock()
+}
+
+func TestRunner_EmitPlanApprovalRequest_ResolvesRelativePath(t *testing.T) {
+	// Create a temporary workdir with a plan file
+	tmpDir := t.TempDir()
+	plansDir := filepath.Join(tmpDir, ".claude", "plans")
+	require.NoError(t, os.MkdirAll(plansDir, 0755))
+	planPath := filepath.Join(plansDir, "plan.md")
+	require.NoError(t, os.WriteFile(planPath, []byte("# Relative Plan"), 0644))
+
+	opts := defaultOpts()
+	opts.Workdir = tmpDir
+	r := NewRunner(opts, nil)
+
+	// Set a relative path (no leading /)
+	r.mu.Lock()
+	r.lastPlanFilePath = ".claude/plans/plan.md"
+	r.mu.Unlock()
+
+	go func() {
+		for range r.output {
+		}
+	}()
+
+	ch := r.EmitPlanApprovalRequest("req-rel", "")
+
+	// Should NOT auto-approve — it resolved the relative path and read content
+	select {
+	case <-ch:
+		t.Fatal("should not have auto-approved — plan content was read from file")
+	case <-time.After(100 * time.Millisecond):
+		// Expected: blocks waiting for approval
+	}
+}
+
+func TestRunner_EmitPlanApprovalRequest_UsesExplicitContent(t *testing.T) {
+	r := NewRunner(defaultOpts(), nil)
+
+	// Set a tracked path that should be ignored when explicit content is provided
+	r.mu.Lock()
+	r.lastPlanFilePath = "/should/not/be/read"
+	r.mu.Unlock()
+
+	go func() {
+		for range r.output {
+		}
+	}()
+
+	ch := r.EmitPlanApprovalRequest("req-explicit", "Explicit plan content")
+
+	// Should NOT auto-approve — explicit content was provided
+	select {
+	case <-ch:
+		t.Fatal("should not have auto-approved — explicit content was provided")
+	case <-time.After(100 * time.Millisecond):
+		// Expected: blocks waiting for approval
+	}
+}
+
+func TestRunner_EmitPlanApprovalRequest_ClearsPathOnAutoApprove(t *testing.T) {
+	r := NewRunner(defaultOpts(), nil)
+
+	// Set a path to a non-existent file — should fail to read, then auto-approve
+	r.mu.Lock()
+	r.lastPlanFilePath = "/nonexistent/plan.md"
+	r.mu.Unlock()
+
+	ch := r.EmitPlanApprovalRequest("req-missing", "")
+
+	select {
+	case result := <-ch:
+		assert.True(t, result.Approved)
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for auto-approval")
+	}
+
+	r.mu.Lock()
+	assert.Equal(t, "", r.lastPlanFilePath)
+	r.mu.Unlock()
+}
+
+func TestRunner_SendPlanApprovalResponse_ClearsLastPlanFilePath(t *testing.T) {
+	r := NewRunner(defaultOpts(), nil)
+	ch := make(chan builtin.PlanApprovalResult, 1)
+	r.pendingPlanApprovals.Store("req-clear", ch)
+
+	r.mu.Lock()
+	r.lastPlanFilePath = "/some/plan.md"
+	r.mu.Unlock()
+
+	err := r.SendPlanApprovalResponse("req-clear", true, "approved")
+	assert.NoError(t, err)
+
+	r.mu.Lock()
+	assert.Equal(t, "", r.lastPlanFilePath)
 	r.mu.Unlock()
 }
 

@@ -45,46 +45,46 @@ func TestIsOpenAIModel_NotOpenAI(t *testing.T) {
 
 func TestCreateProvider_Anthropic(t *testing.T) {
 	// Anthropic provider requires either APIKey or OAuthToken
-	prov, err := createProvider("claude-sonnet-4-6", "sk-ant-test", "")
+	prov, err := createProvider("claude-sonnet-4-6", "sk-ant-test", "", "")
 	assert.NoError(t, err)
 	assert.NotNil(t, prov)
 	assert.Equal(t, "anthropic", prov.Name())
 }
 
 func TestCreateProvider_AnthropicOAuth(t *testing.T) {
-	prov, err := createProvider("claude-opus-4-6", "", "oauth-token")
+	prov, err := createProvider("claude-opus-4-6", "", "oauth-token", "")
 	assert.NoError(t, err)
 	assert.NotNil(t, prov)
 	assert.Equal(t, "anthropic", prov.Name())
 }
 
 func TestCreateProvider_OpenAI(t *testing.T) {
-	prov, err := createProvider("gpt-4o", "sk-openai-test", "")
+	prov, err := createProvider("gpt-4o", "sk-openai-test", "", "")
 	assert.NoError(t, err)
 	assert.NotNil(t, prov)
 	assert.Equal(t, "openai", prov.Name())
 }
 
 func TestCreateProvider_OpenAI_O3(t *testing.T) {
-	prov, err := createProvider("o3-mini", "sk-openai-test", "")
+	prov, err := createProvider("o3-mini", "sk-openai-test", "", "")
 	assert.NoError(t, err)
 	assert.NotNil(t, prov)
 	assert.Equal(t, "openai", prov.Name())
 }
 
 func TestCreateProvider_OpenAI_NoKey(t *testing.T) {
-	_, err := createProvider("gpt-4o", "", "")
+	_, err := createProvider("gpt-4o", "", "", "")
 	assert.Error(t, err) // OpenAI requires API key
 }
 
 func TestCreateProvider_Anthropic_NoCredentials(t *testing.T) {
-	_, err := createProvider("claude-sonnet-4-6", "", "")
+	_, err := createProvider("claude-sonnet-4-6", "", "", "")
 	assert.Error(t, err) // Anthropic requires APIKey or OAuthToken
 }
 
 func TestCreateProvider_DefaultToAnthropic(t *testing.T) {
 	// Unknown model defaults to Anthropic
-	prov, err := createProvider("unknown-model", "sk-test", "")
+	prov, err := createProvider("unknown-model", "sk-test", "", "")
 	assert.NoError(t, err)
 	assert.Equal(t, "anthropic", prov.Name())
 }
