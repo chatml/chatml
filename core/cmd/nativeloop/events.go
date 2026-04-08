@@ -285,30 +285,49 @@ func handleToolEnd(m *model, e agent.AgentEvent) tea.Cmd {
 		}
 	}
 
-	// Bash: add output preview (first 3 lines) to details
+	// Grep: render grouped-by-file results
+	if e.Tool == "Grep" && e.Summary != "" {
+		grepLines := renderGrepGrouped(e.Summary, m.workdir, m.s, maxTreeLines)
+		if len(grepLines) > 0 {
+			details = append(details, grepLines...)
+		}
+	}
+
+	// Bash: add output preview with head+tail truncation
+	bashExitCode := -1
 	if e.Tool == "Bash" && e.Summary != "" {
-		outputLines := strings.Split(e.Summary, "\n")
-		previewCount := bashPreviewLines
-		if len(outputLines) <= previewCount {
+		outputLines := strings.Split(strings.TrimRight(e.Summary, "\n"), "\n")
+		total := len(outputLines)
+		tailLines := 1
+		headLines := bashPreviewLines - tailLines // reserve tail slots from the preview budget
+
+		if total <= bashPreviewLines+1 {
+			// Short output: show all non-empty lines
 			for _, line := range outputLines {
 				if line != "" {
 					details = append(details, m.s.toolLine.Render(fmt.Sprintf("    │ %s", line)))
 				}
 			}
 		} else {
-			for i := 0; i < previewCount; i++ {
+			// Head lines
+			for i := 0; i < headLines && i < total; i++ {
 				details = append(details, m.s.toolLine.Render(fmt.Sprintf("    │ %s", outputLines[i])))
 			}
-			remaining := len(outputLines) - previewCount
-			details = append(details, m.s.expandHint.Render(fmt.Sprintf("    │ ... %d more lines", remaining)))
-		}
-		// Exit code
-		if code, ok := extractExitCode(e.Summary); ok {
-			if code == 0 {
-				details = append(details, m.s.exitOK.Render(fmt.Sprintf("    │ Exit code: %d", code)))
-			} else {
-				details = append(details, m.s.exitFail.Render(fmt.Sprintf("    │ Exit code: %d", code)))
+			// Hidden count
+			hidden := total - headLines - tailLines
+			if hidden > 0 {
+				details = append(details, m.s.expandHint.Render(fmt.Sprintf("    │ ... %d more lines", hidden)))
 			}
+			// Tail lines
+			for i := total - tailLines; i < total; i++ {
+				if i >= headLines { // avoid overlap
+					details = append(details, m.s.toolLine.Render(fmt.Sprintf("    │ %s", outputLines[i])))
+				}
+			}
+		}
+		// Extract exit code for badge rendering
+		if code, ok := extractExitCode(e.Summary); ok {
+			bashExitCode = code
 		}
 	}
 
@@ -340,7 +359,8 @@ func handleToolEnd(m *model, e agent.AgentEvent) tea.Cmd {
 		msg.lineCount = lineCount
 		msg.fullContent = fullContent
 		msg.collapsed = shouldCollapse
-		
+		msg.exitCode = bashExitCode
+
 		m.stream.pendingToolIdx = -1
 		m.stream.pendingToolID = ""
 		replaced = true
@@ -359,7 +379,8 @@ func handleToolEnd(m *model, e agent.AgentEvent) tea.Cmd {
 				msg.lineCount = lineCount
 				msg.fullContent = fullContent
 				msg.collapsed = shouldCollapse
-				
+				msg.exitCode = bashExitCode
+
 				replaced = true
 				break
 			}
@@ -375,6 +396,7 @@ func handleToolEnd(m *model, e agent.AgentEvent) tea.Cmd {
 			success:   e.Success,
 			duration:  duration,
 			details:   details,
+			exitCode:  bashExitCode,
 			timestamp: now(),
 		})
 	}

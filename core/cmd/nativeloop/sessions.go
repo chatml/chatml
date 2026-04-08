@@ -158,10 +158,11 @@ func providerMessageToDisplay(msg provider.Message) *displayMessage {
 			return &displayMessage{kind: msgAssistant, content: block.Text}
 		case provider.BlockToolUse:
 			return &displayMessage{
-				kind: msgTool,
-				tool: block.ToolName,
-				params: string(block.Input),
-				success: true,
+				kind:     msgTool,
+				tool:     block.ToolName,
+				params:   string(block.Input),
+				success:  true,
+				exitCode: -1, // -1 = not set; 0 is a valid exit code
 			}
 		case provider.BlockToolResult:
 			// Skip tool results in display (they're paired with tool_use)

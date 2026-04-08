@@ -105,6 +105,39 @@ func (c *mdCache) RenderNoCache(content string) string {
 	return content
 }
 
+// RenderStreaming renders markdown content incrementally for streaming.
+// Completed paragraphs (before last \n\n boundary) are cached via Render().
+// The incomplete tail paragraph is rendered without cache to avoid thrashing.
+// This reduces visual jumps: the cached prefix is stable, only the tail changes.
+func (c *mdCache) RenderStreaming(content string) string {
+	if content == "" {
+		return ""
+	}
+
+	// Find the last paragraph boundary (double newline)
+	lastBoundary := strings.LastIndex(content, "\n\n")
+	if lastBoundary < 0 {
+		// Single incomplete paragraph — render without cache (fast, no jumps yet)
+		return c.RenderNoCache(content)
+	}
+
+	// Split into stable prefix and unstable tail
+	stablePrefix := content[:lastBoundary]
+	unstableTail := strings.TrimLeft(content[lastBoundary:], "\n")
+
+	// Render stable prefix via cache (hits cache on subsequent calls with same prefix)
+	renderedPrefix := c.Render(stablePrefix)
+
+	if unstableTail == "" {
+		return renderedPrefix
+	}
+
+	// Render tail without cache (it changes every frame)
+	renderedTail := c.RenderNoCache(unstableTail)
+
+	return renderedPrefix + "\n" + renderedTail
+}
+
 // SetTheme updates the glamour theme and invalidates the cache.
 func (c *mdCache) SetTheme(themeName string, width int) {
 	c.mu.Lock()
@@ -153,14 +186,18 @@ func renderSingleMessage(msg *displayMessage, width int, s *styles, cache *mdCac
 	case msgAssistant:
 		var content string
 		if msg.streaming {
-			// Throttled streaming: re-render via glamour at most every 150ms
-			if time.Since(msg.lastRenderTime) > 150*time.Millisecond || msg.lastRenderedMD == "" {
-				content = cache.RenderNoCache(msg.content)
+			// Throttled streaming with prefix caching: completed paragraphs are
+			// cached, only the tail paragraph is re-rendered each frame.
+			if time.Since(msg.lastRenderTime) > 100*time.Millisecond || msg.lastRenderedMD == "" {
+				content = cache.RenderStreaming(msg.content)
 				msg.lastRenderedMD = content
 				msg.lastRenderTime = time.Now()
 			} else {
 				content = msg.lastRenderedMD
 			}
+			// Streaming cursor indicator (uses lipgloss for no-color compatibility).
+			// Trim trailing whitespace so cursor appears on the last content line.
+			content = strings.TrimRight(content, "\n ") + " " + s.statusFaint.Render("▍")
 		} else {
 			content = cache.Render(msg.content)
 		}

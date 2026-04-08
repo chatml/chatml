@@ -26,6 +26,8 @@ type theme struct {
 	ToolLine  lipgloss.Color
 	DiffAdd   lipgloss.Color
 	DiffDel   lipgloss.Color
+	DiffAddBg lipgloss.Color // background for highlighted changed words in added lines
+	DiffDelBg lipgloss.Color // background for highlighted changed words in deleted lines
 	CtxLow    lipgloss.Color
 	CtxMid    lipgloss.Color
 	CtxHigh   lipgloss.Color
@@ -66,6 +68,8 @@ var darkTheme = theme{
 	ToolLine:       lipgloss.Color("#505050"), // CC subtle
 	DiffAdd:        lipgloss.Color("#38A660"), // CC diffAddedWord
 	DiffDel:        lipgloss.Color("#B3596B"), // CC diffRemovedWord (soft rose)
+	DiffAddBg:      lipgloss.Color("#1A3328"), // subtle dark green bg for word highlight
+	DiffDelBg:      lipgloss.Color("#33191E"), // subtle dark red bg for word highlight
 	CtxLow:         lipgloss.Color("#4EBA65"), // CC success
 	CtxMid:         lipgloss.Color("#FFC107"), // CC warning
 	CtxHigh:        lipgloss.Color("#FF6B80"), // CC error
@@ -102,6 +106,8 @@ var lightTheme = theme{
 	ToolLine:       lipgloss.Color("#AFAFAF"), // subtle on light bg
 	DiffAdd:        lipgloss.Color("#2F9D44"), // CC light diffAddedWord
 	DiffDel:        lipgloss.Color("#D1454B"), // CC light diffRemovedWord
+	DiffAddBg:      lipgloss.Color("#D4EDDA"), // light green bg for word highlight
+	DiffDelBg:      lipgloss.Color("#F8D7DA"), // light red bg for word highlight
 	CtxLow:         lipgloss.Color("#2C7A39"), // CC light success
 	CtxMid:         lipgloss.Color("#966C1E"), // CC light warning
 	CtxHigh:        lipgloss.Color("#AB2B3F"), // CC light error
@@ -164,6 +170,8 @@ func newStylesFromTheme(t theme) *styles {
 		toolLine:   lipgloss.NewStyle().Foreground(t.ToolLine),
 		diffAdd:    lipgloss.NewStyle().Foreground(t.DiffAdd),
 		diffDel:    lipgloss.NewStyle().Foreground(t.DiffDel),
+		diffAddHL:  lipgloss.NewStyle().Bold(true).Foreground(t.DiffAdd).Background(t.DiffAddBg),
+		diffDelHL:  lipgloss.NewStyle().Bold(true).Foreground(t.DiffDel).Background(t.DiffDelBg),
 		userMsg:    lipgloss.NewStyle().Foreground(t.UserMsgFg).Background(t.UserMsgBg),
 		bullet:     lipgloss.NewStyle().Bold(true).Foreground(t.Bullet),
 		statusFaint: lipgloss.NewStyle().Faint(true),

@@ -3,6 +3,8 @@ package main
 import (
 	"fmt"
 	"strings"
+
+	"github.com/charmbracelet/lipgloss"
 )
 
 // renderEditDiff produces a colored unified-diff-style view of an Edit operation.
@@ -15,8 +17,9 @@ func renderEditDiff(oldStr, newStr, filePath, workdir string, s *styles, maxLine
 	oldLines := splitLines(oldStr)
 	newLines := splitLines(newStr)
 
-	// Compute line-level diff
+	// Compute line-level diff, then detect word-level modifications
 	diff := computeLineDiff(oldLines, newLines)
+	detectModifications(diff)
 
 	var lines []string
 
@@ -36,17 +39,32 @@ func renderEditDiff(oldStr, newStr, filePath, workdir string, s *styles, maxLine
 			break
 		}
 
-		line := d.text
-		if len(line) > maxSummaryWidth {
-			line = line[:maxSummaryWidth-3] + "..."
-		}
-
 		switch d.op {
 		case diffOpAdd:
-			lines = append(lines, s.diffAdd.Render(fmt.Sprintf("    │ + %s", line)))
+			if len(d.segments) > 0 {
+				lines = append(lines, renderWordDiffLine("    │ + ", d.segments, s.diffAdd, s.diffAddHL))
+			} else {
+				line := d.text
+				if len(line) > maxSummaryWidth {
+					line = line[:maxSummaryWidth-3] + "..."
+				}
+				lines = append(lines, s.diffAdd.Render(fmt.Sprintf("    │ + %s", line)))
+			}
 		case diffOpDel:
-			lines = append(lines, s.diffDel.Render(fmt.Sprintf("    │ - %s", line)))
+			if len(d.segments) > 0 {
+				lines = append(lines, renderWordDiffLine("    │ - ", d.segments, s.diffDel, s.diffDelHL))
+			} else {
+				line := d.text
+				if len(line) > maxSummaryWidth {
+					line = line[:maxSummaryWidth-3] + "..."
+				}
+				lines = append(lines, s.diffDel.Render(fmt.Sprintf("    │ - %s", line)))
+			}
 		case diffOpContext:
+			line := d.text
+			if len(line) > maxSummaryWidth {
+				line = line[:maxSummaryWidth-3] + "..."
+			}
 			lines = append(lines, s.toolLine.Render(fmt.Sprintf("    │   %s", line)))
 		}
 		count++
@@ -66,8 +84,15 @@ const (
 
 // diffLine is a single line in a diff.
 type diffLine struct {
-	op   diffOp
-	text string
+	op       diffOp
+	text     string
+	segments []wordSegment // non-nil for word-level highlighted lines (modified pairs)
+}
+
+// wordSegment represents a portion of a line in a word-level diff.
+type wordSegment struct {
+	text    string
+	changed bool // true if this segment was modified
 }
 
 // computeLineDiff produces a simple line-level diff between old and new.
@@ -167,6 +192,149 @@ func trimContext(diff []diffLine, contextLines int) []diffLine {
 	}
 
 	return result
+}
+
+// detectModifications scans a diff for consecutive del+add runs that represent
+// line modifications. For each run, it pairs deletions with additions positionally
+// (del[0]↔add[0], del[1]↔add[1], etc.) and computes word-level diffs for
+// sufficiently similar pairs.
+func detectModifications(diff []diffLine) {
+	i := 0
+	for i < len(diff) {
+		// Find consecutive del run
+		delStart := i
+		for i < len(diff) && diff[i].op == diffOpDel {
+			i++
+		}
+		delEnd := i
+
+		// Find consecutive add run immediately after
+		addStart := i
+		for i < len(diff) && diff[i].op == diffOpAdd {
+			i++
+		}
+		addEnd := i
+
+		// Pair deletions with additions positionally
+		pairs := min(delEnd-delStart, addEnd-addStart)
+		for j := 0; j < pairs; j++ {
+			di := delStart + j
+			ai := addStart + j
+			if lineSimilarity(diff[di].text, diff[ai].text) >= 0.5 {
+				oldSegs, newSegs := computeWordDiff(diff[di].text, diff[ai].text)
+				diff[di].segments = oldSegs
+				diff[ai].segments = newSegs
+			}
+		}
+
+		// If we didn't advance (hit a context line), skip it
+		if i == delStart {
+			i++
+		}
+	}
+}
+
+// lineSimilarity returns 0.0–1.0 indicating how similar two lines are,
+// based on the fraction of characters shared in common prefix + suffix.
+func lineSimilarity(a, b string) float64 {
+	ar, br := []rune(a), []rune(b)
+	maxLen := max(len(ar), len(br))
+	if maxLen == 0 {
+		return 1.0
+	}
+	prefixLen := 0
+	minLen := min(len(ar), len(br))
+	for prefixLen < minLen && ar[prefixLen] == br[prefixLen] {
+		prefixLen++
+	}
+	suffixLen := 0
+	for suffixLen < minLen-prefixLen && ar[len(ar)-1-suffixLen] == br[len(br)-1-suffixLen] {
+		suffixLen++
+	}
+	return float64(prefixLen+suffixLen) / float64(maxLen)
+}
+
+// computeWordDiff finds the common prefix and suffix between two similar lines,
+// returning segments with change markers for the differing middle portion.
+func computeWordDiff(oldLine, newLine string) (oldSegs, newSegs []wordSegment) {
+	oldRunes := []rune(oldLine)
+	newRunes := []rune(newLine)
+
+	// Find common prefix
+	prefixLen := 0
+	minLen := min(len(oldRunes), len(newRunes))
+	for prefixLen < minLen && oldRunes[prefixLen] == newRunes[prefixLen] {
+		prefixLen++
+	}
+
+	// Find common suffix (not overlapping with prefix)
+	suffixLen := 0
+	for suffixLen < minLen-prefixLen &&
+		oldRunes[len(oldRunes)-1-suffixLen] == newRunes[len(newRunes)-1-suffixLen] {
+		suffixLen++
+	}
+
+	prefix := string(oldRunes[:prefixLen])
+	oldMiddle := string(oldRunes[prefixLen : len(oldRunes)-suffixLen])
+	newMiddle := string(newRunes[prefixLen : len(newRunes)-suffixLen])
+	suffix := ""
+	if suffixLen > 0 {
+		suffix = string(oldRunes[len(oldRunes)-suffixLen:])
+	}
+
+	oldSegs = buildWordSegments(prefix, oldMiddle, suffix)
+	newSegs = buildWordSegments(prefix, newMiddle, suffix)
+	return
+}
+
+// buildWordSegments constructs a slice of word segments from prefix/middle/suffix.
+func buildWordSegments(prefix, middle, suffix string) []wordSegment {
+	var segs []wordSegment
+	if prefix != "" {
+		segs = append(segs, wordSegment{text: prefix, changed: false})
+	}
+	if middle != "" {
+		segs = append(segs, wordSegment{text: middle, changed: true})
+	}
+	if suffix != "" {
+		segs = append(segs, wordSegment{text: suffix, changed: false})
+	}
+	return segs
+}
+
+// renderWordDiffLine renders a line with word-level highlighting.
+// The gutter (prefix like "    │ + ") uses the base style, while content segments
+// alternate between base and highlight styles for changed portions.
+// Segments are truncated to maxSummaryWidth to prevent wrapping on narrow terminals.
+func renderWordDiffLine(gutter string, segs []wordSegment, baseStyle, hlStyle lipgloss.Style) string {
+	var b strings.Builder
+	b.WriteString(baseStyle.Render(gutter))
+	remaining := maxSummaryWidth - len([]rune(gutter)) // subtract gutter width from content budget
+	for _, seg := range segs {
+		text := seg.text
+		runes := []rune(text)
+		if len(runes) > remaining {
+			if remaining > 3 {
+				text = string(runes[:remaining-3]) + "..."
+			} else {
+				// Always show ellipsis for visual truncation clarity, even if slightly over budget
+				text = "..."
+			}
+			if seg.changed {
+				b.WriteString(hlStyle.Render(text))
+			} else {
+				b.WriteString(baseStyle.Render(text))
+			}
+			break
+		}
+		remaining -= len(runes)
+		if seg.changed {
+			b.WriteString(hlStyle.Render(text))
+		} else {
+			b.WriteString(baseStyle.Render(text))
+		}
+	}
+	return b.String()
 }
 
 func splitLines(s string) []string {

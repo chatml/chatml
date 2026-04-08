@@ -73,6 +73,9 @@ type displayMessage struct {
 	options  []agent.UserQuestionOption
 	question string
 
+	// Bash exit code (-1 = not set, >= 0 = exit code)
+	exitCode int
+
 	// Streaming state
 	streaming       bool   // true while tokens are arriving
 	lastRenderTime  time.Time // last time glamour rendered this message
@@ -178,6 +181,19 @@ func renderToolMessage(b *strings.Builder, s *styles, msg *displayMessage, verbo
 	}
 	summary := cleanSummary(msg.summary)
 
+	// Bash exit code badge (colored, appended after duration for consistent alignment).
+	// Badge color follows the result line: failure overrides to toolFail regardless of exit code.
+	exitBadge := ""
+	if msg.tool == "Bash" && msg.exitCode >= 0 {
+		if !msg.success {
+			exitBadge = " · " + s.toolFail.Render(fmt.Sprintf("[%d]", msg.exitCode))
+		} else if msg.exitCode == 0 {
+			exitBadge = " · " + s.exitOK.Render("[0]")
+		} else {
+			exitBadge = " · " + s.exitFail.Render(fmt.Sprintf("[%d]", msg.exitCode))
+		}
+	}
+
 	// Collapsible: if the summary is long (>10 lines), show truncated with expand hint
 	if msg.collapsed && msg.lineCount > collapseThreshold && msg.fullContent != "" {
 		lines := strings.SplitN(summary, "\n", 6)
@@ -186,9 +202,9 @@ func renderToolMessage(b *strings.Builder, s *styles, msg *displayMessage, verbo
 		}
 		expandHint := s.expandHint.Render(fmt.Sprintf("  [+%d more lines, Tab to expand]", msg.lineCount-5))
 		if msg.success {
-			b.WriteString(s.toolResult.Render(fmt.Sprintf("  ⎿ %s%s", summary, elapsed)) + "\n" + expandHint + "\n")
+			b.WriteString(s.toolResult.Render(fmt.Sprintf("  ⎿ %s%s", summary, elapsed))+exitBadge+"\n"+expandHint+"\n")
 		} else {
-			b.WriteString(s.toolFail.Render(fmt.Sprintf("  ✗ %s%s", summary, elapsed)) + "\n" + expandHint + "\n")
+			b.WriteString(s.toolFail.Render(fmt.Sprintf("  ✗ %s%s", summary, elapsed))+exitBadge+"\n"+expandHint+"\n")
 		}
 		return
 	}
@@ -200,9 +216,9 @@ func renderToolMessage(b *strings.Builder, s *styles, msg *displayMessage, verbo
 	}
 
 	if msg.success {
-		b.WriteString(s.toolResult.Render(fmt.Sprintf("  ⎿ %s%s", summary, elapsed)) + expandHint + "\n")
+		b.WriteString(s.toolResult.Render(fmt.Sprintf("  ⎿ %s%s", summary, elapsed))+exitBadge+expandHint+"\n")
 	} else {
-		b.WriteString(s.toolFail.Render(fmt.Sprintf("  ✗ %s%s", summary, elapsed)) + expandHint + "\n")
+		b.WriteString(s.toolFail.Render(fmt.Sprintf("  ✗ %s%s", summary, elapsed))+exitBadge+expandHint+"\n")
 	}
 }
 
