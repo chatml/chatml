@@ -91,7 +91,7 @@ describe('useSessionSnapshot', () => {
 
     await flushAndAdvance();
 
-    expect(mockedGetSessionSnapshot).toHaveBeenCalledWith('ws-1', 'session-1');
+    expect(mockedGetSessionSnapshot).toHaveBeenCalledWith('ws-1', 'session-1', expect.any(AbortSignal));
     expect(result.current.loading).toBe(false);
     expect(result.current.gitStatus).toBeTruthy();
     expect(result.current.changes).toHaveLength(1);

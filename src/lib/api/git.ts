@@ -91,8 +91,8 @@ export interface SessionSnapshotDTO {
   branchStats?: BranchStatsDTO;
 }
 
-export async function getSessionSnapshot(workspaceId: string, sessionId: string): Promise<SessionSnapshotDTO> {
-  const res = await fetchWithAuth(`${getApiBase()}/api/repos/${workspaceId}/sessions/${sessionId}/snapshot`);
+export async function getSessionSnapshot(workspaceId: string, sessionId: string, signal?: AbortSignal): Promise<SessionSnapshotDTO> {
+  const res = await fetchWithAuth(`${getApiBase()}/api/repos/${workspaceId}/sessions/${sessionId}/snapshot`, signal ? { signal } : undefined);
   return handleResponse<SessionSnapshotDTO>(res);
 }
 

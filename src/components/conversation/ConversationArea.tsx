@@ -63,6 +63,11 @@ const ClaudeTerminal = dynamic(
   { ssr: false }
 );
 
+// Staleness guard for review comments fetch — skip refetch if within this window.
+const REVIEW_COMMENTS_STALE_MS = 30_000;
+const REVIEW_COMMENTS_MAP_MAX = 50;
+const reviewCommentsLastFetchMap = new Map<string, number>();
+
 // Module-level LRU of recently-viewed sessions. Stored outside the component so
 // useMemo can read it during render without violating react-hooks/refs or
 // react-hooks/set-state-in-effect rules.
@@ -179,14 +184,30 @@ export function ConversationArea({ children }: ConversationAreaProps) {
   // Fetch review comments when session changes.
   // Always deferred so it doesn't block navigation render or session creation.
   // If cached, show cached data immediately; refetch picks up external changes.
+  // Staleness guard: skip refetch if we fetched within the last 30s.
   useEffect(() => {
     if (!selectedWorkspaceId || !selectedSessionId) return;
 
+    // Skip if recently fetched (stale-while-revalidate)
+    const lastFetched = reviewCommentsLastFetchMap.get(selectedSessionId) ?? 0;
+    if (Date.now() - lastFetched < REVIEW_COMMENTS_STALE_MS) return;
+
+    const controller = new AbortController();
+
     const fetchComments = async () => {
       try {
-        const comments = await listReviewComments(selectedWorkspaceId, selectedSessionId);
-        setReviewComments(selectedSessionId, comments);
+        const comments = await listReviewComments(selectedWorkspaceId, selectedSessionId, undefined, controller.signal);
+        if (!controller.signal.aborted) {
+          setReviewComments(selectedSessionId, comments);
+          reviewCommentsLastFetchMap.set(selectedSessionId, Date.now());
+          // Evict oldest entry when over limit
+          if (reviewCommentsLastFetchMap.size > REVIEW_COMMENTS_MAP_MAX) {
+            const oldest = reviewCommentsLastFetchMap.keys().next().value;
+            if (oldest) reviewCommentsLastFetchMap.delete(oldest);
+          }
+        }
       } catch (error) {
+        if (controller.signal.aborted) return;
         console.error('Failed to fetch review comments:', error);
       }
     };
@@ -194,10 +215,10 @@ export function ConversationArea({ children }: ConversationAreaProps) {
     // Always defer — never block the render path
     if (typeof requestIdleCallback === 'function') {
       const id = requestIdleCallback(() => fetchComments(), { timeout: 8000 });
-      return () => cancelIdleCallback(id);
+      return () => { cancelIdleCallback(id); controller.abort(); };
     } else {
       const id = setTimeout(fetchComments, 1000);
-      return () => clearTimeout(id);
+      return () => { clearTimeout(id); controller.abort(); };
     }
   }, [selectedWorkspaceId, selectedSessionId, setReviewComments]);
 

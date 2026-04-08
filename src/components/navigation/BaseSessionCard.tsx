@@ -22,6 +22,7 @@ import { useSettingsStore, type ContentView } from '@/stores/settingsStore';
 import { useBaseSessionGitStatus } from '@/hooks/useBaseSessionGitStatus';
 import { useSessionHoverGroup, INITIAL_OPEN_DELAY } from '@/hooks/useSessionHoverGroup';
 import type { WorktreeSession } from '@/lib/types';
+import { prefetchSessionData, cancelPrefetch } from '@/lib/sessionPrefetch';
 
 interface BaseSessionCardProps {
   session: WorktreeSession;
@@ -86,7 +87,13 @@ export function BaseSessionCard({
         }}>
           <HoverCardTrigger asChild>
             <div
-              onPointerEnter={() => setCurrentOpenDelay(getOpenDelay())}
+              onPointerEnter={() => {
+                setCurrentOpenDelay(getOpenDelay());
+                if (!isSessionSelected) {
+                  prefetchSessionData(session.workspaceId, session.id);
+                }
+              }}
+              onPointerLeave={() => { cancelPrefetch(); }}
               className={cn(
                 'group relative flex flex-col gap-1 rounded-lg border px-2.5 py-2 my-0.5 cursor-pointer transition-colors',
                 isSessionSelected

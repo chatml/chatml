@@ -28,6 +28,7 @@ import { useSettingsStore, getBranchPrefix, getWorkspaceBranchPrefix, type Conte
 import { useSidebarSessions, isSidebarGroupExpanded, type SidebarGroup } from '@/hooks/useSidebarSessions';
 import { createSession as createSessionApi, listConversations as listConversationsApi, updateSession as updateSessionApi, deleteRepo as deleteRepoApi, addRepo as addRepoApi, mapSessionDTO, refreshPRStatus, unlinkPR } from '@/lib/api';
 import { registerSession, getSessionDirName } from '@/lib/tauri';
+import { prefetchSessionData, cancelPrefetch } from '@/lib/sessionPrefetch';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import {
@@ -544,6 +545,9 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onGitHubRepos,
   };
 
   const handleSelectSession = (workspaceId: string, sessionId: string, event?: React.MouseEvent) => {
+    // Cancel any in-flight hover prefetch so it doesn't race with the real load
+    cancelPrefetch();
+
     const { selectedSessionId } = useAppStore.getState();
 
     // Re-click on already-selected session: force-refresh PR status (bypass throttle)
@@ -1872,7 +1876,13 @@ function SessionRow({
             }}>
           <HoverCardTrigger asChild>
             <div
-              onPointerEnter={() => setCurrentOpenDelay(getOpenDelay())}
+              onPointerEnter={() => {
+                setCurrentOpenDelay(getOpenDelay());
+                if (!isSessionSelected) {
+                  prefetchSessionData(session.workspaceId, session.id);
+                }
+              }}
+              onPointerLeave={() => { cancelPrefetch(); }}
               className={cn(
                 'group relative flex flex-row items-center py-2 rounded-md cursor-pointer my-0.5',
                 'px-2',

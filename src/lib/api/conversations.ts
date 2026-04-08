@@ -241,7 +241,7 @@ export async function getConversation(convId: string): Promise<ConversationDTO> 
 
 export async function getConversationMessages(
   convId: string,
-  opts?: { before?: number; limit?: number; compact?: boolean }
+  opts?: { before?: number; limit?: number; compact?: boolean; signal?: AbortSignal }
 ): Promise<MessagePageDTO> {
   const params = new URLSearchParams();
   if (opts?.before !== undefined) params.set('before', String(opts.before));
@@ -249,7 +249,7 @@ export async function getConversationMessages(
   if (opts?.compact) params.set('mode', 'compact');
   const qs = params.toString();
   const url = `${getApiBase()}/api/conversations/${convId}/messages${qs ? `?${qs}` : ''}`;
-  const res = await fetchWithAuth(url);
+  const res = await fetchWithAuth(url, opts?.signal ? { signal: opts.signal } : undefined);
   return handleResponse<MessagePageDTO>(res);
 }
 

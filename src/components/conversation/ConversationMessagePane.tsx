@@ -115,31 +115,31 @@ export function ConversationMessagePane({
 
     setMessagesLoading(conversationId, true);
 
-    let cancelled = false;
+    const controller = new AbortController();
     async function loadMessages() {
       const MAX_RETRIES = 3;
       for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
         try {
-          const page = await getConversationMessages(conversationId, { limit: 50, compact: true });
-          if (cancelled) return;
+          const page = await getConversationMessages(conversationId, { limit: 50, compact: true, signal: controller.signal });
+          if (controller.signal.aborted) return;
           const messages = page.messages.map((m) => toStoreMessage(m, conversationId, { compacted: true }));
           setMessagePage(conversationId, messages, page.hasMore, page.oldestPosition ?? 0, page.totalCount);
           return;
         } catch (error) {
-          if (cancelled) return;
+          if (controller.signal.aborted) return;
           console.error(`Failed to load conversation messages (attempt ${attempt + 1}/${MAX_RETRIES}):`, error);
           if (attempt < MAX_RETRIES - 1) {
             const base = 1000 * Math.pow(2, attempt);
             await new Promise(r => setTimeout(r, base * (0.5 + Math.random() * 0.5)));
-            if (cancelled) return;
+            if (controller.signal.aborted) return;
           }
         }
       }
-      if (!cancelled) setMessagesLoading(conversationId, false);
+      if (!controller.signal.aborted) setMessagesLoading(conversationId, false);
     }
     loadMessages();
     return () => {
-      cancelled = true;
+      controller.abort();
       setMessagesLoading(conversationId, false);
     };
   }, [conversationId, setMessagePage, setMessagesLoading]);

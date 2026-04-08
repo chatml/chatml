@@ -66,6 +66,7 @@ export function useSessionSnapshot(
   const debounceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const isMountedRef = useRef(false);
   const permanentErrorRef = useRef(false);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   const applySnapshot = useCallback((snap: SessionSnapshotDTO) => {
     setGitStatus(snap.gitStatus);
@@ -91,9 +92,14 @@ export function useSessionSnapshot(
 
     if (permanentErrorRef.current) return;
 
+    // Cancel any in-flight fetch for the previous session
+    abortControllerRef.current?.abort();
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
     try {
-      const snap = await getSessionSnapshot(workspaceId, sessionId);
-      if (isMountedRef.current) {
+      const snap = await getSessionSnapshot(workspaceId, sessionId, controller.signal);
+      if (isMountedRef.current && !controller.signal.aborted) {
         applySnapshot(snap);
 
         // Update the session data cache for stale-while-revalidate
@@ -107,6 +113,9 @@ export function useSessionSnapshot(
         });
       }
     } catch (err) {
+      // Silently ignore aborted requests (user switched sessions)
+      if (controller.signal.aborted) return;
+
       if (isMountedRef.current) {
         const isPermanent =
           err instanceof ApiError && err.code === ErrorCode.WORKTREE_NOT_FOUND;
@@ -199,6 +208,7 @@ export function useSessionSnapshot(
     return () => {
       isMountedRef.current = false;
       clearTimeout(id);
+      abortControllerRef.current?.abort();
       if (debounceTimeoutRef.current) {
         clearTimeout(debounceTimeoutRef.current);
       }
