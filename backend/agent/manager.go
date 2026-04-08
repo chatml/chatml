@@ -390,22 +390,13 @@ func (m *Manager) StartConversation(ctx context.Context, sessionID, conversation
 
 	// Determine which backend to use for this conversation.
 	// Local models (Gemma, etc.) always use the native loop — agent-runner only supports Anthropic.
-	backendType := BackendAgentRunner
 	if IsLocalModel(procOpts.Model) {
-		backendType = BackendNative
 		if m.ollamaMgr == nil {
 			return nil, fmt.Errorf("local model %q requested but Ollama manager not configured", procOpts.Model)
 		}
-		// Fast path: if Ollama is already running and process is alive, resolve
+		// Fast path: if Ollama is already running and model is available, resolve
 		// the endpoint immediately so the conversation can start without delay.
-		// IsAlive is a cheap process-state check (no HTTP call).
-		if m.ollamaMgr.IsAlive() {
-			if err := m.ollamaMgr.EnsureModelAvailable(ctx, procOpts.Model); err == nil {
-				procOpts.OllamaEndpoint = m.ollamaMgr.Endpoint()
-				m.ollamaMgr.TouchActivity()
-			}
-			// If EnsureModelAvailable fails, fall through to the slow path below.
-		}
+		procOpts, _ = m.ensureOllamaReady(ctx, procOpts)
 		// Slow path: Install, start, and pull happen in a goroutine so the HTTP
 		// response returns immediately. The conversation is created in an "idle"
 		// state and the backend starts once preparation finishes. Progress is
@@ -414,29 +405,13 @@ func (m *Manager) StartConversation(ctx context.Context, sessionID, conversation
 			go m.prepareOllamaAndStart(convID, sessionID, session, procOpts, initialMessage, conversationType, opts)
 			return conv, nil
 		}
-	} else if opts != nil && opts.Backend == BackendNative {
-		backendType = BackendNative
-	} else if os.Getenv("CHATML_NATIVE_LOOP") == "1" {
-		backendType = BackendNative
 	}
 
-	// Create and start the conversation backend
-	var backend ConversationBackend
-	if backendType == BackendNative {
-		nativeBackend, provErr := m.createNativeBackend(ctx, procOpts)
-		if provErr != nil {
-			// Local models require the native backend — agent-runner only supports Anthropic.
-			if IsLocalModel(procOpts.Model) {
-				return nil, fmt.Errorf("native backend required for local model %q: %w", procOpts.Model, provErr)
-			}
-			logger.Manager.Warnf("Failed to create native backend, falling back to agent-runner: %v", provErr)
-			backendType = BackendAgentRunner
-		} else {
-			backend = nativeBackend
-		}
-	}
-	if backendType == BackendAgentRunner {
-		backend = NewProcessWithOptions(procOpts)
+	// Create and start the conversation backend via the shared resolver.
+	forceNative := opts != nil && opts.Backend == BackendNative
+	backend, backendType, err := m.resolveBackend(ctx, procOpts, forceNative)
+	if err != nil {
+		return nil, err
 	}
 
 	m.mu.Lock()
@@ -1840,15 +1815,6 @@ func (m *Manager) SendConversationMessage(ctx context.Context, convID, message s
 			restartOpts.PlanMode = *planMode
 		}
 
-		// Check if we should generate a title for this session.
-		// Only task conversations should name the session — review/chat messages
-		// would produce misleading branch names (e.g. "review-code-quality").
-		if message != "" && conv.Type == models.ConversationTypeTask && m.claimAutoName(ctx, conv.SessionID) {
-			shouldGenerateTitle = true
-			titleSessionID = conv.SessionID
-			logger.Manager.Infof("Will generate title for session %s (conv %s)", conv.SessionID, convID)
-		}
-
 		if ok && proc != nil {
 			logger.Manager.Warnf("Unexpected: auto-restarting process for conversation %s (previous exit error: %v). Multi-turn processes should stay alive between turns.", convID, prevExitErr)
 		} else {
@@ -1864,7 +1830,34 @@ func (m *Manager) SendConversationMessage(ctx context.Context, convID, message s
 			})
 		}
 
-		newProc := NewProcessWithOptions(restartOpts)
+		// Local models must use the native Go loop, not agent-runner.
+		if IsLocalModel(restartOpts.Model) {
+			if m.ollamaMgr == nil {
+				return fmt.Errorf("local model %q requested but Ollama manager not configured", restartOpts.Model)
+			}
+			restartOpts, _ = m.ensureOllamaReady(ctx, restartOpts)
+			if restartOpts.OllamaEndpoint == "" {
+				// Slow path: prepare Ollama in a goroutine, then start native backend and send message.
+				go m.prepareOllamaAndRestart(convID, session, restartOpts, message, attachments)
+				return nil
+			}
+		}
+
+		// Check if we should generate a title for this session.
+		// Only task conversations should name the session — review/chat messages
+		// would produce misleading branch names (e.g. "review-code-quality").
+		// This must be after the Ollama slow-path early return above so that
+		// claimAutoName is not consumed when title generation can't run.
+		if message != "" && conv.Type == models.ConversationTypeTask && m.claimAutoName(ctx, conv.SessionID) {
+			shouldGenerateTitle = true
+			titleSessionID = conv.SessionID
+			logger.Manager.Infof("Will generate title for session %s (conv %s)", conv.SessionID, convID)
+		}
+
+		newBackend, backendType, err := m.resolveBackend(ctx, restartOpts, false)
+		if err != nil {
+			return fmt.Errorf("failed to create backend for restart: %w", err)
+		}
 
 		m.mu.Lock()
 		// Check again — another goroutine may have restarted while we were doing DB calls
@@ -1873,16 +1866,16 @@ func (m *Manager) SendConversationMessage(ctx context.Context, convID, message s
 			// Another goroutine already restarted — use that process instead
 			proc = existingProc
 		} else {
-			m.convProcesses[convID] = newProc
+			m.convProcesses[convID] = newBackend
 			m.mu.Unlock()
 
-			if err := newProc.Start(); err != nil {
+			if err := newBackend.Start(); err != nil {
 				return fmt.Errorf("failed to restart agent process: %w", err)
 			}
 
 			// Set up handlers for the new process
-			go m.handleConversationOutput(convID, newProc, BackendAgentRunner)
-			go m.handleConversationCompletion(convID, newProc)
+			go m.handleConversationOutput(convID, newBackend, backendType)
+			go m.handleConversationCompletion(convID, newBackend)
 
 			// Update status
 			if err := m.store.UpdateConversation(ctx, convID, func(c *models.Conversation) {
@@ -1911,7 +1904,7 @@ func (m *Manager) SendConversationMessage(ctx context.Context, convID, message s
 				}
 			}
 
-			proc = newProc
+			proc = newBackend
 		}
 	} else {
 		m.mu.Unlock()
@@ -2082,7 +2075,24 @@ func (m *Manager) ResumeConversation(ctx context.Context, convID string) error {
 	// Build system instructions from session context
 	opts.Instructions = m.buildSystemInstructions(ctx, session, sessionWithWs, "")
 
-	newProc := NewProcessWithOptions(opts)
+	// Local models must use the native Go loop, not agent-runner.
+	if IsLocalModel(opts.Model) {
+		if m.ollamaMgr == nil {
+			return fmt.Errorf("local model %q requested but Ollama manager not configured", opts.Model)
+		}
+		opts, _ = m.ensureOllamaReady(ctx, opts)
+		if opts.OllamaEndpoint == "" {
+			// Slow path: prepare Ollama in a goroutine, then start native backend.
+			go m.prepareOllamaAndResume(convID, session, opts)
+			return nil
+		}
+	}
+
+	// Resolve the correct backend for the model.
+	backend, backendType, err := m.resolveBackend(ctx, opts, false)
+	if err != nil {
+		return err
+	}
 
 	// Double-check under write lock to prevent race
 	m.mu.Lock()
@@ -2090,18 +2100,18 @@ func (m *Manager) ResumeConversation(ctx context.Context, convID string) error {
 		m.mu.Unlock()
 		return nil // another goroutine already started it
 	}
-	m.convProcesses[convID] = newProc
+	m.convProcesses[convID] = backend
 	m.mu.Unlock()
 
-	if err := newProc.Start(); err != nil {
+	if err := backend.Start(); err != nil {
 		m.mu.Lock()
 		delete(m.convProcesses, convID)
 		m.mu.Unlock()
 		return fmt.Errorf("failed to start resumed agent process: %w", err)
 	}
 
-	go m.handleConversationOutput(convID, newProc, BackendAgentRunner)
-	go m.handleConversationCompletion(convID, newProc)
+	go m.handleConversationOutput(convID, backend, backendType)
+	go m.handleConversationCompletion(convID, backend)
 
 	newStatus := models.ConversationStatusActive
 	if err := m.store.UpdateConversation(ctx, convID, func(c *models.Conversation) {
@@ -2114,7 +2124,7 @@ func (m *Manager) ResumeConversation(ctx context.Context, convID string) error {
 		m.onConversationStatus(convID, newStatus)
 	}
 
-	logger.Manager.Infof("Resumed conversation %s with agent session %s", convID, conv.AgentSessionID)
+	logger.Manager.Infof("Resumed conversation %s with agent session %s (backend=%s)", convID, conv.AgentSessionID, backendType)
 	return nil
 }
 
@@ -3280,6 +3290,16 @@ func (m *Manager) SetConversationModel(convID, model string) error {
 	if !ok || !proc.IsRunning() {
 		return fmt.Errorf("no active process for conversation %s", convID)
 	}
+
+	// Cannot push a local model name to agent-runner at runtime — agent-runner
+	// only supports Anthropic models. The model is still persisted to DB so the
+	// next conversation start/restart will route to the correct backend.
+	if IsLocalModel(model) {
+		if _, isProcess := proc.(*Process); isProcess {
+			return fmt.Errorf("cannot switch running agent-runner to local model %q; start a new conversation with this model", model)
+		}
+	}
+
 	return proc.SetModel(model)
 }
 
@@ -3581,6 +3601,55 @@ func (m *Manager) SetOllamaManager(mgr OllamaManager) {
 	m.ollamaMgr = mgr
 }
 
+// startOllamaBackend is the shared slow-path Ollama preparation. It installs
+// Ollama, starts it, pulls the model, creates the native backend, registers it
+// in convProcesses, starts it, and wires up output/completion handlers.
+// Returns the started backend, or nil if preparation failed (fail is called)
+// or another goroutine already started the conversation.
+func (m *Manager) startOllamaBackend(ctx context.Context, convID string, procOpts ProcessOptions, fail func(string)) ConversationBackend {
+	if err := m.ollamaMgr.Install(ctx); err != nil {
+		fail(fmt.Sprintf("install ollama: %v", err))
+		return nil
+	}
+	if err := m.ollamaMgr.EnsureRunning(ctx); err != nil {
+		fail(fmt.Sprintf("start ollama: %v", err))
+		return nil
+	}
+	if err := m.ollamaMgr.EnsureModelAvailable(ctx, procOpts.Model); err != nil {
+		fail(fmt.Sprintf("ensure model available: %v", err))
+		return nil
+	}
+	procOpts.OllamaEndpoint = m.ollamaMgr.Endpoint()
+	m.ollamaMgr.TouchActivity()
+
+	backend, err := m.createNativeBackend(ctx, procOpts)
+	if err != nil {
+		fail(fmt.Sprintf("create native backend: %v", err))
+		return nil
+	}
+
+	m.mu.Lock()
+	if ep, ok := m.convProcesses[convID]; ok && ep.IsRunning() {
+		m.mu.Unlock()
+		return nil // another goroutine already started it
+	}
+	m.convProcesses[convID] = backend
+	m.mu.Unlock()
+
+	if err := backend.Start(); err != nil {
+		m.mu.Lock()
+		delete(m.convProcesses, convID)
+		m.mu.Unlock()
+		fail(fmt.Sprintf("start backend: %v", err))
+		return nil
+	}
+
+	go m.handleConversationOutput(convID, backend, BackendNative)
+	go m.handleConversationCompletion(convID, backend)
+
+	return backend
+}
+
 // prepareOllamaAndStart runs Ollama installation, startup, and model pull in
 // the background, then creates the native backend and starts the conversation.
 // This avoids blocking the StartConversation HTTP handler for multi-minute
@@ -3590,49 +3659,13 @@ func (m *Manager) prepareOllamaAndStart(convID, sessionID string, session *model
 
 	fail := func(reason string) {
 		logger.Manager.Errorf("ollama prepare failed for conversation %s: %s", convID, reason)
-		if err := m.store.UpdateConversation(ctx, convID, func(c *models.Conversation) {
-			c.Status = models.ConversationStatusIdle
-		}); err != nil {
-			logger.Manager.Errorf("Failed to update conversation status after ollama failure: %v", err)
-		}
-		if m.onConversationStatus != nil {
-			m.onConversationStatus(convID, models.ConversationStatusIdle)
-		}
+		m.emitOllamaError(ctx, convID, reason)
 	}
 
-	if err := m.ollamaMgr.Install(ctx); err != nil {
-		fail(fmt.Sprintf("install ollama: %v", err))
+	backend := m.startOllamaBackend(ctx, convID, procOpts, fail)
+	if backend == nil {
 		return
 	}
-	if err := m.ollamaMgr.EnsureRunning(ctx); err != nil {
-		fail(fmt.Sprintf("start ollama: %v", err))
-		return
-	}
-	if err := m.ollamaMgr.EnsureModelAvailable(ctx, procOpts.Model); err != nil {
-		fail(fmt.Sprintf("ensure model available: %v", err))
-		return
-	}
-	procOpts.OllamaEndpoint = m.ollamaMgr.Endpoint()
-	m.ollamaMgr.TouchActivity()
-
-	// Create and start the native backend
-	backend, err := m.createNativeBackend(ctx, procOpts)
-	if err != nil {
-		fail(fmt.Sprintf("create native backend: %v", err))
-		return
-	}
-
-	m.mu.Lock()
-	m.convProcesses[convID] = backend
-	m.mu.Unlock()
-
-	if err := backend.Start(); err != nil {
-		fail(fmt.Sprintf("start backend: %v", err))
-		return
-	}
-
-	go m.handleConversationOutput(convID, backend, BackendNative)
-	go m.handleConversationCompletion(convID, backend)
 
 	// Auto-transition session taskStatus
 	if session.TaskStatus == models.TaskStatusBacklog {
@@ -3685,6 +3718,121 @@ func (m *Manager) prepareOllamaAndStart(convID, sessionID string, session *model
 	}
 }
 
+// prepareOllamaAndResume is the slow-path Ollama preparation for ResumeConversation.
+// Like prepareOllamaAndStart but does not send an initial message (resume has no
+// new user message — the SDK resumes from checkpoint).
+func (m *Manager) prepareOllamaAndResume(convID string, session *models.Session, procOpts ProcessOptions) {
+	ctx := context.Background()
+
+	fail := func(reason string) {
+		logger.Manager.Errorf("ollama prepare failed for resume %s: %s", convID, reason)
+		m.emitOllamaError(ctx, convID, reason)
+	}
+
+	if m.startOllamaBackend(ctx, convID, procOpts, fail) == nil {
+		return
+	}
+
+	if err := m.store.UpdateConversation(ctx, convID, func(c *models.Conversation) {
+		c.Status = models.ConversationStatusActive
+		c.UpdatedAt = time.Now()
+	}); err != nil {
+		logger.Manager.Errorf("Failed to update conversation status on resume for %s: %v", convID, err)
+	}
+	if m.onConversationStatus != nil {
+		m.onConversationStatus(convID, models.ConversationStatusActive)
+	}
+
+	logger.Manager.Infof("Resumed conversation %s with native backend (ollama slow path)", convID)
+}
+
+// prepareOllamaAndRestart is the slow-path Ollama preparation for SendConversationMessage
+// restart (dead process). Prepares Ollama, creates the native backend, sends the pending message.
+func (m *Manager) prepareOllamaAndRestart(convID string, session *models.Session, procOpts ProcessOptions, message string, attachments []models.Attachment) {
+	ctx := context.Background()
+
+	fail := func(reason string) {
+		logger.Manager.Errorf("ollama prepare failed for restart %s: %s", convID, reason)
+		m.emitOllamaError(ctx, convID, reason)
+	}
+
+	backend := m.startOllamaBackend(ctx, convID, procOpts, fail)
+	if backend == nil {
+		return
+	}
+
+	if err := m.store.UpdateConversation(ctx, convID, func(c *models.Conversation) {
+		c.Status = models.ConversationStatusActive
+		c.UpdatedAt = time.Now()
+	}); err != nil {
+		logger.Manager.Errorf("Failed to update conversation status on restart for %s: %v", convID, err)
+	}
+	if m.onConversationStatus != nil {
+		m.onConversationStatus(convID, models.ConversationStatusActive)
+	}
+
+	// Persist and send the pending message
+	if message != "" {
+		msg := models.Message{
+			ID:          uuid.New().String()[:8],
+			Role:        "user",
+			Content:     message,
+			Attachments: attachments,
+			Timestamp:   time.Now(),
+		}
+		if err := m.store.AddMessageToConversation(ctx, convID, msg); err != nil {
+			logger.Manager.Errorf("Failed to store user message on restart: %v", err)
+		}
+		if len(attachments) > 0 {
+			if err := m.store.SaveAttachments(ctx, msg.ID, attachments); err != nil {
+				logger.Manager.Errorf("Failed to save attachments on restart: %v", err)
+			}
+		}
+
+		if len(attachments) > 0 {
+			if err := backend.SendMessageWithAttachments(message, attachments); err != nil {
+				logger.Manager.Errorf("Failed to send message after restart for conversation %s: %v", convID, err)
+			}
+		} else {
+			if err := backend.SendMessage(message); err != nil {
+				logger.Manager.Errorf("Failed to send message after restart for conversation %s: %v", convID, err)
+			}
+		}
+	}
+
+	logger.Manager.Infof("Restarted conversation %s with native backend (ollama slow path)", convID)
+}
+
+// emitOllamaError emits a user-visible error event and persists an error message
+// when Ollama preparation fails. Sets the conversation to idle.
+func (m *Manager) emitOllamaError(ctx context.Context, convID, reason string) {
+	userMsg := fmt.Sprintf("Failed to start local model: %s", reason)
+
+	if m.onConversationEvent != nil {
+		m.onConversationEvent(convID, &AgentEvent{
+			Type:    EventTypeError,
+			Message: userMsg,
+		})
+	}
+
+	// Persist as assistant message so it's visible on reload
+	_ = m.store.AddMessageToConversation(ctx, convID, models.Message{
+		ID:        uuid.New().String()[:8],
+		Role:      "assistant",
+		Content:   userMsg,
+		Timestamp: time.Now(),
+	})
+
+	if err := m.store.UpdateConversation(ctx, convID, func(c *models.Conversation) {
+		c.Status = models.ConversationStatusIdle
+	}); err != nil {
+		logger.Manager.Errorf("Failed to update conversation status after ollama failure: %v", err)
+	}
+	if m.onConversationStatus != nil {
+		m.onConversationStatus(convID, models.ConversationStatusIdle)
+	}
+}
+
 // IsLocalModel returns true if the model ID corresponds to a local Ollama model.
 // Delegates to ollama.IsLocalModel which is the single source of truth for the
 // local model catalog.
@@ -3729,4 +3877,49 @@ func (m *Manager) createNativeBackend(ctx context.Context, opts ProcessOptions) 
 	}
 
 	return m.nativeBackendFactory(opts, apiKey, oauthToken)
+}
+
+// ensureOllamaReady attempts to resolve the Ollama endpoint for a local model
+// via the fast path (Ollama already running + model available). Returns the
+// updated opts and true if the endpoint was resolved, or the original opts and
+// false if the slow path (async preparation) is needed.
+func (m *Manager) ensureOllamaReady(ctx context.Context, opts ProcessOptions) (ProcessOptions, bool) {
+	if m.ollamaMgr == nil {
+		return opts, false
+	}
+	if m.ollamaMgr.IsAlive() {
+		if err := m.ollamaMgr.EnsureModelAvailable(ctx, opts.Model); err == nil {
+			opts.OllamaEndpoint = m.ollamaMgr.Endpoint()
+			m.ollamaMgr.TouchActivity()
+			return opts, true
+		}
+	}
+	return opts, false
+}
+
+// resolveBackend creates the appropriate ConversationBackend for the given model.
+// Local Ollama models are routed to the native Go loop; cloud models go to
+// agent-runner unless forceNative is true or CHATML_NATIVE_LOOP=1 is set.
+// The caller must have already resolved the OllamaEndpoint for local models
+// (via ensureOllamaReady or prepareOllama*). Returns the backend, the backend
+// type string, and any error.
+func (m *Manager) resolveBackend(ctx context.Context, opts ProcessOptions, forceNative bool) (ConversationBackend, string, error) {
+	if IsLocalModel(opts.Model) {
+		backend, err := m.createNativeBackend(ctx, opts)
+		if err != nil {
+			return nil, "", fmt.Errorf("native backend required for local model %q: %w", opts.Model, err)
+		}
+		return backend, BackendNative, nil
+	}
+
+	if forceNative || os.Getenv("CHATML_NATIVE_LOOP") == "1" {
+		backend, err := m.createNativeBackend(ctx, opts)
+		if err != nil {
+			logger.Manager.Warnf("Failed to create native backend, falling back to agent-runner: %v", err)
+			return NewProcessWithOptions(opts), BackendAgentRunner, nil
+		}
+		return backend, BackendNative, nil
+	}
+
+	return NewProcessWithOptions(opts), BackendAgentRunner, nil
 }
