@@ -78,6 +78,9 @@ type ConversationBackend interface {
 	// SetMaxThinkingTokens changes the thinking token budget at runtime.
 	SetMaxThinkingTokens(tokens int) error
 
+	// SetEffort changes the reasoning effort level at runtime.
+	SetEffort(effort string) error
+
 	// --- Task management ---
 
 	// StopTask stops a specific background task/sub-agent.

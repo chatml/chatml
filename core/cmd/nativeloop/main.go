@@ -126,6 +126,7 @@ func main() {
 		model:      *modelFlag,
 		permMode:   *mode,
 		fastMode:   *fast,
+		effort:     *effort,
 		workdir:    wd,
 		verbose:    *verbose,
 		promptMode: *prompt != "",

@@ -117,6 +117,7 @@ type model struct {
 	modelName  string
 	permMode   string
 	fastMode   bool
+	effort     string // Reasoning effort: low, medium, high, max (empty = default/unset)
 	workdir    string
 	verbose    bool
 	maxBudget  float64
@@ -200,6 +201,7 @@ func newModel(backend agent.ConversationBackend, opts modelOpts) model {
 		modelName:   opts.model,
 		permMode:    opts.permMode,
 		fastMode:    opts.fastMode,
+		effort:      opts.effort,
 		workdir:     opts.workdir,
 		verbose:     opts.verbose,
 		promptMode:  opts.promptMode,
@@ -218,6 +220,7 @@ type modelOpts struct {
 	model      string
 	permMode   string
 	fastMode   bool
+	effort     string
 	workdir    string
 	verbose    bool
 	promptMode bool

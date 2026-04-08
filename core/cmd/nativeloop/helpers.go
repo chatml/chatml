@@ -153,6 +153,17 @@ func modeBadge(mode string) string {
 	return mode
 }
 
+// effortBadge returns a display label for the current reasoning effort level.
+func effortBadge(effort string) string {
+	if effort == "" {
+		return "default"
+	}
+	if effort == "medium" {
+		return "med"
+	}
+	return effort
+}
+
 // nextPermMode cycles through permission modes.
 func nextPermMode(current string) string {
 	modes := []string{"bypassPermissions", "default", "acceptEdits", "plan"}

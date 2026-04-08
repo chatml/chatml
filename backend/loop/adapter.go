@@ -51,6 +51,7 @@ func (r *Runner) SetPermissionMode(mode string) error   { return r.core.SetPermi
 func (r *Runner) SetFastMode(enabled bool) error         { return r.core.SetFastMode(enabled) }
 func (r *Runner) SetModel(model string) error            { return r.core.SetModel(model) }
 func (r *Runner) SetMaxThinkingTokens(tokens int) error  { return r.core.SetMaxThinkingTokens(tokens) }
+func (r *Runner) SetEffort(effort string) error           { return r.core.SetEffort(effort) }
 
 // --- Task management ---
 

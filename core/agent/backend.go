@@ -77,6 +77,9 @@ type ConversationBackend interface {
 	// SetMaxThinkingTokens changes the thinking token budget at runtime.
 	SetMaxThinkingTokens(tokens int) error
 
+	// SetEffort changes the reasoning effort level at runtime.
+	SetEffort(effort string) error
+
 	// SetPlanModeFromEvent updates plan mode state from an output event.
 	SetPlanModeFromEvent(active bool)
 
