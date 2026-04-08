@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useMemo, memo } from 'react';
 import { useAppStore } from '@/stores/appStore';
-import { useStreamingMeta, useStreamingThinking, useStreamingSegmentIds, useStreamingSegmentText, useActiveTools, useSubAgents } from '@/stores/selectors';
+import { useStreamingMeta, useStreamingThinking, useStreamingSegmentIds, useStreamingSegmentText, useActiveTools, useSubAgents, useSentQueuedMessages } from '@/stores/selectors';
 import { AlertCircle, Brain, ChevronDown, ChevronRight, Clock } from 'lucide-react';
 import { ToolUsageBlock } from '@/components/conversation/ToolUsageBlock';
 import { ThinkingNode } from '@/components/conversation/ThinkingNode';
@@ -12,6 +12,7 @@ import { CompactBoundaryCard } from '@/components/conversation/CompactBoundaryCa
 import { TurnStatusIndicator } from '@/components/conversation/TurnStatusIndicator';
 import { CachedMarkdown } from '@/components/shared/CachedMarkdown';
 import { StreamingMarkdown } from '@/components/shared/StreamingMarkdown';
+import { MessageBody } from '@/components/conversation/QueuedMessageBubble';
 import { cn } from '@/lib/utils';
 import { PROSE_CLASSES } from '@/lib/constants';
 import { getModelInfo, buildTurnConfigLabel } from '@/lib/models';
@@ -26,6 +27,7 @@ type TimelineItem =
   | { type: 'plan'; id: string; content: string; timestamp: number }
   | { type: 'status'; id: string; content: string; variant?: string; timestamp: number }
   | { type: 'compact'; id: string; content: string; summary?: string; timestamp: number }
+  | { type: 'user_message'; id: string; message: import('@/stores/appStore').QueuedMessage; timestamp: number }
   | { type: 'subagent'; agent: import('@/lib/types').SubAgent }
   | { type: 'subagent_group'; agents: import('@/lib/types').SubAgent[] };
 
@@ -38,6 +40,7 @@ function getItemTime(item: TimelineItem): number {
     case 'plan': return item.timestamp;
     case 'status': return item.timestamp;
     case 'compact': return item.timestamp;
+    case 'user_message': return item.timestamp;
     case 'subagent': return item.agent.startTime;
     case 'subagent_group': return item.agents[0]?.startTime ?? 0;
     default: return item.startTime;
@@ -266,6 +269,24 @@ const StreamingThinkingSegment = memo(function StreamingThinkingSegment({
   return <ThinkingNode content={text} isStreaming={isActive} />;
 });
 
+// User message bubble rendered inline in the streaming timeline — shows sent
+// queued messages at their chronological position within the streaming content.
+const TimelineUserMessage = memo(function TimelineUserMessage({
+  message,
+}: {
+  message: import('@/stores/appStore').QueuedMessage;
+}) {
+  return (
+    <div className="pb-2 pt-3 flex justify-end">
+      <div className="max-w-[85%]">
+        <div className="bg-surface-2 dark:bg-[#2D1B4E] rounded-lg px-4 py-2.5">
+          <MessageBody message={message} />
+        </div>
+      </div>
+    </div>
+  );
+});
+
 export function StreamingMessage({ conversationId, worktreePath }: StreamingMessageProps) {
   // Use fine-grained selectors — meta changes only on structural events,
   // segmentIds changes only when a new segment is created, not on every text delta.
@@ -273,6 +294,7 @@ export function StreamingMessage({ conversationId, worktreePath }: StreamingMess
   const segmentIds = useStreamingSegmentIds(conversationId);
   const tools = useActiveTools(conversationId);
   const subAgents = useSubAgents(conversationId);
+  const sentQueuedMessages = useSentQueuedMessages(conversationId);
   const clearStreamingText = useAppStore((s) => s.clearStreamingText);
   // Check if extended thinking is enabled based on model capabilities
   const conversationModel = useAppStore((s) => s.conversations.find(c => c.id === conversationId)?.model);
@@ -382,11 +404,21 @@ export function StreamingMessage({ conversationId, worktreePath }: StreamingMess
       items.push({ type: 'subagent', agent });
     }
 
+    // Add sent queued messages (user messages submitted mid-stream, acknowledged by backend)
+    for (const msg of sentQueuedMessages) {
+      items.push({
+        type: 'user_message',
+        id: msg.id,
+        message: msg,
+        timestamp: new Date(msg.timestamp).getTime(),
+      });
+    }
+
     // Sort by timestamp
     items.sort((a, b) => getItemTime(a) - getItemTime(b));
 
     return items;
-  }, [hasThinking, isThinkingActive, metaStartTime, approvedPlanContent, approvedPlanTimestamp, pendingPlanApproval, turnStartMeta, compactLabel, compactSummary, compactTimestamp, tools, subAgents]);
+  }, [hasThinking, isThinkingActive, metaStartTime, approvedPlanContent, approvedPlanTimestamp, pendingPlanApproval, turnStartMeta, compactLabel, compactSummary, compactTimestamp, tools, subAgents, sentQueuedMessages]);
 
   // Stage 2: Merge structural timeline with text segments via two-pointer merge,
   // then group consecutive sub-agents. Both inputs are pre-sorted by timestamp,
@@ -576,6 +608,13 @@ export function StreamingMessage({ conversationId, worktreePath }: StreamingMess
                   stderr={item.stderr}
                   elapsedSeconds={item.elapsedSeconds}
                   metadata={item.metadata}
+                />
+              );
+            } else if (item.type === 'user_message') {
+              return (
+                <TimelineUserMessage
+                  key={item.id}
+                  message={item.message}
                 />
               );
             } else {

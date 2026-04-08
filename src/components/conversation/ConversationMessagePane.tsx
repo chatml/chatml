@@ -89,6 +89,13 @@ export function ConversationMessagePane({
   );
   const removeQueuedMessage = useAppStore((s) => s.removeQueuedMessage);
 
+  // Only unsent queued messages stay in the footer — sent messages are rendered
+  // inline in the StreamingMessage timeline at their chronological position.
+  const unsentQueuedMessages = useMemo(
+    () => queuedMessages.filter(m => !m.sent),
+    [queuedMessages]
+  );
+
   // Hide the setupInfo system card once the user has sent their first message
   const conversationMessages = useMemo(() => {
     if (!hasUserMessages) return allConversationMessages;
@@ -283,16 +290,16 @@ export function ConversationMessagePane({
         conversationId={conversationId}
         worktreePath={worktreePath}
       />
-      {queuedMessages.length > 0 && (
+      {unsentQueuedMessages.length > 0 && (
         <QueuedMessageBubble
-          messages={queuedMessages}
+          messages={unsentQueuedMessages}
           onDelete={(messageId) => {
             removeQueuedMessage(conversationId, messageId);
           }}
         />
       )}
     </div>
-  ), [conversationId, queuedMessages, removeQueuedMessage, worktreePath]);
+  ), [conversationId, unsentQueuedMessages, removeQueuedMessage, worktreePath]);
 
   // Listen for message submit events to force scroll to bottom.
   useEffect(() => {
