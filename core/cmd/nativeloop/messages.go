@@ -5,8 +5,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/chatml/chatml-core/agent"
 	"github.com/charmbracelet/glamour"
+	"github.com/chatml/chatml-core/agent"
 )
 
 // ── Message types ───────────────────────────────────────────────────────────
@@ -48,15 +48,16 @@ type agentProgress struct {
 
 // displayMessage represents a single renderable message in the viewport.
 type displayMessage struct {
-	kind      messageKind
-	content   string    // assistant text, or error text
-	tool      string    // tool name
-	params    string    // tool params (file_path, command, etc.)
-	summary   string    // tool result summary
-	success   bool
-	duration  time.Duration
-	expanded  bool
-	timestamp time.Time
+	kind        messageKind
+	content     string // assistant text, or error text
+	tool        string // tool name
+	toolEventID string // SDK event ID for matching tool_end to tool_start
+	params      string // tool params (file_path, command, etc.)
+	summary     string // tool result summary
+	success     bool
+	duration    time.Duration
+	expanded    bool
+	timestamp   time.Time
 
 	// For tool details (Bash command lines, Edit diffs)
 	details []string
@@ -77,9 +78,9 @@ type displayMessage struct {
 	exitCode int
 
 	// Streaming state
-	streaming       bool   // true while tokens are arriving
-	lastRenderTime  time.Time // last time glamour rendered this message
-	lastRenderedMD  string    // cached glamour output for throttled streaming
+	streaming      bool      // true while tokens are arriving
+	lastRenderTime time.Time // last time glamour rendered this message
+	lastRenderedMD string    // cached glamour output for throttled streaming
 }
 
 // ── Rendering ───────────────────────────────────────────────────────────────
@@ -202,9 +203,9 @@ func renderToolMessage(b *strings.Builder, s *styles, msg *displayMessage, verbo
 		}
 		expandHint := s.expandHint.Render(fmt.Sprintf("  [+%d more lines, Tab to expand]", msg.lineCount-5))
 		if msg.success {
-			b.WriteString(s.toolResult.Render(fmt.Sprintf("  ⎿ %s%s", summary, elapsed))+exitBadge+"\n"+expandHint+"\n")
+			b.WriteString(s.toolResult.Render(fmt.Sprintf("  ⎿ %s%s", summary, elapsed)) + exitBadge + "\n" + expandHint + "\n")
 		} else {
-			b.WriteString(s.toolFail.Render(fmt.Sprintf("  ✗ %s%s", summary, elapsed))+exitBadge+"\n"+expandHint+"\n")
+			b.WriteString(s.toolFail.Render(fmt.Sprintf("  ✗ %s%s", summary, elapsed)) + exitBadge + "\n" + expandHint + "\n")
 		}
 		return
 	}
@@ -216,9 +217,9 @@ func renderToolMessage(b *strings.Builder, s *styles, msg *displayMessage, verbo
 	}
 
 	if msg.success {
-		b.WriteString(s.toolResult.Render(fmt.Sprintf("  ⎿ %s%s", summary, elapsed))+exitBadge+expandHint+"\n")
+		b.WriteString(s.toolResult.Render(fmt.Sprintf("  ⎿ %s%s", summary, elapsed)) + exitBadge + expandHint + "\n")
 	} else {
-		b.WriteString(s.toolFail.Render(fmt.Sprintf("  ✗ %s%s", summary, elapsed))+exitBadge+expandHint+"\n")
+		b.WriteString(s.toolFail.Render(fmt.Sprintf("  ✗ %s%s", summary, elapsed)) + exitBadge + expandHint + "\n")
 	}
 }
 
