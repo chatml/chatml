@@ -90,6 +90,11 @@ func (s *SQLiteStore) Close() error {
 	return s.db.Close()
 }
 
+// Ping checks that the database is reachable.
+func (s *SQLiteStore) Ping(ctx context.Context) error {
+	return s.db.PingContext(ctx)
+}
+
 // initSchema creates the database tables if they don't exist
 func (s *SQLiteStore) initSchema() error {
 	schema := `
@@ -313,84 +318,12 @@ func (s *SQLiteStore) initSchema() error {
 		return err
 	}
 
-	// Run migrations for existing databases
-	if err := s.runMigrations(); err != nil {
+	// Run versioned migrations for incremental schema changes.
+	if err := RunMigrations(context.Background(), s.db); err != nil {
 		return err
 	}
 
 	logger.SQLite.Infof("Schema initialized")
-	return nil
-}
-
-// runMigrations applies incremental schema changes for existing databases.
-func (s *SQLiteStore) runMigrations() error {
-	// Add pr_title column (ignore error if already exists)
-	_, _ = s.db.Exec(`ALTER TABLE sessions ADD COLUMN pr_title TEXT NOT NULL DEFAULT ''`)
-	// Add checkpoint_uuid column to messages (ignore error if already exists)
-	_, _ = s.db.Exec(`ALTER TABLE messages ADD COLUMN checkpoint_uuid TEXT DEFAULT NULL`)
-	// Add resolution_type column to review_comments (ignore error if already exists)
-	_, _ = s.db.Exec(`ALTER TABLE review_comments ADD COLUMN resolution_type TEXT DEFAULT ''`)
-	// Add session_type column for base session support (ignore error if already exists)
-	_, _ = s.db.Exec(`ALTER TABLE sessions ADD COLUMN session_type TEXT NOT NULL DEFAULT 'worktree'`)
-	// Unique index: one base session per workspace
-	_, _ = s.db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_sessions_base_per_workspace ON sessions(workspace_id) WHERE session_type = 'base'`)
-	// Create review_scorecards table
-	_, _ = s.db.Exec(`CREATE TABLE IF NOT EXISTS review_scorecards (
-		id TEXT PRIMARY KEY,
-		session_id TEXT NOT NULL,
-		review_type TEXT NOT NULL,
-		scores TEXT NOT NULL DEFAULT '[]',
-		summary TEXT NOT NULL DEFAULT '',
-		created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
-	)`)
-	// Add scheduled_task_id column to sessions (ignore error if already exists)
-	_, _ = s.db.Exec(`ALTER TABLE sessions ADD COLUMN scheduled_task_id TEXT DEFAULT NULL`)
-	// Migrate existing scheduled-task sessions from 'base' to 'scheduled' type
-	// so they don't conflict with the unique base-session-per-workspace index
-	_, _ = s.db.Exec(`UPDATE sessions SET session_type = 'scheduled' WHERE scheduled_task_id IS NOT NULL AND session_type = 'base'`)
-	// Create scheduled_tasks table
-	_, _ = s.db.Exec(`CREATE TABLE IF NOT EXISTS scheduled_tasks (
-		id TEXT PRIMARY KEY,
-		workspace_id TEXT NOT NULL,
-		name TEXT NOT NULL,
-		description TEXT NOT NULL DEFAULT '',
-		prompt TEXT NOT NULL,
-		model TEXT NOT NULL DEFAULT '',
-		permission_mode TEXT NOT NULL DEFAULT 'default',
-		use_worktree INTEGER NOT NULL DEFAULT 0,
-		frequency TEXT NOT NULL DEFAULT 'daily',
-		cron_expression TEXT NOT NULL DEFAULT '',
-		schedule_hour INTEGER NOT NULL DEFAULT 9,
-		schedule_minute INTEGER NOT NULL DEFAULT 0,
-		schedule_day_of_week INTEGER NOT NULL DEFAULT 1,
-		schedule_day_of_month INTEGER NOT NULL DEFAULT 1,
-		enabled INTEGER NOT NULL DEFAULT 1,
-		last_run_at DATETIME DEFAULT NULL,
-		next_run_at DATETIME DEFAULT NULL,
-		created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-		updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-		FOREIGN KEY (workspace_id) REFERENCES repos(id) ON DELETE CASCADE
-	)`)
-	_, _ = s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_scheduled_tasks_workspace ON scheduled_tasks(workspace_id)`)
-	_, _ = s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_scheduled_tasks_next_run ON scheduled_tasks(next_run_at) WHERE enabled = 1`)
-	// Create scheduled_task_runs table
-	_, _ = s.db.Exec(`CREATE TABLE IF NOT EXISTS scheduled_task_runs (
-		id TEXT PRIMARY KEY,
-		scheduled_task_id TEXT NOT NULL,
-		session_id TEXT,
-		status TEXT NOT NULL DEFAULT 'pending',
-		triggered_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-		started_at DATETIME DEFAULT NULL,
-		completed_at DATETIME DEFAULT NULL,
-		error_message TEXT NOT NULL DEFAULT '',
-		FOREIGN KEY (scheduled_task_id) REFERENCES scheduled_tasks(id) ON DELETE CASCADE,
-		FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE SET NULL
-	)`)
-	_, _ = s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_scheduled_task_runs_task ON scheduled_task_runs(scheduled_task_id)`)
-	_, _ = s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_scheduled_task_runs_session ON scheduled_task_runs(session_id)`)
-	// Clear deprecated sprint/deploy columns on existing databases.
-	// Columns were removed from initSchema; this is a no-op on fresh installs.
-	_, _ = s.db.Exec(`UPDATE sessions SET sprint_phase = '', sprint_artifacts = '', deploy_status = '' WHERE sprint_phase != '' OR sprint_artifacts != '' OR deploy_status != ''`)
 	return nil
 }
 
