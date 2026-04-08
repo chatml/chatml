@@ -230,8 +230,8 @@ export function useMenuHandlers(options: MenuHandlersOptions) {
         case 'file_picker':
           window.dispatchEvent(new CustomEvent('open-file-picker'));
           break;
-        case 'open_session_manager':
-          useSettingsStore.getState().setContentView({ type: 'session-manager' });
+        case 'open_history':
+          useSettingsStore.getState().setContentView({ type: 'history' });
           break;
         case 'open_pr_dashboard':
           useSettingsStore.getState().setContentView({ type: 'pr-dashboard' });

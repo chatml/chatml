@@ -77,7 +77,7 @@ import {
   Github,
   Search,
   X,
-  Layers,
+  History,
   Bot,
   Circle,
   Clock,
@@ -602,23 +602,23 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onGitHubRepos,
         <div
           className={cn(
             "group flex items-center gap-2 px-2 py-1.5 rounded-md cursor-pointer",
-            contentView.type === 'session-manager'
+            contentView.type === 'history'
               ? "bg-surface-2 text-foreground"
               : "hover:bg-surface-1"
           )}
-          onClick={() => navigate({ contentView: { type: 'session-manager' } })}
+          onClick={() => navigate({ contentView: { type: 'history' } })}
         >
-          <Layers className={cn(
+          <History className={cn(
             "w-4 h-4",
-            contentView.type === 'session-manager' ? "text-foreground" : "text-foreground/70"
+            contentView.type === 'history' ? "text-foreground" : "text-foreground/70"
           )} />
           <span className={cn(
             "text-base font-medium",
-            contentView.type === 'session-manager'
+            contentView.type === 'history'
               ? "text-foreground"
               : "text-muted-foreground group-hover:text-foreground"
           )}>
-            Sessions
+            History
           </span>
         </div>
         {/* Hidden for shipping — PR Dashboard nav */}

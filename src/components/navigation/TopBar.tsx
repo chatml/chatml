@@ -290,9 +290,9 @@ export function TopBar({
               {zenMode ? 'Exit Zen Mode' : 'Enter Zen Mode'}
               <span className="ml-auto text-xs text-muted-foreground">⌘.</span>
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => navigate({ contentView: { type: 'session-manager' } })}>
-              <Layers className="size-4" />
-              Session Manager
+            <DropdownMenuItem onClick={() => navigate({ contentView: { type: 'history' } })}>
+              <History className="size-4" />
+              History
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={() => window.open('https://docs.chatml.com', '_blank')}>

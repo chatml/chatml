@@ -5,12 +5,12 @@ import { useAppStore } from '@/stores/appStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { navigate } from '@/lib/navigation';
 import { updateSession as updateSessionApi } from '@/lib/api';
-import { SessionsDataTable } from './SessionsDataTable';
+import { HistoryList } from './HistoryList';
 import { ArchiveSessionDialog } from '@/components/dialogs/ArchiveSessionDialog';
 import { ArchivedSessionPreviewDialog } from '@/components/dialogs/ArchivedSessionPreviewDialog';
 import { useArchiveSession } from '@/hooks/useArchiveSession';
 import { useMainToolbarContent } from '@/hooks/useMainToolbarContent';
-import { Layers } from 'lucide-react';
+import { History } from 'lucide-react';
 import type { WorktreeSession, Workspace } from '@/lib/types';
 
 export function SessionManager() {
@@ -39,8 +39,8 @@ export function SessionManager() {
     titlePosition: 'center' as const,
     title: (
       <span className="flex items-center gap-1.5">
-        <Layers className="h-4 w-4 text-orange-400" />
-        <h1 className="text-base font-semibold">Sessions</h1>
+        <History className="h-4 w-4 text-orange-400" />
+        <h1 className="text-base font-semibold">History</h1>
       </span>
     ),
     bottom: {
@@ -119,9 +119,9 @@ export function SessionManager() {
 
   return (
     <div className="flex flex-col h-full bg-content-background">
-      {/* Content: Sessions data table */}
+      {/* Content: History list */}
       <div className="flex-1 overflow-hidden">
-        <SessionsDataTable
+        <HistoryList
           workspaces={workspaces}
           sessions={sessions}
           onSelectSession={handleSelectSession}

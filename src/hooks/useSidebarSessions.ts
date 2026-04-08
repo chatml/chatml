@@ -168,7 +168,7 @@ export function useSidebarSessions({
 
     // Partition pinned sessions. Base sessions are excluded from pinning — they have
     // their own sidebar treatment. The pin menu item is hidden for base sessions in
-    // SessionsDataTable. Note: pinned sessions honour the search filter since they
+    // HistoryList. Note: pinned sessions honour the search filter since they
     // are derived from `filtered` (which applies searchTerm).
     const pinned = filtered.filter(s => s.pinned && !isMainRepoSession(s));
     const unpinned = filtered.filter(s => !s.pinned || isMainRepoSession(s));

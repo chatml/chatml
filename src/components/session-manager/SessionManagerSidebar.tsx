@@ -11,7 +11,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { WorkspaceTreeItem } from './WorkspaceTreeItem';
-import { Plus, Folder, Globe, Github, Layers } from 'lucide-react';
+import { Plus, Folder, Globe, Github, History } from 'lucide-react';
 
 interface SessionManagerSidebarProps {
   workspaces: Workspace[];
@@ -48,8 +48,8 @@ export function SessionManagerSidebar({
     <div className="flex flex-col h-full bg-sidebar border-r">
       {/* Header */}
       <div className="h-10 flex items-center px-3 border-b shrink-0">
-        <Layers className="h-4 w-4 text-muted-foreground mr-2" />
-        <span className="text-sm font-semibold">Workspaces</span>
+        <History className="h-4 w-4 text-muted-foreground mr-2" />
+        <span className="text-sm font-semibold">History</span>
       </div>
 
       {/* Workspace tree */}

@@ -147,11 +147,11 @@ describe('buildNavigationLabel', () => {
     });
   });
 
-  // ---------- Session manager ----------
+  // ---------- History ----------
 
-  describe('session-manager', () => {
-    it('returns "Sessions"', () => {
-      expect(label({ type: 'session-manager' })).toBe('Sessions');
+  describe('history', () => {
+    it('returns "History"', () => {
+      expect(label({ type: 'history' })).toBe('History');
     });
   });
 

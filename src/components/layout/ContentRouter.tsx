@@ -66,7 +66,7 @@ export function ContentRouter({
           showLeftSidebar={showLeftSidebar}
         />
       )}
-      {contentView.type === 'session-manager' && (
+      {contentView.type === 'history' && (
         <SessionManager />
       )}
       {contentView.type === 'skills-store' && (

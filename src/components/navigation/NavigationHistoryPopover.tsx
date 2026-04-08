@@ -12,7 +12,7 @@ import {
   GitBranch,
   GitPullRequest,
   FolderGit2,
-  Layers,
+  History,
   Circle,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -27,8 +27,8 @@ function EntryIcon({ contentViewType, className }: { contentViewType: string; cl
       return <GitPullRequest className={className} />;
     case 'repositories':
       return <FolderGit2 className={className} />;
-    case 'session-manager':
-      return <Layers className={className} />;
+    case 'history':
+      return <History className={className} />;
     default:
       return <Circle className={className} />;
   }

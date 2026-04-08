@@ -154,11 +154,11 @@ describe('navigation helpers', () => {
       expect(getTab().backStack[0].label).toBe('My Repo › Pull Requests');
     });
 
-    it('generates session-manager label', () => {
-      mockSettingsState.contentView = { type: 'session-manager' };
+    it('generates history label', () => {
+      mockSettingsState.contentView = { type: 'history' };
       navigate({ contentView: { type: 'conversation' } });
 
-      expect(getTab().backStack[0].label).toBe('Sessions');
+      expect(getTab().backStack[0].label).toBe('History');
     });
 
     it('generates repositories label', () => {
