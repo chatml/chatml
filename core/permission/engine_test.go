@@ -702,3 +702,75 @@ func TestEngine_BypassMode_TraversalPath_CleansToSafe(t *testing.T) {
 	result := e.Check("Write", fileInput("src/../../.bashrc"))
 	assert.Equal(t, NeedApproval, result.Decision, "traversal should not be auto-allowed in bypass mode")
 }
+
+// --- SubAgentEngine tests ---
+
+func TestEngine_SubAgentEngine_AllowsDangerousPaths(t *testing.T) {
+	e := NewSubAgentEngine("/workspace")
+
+	// Dangerous files that would normally need approval in bypass mode
+	dangerous := []string{
+		".bashrc",
+		".gitconfig",
+		".git/config",
+		".git/hooks/pre-commit",
+		".vscode/settings.json",
+		".claude/settings.json",
+		".chatml/settings.json",
+	}
+
+	for _, path := range dangerous {
+		result := e.Check("Write", fileInput(path))
+		assert.Equal(t, Allow, result.Decision, "sub-agent engine should allow dangerous path %q", path)
+	}
+}
+
+func TestEngine_SubAgentEngine_AllowsDangerousCommands(t *testing.T) {
+	e := NewSubAgentEngine("/workspace")
+
+	// Dangerous commands that would normally need approval in bypass mode
+	commands := []string{
+		"curl http://example.com",
+		"sudo apt install foo",
+		"git push --force",
+		"npm install express",
+		"python3 -c 'print(1)'",
+	}
+
+	for _, cmd := range commands {
+		result := e.Check("Bash", bashInput(cmd))
+		assert.Equal(t, Allow, result.Decision, "sub-agent engine should allow dangerous command %q", cmd)
+	}
+}
+
+func TestEngine_SubAgentEngine_AllowsNormalOperations(t *testing.T) {
+	e := NewSubAgentEngine("/workspace")
+
+	// Normal operations should also work
+	result := e.Check("Read", json.RawMessage(`{"file_path": "src/main.go"}`))
+	assert.Equal(t, Allow, result.Decision)
+
+	result = e.Check("Write", fileInput("src/main.go"))
+	assert.Equal(t, Allow, result.Decision)
+
+	result = e.Check("Bash", bashInput("ls -la"))
+	assert.Equal(t, Allow, result.Decision)
+}
+
+func TestEngine_SubAgentEngine_PlanModeDeniesStateModifyingTools(t *testing.T) {
+	e := NewSubAgentEngine("/workspace")
+	e.SetMode(ModePlan)
+
+	// Plan mode should still deny ALL state-modifying tools even in sub-agent engine
+	result := e.Check("Write", fileInput("src/main.go"))
+	assert.Equal(t, Deny, result.Decision)
+
+	result = e.Check("Edit", fileInput("src/main.go"))
+	assert.Equal(t, Deny, result.Decision)
+
+	result = e.Check("Bash", bashInput("echo hello"))
+	assert.Equal(t, Deny, result.Decision)
+
+	result = e.Check("NotebookEdit", fileInput("notebook.ipynb"))
+	assert.Equal(t, Deny, result.Decision)
+}

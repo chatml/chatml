@@ -1722,7 +1722,7 @@ func (r *Runner) SpawnSubAgent(ctx context.Context, opts builtin.SubAgentOpts) (
 		ConversationID:    fmt.Sprintf("%s-sub-%s", r.opts.ConversationID, agentId),
 		Workdir:           r.opts.Workdir,
 		Model:             model,
-		PermissionMode:    permission.ModeBypassPermissions, // Sub-agents bypass: parent already authorized
+		PermissionMode:    permission.ModeBypassPermissions, // Sub-agents bypass: parent already authorized (also set in NewSubAgentEngine; kept here for logging/display consistency)
 		MaxTurns:          maxTurns,
 		MaxThinkingTokens: r.opts.MaxThinkingTokens,
 	}
@@ -1735,15 +1735,13 @@ func (r *Runner) SpawnSubAgent(ctx context.Context, opts builtin.SubAgentOpts) (
 	if len(opts.Tools) > 0 && r.toolRegistry != nil {
 		childRegistry = r.toolRegistry.Subset(opts.Tools)
 	}
-	// Create child runner with its OWN bypass permission engine.
+	// Create child runner with its OWN sub-agent permission engine.
 	// Sub-agents must NOT share the parent's permission engine because
 	// approval requests would deadlock — the child emits approval_request
 	// on its output channel, but nobody responds to the child's pendingApprovals.
-	childPermEngine := permission.NewEngineWithWorkdir(
-		permission.ModeBypassPermissions,
-		permission.NewRuleSet(nil),
-		r.opts.Workdir,
-	)
+	// NewSubAgentEngine uses bypass mode AND skips dangerous path/command checks
+	// to prevent approval requests entirely.
+	childPermEngine := permission.NewSubAgentEngine(r.opts.Workdir)
 	childRunner := NewRunnerFull(childOpts, r.provider, childRegistry, childPermEngine)
 
 	// CRITICAL: Share the parent's prompt builder so the child gets a proper
@@ -1809,6 +1807,32 @@ func (r *Runner) SpawnSubAgent(ctx context.Context, opts builtin.SubAgentOpts) (
 						}
 					}
 				}
+			case "tool_approval_request":
+				// Defense-in-depth: if a sub-agent triggers an approval request
+				// (e.g., dangerous path write), auto-deny to prevent deadlock.
+				// Nobody can respond to the child's pendingApprovals channel.
+				// Failure here is unlikely (the pending approval is created before
+				// the event is emitted, and nothing else responds) but would leave
+				// the child blocked — acceptable since this path shouldn't be
+				// reachable with skipDangerousChecks=true.
+				if event.RequestID != "" {
+					go func(rid, spec string) {
+						if err := childRunner.SendToolApprovalResponse(rid, "deny_once", spec, nil); err != nil {
+							log.Printf("[subagent:%s] ERROR: failed to auto-deny approval %s: %v", agentId, rid, err)
+						}
+					}(event.RequestID, event.Specifier)
+					log.Printf("[subagent:%s] auto-denied approval request for %s (%s) to prevent deadlock", agentId, event.ToolName, event.Specifier)
+				}
+			case "tool_batch_approval_request":
+				// Same defense for batch approval requests.
+				if event.RequestID != "" {
+					go func(rid string) {
+						if err := childRunner.SendBatchToolApprovalResponse(rid, "deny_once", nil); err != nil {
+							log.Printf("[subagent:%s] ERROR: failed to auto-deny batch approval %s: %v", agentId, rid, err)
+						}
+					}(event.RequestID)
+					log.Printf("[subagent:%s] auto-denied batch approval request to prevent deadlock", agentId)
+				}
 			case "turn_complete":
 				// CRITICAL FIX: Sub-agents are one-shot — they process a single
 				// prompt and should stop. Without this, the child runner's main
@@ -1850,8 +1874,25 @@ func (r *Runner) SpawnSubAgent(ctx context.Context, opts builtin.SubAgentOpts) (
 	select {
 	case <-ctx.Done():
 		childRunner.Stop()
-		<-childRunner.Done()
-		<-eventsDone
+		// Give the child up to 5 seconds to shut down gracefully.
+		// If the child is stuck (e.g., blocked in an HTTP call), proceed
+		// anyway to avoid freezing the parent UI on Ctrl+C.
+		//
+		// NOTE: The event-processing goroutine may still be running after this
+		// return. It will exit when the child's output channel closes (after its
+		// runLoop unblocks from the cancelled context). Any stale events emitted
+		// in the interim are harmless — the frontend ignores events for unknown
+		// sub-agent IDs.
+		select {
+		case <-childRunner.Done():
+			// Clean shutdown
+		case <-time.After(5 * time.Second):
+			log.Printf("[subagent:%s] force-proceeding after 5s shutdown timeout", agentId)
+		}
+		select {
+		case <-eventsDone:
+		case <-time.After(2 * time.Second):
+		}
 		r.emitter.emitSubagentStopped(agentId, totalToolUses, totalTokens, time.Since(start).Milliseconds(), "cancelled")
 		return nil, ctx.Err()
 	case <-childRunner.Done():

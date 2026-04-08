@@ -60,10 +60,31 @@ func TestIsDangerousPath_SafeExceptions(t *testing.T) {
 	safe := []string{
 		".claude/worktrees/feature-branch/file.txt",
 		".claude/worktrees/main/code.go",
+		".claude/projects/plan.md",
+		".claude/plans/draft.md",
+		".claude/memory/notes.md",
+		".chatml/worktrees/feature-branch/file.txt",
+		".chatml/projects/plan.md",
+		".chatml/projects/-Users-user-dev-repo/overview.md",
+		".chatml/plans/my-plan.md",
+		".chatml/memory/user_prefs.md",
 	}
 
 	for _, path := range safe {
 		assert.False(t, IsDangerousPath(path), "expected %q to be safe (exception)", path)
+	}
+}
+
+func TestIsDangerousPath_SafeExceptionsAbsolutePaths(t *testing.T) {
+	safe := []string{
+		"/home/user/.chatml/projects/plan.md",
+		"/home/user/.chatml/plans/draft.md",
+		"/home/user/.chatml/memory/notes.md",
+		"/home/user/.claude/projects/plan.md",
+	}
+
+	for _, path := range safe {
+		assert.False(t, IsDangerousPath(path), "expected %q to be safe (absolute path exception)", path)
 	}
 }
 

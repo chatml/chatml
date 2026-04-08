@@ -31,9 +31,16 @@ var dangerousDirs = []string{
 }
 
 // Safe subdirectories within otherwise dangerous directories.
+// These are application-managed data directories, not shell configs or IDE settings.
 var safeDirExceptions = []string{
 	".claude/worktrees/",
+	".claude/projects/",
+	".claude/plans/",
+	".claude/memory/",
 	".chatml/worktrees/",
+	".chatml/projects/",
+	".chatml/plans/",
+	".chatml/memory/",
 }
 
 // IsDangerousPath returns true if the given file path targets a dangerous
