@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math/rand"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -230,21 +231,36 @@ func (sc *Scheduler) dispatchTask(ctx context.Context, task *models.ScheduledTas
 		targetBranch = remote + "/main"
 	}
 
+	// Read existing session directory names so the name generator can avoid collisions
+	var existingNames []string
+	if entries, err := os.ReadDir(workspacesDir); err == nil {
+		for _, entry := range entries {
+			if entry.IsDir() {
+				existingNames = append(existingNames, strings.ToLower(entry.Name()))
+			}
+		}
+	} else {
+		logger.Main.Warnf("Scheduler: could not read workspaces dir for name seeding: %v", err)
+	}
+
 	// Generate session name and create worktree with retry on collisions
-	const maxRetries = 5
+	const maxRetries = 10
 	var sessionName, branchName, worktreePath, baseCommitSHA string
 	for attempt := 0; attempt < maxRetries; attempt++ {
-		candidateName := naming.GenerateUniqueSessionName(nil)
+		candidateName := naming.GenerateUniqueSessionName(existingNames)
 		candidateBranch := fmt.Sprintf("session/%s", candidateName)
 
 		sessionPath, dirErr := git.CreateSessionDirectoryAtomic(workspacesDir, candidateName)
 		if dirErr != nil {
 			if errors.Is(dirErr, git.ErrDirectoryExists) {
+				existingNames = append(existingNames, strings.ToLower(candidateName))
 				continue // Name collision — retry
 			}
 			failRun("", fmt.Sprintf("failed to create session directory: %v", dirErr))
 			return run, fmt.Errorf("failed to create session directory: %w", dirErr)
 		}
+
+		existingNames = append(existingNames, strings.ToLower(candidateName))
 
 		wtPath, wtBranch, wtCommit, wtErr := sc.worktreeManager.CreateInExistingDir(ctx, repo.Path, sessionPath, candidateBranch, targetBranch)
 		if wtErr == nil {
