@@ -201,7 +201,7 @@ func renderSingleMessage(msg *displayMessage, width int, s *styles, cache *mdCac
 		} else {
 			content = cache.Render(msg.content)
 		}
-		b.WriteString("● " + content + "\n")
+		b.WriteString(msgIndent + "● " + content + "\n")
 
 	case msgTool:
 		renderToolMessage(&b, s, msg, verbose)
