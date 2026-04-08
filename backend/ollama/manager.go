@@ -5,6 +5,7 @@ package ollama
 
 import (
 	"archive/tar"
+	"archive/zip"
 	"bytes"
 	"compress/gzip"
 	"context"
@@ -21,6 +22,8 @@ import (
 	"sync"
 	"syscall"
 	"time"
+
+	"github.com/klauspost/compress/zstd"
 )
 
 // PinnedVersion is the Ollama release we download when auto-installing.
@@ -84,8 +87,15 @@ func NewManager(dataDir string, progressFunc ...func(ProgressEvent)) *Manager {
 
 // --- Path helpers ---
 
-func (m *Manager) binDir() string   { return filepath.Join(m.dataDir, "bin") }
-func (m *Manager) binPath() string  { return filepath.Join(m.binDir(), "ollama") }
+func (m *Manager) binDir() string { return filepath.Join(m.dataDir, "bin") }
+
+func (m *Manager) binPath() string {
+	name := "ollama"
+	if runtime.GOOS == "windows" {
+		name = "ollama.exe"
+	}
+	return filepath.Join(m.binDir(), name)
+}
 func (m *Manager) modelsDir() string { return filepath.Join(m.dataDir, "models") }
 func (m *Manager) versionFile() string { return filepath.Join(m.dataDir, "version.json") }
 
@@ -133,7 +143,7 @@ func (m *Manager) Install(ctx context.Context) error {
 
 // doInstall performs the actual download and extraction (called via installOnce).
 func (m *Manager) doInstall(ctx context.Context) error {
-	url, err := downloadURL()
+	url, format, err := downloadURL()
 	if err != nil {
 		return err
 	}
@@ -161,7 +171,7 @@ func (m *Manager) doInstall(ctx context.Context) error {
 
 	total := resp.ContentLength // may be -1
 
-	if err := m.extractBinary(resp.Body, total); err != nil {
+	if err := m.extractBinary(resp.Body, total, format); err != nil {
 		return fmt.Errorf("extract: %w", err)
 	}
 
@@ -183,19 +193,41 @@ func (m *Manager) doInstall(ctx context.Context) error {
 	return nil
 }
 
-// extractBinary reads a .tgz archive from r and extracts the "ollama" binary.
-// For macOS .zip archives, a different extraction path would be needed —
-// for now we use the .tgz endpoint which is available for all platforms.
-func (m *Manager) extractBinary(r io.Reader, total int64) error {
+// extractBinary reads a compressed archive from r and extracts the ollama binary.
+// Supported formats: "tgz" (gzip+tar), "zst" (zstd+tar), "zip".
+func (m *Manager) extractBinary(r io.Reader, total int64, format string) error {
 	pr := &progressReader{r: r, total: total, emit: m.emitDownloadProgress}
 
-	gz, err := gzip.NewReader(pr)
-	if err != nil {
-		return fmt.Errorf("gzip: %w", err)
+	if format == "zip" {
+		return m.extractFromZip(pr)
 	}
-	defer gz.Close()
 
-	tr := tar.NewReader(gz)
+	var decompressed io.Reader
+	switch format {
+	case "tgz":
+		gz, err := gzip.NewReader(pr)
+		if err != nil {
+			return fmt.Errorf("gzip: %w", err)
+		}
+		defer gz.Close()
+		decompressed = gz
+	case "zst":
+		zr, err := zstd.NewReader(pr)
+		if err != nil {
+			return fmt.Errorf("zstd: %w", err)
+		}
+		defer zr.Close()
+		decompressed = zr
+	default:
+		return fmt.Errorf("unsupported archive format: %s", format)
+	}
+
+	return m.extractFromTar(decompressed)
+}
+
+// extractFromTar walks a tar stream and extracts the ollama binary.
+func (m *Manager) extractFromTar(r io.Reader) error {
+	tr := tar.NewReader(r)
 	for {
 		hdr, err := tr.Next()
 		if err == io.EOF {
@@ -205,34 +237,76 @@ func (m *Manager) extractBinary(r io.Reader, total int64) error {
 			return fmt.Errorf("tar: %w", err)
 		}
 
-		// We only care about the ollama binary (may be at "bin/ollama" or just "ollama")
 		base := filepath.Base(hdr.Name)
-		if base != "ollama" || hdr.Typeflag != tar.TypeReg {
+		if (base != "ollama" && base != "ollama.exe") || hdr.Typeflag != tar.TypeReg {
 			continue
 		}
 
-		// Write to a temp file first, then atomically rename to the final path.
-		// This prevents a partial binary from passing IsInstalled() checks if
-		// the process is interrupted mid-write.
-		tmp, err := os.CreateTemp(m.binDir(), "ollama-*.tmp")
-		if err != nil {
-			return fmt.Errorf("create temp file: %w", err)
-		}
-		tmpPath := tmp.Name()
-		if _, err := io.Copy(tmp, tr); err != nil {
-			tmp.Close()
-			os.Remove(tmpPath)
-			return fmt.Errorf("write binary: %w", err)
-		}
-		tmp.Close()
-		if err := os.Rename(tmpPath, m.binPath()); err != nil {
-			os.Remove(tmpPath)
-			return fmt.Errorf("rename binary: %w", err)
-		}
-		return nil
+		return m.atomicWriteBinary(tr)
 	}
 
 	return fmt.Errorf("ollama binary not found in archive")
+}
+
+// extractFromZip saves the stream to a temp file (zip requires random access),
+// then extracts the ollama binary.
+func (m *Manager) extractFromZip(r io.Reader) error {
+	tmp, err := os.CreateTemp(m.binDir(), "ollama-archive-*.zip")
+	if err != nil {
+		return fmt.Errorf("create temp zip: %w", err)
+	}
+	tmpPath := tmp.Name()
+	defer os.Remove(tmpPath)
+
+	_, err = io.Copy(tmp, r)
+	if err != nil {
+		tmp.Close()
+		return fmt.Errorf("download zip: %w", err)
+	}
+	if err := tmp.Close(); err != nil {
+		return fmt.Errorf("flush temp zip: %w", err)
+	}
+
+	zf, err := zip.OpenReader(tmpPath)
+	if err != nil {
+		return fmt.Errorf("open zip: %w", err)
+	}
+	defer zf.Close()
+
+	for _, f := range zf.File {
+		base := filepath.Base(f.Name)
+		if (base != "ollama" && base != "ollama.exe") || f.FileInfo().IsDir() {
+			continue
+		}
+		rc, err := f.Open()
+		if err != nil {
+			return fmt.Errorf("open zip entry: %w", err)
+		}
+		defer rc.Close()
+		return m.atomicWriteBinary(rc)
+	}
+
+	return fmt.Errorf("ollama binary not found in archive")
+}
+
+// atomicWriteBinary writes from r to a temp file, then atomically renames to binPath.
+func (m *Manager) atomicWriteBinary(r io.Reader) error {
+	tmp, err := os.CreateTemp(m.binDir(), "ollama-*.tmp")
+	if err != nil {
+		return fmt.Errorf("create temp file: %w", err)
+	}
+	tmpPath := tmp.Name()
+	if _, err := io.Copy(tmp, r); err != nil {
+		tmp.Close()
+		os.Remove(tmpPath)
+		return fmt.Errorf("write binary: %w", err)
+	}
+	tmp.Close()
+	if err := os.Rename(tmpPath, m.binPath()); err != nil {
+		os.Remove(tmpPath)
+		return fmt.Errorf("rename binary: %w", err)
+	}
+	return nil
 }
 
 func (m *Manager) emitDownloadProgress(downloaded, total int64) {
@@ -668,27 +742,27 @@ func (m *Manager) Status(ctx context.Context) StatusInfo {
 
 // --- Helpers ---
 
-// downloadURL returns the appropriate download URL for the current platform.
-func downloadURL() (string, error) {
+// downloadURL returns the appropriate download URL and archive format for the current platform.
+// macOS uses a universal binary (.tgz, gzip); Linux uses arch-specific archives (.tar.zst, zstd).
+func downloadURL() (url string, format string, err error) {
 	goos := runtime.GOOS
 	arch := runtime.GOARCH
+	base := fmt.Sprintf("https://github.com/ollama/ollama/releases/download/%s", PinnedVersion)
 
-	var platform string
 	switch {
-	case goos == "darwin" && arch == "arm64":
-		platform = "darwin-arm64"
-	case goos == "darwin" && arch == "amd64":
-		platform = "darwin-amd64"
+	case goos == "darwin":
+		return base + "/ollama-darwin.tgz", "tgz", nil
 	case goos == "linux" && arch == "amd64":
-		platform = "linux-amd64"
+		return base + "/ollama-linux-amd64.tar.zst", "zst", nil
 	case goos == "linux" && arch == "arm64":
-		platform = "linux-arm64"
+		return base + "/ollama-linux-arm64.tar.zst", "zst", nil
+	case goos == "windows" && arch == "amd64":
+		return base + "/ollama-windows-amd64.zip", "zip", nil
+	case goos == "windows" && arch == "arm64":
+		return base + "/ollama-windows-arm64.zip", "zip", nil
 	default:
-		return "", fmt.Errorf("unsupported platform: %s/%s", goos, arch)
+		return "", "", fmt.Errorf("unsupported platform: %s/%s", goos, arch)
 	}
-
-	// Use .tgz format — available for all platforms and easy to extract
-	return fmt.Sprintf("https://github.com/ollama/ollama/releases/download/%s/ollama-%s.tgz", PinnedVersion, platform), nil
 }
 
 // findFreePort asks the OS for an available TCP port.
