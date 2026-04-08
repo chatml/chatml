@@ -88,6 +88,11 @@ type Engine struct {
 	rules            *RuleSet
 	sessionApprovals map[string]string // ruleKey -> "allow" | "deny"
 
+	// skipDangerousChecks disables dangerous path/command checks in bypass mode.
+	// Used for sub-agent engines where the parent already authorized the Agent tool
+	// and approval requests would deadlock (nobody responds to the child's channel).
+	skipDangerousChecks bool
+
 	// Denial tracking: consecutive denials per tool trigger fallback to ask mode.
 	// Protected by mu.
 	denialCounts map[string]int
@@ -120,6 +125,15 @@ func NewEngineWithWorkdir(mode string, rules *RuleSet, workdir string) *Engine {
 		denialCounts:     make(map[string]int),
 		denialLimit:      5, // Default: after 5 consecutive denials, force user prompt
 	}
+}
+
+// NewSubAgentEngine creates a bypass permission engine that skips dangerous
+// path/command checks. Sub-agents must not trigger approval requests because
+// nobody can respond to the child's pendingApprovals channel, causing deadlock.
+func NewSubAgentEngine(workdir string) *Engine {
+	e := NewEngineWithWorkdir(ModeBypassPermissions, NewRuleSet(nil), workdir)
+	e.skipDangerousChecks = true
+	return e
 }
 
 // SetMode changes the permission mode. Thread-safe.
@@ -188,7 +202,17 @@ func (e *Engine) Check(toolName string, input json.RawMessage) CheckResult {
 	// already approved them via session approval or persistent rules (e.g., allow_always).
 	// Without this, approvals for dangerous commands (git, npm, curl, etc.) would be
 	// lost on every new tool call even within the same session.
+	//
+	// Sub-agent engines (skipDangerousChecks=true) skip this entirely because
+	// approval requests in sub-agents deadlock — nobody responds to the child's
+	// pendingApprovals channel.
 	if effectiveMode == ModeBypassPermissions {
+		if e.skipDangerousChecks {
+			// Bypass mode already allows all non-dangerous tools; skip the
+			// dangerous-path/command checks that would trigger NeedApproval.
+			result.Decision = Allow
+			return result
+		}
 		isDangerous := false
 		if writesToFile(toolName) && specifier != "" && IsDangerousPath(specifier) {
 			isDangerous = true
