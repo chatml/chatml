@@ -7,8 +7,10 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/chatml/chatml-core/git"
@@ -193,6 +195,27 @@ const maxDiffContentBytes = 1 * 1024 * 1024 // 1MB
 
 // maxUnifiedDiffBytes caps the unified diff fallback payload.
 const maxUnifiedDiffBytes = 256 * 1024 // 256KB
+
+// imageContentTypes maps file extensions to MIME types for supported image formats.
+var imageContentTypes = map[string]string{
+	".png":  "image/png",
+	".jpg":  "image/jpeg",
+	".jpeg": "image/jpeg",
+	".gif":  "image/gif",
+	".webp": "image/webp",
+	".svg":  "image/svg+xml",
+	".bmp":  "image/bmp",
+	".ico":  "image/x-icon",
+	".tiff": "image/tiff",
+	".tif":  "image/tiff",
+	".avif": "image/avif",
+}
+
+func imageContentType(filename string) (string, bool) {
+	ext := strings.ToLower(filepath.Ext(filename))
+	ct, ok := imageContentTypes[ext]
+	return ct, ok
+}
 
 // FileDiffResponse represents a diff between two versions of a file
 type FileDiffResponse struct {
@@ -464,6 +487,163 @@ func (h *Handlers) GetSessionFileContent(w http.ResponseWriter, r *http.Request)
 		Content: string(content),
 		Size:    info.Size(),
 	})
+}
+
+// GetSessionFileRaw serves a raw image file from a session's worktree with the
+// appropriate Content-Type header. This allows the frontend to use the URL directly
+// in <img src> tags without base64 encoding overhead.
+func (h *Handlers) GetSessionFileRaw(w http.ResponseWriter, r *http.Request) {
+	sessionID := chi.URLParam(r, "sessionId")
+	session, err := h.store.GetSession(r.Context(), sessionID)
+	if err != nil {
+		writeDBError(w, err)
+		return
+	}
+	if session == nil {
+		writeNotFound(w, "session")
+		return
+	}
+	if checkWorktreePath(w, session.WorktreePath) {
+		return
+	}
+
+	filePath := r.URL.Query().Get("path")
+	if filePath == "" {
+		writeValidationError(w, "path parameter is required")
+		return
+	}
+
+	// If an absolute path was sent, strip the worktree prefix to make it relative
+	if filepath.IsAbs(filePath) {
+		prefix := session.WorktreePath
+		if !strings.HasSuffix(prefix, "/") {
+			prefix += "/"
+		}
+		if strings.HasPrefix(filePath, prefix) {
+			filePath = filePath[len(prefix):]
+		}
+	}
+
+	cleanPath, err := validatePath(session.WorktreePath, filePath)
+	if err != nil {
+		writeValidationError(w, "invalid path")
+		return
+	}
+
+	ct, ok := imageContentType(cleanPath)
+	if !ok {
+		writeValidationError(w, "not a supported image type")
+		return
+	}
+
+	fullPath := filepath.Join(session.WorktreePath, cleanPath)
+	info, err := os.Stat(fullPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			writeNotFound(w, "file")
+		} else {
+			writeInternalError(w, "failed to access file", err)
+		}
+		return
+	}
+	if info.IsDir() {
+		writeValidationError(w, "path is a directory")
+		return
+	}
+
+	content, err := os.ReadFile(fullPath)
+	if err != nil {
+		writeInternalError(w, "failed to read file", err)
+		return
+	}
+
+	w.Header().Set("Content-Type", ct)
+	w.Header().Set("Content-Length", strconv.Itoa(len(content)))
+	w.Header().Set("Content-Disposition", "inline")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	if ct == "image/svg+xml" {
+		w.Header().Set("Content-Security-Policy", "script-src 'none'")
+	}
+	w.Write(content)
+}
+
+// GetSessionFileRawAtRef serves a raw image file at a specific git ref from a
+// session's worktree. Used for the "old" side of image diffs.
+func (h *Handlers) GetSessionFileRawAtRef(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	sessionID := chi.URLParam(r, "sessionId")
+	session, err := h.store.GetSession(ctx, sessionID)
+	if err != nil {
+		writeDBError(w, err)
+		return
+	}
+	if session == nil {
+		writeNotFound(w, "session")
+		return
+	}
+	if checkWorktreePath(w, session.WorktreePath) {
+		return
+	}
+
+	filePath := r.URL.Query().Get("path")
+	if filePath == "" {
+		writeValidationError(w, "path parameter is required")
+		return
+	}
+
+	ref := r.URL.Query().Get("ref")
+	if ref == "" {
+		writeValidationError(w, "ref parameter is required")
+		return
+	}
+	if err := git.ValidateGitRef(ref); err != nil {
+		writeValidationError(w, "invalid ref format")
+		return
+	}
+
+	// If an absolute path was sent, strip the worktree prefix to make it relative
+	if filepath.IsAbs(filePath) {
+		prefix := session.WorktreePath
+		if !strings.HasSuffix(prefix, "/") {
+			prefix += "/"
+		}
+		if strings.HasPrefix(filePath, prefix) {
+			filePath = filePath[len(prefix):]
+		}
+	}
+
+	cleanPath, err := validatePath(session.WorktreePath, filePath)
+	if err != nil {
+		writeValidationError(w, "invalid path")
+		return
+	}
+
+	ct, ok := imageContentType(cleanPath)
+	if !ok {
+		writeValidationError(w, "not a supported image type")
+		return
+	}
+
+	content, err := h.repoManager.GetFileAtRefBytes(ctx, session.WorktreePath, ref, cleanPath)
+	if err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok && exitErr.ExitCode() == 128 {
+			writeNotFound(w, "file at ref")
+		} else {
+			writeInternalError(w, "failed to read file at ref", err)
+		}
+		return
+	}
+
+	w.Header().Set("Content-Type", ct)
+	w.Header().Set("Content-Length", strconv.Itoa(len(content)))
+	w.Header().Set("Content-Disposition", "inline")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	if ct == "image/svg+xml" {
+		w.Header().Set("Content-Security-Policy", "script-src 'none'")
+	}
+	w.Write(content)
 }
 
 // ListSessionFiles returns the file tree for a session's worktree

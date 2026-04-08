@@ -181,6 +181,21 @@ func (rm *RepoManager) GetFileAtRef(ctx context.Context, repoPath, ref, filePath
 	return string(out), nil
 }
 
+// GetFileAtRefBytes returns the raw bytes of a file at a specific git ref.
+// Unlike GetFileAtRef, it does not convert to string, preserving binary content.
+func (rm *RepoManager) GetFileAtRefBytes(ctx context.Context, repoPath, ref, filePath string) ([]byte, error) {
+	if err := ValidateGitRef(ref); err != nil {
+		return nil, fmt.Errorf("invalid ref: %w", err)
+	}
+	cmd, cancel := gitCmdWithContext(ctx, TimeoutSlow, repoPath, "show", fmt.Sprintf("%s:%s", ref, filePath))
+	defer cancel()
+	out, err := cmd.Output()
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // GetChangedFiles returns a list of files that have changed compared to a base ref
 func (rm *RepoManager) GetChangedFiles(ctx context.Context, repoPath, baseRef string) ([]string, error) {
 	if err := ValidateGitRef(baseRef); err != nil {

@@ -22,3 +22,13 @@ export function isBinaryFile(filename: string): boolean {
   const ext = filename.split('.').pop()?.toLowerCase() || '';
   return BINARY_EXTENSIONS.has(ext);
 }
+
+// Image extensions that can be previewed in the browser
+const IMAGE_EXTENSIONS = new Set([
+  'png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp', 'ico', 'tiff', 'tif', 'avif',
+]);
+
+export function isPreviewableImage(filename: string): boolean {
+  const ext = filename.split('.').pop()?.toLowerCase() || '';
+  return IMAGE_EXTENSIONS.has(ext);
+}
