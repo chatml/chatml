@@ -24,7 +24,7 @@ import { LinearIssuePicker } from './LinearIssuePicker';
 import { WorkspacePicker } from './WorkspacePicker';
 import type { LinearIssueDTO } from '@/lib/api';
 import { PlateInput, type PlateInputHandle } from './PlateInput';
-import { MODELS as SHARED_MODELS, type ModelEntry, toShortDisplayName, getModelDescription, isDefaultRecommended, deduplicateById, deduplicateByName, deduplicateByFamily, sortModelEntries, isLocalModel } from '@/lib/models';
+import { type ModelEntry, buildStaticModelList, isLocalModel } from '@/lib/models';
 import type { MentionItem } from '@/components/ui/mention-node';
 import { trackEvent } from '@/lib/telemetry';
 import { playSound } from '@/lib/sounds';
@@ -105,17 +105,6 @@ function flattenFileTree(nodes: FileNodeDTO[], parentPath: string = '', depth: n
   return result;
 }
 
-/** Static fallback model list (used when no SDK models are available). */
-const STATIC_MODELS: ModelEntry[] = SHARED_MODELS.map((m) => ({
-  id: m.id,
-  name: m.name,
-  description: m.description,
-  icon: Sparkles,
-  provider: m.provider,
-  supportsThinking: m.supportsThinking,
-  supportsEffort: m.supportsEffort,
-  supportsFastMode: m.supportsFastMode,
-}));
 
 /** Resolve the backend type. Called from event handlers (not render), so getState() is correct. */
 function resolveBackend(modelId: string): 'native' | undefined {
@@ -123,29 +112,6 @@ function resolveBackend(modelId: string): 'native' | undefined {
   return useSettingsStore.getState().defaultBackend === 'native' ? 'native' : undefined;
 }
 
-/** Build the model list from SDK-reported dynamic models, with static fallback. */
-function buildModelList(dynamic: ReturnType<typeof useAppStore.getState>['supportedModels']): ModelEntry[] {
-  if (dynamic.length === 0) return STATIC_MODELS;
-  // Filter out SDK "Default (recommended)" pseudo-model and deduplicate.
-  const entries = deduplicateById(
-    dynamic
-      .filter((m) => !isDefaultRecommended(m.displayName))
-      .map((m) => ({
-        id: m.value,
-        name: toShortDisplayName(m.value, m.displayName),
-        description: getModelDescription(m.value),
-        icon: Sparkles,
-        supportsThinking: m.supportsAdaptiveThinking ?? true,
-        supportsEffort: m.supportsEffort ?? false,
-        supportedEffortLevels: m.supportedEffortLevels,
-        supportsFastMode: m.supportsFastMode,
-      }))
-  );
-  // Also deduplicate by display name — SDK may report dated variants
-  // (e.g. claude-sonnet-4-6 and claude-sonnet-4-6-20260301) that resolve
-  // to the same friendly name.
-  return sortModelEntries(deduplicateByFamily(deduplicateByName(entries)));
-}
 
 
 /** Get available thinking level IDs for a model, respecting SDK-reported supported levels. */
@@ -178,7 +144,7 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
 
   // Dynamic model list from SDK, with static fallback
   const dynamicModels = useAppStore((s) => s.supportedModels);
-  const MODELS = useMemo(() => buildModelList(dynamicModels), [dynamicModels]);
+  const MODELS = useMemo(() => buildStaticModelList(dynamicModels).map((m) => ({ ...m, icon: Sparkles })), [dynamicModels]);
 
   const [selectedModel, setSelectedModel] = useState<ModelEntry>(
     () => MODELS.find((m) => m.id === defaultModel) ?? MODELS[0]

@@ -16,7 +16,7 @@ import {
 import { Eye, EyeOff } from 'lucide-react';
 import { useSettingsStore, SETTINGS_DEFAULTS } from '@/stores/settingsStore';
 import { useAppStore } from '@/stores/appStore';
-import { MODELS as SHARED_MODELS, toShortDisplayName, getModelDescription, isDefaultRecommended, deduplicateById, deduplicateByName, sortModelEntries, isLocalModel } from '@/lib/models';
+import { buildStaticModelList, isLocalModel } from '@/lib/models';
 import type { ThinkingLevel } from '@/lib/thinkingLevels';
 import { getAnthropicApiKey, setAnthropicApiKey } from '@/lib/api';
 import { useToast } from '@/components/ui/toast';
@@ -39,17 +39,8 @@ export function AIModelSettings() {
   const maxThinkingTokens = useSettingsStore((s) => s.maxThinkingTokens);
   const setMaxThinkingTokens = useSettingsStore((s) => s.setMaxThinkingTokens);
 
-  // Build model options from SDK-reported models, with static fallback.
   const dynamicModels = useAppStore((s) => s.supportedModels);
-  const modelOptions = useMemo(() => {
-    if (dynamicModels.length === 0) {
-      return SHARED_MODELS.map((m) => ({ id: m.id, name: m.name, description: m.description }));
-    }
-    const entries = dynamicModels
-      .filter((m) => !isDefaultRecommended(m.displayName))
-      .map((m) => ({ id: m.value, name: toShortDisplayName(m.value, m.displayName), description: getModelDescription(m.value) }));
-    return sortModelEntries(deduplicateByName(deduplicateById(entries)));
-  }, [dynamicModels]);
+  const modelOptions = useMemo(() => buildStaticModelList(dynamicModels), [dynamicModels]);
 
   const cloudModels = useMemo(() => modelOptions.filter((m) => !isLocalModel(m.id)), [modelOptions]);
   const localModels = useMemo(() => modelOptions.filter((m) => isLocalModel(m.id)), [modelOptions]);
