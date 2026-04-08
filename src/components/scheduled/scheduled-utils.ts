@@ -63,6 +63,8 @@ export function getRunStatusDisplay(status: ScheduledTaskRun['status']): {
       return { label: 'Completed', className: 'text-green-500' };
     case 'failed':
       return { label: 'Failed', className: 'text-red-500' };
+    case 'skipped':
+      return { label: 'Skipped', className: 'text-orange-500' };
     case 'pending':
       return { label: 'Pending', className: 'text-yellow-500' };
     default:

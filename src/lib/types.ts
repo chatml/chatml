@@ -923,7 +923,7 @@ export interface ScheduledTaskRun {
   id: string;
   scheduledTaskId: string;
   sessionId?: string;
-  status: 'pending' | 'running' | 'completed' | 'failed';
+  status: 'pending' | 'running' | 'completed' | 'failed' | 'skipped';
   triggeredAt: string;
   startedAt?: string;
   completedAt?: string;

@@ -21,8 +21,25 @@ import (
 const (
 	tickInterval = 60 * time.Second
 	maxJitter    = 120 * time.Second
-	graceWindow  = 1 * time.Hour
 )
+
+// graceWindowFor returns the maximum age of a missed schedule that should still
+// be dispatched on startup. Shorter frequencies get shorter windows so we don't
+// fire extremely stale runs (e.g. an hourly task from 23 hours ago).
+func graceWindowFor(frequency string) time.Duration {
+	switch frequency {
+	case models.FrequencyHourly:
+		return 2 * time.Hour
+	case models.FrequencyDaily:
+		return 24 * time.Hour
+	case models.FrequencyWeekly:
+		return 48 * time.Hour
+	case models.FrequencyMonthly:
+		return 48 * time.Hour
+	default:
+		return 24 * time.Hour
+	}
+}
 
 // BroadcastFunc is called to notify the frontend of scheduled task events
 type BroadcastFunc func(eventType string, payload map[string]interface{})
@@ -119,7 +136,8 @@ func (sc *Scheduler) handleMissedSchedules() {
 		if task.NextRunAt.After(now) {
 			continue // Not missed
 		}
-		if now.Sub(*task.NextRunAt) <= graceWindow {
+		grace := graceWindowFor(task.Frequency)
+		if now.Sub(*task.NextRunAt) <= grace {
 			// Within grace period — trigger immediately in a goroutine
 			logger.Main.Infof("Scheduler: triggering missed task %q (was due at %s)", task.Name, task.NextRunAt.Format(time.RFC3339))
 			t := task
@@ -129,8 +147,19 @@ func (sc *Scheduler) handleMissedSchedules() {
 				sc.dispatchTask(sc.ctx, t, true)
 			}()
 		} else {
-			// Too old — advance to next schedule
+			// Too old — advance to next schedule and record a skipped run for visibility
 			logger.Main.Infof("Scheduler: skipping missed task %q (was due at %s, beyond grace window)", task.Name, task.NextRunAt.Format(time.RFC3339))
+			completedAt := now
+			if err := sc.store.AddScheduledTaskRun(sc.ctx, &models.ScheduledTaskRun{
+				ID:              uuid.New().String()[:8],
+				ScheduledTaskID: task.ID,
+				Status:          models.RunStatusSkipped,
+				TriggeredAt:     *task.NextRunAt,
+				CompletedAt:     &completedAt,
+				ErrorMessage:    fmt.Sprintf("Skipped: app was not running at scheduled time (%s)", task.NextRunAt.Format("Jan 2 15:04")),
+			}); err != nil {
+				logger.Main.Errorf("Scheduler: failed to record skipped run for task %q: %v", task.Name, err)
+			}
 			nextRun := models.ComputeNextRun(task, now)
 			_ = sc.store.UpdateScheduledTask(sc.ctx, task.ID, func(t *models.ScheduledTask) {
 				t.NextRunAt = nextRun
