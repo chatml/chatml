@@ -135,8 +135,16 @@ func NewProcess(id, workdir, conversationID string) *Process {
 	})
 }
 
-// NewProcessWithOptions creates a new agent process with full options
+// NewProcessWithOptions creates a new agent process with full options.
+// Agent-runner only supports Anthropic models — local Ollama models must use
+// the native Go loop. Callers should check IsLocalModel() before calling this.
+// The primary guard is in resolveBackend(); this log is defense-in-depth only.
 func NewProcessWithOptions(opts ProcessOptions) *Process {
+	if IsLocalModel(opts.Model) {
+		// Defense-in-depth: resolveBackend() should never route local models here.
+		// Log at error level so this is visible if the guard is ever bypassed.
+		logger.Process.Errorf("BUG: NewProcessWithOptions called with local model %q — agent-runner cannot handle local models. Use native backend instead.", opts.Model)
+	}
 	ctx, cancel := context.WithCancel(context.Background())
 
 	agentRunnerPath := findAgentRunner()
