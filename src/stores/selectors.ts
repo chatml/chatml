@@ -610,6 +610,7 @@ export const useChatInputActions = () =>
       setStreaming: s.setStreaming,
       addQueuedMessage: s.addQueuedMessage,
       removeQueuedMessage: s.removeQueuedMessage,
+      markQueuedMessageSent: s.markQueuedMessageSent,
       clearQueuedMessages: s.clearQueuedMessages,
       clearPendingPlanApproval: s.clearPendingPlanApproval,
       setApprovedPlanContent: s.setApprovedPlanContent,
