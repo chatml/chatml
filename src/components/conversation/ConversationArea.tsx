@@ -10,6 +10,8 @@ import {
   useConversationFreshness,
   useReviewComments,
   useReviewCommentActions,
+  useClaudeTerminalState,
+  useAllClaudeTerminals,
 } from '@/stores/selectors';
 import {
   Dialog,
@@ -28,11 +30,14 @@ import {
   Loader2,
   Circle,
   CheckCircle2,
-  Terminal,
+  Terminal as TerminalIcon,
   FileCode,
   AlertTriangle,
+  SquareTerminal,
 } from 'lucide-react';
+import dynamic from 'next/dynamic';
 import type { FileTab, Conversation } from '@/lib/types';
+import { cn } from '@/lib/utils';
 import { CodeViewer } from '@/components/files/CodeViewer';
 import { FileTabIcon } from '@/components/files/FileTabIcon';
 import { TabBar, type TabItemData } from '@/components/tabs';
@@ -52,6 +57,11 @@ import { SessionHandoffDialog } from '@/components/conversation/SessionHandoffDi
 import { useToast } from '@/components/ui/toast';
 import { refreshAWSCredentials } from '@/lib/api';
 import { KeyRound, Settings2, ShieldAlert } from 'lucide-react';
+
+const ClaudeTerminal = dynamic(
+  () => import('@/components/shared/ClaudeTerminal').then(m => ({ default: m.ClaudeTerminal })),
+  { ssr: false }
+);
 
 // Module-level LRU of recently-viewed sessions. Stored outside the component so
 // useMemo can read it during render without violating react-hooks/refs or
@@ -114,6 +124,18 @@ export function ConversationArea({ children }: ConversationAreaProps) {
   // Targeted selectors for remaining state
   const sessions = useAppStore((s) => s.sessions);
   const selectedSessionId = useAppStore((s) => s.selectedSessionId);
+
+  // Claude Code terminal tab state
+  const {
+    instances: claudeTerminals,
+    activeId: activeClaudeTerminalId,
+    createClaudeTerminal,
+    closeClaudeTerminal,
+    setActiveClaudeTerminal,
+    markClaudeTerminalExited,
+  } = useClaudeTerminalState(selectedSessionId);
+  // All Claude terminals across all sessions — needed to persist PTY processes across session switches
+  const { allClaudeTerminals, allActiveClaudeTerminalIds } = useAllClaudeTerminals();
   const selectedWorkspaceId = useAppStore((s) => s.selectedWorkspaceId);
 
   // Defer heavy file tab rendering on session switch for instant UI response.
@@ -403,12 +425,29 @@ export function ConversationArea({ children }: ConversationAreaProps) {
     [sessionConversations, conversationToTabItem]
   );
 
+  // Convert Claude terminal instances to TabItemData
+  const claudeTerminalTabItems: TabItemData[] = useMemo(
+    () => claudeTerminals.map((t): TabItemData => ({
+      id: t.id,
+      type: 'terminal',
+      label: t.name,
+      icon: <SquareTerminal className="w-2.5 h-2.5 text-green-600 dark:text-green-400" />,
+      isDirty: false,
+      isPinned: false,
+      isActive: selectedFileTabId === null && selectedConversationId === null && activeClaudeTerminalId === t.id,
+      group: 'conversation',
+      claudeTerminal: t,
+    })),
+    [claudeTerminals, selectedFileTabId, selectedConversationId, activeClaudeTerminalId]
+  );
+
   // Get current active tab ID for TabBar
   const activeTabId = useMemo(() => {
     if (selectedFileTabId !== null) return selectedFileTabId;
     if (selectedConversationId !== null) return selectedConversationId;
+    if (activeClaudeTerminalId !== null) return activeClaudeTerminalId;
     return null;
-  }, [selectedFileTabId, selectedConversationId]);
+  }, [selectedFileTabId, selectedConversationId, activeClaudeTerminalId]);
 
 
   // Get current file tab from visible tabs
@@ -424,6 +463,7 @@ export function ConversationArea({ children }: ConversationAreaProps) {
   // Determine what's currently active (conversation or file)
   // File is active only if selected tab is visible
   const isFileActive = selectedFileTabId !== null && currentFileTab !== undefined;
+  const isTerminalActive = !isFileActive && selectedConversationId === null && activeClaudeTerminalId !== null;
 
   // Pre-computed lookup maps for the cached-pane render loop
   const sessionMap = useMemo(() => new Map(sessions.map(s => [s.id, s])), [sessions]);
@@ -567,6 +607,26 @@ export function ConversationArea({ children }: ConversationAreaProps) {
     }
   }, [selectedWorkspaceId, selectedSessionId, addConversation, selectConversation, selectFileTab]);
 
+  const handleNewClaudeTerminal = useCallback(() => {
+    if (!selectedSessionId) return;
+    const session = sessions.find(s => s.id === selectedSessionId);
+    if (!session) return;
+    const instance = createClaudeTerminal(selectedSessionId, session.worktreePath);
+    if (instance) {
+      selectConversation(null);
+      selectFileTab(null);
+    } else {
+      showError('Maximum of 3 Claude Code terminals per session');
+    }
+  }, [selectedSessionId, sessions, createClaudeTerminal, selectConversation, selectFileTab, showError]);
+
+  // Show toast when terminal limit reached from external sources (e.g. command palette)
+  useEffect(() => {
+    const handler = () => showError('Maximum of 3 Claude Code terminals per session');
+    window.addEventListener('claude-terminal-limit-reached', handler);
+    return () => window.removeEventListener('claude-terminal-limit-reached', handler);
+  }, [showError]);
+
   const handleSelectConversation = useCallback((id: string) => {
     selectConversation(id);
     selectFileTab(null); // Deselect file tab when selecting conversation
@@ -682,20 +742,34 @@ export function ConversationArea({ children }: ConversationAreaProps) {
 
   // Unified tab select handler for TabBar
   const handleTabSelect = useCallback(
-    (id: string, type: 'file' | 'conversation') => {
+    (id: string, type: 'file' | 'conversation' | 'terminal') => {
       if (type === 'file') {
         handleSelectFileTab(id);
+      } else if (type === 'terminal') {
+        selectConversation(null);
+        selectFileTab(null);
+        if (selectedSessionId) setActiveClaudeTerminal(selectedSessionId, id);
       } else {
         handleSelectConversation(id);
       }
     },
-    [handleSelectFileTab, handleSelectConversation]
+    [handleSelectFileTab, handleSelectConversation, selectConversation, selectFileTab, selectedSessionId, setActiveClaudeTerminal]
   );
 
   // Unified tab close handler for TabBar
   const handleTabClose = useCallback(
-    (id: string, type: 'file' | 'conversation') => {
-      if (type === 'file') {
+    (id: string, type: 'file' | 'conversation' | 'terminal') => {
+      if (type === 'terminal') {
+        if (selectedSessionId) {
+          closeClaudeTerminal(selectedSessionId, id);
+          // Restore last active conversation if no terminals remain
+          const remaining = useAppStore.getState().claudeTerminals[selectedSessionId];
+          if (!remaining || remaining.length === 0) {
+            const lastConvId = useAppStore.getState().lastActiveConversationPerSession[selectedSessionId];
+            if (lastConvId) selectConversation(lastConvId);
+          }
+        }
+      } else if (type === 'file') {
         const tab = fileTabs.find((t) => t.id === id);
         if (tab?.isDirty) {
           setPendingCloseFileTabId(id);
@@ -713,7 +787,7 @@ export function ConversationArea({ children }: ConversationAreaProps) {
         startTransition(() => removeConversation(id));
       }
     },
-    [fileTabs, closeFileTab, removeConversation, setPendingCloseFileTabId, conversations, selectedWorkspaceId]
+    [fileTabs, closeFileTab, removeConversation, setPendingCloseFileTabId, conversations, selectedWorkspaceId, selectedSessionId, closeClaudeTerminal, selectConversation]
   );
 
   // Restore a recently closed conversation
@@ -748,7 +822,7 @@ export function ConversationArea({ children }: ConversationAreaProps) {
         <div className="flex-1 flex items-center justify-center">
           <div className="text-center max-w-md px-6">
             <div className="w-12 h-12 rounded-lg bg-muted/50 flex items-center justify-center mx-auto mb-4">
-              <Terminal className="w-6 h-6 text-muted-foreground" />
+              <TerminalIcon className="w-6 h-6 text-muted-foreground" />
             </div>
             <h3 className="text-base font-medium mb-2">No session selected</h3>
             <p className="text-sm text-muted-foreground">
@@ -856,17 +930,21 @@ export function ConversationArea({ children }: ConversationAreaProps) {
       <TabBar
         workspaceTabs={[]}
         sessionTabs={sessionTabItems}
-        conversationTabs={conversationTabItems.map((tab) => ({
-          ...tab,
-          // Add status indicator for conversation tabs
-          icon: tab.conversation ? getStatusIndicator(tab.conversation) : undefined,
-        }))}
+        conversationTabs={[
+          ...conversationTabItems.map((tab) => ({
+            ...tab,
+            // Add status indicator for conversation tabs
+            icon: tab.conversation ? getStatusIndicator(tab.conversation) : undefined,
+          })),
+          ...claudeTerminalTabItems,
+        ]}
         activeTabId={activeTabId}
         onSelectTab={handleTabSelect}
         onCloseTab={handleTabClose}
         onPinTab={(id, pinned) => pinFileTab(id, pinned)}
         onReorder={reorderFileTabs}
         onNewSession={() => handleNewConversation('task')}
+        onNewTerminal={handleNewClaudeTerminal}
         onRenameConversation={handleRenameConversation}
         onRestoreConversation={handleRestoreConversation}
         sessionId={selectedSessionId}
@@ -1022,6 +1100,48 @@ export function ConversationArea({ children }: ConversationAreaProps) {
         </div>
       )}
 
+      {/* Claude Code terminal tabs — render ALL sessions' terminals for PTY persistence.
+           CSS controls visibility so PTY processes survive session switches. */}
+      {Object.keys(allClaudeTerminals).length > 0 && (
+        <div className={isTerminalActive ? 'relative flex-1 min-h-0' : 'hidden'}>
+          {Object.entries(allClaudeTerminals).map(([sid, sessionTerminals]) =>
+            sessionTerminals.map((terminal) => {
+              const isCurrentSession = sid === selectedSessionId;
+              const isActiveTab = allActiveClaudeTerminalIds[sid] === terminal.id;
+              const isVisible = isCurrentSession && isActiveTab && isTerminalActive;
+
+              return (
+                <div
+                  key={terminal.id}
+                  className={cn(
+                    'absolute inset-0',
+                    isVisible ? 'block' : 'hidden'
+                  )}
+                >
+                  <ErrorBoundary
+                    resetKeys={[terminal.id]}
+                    section="ClaudeTerminal"
+                    fallback={
+                      <BlockErrorFallback
+                        icon={SquareTerminal}
+                        title="Terminal error"
+                        description="There was an error rendering the Claude Code terminal"
+                      />
+                    }
+                  >
+                    <ClaudeTerminal
+                      instanceId={terminal.id}
+                      workspacePath={terminal.workspacePath}
+                      onExit={() => markClaudeTerminalExited(terminal.id)}
+                    />
+                  </ErrorBoundary>
+                </div>
+              );
+            })
+          )}
+        </div>
+      )}
+
       {/* Conversation panes — LRU cached across session switches.
            During session switches, inactive panes use visibility:hidden (not
            display:none) so react-virtuoso can still measure item heights.
@@ -1029,7 +1149,7 @@ export function ConversationArea({ children }: ConversationAreaProps) {
            (display:none); CachedConversationPane compensates with a rAF-based
            remeasurement when re-activated. The relative container provides
            real dimensions for absolutely-positioned child panes. */}
-      <div className={isFileActive ? 'hidden' : 'relative flex-1 min-h-0'}>
+      <div className={isFileActive || isTerminalActive ? 'hidden' : 'relative flex-1 min-h-0'}>
         {recentSessions.map((cached) => {
           const isCachedActive = cached.sessionId === selectedSessionId && !isFileActive;
           const cachedSession = sessionMap.get(cached.sessionId);
