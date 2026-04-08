@@ -53,7 +53,7 @@ export function SessionManagerSidebar({
       </div>
 
       {/* Workspace tree */}
-      <ScrollArea className="flex-1">
+      <ScrollArea className="flex-1 min-h-0">
         <div className="p-2">
           {workspaces.length === 0 ? (
             <div className="px-2 py-8 text-center">

@@ -101,7 +101,7 @@ export function HistoryPanel() {
       </div>
 
       {/* History List */}
-      <ScrollArea className="flex-1">
+      <ScrollArea className="flex-1 min-h-0">
         {Object.keys(groupedItems).length === 0 ? (
           <div className="px-3 py-12 text-center">
             <div className="w-12 h-12 rounded-full bg-muted/50 flex items-center justify-center mx-auto mb-3">
