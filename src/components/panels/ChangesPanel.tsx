@@ -575,6 +575,32 @@ export function ChangesPanel() {
   const menuContext = useMemo<TopPanelMenuContext>(() => ({
     onCollapseAllFiles: () => fileTreeRef.current?.collapseAll(),
     onExpandAllFiles: () => fileTreeRef.current?.expandAll(),
+    onRefreshFiles: () => {
+      if (!selectedWorkspaceId || !selectedSessionId || filesLoading) return;
+      // Capture session ID so stale responses after a session switch are ignored.
+      // Use the ref (not the closure value) in callbacks since both would be identical.
+      const capturedSessionId = selectedSessionId;
+      invalidateSessionData(selectedWorkspaceId, selectedSessionId);
+      setFilesLoading(true);
+      setFilesError(null);
+      listSessionFiles(selectedWorkspaceId, selectedSessionId, 'all')
+        .then((data) => {
+          if (prevSessionIdRef.current === capturedSessionId) setFiles(data as FileNode[]);
+        })
+        .catch((err) => {
+          if (prevSessionIdRef.current === capturedSessionId) {
+            if (err instanceof ApiError && err.code === ErrorCode.WORKTREE_NOT_FOUND) {
+              setFilesError('worktree_missing');
+            } else {
+              setFilesError('error');
+            }
+            console.error(err);
+          }
+        })
+        .finally(() => {
+          if (prevSessionIdRef.current === capturedSessionId) setFilesLoading(false);
+        });
+    },
     onRefreshChanges: () => {
       // Invalidate caches on explicit refresh so stale data isn't re-shown
       if (selectedWorkspaceId && selectedSessionId) {
@@ -589,7 +615,7 @@ export function ChangesPanel() {
     unresolvedCount,
     showResolved,
     onToggleShowResolved: () => setShowResolved((prev) => !prev),
-  }), [refetchSnapshot, handleResolveAll, prUrl, unresolvedCount, showResolved, selectedWorkspaceId, selectedSessionId]);
+  }), [refetchSnapshot, handleResolveAll, prUrl, unresolvedCount, showResolved, selectedWorkspaceId, selectedSessionId, filesLoading]);
 
   // Wrap tab selection to trigger changes refresh when switching to the changes tab
   const handleTabSelect = useCallback((tabId: string) => {
@@ -1061,6 +1087,7 @@ function BottomPanelTabs({
 interface TopPanelMenuContext {
   onCollapseAllFiles?: () => void;
   onExpandAllFiles?: () => void;
+  onRefreshFiles?: () => void;
   onRefreshChanges?: () => void;
   onRefreshChecks?: () => void;
   prUrl?: string | null;
@@ -1174,6 +1201,10 @@ function TopPanelTabs({
           {selectedTab === 'files' && (
             <>
               <DropdownMenuSeparator />
+              <DropdownMenuItem onSelect={menuContext.onRefreshFiles}>
+                <RefreshCw className="size-4" />
+                Refresh
+              </DropdownMenuItem>
               <DropdownMenuItem onSelect={menuContext.onCollapseAllFiles}>
                 <ChevronsDownUp className="size-4" />
                 Collapse All
