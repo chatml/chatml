@@ -320,19 +320,25 @@ export function ScheduledTaskDetailView({ taskId }: ScheduledTaskDetailViewProps
                     const statusDisplay = getRunStatusDisplay(run.status);
                     const timestamp = run.startedAt ?? run.triggeredAt;
                     return (
-                      <button
-                        key={run.id}
-                        onClick={() => handleRunClick(run.sessionId)}
-                        disabled={!run.sessionId}
-                        className="flex items-center justify-between w-full px-3 py-2 rounded-md text-sm hover:bg-accent/50 transition-colors disabled:opacity-50 disabled:cursor-default text-left"
-                      >
-                        <span className="text-muted-foreground">
-                          {formatRunTimestamp(timestamp)}
-                        </span>
-                        <span className={statusDisplay.className}>
-                          {statusDisplay.label}
-                        </span>
-                      </button>
+                      <div key={run.id}>
+                        <button
+                          onClick={() => handleRunClick(run.sessionId)}
+                          disabled={!run.sessionId}
+                          className="flex items-center justify-between w-full px-3 py-2 rounded-md text-sm hover:bg-accent/50 transition-colors disabled:opacity-50 disabled:cursor-default disabled:hover:bg-transparent text-left"
+                        >
+                          <span className="text-muted-foreground">
+                            {formatRunTimestamp(timestamp)}
+                          </span>
+                          <span className={statusDisplay.className}>
+                            {statusDisplay.label}
+                          </span>
+                        </button>
+                        {run.errorMessage && (run.status === 'failed' || run.status === 'skipped') && (
+                          <p className="px-3 pb-1 text-xs text-muted-foreground/70">
+                            {run.errorMessage}
+                          </p>
+                        )}
+                      </div>
                     );
                   })}
                 </div>

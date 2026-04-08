@@ -575,7 +575,7 @@ type ScheduledTaskRun struct {
 	ID              string     `json:"id"`
 	ScheduledTaskID string     `json:"scheduledTaskId"`
 	SessionID       string     `json:"sessionId,omitempty"`
-	Status          string     `json:"status"` // pending, running, completed, failed
+	Status          string     `json:"status"` // pending, running, completed, failed, skipped
 	TriggeredAt     time.Time  `json:"triggeredAt"`
 	StartedAt       *time.Time `json:"startedAt,omitempty"`
 	CompletedAt     *time.Time `json:"completedAt,omitempty"`
@@ -604,6 +604,7 @@ const (
 	RunStatusRunning   = "running"
 	RunStatusCompleted = "completed"
 	RunStatusFailed    = "failed"
+	RunStatusSkipped   = "skipped"
 )
 
 // ComputeNextRun calculates the next scheduled run time based on frequency and schedule config.

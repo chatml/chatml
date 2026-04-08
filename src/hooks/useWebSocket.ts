@@ -1315,6 +1315,25 @@ export function useWebSocket(enabled: boolean = true) {
 
       if (isReconnect) {
         reconcileStreamingState();
+        // Re-sync sessions that may have been created during disconnect (e.g., scheduled tasks).
+        // Merge rather than replace to avoid overwriting concurrent WS-driven updates.
+        listAllSessions(true).then((sessions) => {
+          const store = getStore();
+          const mapped = sessions.map(mapSessionDTO);
+          const existing = store.sessions;
+          const existingIds = new Set(existing.map((s) => s.id));
+          for (const s of mapped) {
+            if (existingIds.has(s.id)) {
+              store.updateSession(s.id, s);
+            } else {
+              store.addSession(s);
+            }
+          }
+        }).catch((err) => {
+          console.warn('Failed to re-sync sessions on reconnect:', err);
+        });
+        // Refresh scheduled task state (next_run_at, last_run_at may have changed)
+        useScheduledTaskStore.getState().fetchTasks();
       } else {
         reconcileInitialStreamingState();
       }
