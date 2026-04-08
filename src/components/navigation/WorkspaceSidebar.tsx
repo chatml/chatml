@@ -189,7 +189,18 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onGitHubRepos,
   }, []);
 
   // Track which workspaces are collapsed (persisted)
-  const { collapsedWorkspaces, toggleWorkspaceCollapsed, expandWorkspace, contentView, recentlyRemovedWorkspaces, addRecentlyRemovedWorkspace, removeRecentlyRemovedWorkspace, unreadWorkspaces, markWorkspaceUnread, markWorkspaceRead, workspaceColors, sidebarGroupBy, setSidebarGroupBy, collapsedSidebarGroups, toggleSidebarGroupCollapsed, lastRepoDashboardWorkspaceId, setLastRepoDashboardWorkspaceId, sidebarProjectFilter, setSidebarProjectFilter, statusGroupOrder, setStatusGroupOrder } = useSettingsStore();
+  const {
+    collapsedWorkspaces, toggleWorkspaceCollapsed, expandWorkspace,
+    contentView,
+    recentlyRemovedWorkspaces, addRecentlyRemovedWorkspace, removeRecentlyRemovedWorkspace,
+    unreadWorkspaces, markWorkspaceUnread, markWorkspaceRead,
+    workspaceColors, showBaseBranchSessions,
+    sidebarGroupBy, setSidebarGroupBy,
+    collapsedSidebarGroups, toggleSidebarGroupCollapsed,
+    lastRepoDashboardWorkspaceId, setLastRepoDashboardWorkspaceId,
+    sidebarProjectFilter, setSidebarProjectFilter,
+    statusGroupOrder, setStatusGroupOrder,
+  } = useSettingsStore();
 
   const isWorkspaceExpanded = (workspaceId: string) => {
     return !collapsedWorkspaces.includes(workspaceId);
@@ -240,7 +251,7 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onGitHubRepos,
   }, [sessions]);
 
   // Sidebar grouping/sorting — only operates on non-scheduled sessions
-  const { groups: sidebarGroups, flatSessions, baseSessions, pinnedSessions, effectiveGroupBy } = useSidebarSessions({
+  const { groups: rawGroups, flatSessions, baseSessions: rawBaseSessions, pinnedSessions, effectiveGroupBy } = useSidebarSessions({
     sessions: regularSessions,
     workspaces,
     groupBy: sidebarGroupBy,
@@ -253,6 +264,13 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onGitHubRepos,
     getWorkspaceColor,
     statusGroupOrder,
   });
+
+  // Gate base session visibility behind setting (disabled by default) —
+  // single gate point for both top-level baseSessions and per-group baseSessions.
+  const baseSessions = showBaseBranchSessions ? rawBaseSessions : [];
+  const sidebarGroups = showBaseBranchSessions
+    ? rawGroups
+    : rawGroups.map((g) => ({ ...g, baseSessions: undefined }));
 
   const hasMultipleWorkspaces = workspaces.length > 1;
 
