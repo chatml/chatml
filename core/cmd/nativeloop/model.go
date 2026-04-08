@@ -109,9 +109,10 @@ type model struct {
 	activeMsgs []*displayMessage
 
 	// Substates
-	stream streamState
-	prompt promptState
-	hist   inputHistory
+	stream    streamState
+	prompt    promptState
+	hist      inputHistory
+	slashMenu slashMenuState
 
 	// Config
 	modelName  string
@@ -477,7 +478,20 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 
 			switch msg.String() {
+			case "esc":
+				if m.slashMenu.visible {
+					m.input.SetValue("")
+					updateSlashMenu(&m)
+					return m, nil
+				}
 			case "up":
+				if m.slashMenu.visible {
+					if m.slashMenu.selected > 0 {
+						m.slashMenu.selected--
+						clampSlashMenuScroll(&m)
+					}
+					return m, nil
+				}
 				if len(m.hist.entries) > 0 {
 					if m.hist.idx == -1 {
 						m.hist.saved = m.input.Value()
@@ -490,6 +504,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					return m, nil
 				}
 			case "down":
+				if m.slashMenu.visible {
+					if m.slashMenu.selected < len(m.slashMenu.matches)-1 {
+						m.slashMenu.selected++
+						clampSlashMenuScroll(&m)
+					}
+					return m, nil
+				}
 				if m.hist.idx >= 0 {
 					if m.hist.idx < len(m.hist.entries)-1 {
 						m.hist.idx++
@@ -502,17 +523,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					return m, nil
 				}
 			case "tab":
-				text := m.input.Value()
-				if strings.HasPrefix(text, "/") && !strings.Contains(text, " ") {
-					completed := completeSlashCommand(text)
-					if completed != "" {
-						m.input.SetValue(completed)
-						m.input.CursorEnd()
-					}
+				if m.slashMenu.visible {
+					selectSlashMenuItem(&m)
 					return m, nil
 				}
 				// Toggle collapse on last collapsible message
-				if text == "" {
+				if m.input.Value() == "" {
 					for i := len(m.activeMsgs) - 1; i >= 0; i-- {
 						msg := m.activeMsgs[i]
 						if msg == nil {
@@ -533,6 +549,18 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					return m, nil
 				}
 			case "enter":
+				if m.slashMenu.visible {
+					selected := m.slashMenu.matches[m.slashMenu.selected]
+					selectSlashMenuItem(&m)
+					// Auto-execute zero-arg commands; tab is insert-only
+					if selected.minArgs == 0 {
+						text := strings.TrimSpace(m.input.Value())
+						m.input.SetValue("")
+						m.hist.idx = -1
+						return m, handleSlashCommand(&m, text)
+					}
+					return m, nil
+				}
 				text := strings.TrimSpace(m.input.Value())
 				if text == "" {
 					return m, nil
@@ -553,6 +581,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			default:
 				var cmd tea.Cmd
 				m.input, cmd = m.input.Update(msg)
+				updateSlashMenu(&m)
 				return m, cmd
 			}
 
@@ -635,6 +664,11 @@ func (m model) View() string {
 	// Spinner (if running)
 	if m.state == stateRunning {
 		parts = append(parts, m.renderSpinnerLine())
+	}
+
+	// Slash command menu (above input bar)
+	if menu := renderSlashMenu(&m); menu != "" {
+		parts = append(parts, menu)
 	}
 
 	// Input bar + status bar (always shown)

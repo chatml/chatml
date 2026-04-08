@@ -89,34 +89,6 @@ func renderInput(m *model) string {
 	return topBar + "\n" + inputLine + "\n" + bottomBar
 }
 
-// completeSlashCommand returns the completed command if there's exactly one match,
-// or the longest common prefix if multiple matches. Uses cmdRegistry as source.
-func completeSlashCommand(partial string) string {
-	var matches []string
-	for _, cmd := range cmdRegistry {
-		full := "/" + cmd.name
-		if strings.HasPrefix(full, partial) {
-			matches = append(matches, full)
-		}
-	}
-	if len(matches) == 1 {
-		return matches[0]
-	}
-	if len(matches) > 1 {
-		// Return longest common prefix
-		prefix := matches[0]
-		for _, m := range matches[1:] {
-			for len(prefix) > 0 && !strings.HasPrefix(m, prefix) {
-				prefix = prefix[:len(prefix)-1]
-			}
-		}
-		if len(prefix) > len(partial) {
-			return prefix
-		}
-	}
-	return ""
-}
-
 // handleSlashCommand processes a slash command via the registry and returns a tea.Cmd.
 // Output from addSystemMsg/addErrorMsg is buffered in pendingPrintln and flushed here.
 func handleSlashCommand(m *model, input string) tea.Cmd {

@@ -14,6 +14,7 @@ type slashCmd struct {
 	desc     string // for /help display
 	usage    string // e.g. "/model <name>"
 	minArgs  int    // minimum args required (0 for no-arg commands)
+	hidden   bool   // hide from /help and slash menu (aliases, placeholders)
 	validate func(args []string) error
 	handler  func(m *model, args []string) tea.Cmd
 }
@@ -34,7 +35,7 @@ var cmdRegistry []slashCmd
 func init() {
 	cmdRegistry = []slashCmd{
 		{name: "quit", desc: "Exit", usage: "/quit", minArgs: 0, handler: cmdQuit},
-		{name: "exit", desc: "Exit", usage: "/exit", minArgs: 0, handler: cmdQuit},
+		{name: "exit", desc: "Exit", usage: "/exit", minArgs: 0, hidden: true, handler: cmdQuit},
 		{name: "help", desc: "Show commands", usage: "/help", minArgs: 0, handler: cmdHelp},
 		{name: "model", desc: "Switch model", usage: "/model <name>", minArgs: 1, validate: func(args []string) error {
 			if strings.TrimSpace(args[0]) == "" {
@@ -92,7 +93,7 @@ func init() {
 				return fmt.Errorf("unknown theme %q — valid themes: dark, light, auto", args[0])
 			}
 		}, handler: cmdTheme},
-		{name: "setup", desc: "Run initial setup", usage: "/setup", minArgs: 0, handler: nil}, // placeholder
+		{name: "setup", desc: "Run initial setup", usage: "/setup", minArgs: 0, hidden: true, handler: nil},
 	}
 }
 
@@ -127,8 +128,8 @@ func cmdHelp(m *model, _ []string) tea.Cmd {
 	var lines []string
 	lines = append(lines, "Commands:")
 	for _, cmd := range cmdRegistry {
-		if cmd.name == "exit" || cmd.name == "setup" {
-			continue // skip aliases and placeholders from help
+		if cmd.hidden {
+			continue
 		}
 		lines = append(lines, fmt.Sprintf("  /%-14s %s", cmd.name, cmd.desc))
 	}
