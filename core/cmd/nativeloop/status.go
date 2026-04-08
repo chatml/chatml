@@ -9,31 +9,43 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
+// maxBranchLen is the maximum displayed length for git branch names in the status bar.
+const maxBranchLen = 20
+
 // renderStatus renders the colored status bar (Claude Code style).
 func renderStatus(m *model) string {
 	w := m.width
+	s := m.s
 
-	// Colored segments
-	green := lipgloss.NewStyle().Foreground(lipgloss.Color("#22C55E"))
-	yellow := lipgloss.NewStyle().Foreground(lipgloss.Color("#F59E0B"))
-	gray := lipgloss.NewStyle().Foreground(lipgloss.Color("#6B7280"))
-	cyan := lipgloss.NewStyle().Foreground(lipgloss.Color("#06B6D4"))
-	blue := lipgloss.NewStyle().Foreground(lipgloss.Color("#3B82F6"))
-
-	// Line 1: project (green) · model (yellow) · [fast] · cost · context bar · duration
+	// Line 1: project (green) [branch] · model (yellow) · [fast] · cost · context bar · duration
 	name := filepath.Base(m.workdir)
 	if name == "" || name == "." {
 		name = "chatml"
 	}
-	projectName := green.Render(name)
+	nameStr := name
+	if m.gitBranch != "" {
+		branch := m.gitBranch
+		if len(branch) > maxBranchLen {
+			branch = branch[:maxBranchLen-3] + "..."
+		}
+		dirtyMark := ""
+		if m.gitDirty {
+			dirtyMark = "*"
+		}
+		nameStr += " (" + branch + dirtyMark + ")"
+	}
+	projectName := s.prompt.Render(nameStr)
 
 	modelStr := fmt.Sprintf("[%s]", m.modelName)
 	if m.fastMode {
 		modelStr += " [F]"
 	}
-	modelInfo := yellow.Render(modelStr)
+	modelInfo := s.warn.Render(modelStr)
 
 	var extras []string
+	if m.stats.totalTurns > 0 {
+		extras = append(extras, fmt.Sprintf("%dt", m.stats.totalTurns))
+	}
 	if m.stats.totalCost > 0 {
 		if m.maxBudget > 0 {
 			extras = append(extras, fmt.Sprintf("$%.4f/$%.2f", m.stats.totalCost, m.maxBudget))
@@ -44,7 +56,7 @@ func renderStatus(m *model) string {
 
 	// Context as mini progress bar
 	if m.stats.lastContextPct > 0 {
-		extras = append(extras, renderContextBar(m.stats.lastContextPct))
+		extras = append(extras, renderContextBar(m.stats.lastContextPct, s))
 	}
 
 	// Session duration
@@ -60,11 +72,11 @@ func renderStatus(m *model) string {
 
 	left := "  " + projectName + " " + modelInfo
 	if len(extras) > 0 {
-		left += " " + gray.Render(strings.Join(extras, " · "))
+		left += " " + s.gray.Render(strings.Join(extras, " · "))
 	}
 
 	// Right side: mode badge
-	right := cyan.Render("/" + modeBadge(m.permMode))
+	right := s.cyan.Render("/" + modeBadge(m.permMode))
 
 	// Pad to full width — ensure line fits within terminal
 	leftLen := lipgloss.Width(left)
@@ -94,18 +106,17 @@ func renderStatus(m *model) string {
 		if len(toolDisplay) > w-10 {
 			toolDisplay = toolDisplay[:w-13] + "..."
 		}
-		line2 = blue.Render(fmt.Sprintf("  ▸ Running: %s", toolDisplay))
+		line2 = s.blue.Render(fmt.Sprintf("  ▸ Running: %s", toolDisplay))
 	} else {
-		purple := lipgloss.NewStyle().Foreground(lipgloss.Color("#7C3AED"))
-		line2 = purple.Render(fmt.Sprintf("  ▸▸ %s", modeBadge(m.permMode))) +
-			gray.Render(" (shift+tab to cycle)")
+		line2 = s.banner.Render(fmt.Sprintf("  ▸▸ %s", modeBadge(m.permMode))) +
+			s.gray.Render(" (shift+tab to cycle)")
 	}
 
 	return line1 + "\n" + line2
 }
 
 // renderContextBar renders a mini progress bar for context usage.
-func renderContextBar(pct int) string {
+func renderContextBar(pct int, s *styles) string {
 	const barWidth = 10
 	filled := pct * barWidth / 100
 	if filled > barWidth {
@@ -117,18 +128,17 @@ func renderContextBar(pct int) string {
 
 	bar := strings.Repeat("█", filled) + strings.Repeat("░", barWidth-filled)
 
-	// Color based on usage level
-	var color string
+	// Color based on usage level using theme styles
+	var style lipgloss.Style
 	switch {
 	case pct >= 80:
-		color = "#EF4444" // red
+		style = s.ctxHigh
 	case pct >= 50:
-		color = "#F59E0B" // yellow
+		style = s.ctxMid
 	default:
-		color = "#22C55E" // green
+		style = s.ctxLow
 	}
 
-	style := lipgloss.NewStyle().Foreground(lipgloss.Color(color))
 	return fmt.Sprintf("[%s] %d%%", style.Render(bar), pct)
 }
 

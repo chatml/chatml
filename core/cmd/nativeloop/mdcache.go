@@ -178,6 +178,9 @@ func renderSingleMessage(msg *displayMessage, width int, s *styles, cache *mdCac
 
 	case msgPlanReview:
 		renderPlanReviewMessage(&b, s, msg, cache.renderer)
+
+	case msgTurnSeparator:
+		renderTurnSeparator(&b, s, msg, width)
 	}
 
 	return b.String()

@@ -5,9 +5,11 @@ import (
 	"fmt"
 	"math/rand"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // ── Defaults ────────────────────────────────────────────────────────────────
@@ -252,6 +254,52 @@ func detectLanguageFromPath(path string) string {
 	default:
 		return ""
 	}
+}
+
+// detectGitState returns the current git branch and dirty state for a directory.
+// Uses a single `git status --porcelain -b` call for efficiency.
+func detectGitState(workdir string) (branch string, dirty bool) {
+	cmd := exec.Command("git", "status", "--porcelain", "-b")
+	cmd.Dir = workdir
+	out, err := cmd.Output()
+	if err != nil {
+		return "", false
+	}
+	lines := strings.SplitN(string(out), "\n", 2)
+	if len(lines) == 0 {
+		return "", false
+	}
+	// First line: "## branch...tracking" or "## branch"
+	header := lines[0]
+	if strings.HasPrefix(header, "## ") {
+		header = header[3:]
+		if idx := strings.Index(header, "..."); idx >= 0 {
+			branch = header[:idx]
+		} else {
+			branch = strings.TrimSpace(header)
+		}
+	}
+	// Any non-empty lines after the header indicate dirty state
+	if len(lines) > 1 && strings.TrimSpace(lines[1]) != "" {
+		dirty = true
+	}
+	return branch, dirty
+}
+
+// bellCooldown prevents bell spam by requiring a minimum interval between bells.
+const bellCooldown = 3 * time.Second
+
+// bell sends a terminal bell if notifications are enabled and cooldown has elapsed.
+// Writes to stderr to avoid interfering with BubbleTea's stdout management.
+func bell(m *model) {
+	if !m.notifications {
+		return
+	}
+	if time.Since(m.lastBell) < bellCooldown {
+		return
+	}
+	m.lastBell = time.Now()
+	fmt.Fprint(os.Stderr, "\a")
 }
 
 // countLines counts the number of lines in a string.

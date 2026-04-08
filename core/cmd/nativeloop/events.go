@@ -14,6 +14,22 @@ import (
 
 type agentEventMsg agent.AgentEvent
 type backendDoneMsg struct{}
+type parseErrorMsg struct {
+	raw string
+	err error
+}
+type gitStateMsg struct {
+	branch string
+	dirty  bool
+}
+
+// detectGitStateCmd runs git detection asynchronously to avoid blocking the TUI.
+func detectGitStateCmd(workdir string) tea.Cmd {
+	return func() tea.Msg {
+		branch, dirty := detectGitState(workdir)
+		return gitStateMsg{branch: branch, dirty: dirty}
+	}
+}
 
 // waitForEvent returns a tea.Cmd that blocks on the backend output channel
 // and returns the next event as a tea.Msg. This is the idiomatic BubbleTea
@@ -27,7 +43,7 @@ func waitForEvent(backend agent.ConversationBackend) tea.Cmd {
 			}
 			var event agent.AgentEvent
 			if err := json.Unmarshal([]byte(line), &event); err != nil {
-				continue // skip malformed events
+				return parseErrorMsg{raw: line, err: err}
 			}
 			return agentEventMsg(event)
 		}
@@ -85,9 +101,31 @@ func processAgentEvent(m *model, raw agentEventMsg) tea.Cmd {
 		return handleFastMode(m, e)
 	case "hook_started":
 		return handleHookStarted(m, e)
+
+	// P0.4: Handle previously-dropped event types
+	case "api_retry":
+		return handleAPIRetry(m, e)
+	case "interrupted":
+		return handleInterrupted(m, e)
+	case "compact_boundary", "pre_compact":
+		return handlePreCompact(m, e)
+	case "post_compact":
+		return handlePostCompact(m, e)
+	case "session_recovering":
+		return handleSessionRecovering(m, e)
+	case "tool_progress":
+		return handleToolProgress(m, e)
+	case "cwd_changed":
+		return handleCwdChanged(m, e)
+	case "context_window_size":
+		return handleContextWindowSize(m, e)
+	case "warning", "streaming_warning":
+		return handleWarning(m, e)
+	case "model_changed":
+		return handleModelChanged(m, e)
 	}
 
-	// Unknown event — ignore
+	// Unknown event — show in verbose mode for debugging
 	if m.verbose {
 		data, _ := json.Marshal(e)
 		m.appendActive(&displayMessage{
@@ -266,28 +304,15 @@ func handleToolEnd(m *model, e agent.AgentEvent) tea.Cmd {
 	// Enrich the summary with tool-specific metadata
 	enrichedSummary := enrichToolSummary(e.Tool, e.Summary, e.Params, m.s)
 
-	// Compute collapse state — only for tools where long output is useful to expand.
-	// Read/Write/Grep/Glob summaries are already enriched; no need to collapse.
-	// Bash output is the main candidate for collapse+expand.
+	// Compute collapse state using per-tool thresholds from tool_render.go.
 	lineCount := strings.Count(e.Summary, "\n") + 1
 	shouldCollapse := false
 	fullContent := ""
 
-	switch e.Tool {
-	case "Bash":
-		// Bash: collapse if output > 3 lines (preview shown in details)
-		if lineCount > bashPreviewLines {
-			shouldCollapse = true
-			fullContent = e.Summary
-		}
-	case "Read", "Write", "Grep", "Glob", "WebFetch", "WebSearch":
-		// These tools have enriched summaries — don't collapse
-	default:
-		// Other tools: collapse if very long
-		if lineCount > maxDiffLines {
-			shouldCollapse = true
-			fullContent = e.Summary
-		}
+	threshold := toolCollapseThreshold(e.Tool)
+	if threshold >= 0 && lineCount > threshold {
+		shouldCollapse = true
+		fullContent = e.Summary
 	}
 
 	// Try to find and replace the matching running tool
@@ -356,6 +381,7 @@ func handleApprovalRequest(m *model, e agent.AgentEvent) tea.Cmd {
 		params: e.Specifier,
 	})
 	m.state = stateApproval
+	bell(m) // notify user that approval is needed
 	return nil
 }
 
@@ -372,6 +398,7 @@ func handleQuestionRequest(m *model, e agent.AgentEvent) tea.Cmd {
 		})
 	}
 	m.state = stateQuestion
+	bell(m) // notify user that a question needs answering
 	return nil
 }
 
@@ -457,6 +484,12 @@ func handleTurnComplete(m *model, e agent.AgentEvent) tea.Cmd {
 		content: strings.Join(parts, " · "),
 	})
 
+	// Turn separator before committing to scrollback
+	m.appendActive(&displayMessage{
+		kind:      msgTurnSeparator,
+		timestamp: now(),
+	})
+
 	// Commit all active messages to terminal scrollback
 	commitCmd := m.commitActiveMsgs()
 
@@ -474,6 +507,7 @@ func handleError(m *model, e agent.AgentEvent) tea.Cmd {
 		kind:    msgError,
 		content: e.Message,
 	})
+	bell(m) // notify user of error
 	return nil
 }
 
@@ -538,6 +572,9 @@ func handleSubagentStarted(m *model, e agent.AgentEvent) tea.Cmd {
 }
 
 func handleSubagentStopped(m *model, e agent.AgentEvent) tea.Cmd {
+	// No bell here — sub-agents can finish in bursts (parallel agents).
+	// The turn_complete or approval bell covers user-actionable moments.
+
 	// Find the Agent message and mark it complete
 	idx := -1
 	if e.AgentId != "" {
@@ -701,6 +738,113 @@ func handleHookStarted(m *model, e agent.AgentEvent) tea.Cmd {
 		m.appendActive(&displayMessage{
 			kind:    msgSystem,
 			content: fmt.Sprintf("Hook: %s \u2192 %s", e.HookEvent, e.Command),
+		})
+	}
+	return nil
+}
+
+// ── P0.4: New event handlers ────────────────────────────────────────────────
+
+func handleAPIRetry(m *model, e agent.AgentEvent) tea.Cmd {
+	msg := fmt.Sprintf("⟳ Retrying API call (attempt %d/%d)", e.Attempt, e.MaxRetries)
+	if e.RetryDelayMs > 0 {
+		msg += fmt.Sprintf(" in %dms", e.RetryDelayMs)
+	}
+	if e.ErrorStatus > 0 {
+		msg += fmt.Sprintf(" [HTTP %d]", e.ErrorStatus)
+	}
+	m.appendActive(&displayMessage{kind: msgSystem, content: msg})
+	return nil
+}
+
+func handleInterrupted(m *model, e agent.AgentEvent) tea.Cmd {
+	m.flushThinking()
+	m.flushAssistantText()
+	m.stream.pendingToolIdx = -1
+	m.stream.pendingToolID = ""
+	m.appendActive(&displayMessage{kind: msgSystem, content: "Turn interrupted"})
+	commitCmd := m.commitActiveMsgs()
+	m.state = stateIdle
+	m.input.Focus()
+	// Note: waitForEvent continuation is chained by the caller (processAgentEvent
+	// return path in Update). If this is the final event before channel close,
+	// the next waitForEvent will yield backendDoneMsg, which is correct.
+	return commitCmd
+}
+
+func handlePreCompact(m *model, e agent.AgentEvent) tea.Cmd {
+	msg := "Context compaction starting"
+	if e.PreTokens > 0 {
+		msg += fmt.Sprintf(" (%s tokens)", formatNum(e.PreTokens))
+	}
+	if e.Trigger != "" {
+		msg += fmt.Sprintf(" — trigger: %s", e.Trigger)
+	}
+	m.appendActive(&displayMessage{kind: msgSystem, content: "⟳ " + msg})
+	return nil
+}
+
+func handlePostCompact(m *model, e agent.AgentEvent) tea.Cmd {
+	msg := "Context compacted"
+	if e.CompactSummary != "" {
+		msg += ": " + truncate(e.CompactSummary, 100)
+	}
+	m.appendActive(&displayMessage{kind: msgSystem, content: "✓ " + msg})
+	return nil
+}
+
+func handleSessionRecovering(m *model, e agent.AgentEvent) tea.Cmd {
+	msg := "Session recovering"
+	if e.Attempt > 0 {
+		msg += fmt.Sprintf(" (attempt %d/%d)", e.Attempt, e.MaxAttempts)
+	}
+	m.appendActive(&displayMessage{kind: msgSystem, content: "⟳ " + msg})
+	return nil
+}
+
+func handleToolProgress(m *model, e agent.AgentEvent) tea.Cmd {
+	// Update the running tool's elapsed time display in the status bar
+	if e.ToolName != "" {
+		m.stream.activeToolName = e.ToolName
+	}
+	return nil
+}
+
+func handleCwdChanged(m *model, e agent.AgentEvent) tea.Cmd {
+	if e.NewCwd != "" {
+		m.workdir = e.NewCwd
+		m.appendActive(&displayMessage{
+			kind:    msgSystem,
+			content: fmt.Sprintf("Working directory → %s", displayPath(e.NewCwd, e.OldCwd)),
+		})
+		// Detect git state asynchronously to avoid blocking the TUI
+		return detectGitStateCmd(e.NewCwd)
+	}
+	return nil
+}
+
+func handleContextWindowSize(m *model, e agent.AgentEvent) tea.Cmd {
+	if e.ContextWindow > 0 {
+		m.stats.lastContextWindow = e.ContextWindow
+	}
+	return nil
+}
+
+func handleWarning(m *model, e agent.AgentEvent) tea.Cmd {
+	msg := e.Message
+	if msg == "" {
+		msg = "Unknown warning"
+	}
+	m.appendActive(&displayMessage{kind: msgSystem, content: "⚠ " + msg})
+	return nil
+}
+
+func handleModelChanged(m *model, e agent.AgentEvent) tea.Cmd {
+	if e.Model != "" {
+		m.modelName = e.Model
+		m.appendActive(&displayMessage{
+			kind:    msgSystem,
+			content: fmt.Sprintf("Model → %s", e.Model),
 		})
 	}
 	return nil

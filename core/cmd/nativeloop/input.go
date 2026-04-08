@@ -5,15 +5,19 @@ import (
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
 	"github.com/chatml/chatml-core/permission"
 )
 
 // renderInput renders the input area: bar → input → bar (Claude Code style).
 func renderInput(m *model) string {
-	// Thin horizontal lines above and below input
-	lineColor := lipgloss.Color("#6B7280")
-	lineStyle := lipgloss.NewStyle().Foreground(lineColor)
+	// Thin horizontal lines above and below input — color from theme
+	lineStyle := m.s.borderIdle
+	switch m.state {
+	case stateRunning:
+		lineStyle = m.s.borderRunning
+	case stateApproval, stateQuestion:
+		lineStyle = m.s.borderApproval
+	}
 	topBar := lineStyle.Render(strings.Repeat("─", m.width))
 	bottomBar := lineStyle.Render(strings.Repeat("─", m.width))
 
@@ -75,7 +79,11 @@ func renderInput(m *model) string {
 	case stateSessionPicker:
 		inputLine = renderSessionPicker(m.sessionList, m.sessionSelected, m.s, m.width)
 	default:
-		inputLine = m.input.View()
+		if m.multiLineMode {
+			inputLine = m.multiLine.View() + "\n" + m.s.gray.Render("  Ctrl+Enter to send · Ctrl+E to exit multi-line")
+		} else {
+			inputLine = m.input.View()
+		}
 	}
 
 	return topBar + "\n" + inputLine + "\n" + bottomBar
@@ -128,6 +136,12 @@ func handleSlashCommand(m *model, input string) tea.Cmd {
 			if len(args) < cmd.minArgs {
 				addErrorMsg(m, "Usage: "+cmd.usage)
 				return flushPendingPrintln(m)
+			}
+			if cmd.validate != nil {
+				if err := cmd.validate(args); err != nil {
+					addErrorMsg(m, err.Error()+"\nUsage: "+cmd.usage)
+					return flushPendingPrintln(m)
+				}
 			}
 			handlerCmd = cmd.handler(m, args)
 			break
