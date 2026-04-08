@@ -84,14 +84,14 @@ function QueuedMessageItem({ message, index, total, onDelete }: {
 }
 
 export function QueuedMessageBubble({ messages, onDelete }: QueuedMessageBubbleProps) {
-  if (messages.length === 0) return null;
-
   const [sentMessages, unsentMessages] = useMemo(() => {
     const sent: QueuedMessage[] = [];
     const unsent: QueuedMessage[] = [];
     for (const m of messages) (m.sent ? sent : unsent).push(m);
     return [sent, unsent] as const;
   }, [messages]);
+
+  if (messages.length === 0) return null;
 
   return (
     <div className="space-y-2 py-2">
