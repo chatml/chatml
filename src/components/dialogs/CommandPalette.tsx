@@ -20,7 +20,7 @@ import { copyToClipboard } from '@/lib/tauri';
 import { unlinkPR } from '@/lib/api';
 import { useToast } from '@/components/ui/toast';
 import { getShortcutById, formatShortcutKeys } from '@/lib/shortcuts';
-import { buildDeduplicatedModelIds } from '@/lib/models';
+import { MODELS } from '@/lib/models';
 import type { LucideIcon } from 'lucide-react';
 import {
   // Navigation
@@ -317,8 +317,7 @@ const COMMANDS: Command[] = [
     keywords: ['model', 'switch', 'opus', 'sonnet', 'haiku', 'claude'],
     action: () => {
       const store = useSettingsStore.getState();
-      const dynamic = useAppStore.getState().supportedModels;
-      const models = buildDeduplicatedModelIds(dynamic);
+      const models: string[] = MODELS.map((m) => m.id);
       const idx = models.indexOf(store.defaultModel);
       const next = models[(idx + 1) % models.length];
       store.setDefaultModel(next);

@@ -56,13 +56,8 @@ export function getModelDescription(sdkValue: string): string | undefined {
   return catalogLookup(sdkValue)?.description;
 }
 
-/** Check whether an SDK entry is the "Default (recommended)" pseudo-model. */
-export function isDefaultRecommended(sdkDisplayName: string): boolean {
-  return /\bdefault\b/i.test(sdkDisplayName) || /\brecommended\b/i.test(sdkDisplayName);
-}
-
 // ---------------------------------------------------------------------------
-// Static fallback models (used before SDK connects)
+// Static curated models — single source of truth for the model selector
 // ---------------------------------------------------------------------------
 
 // Note: Haiku uses a dated id ('claude-haiku-4-5-20251001') that differs from
@@ -83,92 +78,14 @@ export const MODELS = [
 
 export type ModelId = (typeof MODELS)[number]['id'];
 
+export type ModelProvider = 'claude' | 'ollama';
+
 // ---------------------------------------------------------------------------
-// Deduplication
+// SDK types & static model list builder
 // ---------------------------------------------------------------------------
-
-/**
- * Deduplicate an array of objects by a given field, keeping the first occurrence.
- */
-export function deduplicateById<T extends { id: string }>(entries: T[]): T[] {
-  const seen = new Set<string>();
-  return entries.filter((entry) => {
-    if (seen.has(entry.id)) return false;
-    seen.add(entry.id);
-    return true;
-  });
-}
-
-/** Deduplicate by name, keeping the first occurrence. */
-export function deduplicateByName<T extends { name: string }>(entries: T[]): T[] {
-  const seen = new Set<string>();
-  return entries.filter((entry) => {
-    if (seen.has(entry.name)) return false;
-    seen.add(entry.name);
-    return true;
-  });
-}
-
-/**
- * Extract model family key for dedup: all Opus variants → 'opus',
- * Sonnet → 'sonnet', Haiku → 'haiku'.
- * Unknown models keep their full ID as family key (no aggressive collapsing).
- */
-export function toModelFamily(id: string): string {
-  const lower = id.toLowerCase();
-  if (!lower.startsWith('claude-')) return id;
-  if (lower.includes('opus')) return 'opus';
-  if (lower.includes('sonnet')) return 'sonnet';
-  if (lower.includes('haiku')) return 'haiku';
-  return id;
-}
-
-/**
- * Deduplicate by model family (opus/sonnet/haiku), keeping the best entry
- * per family. When two entries share a family, prefers the one with a catalog
- * match. This catches variants with different IDs AND different display names
- * that belong to the same family (e.g., claude-opus-4 vs claude-opus-4-6).
- */
-export function deduplicateByFamily<T extends { id: string }>(entries: T[]): T[] {
-  const familyMap = new Map<string, T>();
-  for (const entry of entries) {
-    const family = toModelFamily(entry.id);
-    if (!familyMap.has(family)) {
-      familyMap.set(family, entry);
-    } else {
-      // Prefer the entry that matches the catalog (has a canonical display name)
-      const existing = familyMap.get(family)!;
-      if (!catalogLookup(existing.id) && catalogLookup(entry.id)) {
-        familyMap.set(family, entry);
-      }
-    }
-  }
-  return entries.filter((entry) => familyMap.get(toModelFamily(entry.id)) === entry);
-}
-
-/** Tier rank for sorting: Opus=0, Sonnet=1, Haiku=2, unknown cloud=3, local=4+ */
-function modelTierRank(id: string): number {
-  const family = toModelFamily(id);
-  if (family === 'opus') return 0;
-  if (family === 'sonnet') return 1;
-  if (family === 'haiku') return 2;
-  const lower = id.toLowerCase();
-  if (lower.startsWith('gemma-')) return 4;
-  if (lower.startsWith('ollama/')) return 5;
-  return 3;
-}
-
-/** Sort model entries by tier (Opus → Sonnet → Haiku), then by ID for stability. */
-export function sortModelEntries<T extends { id: string }>(entries: T[]): T[] {
-  return [...entries].sort((a, b) => {
-    const rankDiff = modelTierRank(a.id) - modelTierRank(b.id);
-    if (rankDiff !== 0) return rankDiff;
-    return a.id.localeCompare(b.id);
-  });
-}
 
 /** SDK model entry as reported by the agent. */
-interface SdkModelEntry {
+export interface SdkModelEntry {
   value: string;
   displayName: string;
   supportsAdaptiveThinking?: boolean;
@@ -177,27 +94,56 @@ interface SdkModelEntry {
   supportsFastMode?: boolean;
 }
 
+/** Entry returned by buildStaticModelList — the curated model list enriched with SDK capabilities. */
+export interface StaticModelEntry {
+  id: string;
+  name: string;
+  description: string;
+  provider: ModelProvider;
+  supportsThinking: boolean;
+  supportsEffort: boolean;
+  supportedEffortLevels?: ('low' | 'medium' | 'high' | 'max')[];
+  supportsFastMode: boolean;
+}
+
+/** Merge SDK-reported capabilities into a static model entry's defaults. */
+function enrichWithSdk(staticModel: (typeof MODELS)[number], sdkModel?: SdkModelEntry) {
+  return {
+    supportsThinking: sdkModel?.supportsAdaptiveThinking ?? staticModel.supportsThinking,
+    supportsEffort: sdkModel?.supportsEffort ?? staticModel.supportsEffort,
+    supportedEffortLevels: sdkModel?.supportedEffortLevels,
+    supportsFastMode: sdkModel?.supportsFastMode ?? staticModel.supportsFastMode,
+  };
+}
+
 /**
- * Build a deduplicated model ID list from SDK-reported models.
- * Filters out the "Default (recommended)" pseudo-model, deduplicates by ID,
- * then by resolved display name, then by model family (opus/sonnet/haiku).
- * Falls back to static MODELS when no SDK models are available.
+ * Build the model list from the static catalog, enriched with SDK-reported capabilities.
+ * The static MODELS array is always the source of truth for which models appear in the UI.
+ * SDK data is only used to update capability flags (supportsEffort, supportsFastMode, etc.).
  */
-export function buildDeduplicatedModelIds(dynamic: SdkModelEntry[]): string[] {
-  if (dynamic.length === 0) return MODELS.map((m) => m.id);
-  const entries = deduplicateById(
-    dynamic
-      .filter((m) => !isDefaultRecommended(m.displayName))
-      .map((m) => ({ id: m.value, name: toShortDisplayName(m.value, m.displayName) }))
-  );
-  return deduplicateByFamily(deduplicateByName(entries)).map((e) => e.id);
+export function buildStaticModelList(sdkModels: SdkModelEntry[]): StaticModelEntry[] {
+  // Index SDK models by base ID for O(1) lookup
+  const sdkByBase = new Map<string, SdkModelEntry>();
+  for (const m of sdkModels) {
+    const base = toBaseId(m.value);
+    if (!sdkByBase.has(base)) sdkByBase.set(base, m);
+  }
+
+  return MODELS.map((staticModel) => {
+    const sdk = sdkByBase.get(toBaseId(staticModel.id));
+    return {
+      id: staticModel.id,
+      name: staticModel.name,
+      description: staticModel.description,
+      provider: staticModel.provider,
+      ...enrichWithSdk(staticModel, sdk),
+    };
+  });
 }
 
 // ---------------------------------------------------------------------------
 // Model entry types
 // ---------------------------------------------------------------------------
-
-export type ModelProvider = 'claude' | 'ollama';
 
 /** Model entry used for UI model selectors and keyboard shortcut cycling. */
 export interface ModelEntry {
@@ -242,36 +188,24 @@ export function isLocalModel(modelId: string): boolean {
 // ---------------------------------------------------------------------------
 
 /**
- * Get model info by ID. Checks SDK-reported dynamic models first,
- * falls back to hardcoded MODELS for offline/pre-connection state.
+ * Get model info by ID. Starts from the static catalog and enriches with
+ * SDK-reported capabilities when available. Uses toBaseId() matching so
+ * SDK variants (e.g. claude-opus-4-6[1m]) resolve to catalog entries.
  */
 export function getModelInfo(modelId: string): DynamicModelInfo | undefined {
-  const dynamic = useAppStore.getState().supportedModels;
-  const sdkModel = dynamic.find((m) => m.value === modelId);
-  if (sdkModel) {
-    return {
-      id: sdkModel.value,
-      name: toShortDisplayName(sdkModel.value, sdkModel.displayName),
-      description: getModelDescription(sdkModel.value),
-      provider: isLocalModel(sdkModel.value) ? 'ollama' : 'claude',
-      supportsThinking: sdkModel.supportsAdaptiveThinking ?? !isLocalModel(sdkModel.value),
-      supportsEffort: sdkModel.supportsEffort ?? false,
-      supportedEffortLevels: sdkModel.supportedEffortLevels,
-      supportsFastMode: sdkModel.supportsFastMode,
-    };
-  }
-
-  // Fallback to hardcoded
-  const staticModel = MODELS.find((m) => m.id === modelId);
+  // Match by base ID so variant suffixes ([1m], -20YYMMDD) resolve correctly
+  const baseId = toBaseId(modelId);
+  const staticModel = MODELS.find((m) => toBaseId(m.id) === baseId);
   if (staticModel) {
+    // Enrich with SDK capabilities when available
+    const dynamic = useAppStore.getState().supportedModels;
+    const sdkModel = dynamic.find((m) => toBaseId(m.value) === baseId);
     return {
       id: staticModel.id,
       name: staticModel.name,
       description: staticModel.description,
       provider: staticModel.provider,
-      supportsThinking: staticModel.supportsThinking,
-      supportsEffort: staticModel.supportsEffort,
-      supportsFastMode: staticModel.supportsFastMode,
+      ...enrichWithSdk(staticModel, sdkModel),
     };
   }
 

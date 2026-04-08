@@ -23,7 +23,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { AlertCircle, Info } from 'lucide-react';
-import { MODELS as SHARED_MODELS, toShortDisplayName, getModelDescription, isDefaultRecommended, deduplicateById, deduplicateByName, sortModelEntries, isLocalModel } from '@/lib/models';
+import { buildStaticModelList, isLocalModel } from '@/lib/models';
 import type { ScheduledTask, ScheduledTaskFrequency } from '@/lib/types';
 
 interface ScheduledTaskDialogProps {
@@ -62,15 +62,7 @@ export function ScheduledTaskDialog({ open, onOpenChange, editTask }: ScheduledT
   const { createTask, updateTask } = useScheduledTaskStore();
 
   // Exclude local models from scheduled tasks — Ollama may not be running on schedule.
-  const modelOptions = useMemo(() => {
-    if (dynamicModels.length === 0) {
-      return SHARED_MODELS.filter((m) => !isLocalModel(m.id)).map((m) => ({ id: m.id, name: m.name, description: m.description }));
-    }
-    const entries = dynamicModels
-      .filter((m) => !isDefaultRecommended(m.displayName) && !isLocalModel(m.value))
-      .map((m) => ({ id: m.value, name: toShortDisplayName(m.value, m.displayName), description: getModelDescription(m.value) }));
-    return sortModelEntries(deduplicateByName(deduplicateById(entries)));
-  }, [dynamicModels]);
+  const modelOptions = useMemo(() => buildStaticModelList(dynamicModels).filter((m) => !isLocalModel(m.id)), [dynamicModels]);
 
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
