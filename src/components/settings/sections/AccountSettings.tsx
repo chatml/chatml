@@ -9,7 +9,7 @@ import { useAuthStore } from '@/stores/authStore';
 import { useLinearAuthStore } from '@/stores/linearAuthStore';
 import { logout } from '@/lib/auth';
 import { startLinearOAuthFlow, linearLogout, cancelLinearOAuthFlow } from '@/lib/linearAuth';
-import { checkGhAuthStatus, openUrlInBrowser, type GhCliStatus } from '@/lib/tauri';
+import { checkGhAuthStatus, getCachedGhAuthStatus, openUrlInBrowser, type GhCliStatus } from '@/lib/tauri';
 import { getGitHubPersonalToken, setGitHubPersonalToken } from '@/lib/api';
 import { useToast } from '@/components/ui/toast';
 import { SettingsRow } from '../shared/SettingsRow';
@@ -60,9 +60,10 @@ export function AccountSettings() {
     }
   };
 
-  // GitHub CLI status
-  const [ghStatus, setGhStatus] = useState<GhCliStatus | null>(null);
-  const [ghLoading, setGhLoading] = useState(true);
+  // GitHub CLI status — use cached value for instant render on revisit
+  const cached = getCachedGhAuthStatus();
+  const [ghStatus, setGhStatus] = useState<GhCliStatus | null>(cached);
+  const [ghLoading, setGhLoading] = useState(!cached);
   const [ghError, setGhError] = useState(false);
 
   const recheckGhStatus = useCallback(async () => {
@@ -80,6 +81,13 @@ export function AccountSettings() {
   }, []);
 
   useEffect(() => {
+    if (getCachedGhAuthStatus()) {
+      // Cache is fresh — do a background refresh without loading spinner
+      checkGhAuthStatus().then((status) => {
+        if (status) setGhStatus(status);
+      });
+      return;
+    }
     recheckGhStatus();
   }, [recheckGhStatus]);
 

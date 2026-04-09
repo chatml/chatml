@@ -506,67 +506,72 @@ pub struct GhCliStatus {
 
 /// Check GitHub CLI installation and authentication status.
 /// Uses the cached login shell PATH from AppState, falling back to resolving it fresh.
+/// Runs subprocess work on a blocking thread to avoid stalling the main thread.
 #[tauri::command]
-pub fn check_gh_auth_status(state: State<'_, Arc<AppState>>) -> GhCliStatus {
+pub async fn check_gh_auth_status(state: State<'_, Arc<AppState>>) -> Result<GhCliStatus, String> {
     let user_path = state
         .get_resolved_user_path()
         .unwrap_or_else(sidecar::resolve_user_path);
 
-    // Check if gh is installed
-    let version_output = Command::new("gh")
-        .args(["--version"])
-        .env("PATH", &user_path)
-        .output();
-
-    let version = match version_output {
-        Ok(output) if output.status.success() => {
-            let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
-            // Parse version from "gh version 2.40.1 (2024-01-01)" format
-            stdout
-                .split_whitespace()
-                .find(|s| {
-                    s.starts_with('v') || s.chars().next().is_some_and(|c| c.is_ascii_digit())
-                })
-                .map(|v| v.trim_start_matches('v').to_string())
-        }
-        _ => {
-            return GhCliStatus {
-                installed: false,
-                version: None,
-                authenticated: false,
-                username: None,
-            };
-        }
-    };
-
-    // Check authentication: exit code 0 = authenticated, 1 = not
-    let auth_output = Command::new("gh")
-        .args(["auth", "status"])
-        .env("PATH", &user_path)
-        .output();
-
-    let authenticated = matches!(&auth_output, Ok(output) if output.status.success());
-
-    // Get username reliably via the API (works regardless of gh output format)
-    let username = if authenticated {
-        Command::new("gh")
-            .args(["api", "user", "--jq", ".login"])
+    tauri::async_runtime::spawn_blocking(move || {
+        // Check if gh is installed
+        let version_output = Command::new("gh")
+            .args(["--version"])
             .env("PATH", &user_path)
-            .output()
-            .ok()
-            .filter(|o| o.status.success())
-            .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
-            .filter(|s| !s.is_empty())
-    } else {
-        None
-    };
+            .output();
 
-    GhCliStatus {
-        installed: true,
-        version,
-        authenticated,
-        username,
-    }
+        let version = match version_output {
+            Ok(output) if output.status.success() => {
+                let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                // Parse version from "gh version 2.40.1 (2024-01-01)" format
+                stdout
+                    .split_whitespace()
+                    .find(|s| {
+                        s.starts_with('v') || s.chars().next().is_some_and(|c| c.is_ascii_digit())
+                    })
+                    .map(|v| v.trim_start_matches('v').to_string())
+            }
+            _ => {
+                return GhCliStatus {
+                    installed: false,
+                    version: None,
+                    authenticated: false,
+                    username: None,
+                };
+            }
+        };
+
+        // Check authentication: exit code 0 = authenticated, 1 = not
+        let auth_output = Command::new("gh")
+            .args(["auth", "status"])
+            .env("PATH", &user_path)
+            .output();
+
+        let authenticated = matches!(&auth_output, Ok(output) if output.status.success());
+
+        // Get username reliably via the API (works regardless of gh output format)
+        let username = if authenticated {
+            Command::new("gh")
+                .args(["api", "user", "--jq", ".login"])
+                .env("PATH", &user_path)
+                .output()
+                .ok()
+                .filter(|o| o.status.success())
+                .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+                .filter(|s| !s.is_empty())
+        } else {
+            None
+        };
+
+        GhCliStatus {
+            installed: true,
+            version,
+            authenticated,
+            username,
+        }
+    })
+    .await
+    .map_err(|e| format!("gh status check failed: {}", e))
 }
 
 /// Count lines in a text file
