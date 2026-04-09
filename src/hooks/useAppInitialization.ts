@@ -241,9 +241,9 @@ export function useAppInitialization() {
         const allSessions = sessionDTOs.map(s => mapSessionDTO(s));
         setSessions(allSessions);
 
-        // Register all sessions with the global file watcher for event routing
+        // Register non-archived sessions with the global file watcher for event routing
         for (const session of allSessions) {
-          if (session.worktreePath) {
+          if (session.worktreePath && !session.archived) {
             const dirName = getSessionDirName(session.worktreePath);
             if (dirName) {
               registerSession(dirName, session.id);
