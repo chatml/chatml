@@ -1,4 +1,5 @@
 {
   "title": "Integrations",
-  "pages": ["github", "linear", "mcp-servers", "anthropic-api"]
+  "defaultOpen": false,
+  "pages": ["github", "linear", "mcp-servers", "anthropic-api", "sentry"]
 }

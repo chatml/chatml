@@ -3,6 +3,9 @@ title: Skills
 description: Specialized prompt templates that augment Claude's capabilities.
 ---
 
+import { Callout } from 'fumadocs-ui/components/callout';
+import { Tab, Tabs } from 'fumadocs-ui/components/tabs';
+
 Skills are specialized prompt templates that give Claude domain-specific expertise for particular types of work.
 
 ## How Skills Work
@@ -23,7 +26,8 @@ Skills can be installed and uninstalled per-session as needed.
 
 ChatML ships with 19 built-in skills across four categories:
 
-### Development
+<Tabs items={['Development', 'Security', 'Documentation', 'Version Control']}>
+<Tab value="Development">
 
 | Skill | Description |
 |-------|-------------|
@@ -35,14 +39,16 @@ ChatML ships with 19 built-in skills across four categories:
 | **Refactoring Guide** | Safe, phased refactoring strategies |
 | **Performance Optimization** | Profiling and bottleneck identification |
 
-### Security
+</Tab>
+<Tab value="Security">
 
 | Skill | Description |
 |-------|-------------|
 | **Security Audit** | OWASP Top 10 vulnerability scanning |
 | **Dependency Review** | License, maintenance, and security evaluation |
 
-### Documentation
+</Tab>
+<Tab value="Documentation">
 
 | Skill | Description |
 |-------|-------------|
@@ -52,7 +58,8 @@ ChatML ships with 19 built-in skills across four categories:
 | **Technical Writing** | Documentation authoring |
 | **Project Scaffolding** | New project setup guidance |
 
-### Version Control
+</Tab>
+<Tab value="Version Control">
 
 | Skill | Description |
 |-------|-------------|
@@ -61,3 +68,21 @@ ChatML ships with 19 built-in skills across four categories:
 | **Branch Management** | Naming, merging, and cleanup |
 | **Code Migration** | Framework and library migration |
 | **Accessibility Audit** | WCAG compliance checking |
+
+</Tab>
+</Tabs>
+
+## Slash Commands
+
+In the chat input, type `/` to access slash commands. These are quick shortcuts to common actions:
+
+- `/review` — Start a code review
+- `/commit` — Create a git commit
+- `/pr` — Create a pull request
+- And more, based on your installed skills
+
+Commands are filtered and scored as you type, showing the best matches first. Each command shows its description and category.
+
+<Callout type="info">
+Slash commands and skills work together — installing a skill may add new slash commands to your palette.
+</Callout>

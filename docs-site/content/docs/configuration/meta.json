@@ -1,4 +1,12 @@
 {
   "title": "Configuration",
-  "pages": ["settings", "keyboard-shortcuts", "workspace-config", "pr-templates"]
+  "defaultOpen": false,
+  "pages": [
+    "settings",
+    "keyboard-shortcuts",
+    "workspace-config",
+    "pr-templates",
+    "notifications",
+    "claude-md"
+  ]
 }

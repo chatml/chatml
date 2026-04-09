@@ -1,0 +1,48 @@
+---
+title: Sub-Agents
+description: Parallel AI task execution through spawned sub-agent processes.
+---
+
+import { Callout } from 'fumadocs-ui/components/callout';
+
+When Claude encounters tasks that can be parallelized, it can spawn **sub-agents** — independent AI processes that work on separate subtasks simultaneously.
+
+## How Sub-Agents Work
+
+During a conversation, Claude may determine that a task can be broken into independent pieces. For example, when asked to refactor three unrelated modules, Claude can spawn a sub-agent for each module instead of processing them sequentially.
+
+Each sub-agent:
+
+- Runs as an independent process with its own context
+- Has full access to the session's worktree and tools
+- Reports progress back to the parent conversation
+- Completes independently of other sub-agents
+
+## Tracking Sub-Agents
+
+When sub-agents are active, the conversation UI shows:
+
+- **Sub-agent group** — A visual container showing all spawned sub-agents
+- **Individual progress** — Each sub-agent displays its current status and tool calls
+- **Completion status** — See which sub-agents have finished and which are still working
+
+Sub-agents appear inline in the conversation, so you can follow the parallel work as it happens.
+
+## Use Cases
+
+Sub-agents are most effective for:
+
+- **Multi-file refactoring** — Updating several independent modules in parallel
+- **Research tasks** — Searching different parts of the codebase simultaneously
+- **Test writing** — Creating tests for multiple components at once
+- **Code review** — Reviewing different files in parallel
+
+<Callout type="warn">
+Sub-agents increase throughput but also increase cost, since multiple Claude instances run simultaneously. Each sub-agent consumes its own tokens. Monitor your spending via the [Spend Tracker](/docs/core-concepts/mission-control) and set [budget controls](/docs/ai-agent/budget-controls) accordingly.
+</Callout>
+
+## Limitations
+
+- Sub-agents share the same worktree, so they should work on independent files to avoid conflicts
+- The parent agent coordinates sub-agent results after completion
+- Sub-agent spawning is decided by Claude based on task structure — you don't trigger it manually

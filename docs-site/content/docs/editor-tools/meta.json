@@ -1,0 +1,12 @@
+{
+  "title": "Editor & Tools",
+  "defaultOpen": false,
+  "pages": [
+    "file-browser-editor",
+    "terminal",
+    "file-mentions",
+    "command-palette",
+    "conversation-search",
+    "voice-dictation"
+  ]
+}

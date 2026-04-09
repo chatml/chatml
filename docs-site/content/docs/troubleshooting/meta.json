@@ -1,4 +1,5 @@
 {
-  "title": "Troubleshooting",
+  "title": "Troubleshooting & Support",
+  "defaultOpen": false,
   "pages": ["common-issues", "faq"]
 }

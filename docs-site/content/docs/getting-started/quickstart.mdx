@@ -3,7 +3,12 @@ title: Quick Start
 description: Set up your API key, add a workspace, and create your first AI-powered coding session.
 ---
 
-## 1. Configure Your API Key
+import { Callout } from 'fumadocs-ui/components/callout';
+import { Steps, Step } from 'fumadocs-ui/components/steps';
+
+<Steps>
+<Step>
+## Configure Your API Key
 
 ChatML needs an Anthropic API key to access Claude.
 
@@ -12,8 +17,9 @@ ChatML needs an Anthropic API key to access Claude.
 3. The key is validated automatically and stored encrypted (AES-256-GCM)
 
 Don't have an API key? [Get one from Anthropic Console](https://console.anthropic.com/).
-
-## 2. Add a Workspace
+</Step>
+<Step>
+## Add a Workspace
 
 A workspace is a git repository you want to work with.
 
@@ -21,8 +27,9 @@ A workspace is a git repository you want to work with.
 2. Browse to your repository folder
 3. ChatML detects the git configuration (default branch, remotes)
 4. Your repository appears in the sidebar
-
-## 3. Create a Session
+</Step>
+<Step>
+## Create a Session
 
 Sessions are isolated environments for AI tasks.
 
@@ -32,33 +39,37 @@ Sessions are isolated environments for AI tasks.
 4. ChatML creates a git worktree and branch for this session
 
 Each session gets its own working copy of your code, so you can run multiple tasks in parallel without conflicts.
-
-## 4. Start a Conversation
+</Step>
+<Step>
+## Start a Conversation
 
 1. Type your request in the message input
 2. Press **Enter** to send
 3. Watch Claude work in real time — you'll see file reads, edits, and command execution as they happen
-
-### Example Prompts
-
-Try these to get started:
-
-- "Add a health check endpoint to the API"
-- "Write unit tests for the authentication module"
-- "Refactor the database queries to use prepared statements"
-- "Review the code in this session and suggest improvements"
-
-## 5. Review and Create a PR
+</Step>
+<Step>
+## Review and Create a PR
 
 When you're happy with the changes:
 
 1. Start a **Review** conversation to get structured code feedback
 2. Ask Claude to create a pull request
 3. Track PR status directly in ChatML
+</Step>
+</Steps>
+
+<Callout title="Example Prompts">
+Try these to get started:
+
+- "Add a health check endpoint to the API"
+- "Write unit tests for the authentication module"
+- "Refactor the database queries to use prepared statements"
+- "Review the code in this session and suggest improvements"
+</Callout>
 
 ## Next Steps
 
-- Learn about [Workspaces](/docs/core-concepts/workspaces) and [Sessions](/docs/core-concepts/sessions) in depth
-- Explore [Skills](/docs/features/skills) to augment Claude's capabilities
+- Learn about [Workspaces](/docs/core-concepts/workspaces) and [Sessions](/docs/core-concepts/sessions-worktrees) in depth
+- Explore [Skills](/docs/ai-agent/skills) to augment Claude's capabilities
 - Set up [GitHub integration](/docs/integrations/github) for PR and CI features
-- Configure [budget controls](/docs/features/budget-controls) to manage costs
+- Configure [budget controls](/docs/ai-agent/budget-controls) to manage costs

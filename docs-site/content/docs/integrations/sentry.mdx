@@ -1,0 +1,41 @@
+---
+title: Sentry
+description: Connect Sentry for error tracking context in AI sessions.
+---
+
+import { Steps, Step } from 'fumadocs-ui/components/steps';
+
+Sentry integration brings error tracking context directly into your AI coding sessions, helping Claude understand and fix production issues.
+
+## Connecting Sentry
+
+<Steps>
+<Step>
+### Open Account Settings
+
+Go to **Settings** (`Cmd+,`) > **Account** > **Sentry**.
+</Step>
+<Step>
+### Authenticate
+
+Click **Connect Sentry** and authorize ChatML in your browser. ChatML receives the authorization via the `chatml://` deep link.
+</Step>
+</Steps>
+
+## Features
+
+Once connected:
+
+- **Issue context** — Sentry error details are available to Claude via MCP tools, giving the AI context about production issues
+- **Error analysis** — Ask Claude to investigate Sentry issues and suggest fixes with full stack trace visibility
+- **Issue search** — Search and browse Sentry issues from within ChatML
+
+## Use Cases
+
+- "Look at the latest Sentry errors and fix the most critical one"
+- "This Sentry issue keeps recurring — find the root cause"
+- "Check if our recent changes introduced any new errors in Sentry"
+
+## Disconnecting
+
+Go to **Settings > Account > Sentry** and click **Disconnect** to remove the integration.

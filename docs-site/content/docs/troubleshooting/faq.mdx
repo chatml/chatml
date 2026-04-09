@@ -39,7 +39,7 @@ Yes. You can create a session from an existing pull request or branch. ChatML ch
 
 ### How do I control costs?
 
-Use [budget controls](/docs/features/budget-controls) to set cost limits, turn limits, and thinking token budgets per conversation.
+Use [budget controls](/docs/ai-agent/budget-controls) to set cost limits, turn limits, and thinking token budgets per conversation.
 
 ### What is Extended Thinking?
 
@@ -47,7 +47,7 @@ Extended Thinking lets Claude reason through complex problems before responding.
 
 ### What is Plan Mode?
 
-[Plan Mode](/docs/features/plan-mode) puts Claude in a read-only state where it researches and designs an approach before making any changes. You review and approve the plan before Claude executes it.
+[Plan Mode](/docs/ai-agent/plan-mode) puts Claude in a read-only state where it researches and designs an approach before making any changes. You review and approve the plan before Claude executes it.
 
 ## Integrations
 
@@ -58,3 +58,29 @@ No. GitHub integration is optional. You can use ChatML for AI-assisted coding wi
 ### Can I use custom MCP servers?
 
 Yes. ChatML supports custom [MCP servers](/docs/integrations/mcp-servers) with stdio, SSE, or HTTP transport. Configure them in Settings or via a `.mcp.json` file in your repository.
+
+## Features
+
+### What is Mission Control?
+
+[Mission Control](/docs/core-concepts/mission-control) is a dashboard that gives you visibility across all your sessions — an Attention Queue for items needing action, a Live Activity feed, and a Spend Tracker for cost monitoring.
+
+### What are Sub-Agents?
+
+When Claude encounters tasks that can be parallelized, it can spawn [sub-agents](/docs/ai-agent/sub-agents) — independent AI processes that work on separate subtasks simultaneously. This is automatic and cost-aware.
+
+### Can I use voice dictation?
+
+Yes. ChatML supports macOS speech-to-text via the microphone icon in the chat input. All processing happens on-device using macOS's built-in speech recognition. See [Voice Dictation](/docs/editor-tools/voice-dictation).
+
+### What is CLAUDE.md?
+
+[CLAUDE.md](/docs/configuration/claude-md) is a special file you can place in your repository root to give Claude persistent, project-level instructions about coding conventions, architecture, and standards.
+
+### How do @ mentions work?
+
+Type `@` in the chat input to search and reference files from your session's worktree. The file content is included in your message as context. See [File @ Mentions](/docs/editor-tools/file-mentions).
+
+### Does ChatML support deep links?
+
+Yes. ChatML registers the `chatml://` protocol, used for OAuth callbacks (GitHub, Linear, Sentry) and for opening specific sessions or workspaces from external links.

@@ -3,6 +3,12 @@ title: Introduction
 description: Welcome to ChatML — the AI-native IDE for software development with Claude.
 ---
 
+import { Callout } from 'fumadocs-ui/components/callout';
+
+<Callout type="info" title="What's New">
+Check out the [latest updates](/docs/changelog/whats-new) including Mission Control Dashboard, Voice Dictation, and File @ Mentions.
+</Callout>
+
 ## What is ChatML?
 
 ChatML is a native macOS desktop application that transforms AI-assisted software development from a chat-and-paste workflow into an integrated development environment. It gives Claude direct access to your codebase through isolated git worktrees, enabling multiple AI-driven tasks to run in parallel without interference.
@@ -18,31 +24,31 @@ Traditional AI coding assistants require you to copy code into a chat, wait for 
 - **Code review** — Get structured code reviews with inline comments and severity levels
 - **PR management** — Create and track pull requests directly from sessions
 
-## Key Features
-
-| Feature | Description |
-|---------|-------------|
-| **Sessions** | Isolated git worktrees for parallel AI tasks |
-| **Code Editor** | Monaco editor with diff view and syntax highlighting |
-| **Code Review** | Structured reviews with inline comments |
-| **Pull Requests** | Create and track PRs from sessions |
-| **Terminal** | Built-in terminal per session |
-| **Skills** | 19+ specialized prompt templates |
-| **Plan Mode** | AI plans before executing, with approval flow |
-| **Budget Controls** | Set cost, turn, and thinking limits |
-| **CI/CD Monitoring** | GitHub Actions integration |
-| **Linear Integration** | Issue tracking and context |
-
-## Getting Started
+## Explore the Documentation
 
 <Cards>
-  <Card title="Installation" href="/docs/getting-started/installation">
-    Download and install ChatML on macOS
-  </Card>
-  <Card title="Quick Start" href="/docs/getting-started/quickstart">
-    Set up your API key and create your first session
+  <Card title="Getting Started" href="/docs/getting-started/installation">
+    Install ChatML, configure your API key, and create your first session.
   </Card>
   <Card title="Core Concepts" href="/docs/core-concepts/workspaces">
-    Understand workspaces, sessions, and conversations
+    Understand workspaces, sessions, worktrees, and Mission Control.
+  </Card>
+  <Card title="AI Agent" href="/docs/ai-agent/ai-chat">
+    Chat with Claude, use extended thinking, plan mode, skills, and sub-agents.
+  </Card>
+  <Card title="Editor & Tools" href="/docs/editor-tools/file-browser-editor">
+    File browser, terminal, voice dictation, and command palette.
+  </Card>
+  <Card title="Code Review & PRs" href="/docs/code-review-prs/code-review">
+    Structured code reviews, PR creation, and git integration.
+  </Card>
+  <Card title="Integrations" href="/docs/integrations/github">
+    GitHub, Linear, MCP servers, Anthropic API, and Sentry.
+  </Card>
+  <Card title="Configuration" href="/docs/configuration/settings">
+    Settings, keyboard shortcuts, notifications, and CLAUDE.md.
+  </Card>
+  <Card title="Troubleshooting" href="/docs/troubleshooting/common-issues">
+    Common issues and frequently asked questions.
   </Card>
 </Cards>

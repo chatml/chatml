@@ -3,65 +3,78 @@ title: Settings
 description: Complete guide to ChatML's settings and configuration options.
 ---
 
+import { Tab, Tabs } from 'fumadocs-ui/components/tabs';
+
 Access settings with `Cmd+,` or from the command palette.
 
-## General
+<Tabs items={['General', 'Appearance', 'AI', 'Git', 'Review', 'Account', 'Advanced']}>
+<Tab value="General">
 
 | Setting | Description | Default |
 |---------|-------------|---------|
 | Workspaces Base Directory | Where session worktrees are stored | `~/Library/Application Support/ChatML/workspaces` |
 
-## Appearance
+</Tab>
+<Tab value="Appearance">
 
 | Setting | Description |
 |---------|-------------|
 | Theme | Light, Dark, or System |
 | Font Size | Code and UI font sizing |
+| Sound Effects | Enable/disable notification and completion sounds |
 
-## AI
+</Tab>
+<Tab value="AI">
 
 | Setting | Description |
 |---------|-------------|
 | Model | Claude model selection (Opus, Sonnet, Haiku) |
 | Fallback Model | Model to use when primary model fails |
-| Extended Thinking | Enable/disable extended thinking |
+| Extended Thinking | Enable/disable [extended thinking](/docs/ai-agent/extended-thinking) |
 | Max Thinking Tokens | Token budget for extended thinking (default: 16,000) |
 | Max Budget (USD) | Cost limit per conversation |
 | Max Turns | Turn limit per conversation |
 
-## Git
+</Tab>
+<Tab value="Git">
 
 | Setting | Description |
 |---------|-------------|
 | Branch Prefix | How session branch names are formatted |
 | Per-Workspace Overrides | Different prefix per workspace |
 
-### Branch Prefix Options
-
+**Branch Prefix Options:**
 - **GitHub username** — `username/session-name`
 - **Custom prefix** — `feat/session-name`, `fix/session-name`, etc.
 - **None** — `session-name`
 
-## Review
+</Tab>
+<Tab value="Review">
 
 | Setting | Description |
 |---------|-------------|
 | Global Review Prompt | Custom instructions for code review conversations |
 | Per-Workspace Prompts | Override review instructions per repository |
 
-## Account
+</Tab>
+<Tab value="Account">
 
 | Setting | Description |
 |---------|-------------|
 | Anthropic API Key | Claude API access (encrypted) |
 | GitHub | OAuth connection for PR, CI, issues |
 | Linear | OAuth connection for issue tracking |
+| Sentry | OAuth connection for error tracking |
 
-## Advanced
+</Tab>
+<Tab value="Advanced">
 
 | Setting | Description |
 |---------|-------------|
 | Environment Variables | Variables passed to agent processes |
-| MCP Servers | Custom Model Context Protocol servers |
-| PR Templates | Global and per-workspace PR description templates |
-| Workspace Config | Setup scripts, run scripts, hooks |
+| MCP Servers | Custom [Model Context Protocol servers](/docs/integrations/mcp-servers) |
+| PR Templates | Global and per-workspace [PR description templates](/docs/configuration/pr-templates) |
+| Workspace Config | [Setup scripts, run scripts, hooks](/docs/configuration/workspace-config) |
+
+</Tab>
+</Tabs>

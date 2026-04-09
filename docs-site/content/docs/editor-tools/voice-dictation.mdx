@@ -1,0 +1,47 @@
+---
+title: Voice Dictation
+description: Use macOS speech-to-text to dictate messages to Claude.
+---
+
+import { Callout } from 'fumadocs-ui/components/callout';
+
+Voice Dictation lets you speak your messages to Claude instead of typing, using macOS's built-in speech recognition.
+
+## Enabling Voice Dictation
+
+Voice Dictation requires macOS speech recognition permissions:
+
+1. Click the **microphone icon** in the chat input toolbar
+2. If prompted, grant ChatML access to speech recognition in **System Settings > Privacy & Security > Speech Recognition**
+3. Once permitted, click the microphone icon again to start dictating
+
+<Callout type="info">
+Voice Dictation uses macOS's built-in speech recognition — no audio is sent to third-party services. All processing happens on your device.
+</Callout>
+
+## How It Works
+
+When dictation is active:
+
+- An animated **waveform indicator** appears showing real-time audio levels
+- Your speech is transcribed and inserted into the chat input in real time
+- Click the microphone icon again or press **Escape** to stop dictation
+- Edit the transcribed text before sending if needed
+
+## Permission States
+
+| State | Meaning |
+|-------|---------|
+| **Granted** | Ready to use — click the microphone to start |
+| **Not Determined** | First use — you'll be prompted for permission |
+| **Denied** | Permission was denied — enable in System Settings |
+| **Restricted** | Device policy prevents use |
+| **Unavailable** | macOS speech recognition not available on this device |
+
+## Tips
+
+- Speak clearly and at a normal pace for best accuracy
+- Pause briefly between sentences for better punctuation
+- You can edit the transcribed text before sending
+- Works with all conversation types (Task, Review, Chat)
+- Dictation automatically stops if you switch sessions or conversations

@@ -1,0 +1,9 @@
+{
+  "title": "Code Review & PRs",
+  "defaultOpen": false,
+  "pages": [
+    "code-review",
+    "pull-requests",
+    "git-integration"
+  ]
+}

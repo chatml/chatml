@@ -1,4 +1,5 @@
 {
   "title": "Core Concepts",
-  "pages": ["workspaces", "sessions", "conversations", "git-worktrees"]
+  "defaultOpen": false,
+  "pages": ["workspaces", "sessions-worktrees", "conversations", "mission-control"]
 }
