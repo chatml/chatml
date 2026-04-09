@@ -607,6 +607,21 @@ const (
 	RunStatusSkipped   = "skipped"
 )
 
+// SpendStats contains aggregated cost data for the dashboard spend tracker
+type SpendStats struct {
+	TodayTotal     float64            `json:"todayTotal"`
+	WeekTotal      float64            `json:"weekTotal"`
+	DailyBreakdown []DailySpend       `json:"dailyBreakdown"`
+	ByModel        map[string]float64 `json:"byModel"`
+	ByWorkspace    map[string]float64 `json:"byWorkspace"`
+}
+
+// DailySpend represents the total cost for a single day
+type DailySpend struct {
+	Date  string  `json:"date"` // "2006-01-02"
+	Total float64 `json:"total"`
+}
+
 // ComputeNextRun calculates the next scheduled run time based on frequency and schedule config.
 // Uses time.Local so schedule times are in the user's system timezone. Around DST transitions,
 // wall-clock times may shift by ±1 hour — this is acceptable for a desktop app.

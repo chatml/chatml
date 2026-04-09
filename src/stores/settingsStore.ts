@@ -47,6 +47,7 @@ export type SidebarSortBy = 'recent' | 'status' | 'priority' | 'name';
 // Content view types for Full Content Area pattern
 export type ContentView =
   | { type: 'conversation' }
+  | { type: 'dashboard' }
   | { type: 'pr-dashboard'; workspaceId?: string }
   | { type: 'branches'; workspaceId: string }
   | { type: 'repositories' }

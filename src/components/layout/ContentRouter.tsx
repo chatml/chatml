@@ -5,23 +5,20 @@ import { ErrorBoundary } from '@/components/shared/ErrorBoundary';
 import { PRDashboard } from '@/components/dashboards/PRDashboard';
 import { BranchesDashboard } from '@/components/dashboards/BranchesDashboard';
 import { RepositoriesDashboard } from '@/components/dashboards/RepositoriesDashboard';
+import { MissionControlDashboard } from '@/components/dashboards/MissionControlDashboard';
 import { SessionManager } from '@/components/session-manager';
 import { SkillsStore } from '@/components/skills/SkillsStore';
 import { ScheduledTasksDashboard } from '@/components/scheduled/ScheduledTasksDashboard';
 import { ScheduledTaskDetailView } from '@/components/scheduled/ScheduledTaskDetailView';
-import { EmptyView } from '@/components/shared/EmptyView';
 
 interface ContentRouterProps {
   selectedSessionId: string | null;
-  showLeftSidebar: boolean;
   onOpenProject: () => void;
   onCloneFromUrl: () => void;
   onGitHubRepos: () => void;
   onOpenSettings: () => void;
   onOpenShortcuts: () => void;
   onOpenWorkspaceSettings: (workspaceId: string) => void;
-  onNewSession: () => void;
-  onCreateSession: () => void;
 }
 
 /**
@@ -31,20 +28,20 @@ interface ContentRouterProps {
  */
 export function ContentRouter({
   selectedSessionId,
-  showLeftSidebar,
   onOpenProject,
   onCloneFromUrl,
   onGitHubRepos,
   onOpenSettings,
   onOpenShortcuts,
   onOpenWorkspaceSettings,
-  onNewSession,
-  onCreateSession,
 }: ContentRouterProps) {
   const contentView = useSettingsStore((s) => s.contentView);
 
   return (
     <ErrorBoundary section="FullContent">
+      {contentView.type === 'dashboard' && (
+        <MissionControlDashboard />
+      )}
       {contentView.type === 'pr-dashboard' && (
         <PRDashboard
           initialWorkspaceId={contentView.workspaceId}
@@ -63,7 +60,6 @@ export function ContentRouter({
           onOpenSettings={onOpenSettings}
           onOpenShortcuts={onOpenShortcuts}
           onOpenWorkspaceSettings={onOpenWorkspaceSettings}
-          showLeftSidebar={showLeftSidebar}
         />
       )}
       {contentView.type === 'history' && (
@@ -79,15 +75,7 @@ export function ContentRouter({
         <ScheduledTaskDetailView taskId={contentView.taskId} />
       )}
       {!selectedSessionId && contentView.type === 'conversation' && (
-        <EmptyView
-          onOpenProject={onOpenProject}
-          onCloneFromUrl={onCloneFromUrl}
-          onNewSession={onNewSession}
-          onCreateSession={onCreateSession}
-          onOpenSettings={onOpenSettings}
-          onOpenShortcuts={onOpenShortcuts}
-          showLeftSidebar={showLeftSidebar}
-        />
+        <MissionControlDashboard />
       )}
     </ErrorBoundary>
   );

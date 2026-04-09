@@ -8,11 +8,11 @@ import { buildNavigationLabel, goToBackEntry, goToForwardEntry } from '@/lib/nav
 
 import {
   MessageSquare,
-
   GitBranch,
   GitPullRequest,
   FolderGit2,
   History,
+  LayoutDashboard,
   Circle,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -29,6 +29,8 @@ function EntryIcon({ contentViewType, className }: { contentViewType: string; cl
       return <FolderGit2 className={className} />;
     case 'history':
       return <History className={className} />;
+    case 'dashboard':
+      return <LayoutDashboard className={className} />;
     default:
       return <Circle className={className} />;
   }

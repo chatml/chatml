@@ -645,15 +645,12 @@ export default function Home() {
                 ) : isFullContentView || (!selectedSessionId && contentView.type === 'conversation') ? (
                   <ContentRouter
                     selectedSessionId={selectedSessionId}
-                    showLeftSidebar={!layout.leftSidebarCollapsed}
                     onOpenProject={handleOpenProject}
                     onCloneFromUrl={() => dialogRef.current?.showCloneFromUrl()}
                     onGitHubRepos={() => dialogRef.current?.showGitHubRepos()}
                     onOpenSettings={() => dialogRef.current?.openSettings()}
                     onOpenShortcuts={() => dialogRef.current?.showShortcuts()}
                     onOpenWorkspaceSettings={(workspaceId) => dialogRef.current?.openWorkspaceSettings(workspaceId)}
-                    onNewSession={handleNewSession}
-                    onCreateSession={() => dialogRef.current?.showCreateSession()}
                   />
                 ) : (
                   // INNER GROUP: Conversation + Terminal | Right Sidebar
