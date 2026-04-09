@@ -4,6 +4,7 @@ import { useSettingsStore } from '@/stores/settingsStore';
 import { useTabStore } from '@/stores/tabStore';
 import { ENABLE_BROWSER_TABS } from '@/lib/constants';
 import { updateSession as updateSessionApi, getGitStatus } from '@/lib/api';
+import { unregisterSession, getSessionDirName } from '@/lib/tauri';
 import { expandGroupsForSession } from '@/hooks/useSidebarSessions';
 import type { ArchiveSessionDialogGitStatus } from '@/components/dialogs/ArchiveSessionDialog';
 
@@ -52,6 +53,12 @@ export function useArchiveSession(options?: {
           archived: true,
           ...(deleteBranchOnArchive ? { deleteBranch: true } : {}),
         });
+
+        // Unregister from file watcher — no need to watch archived/deleted sessions
+        if (session.worktreePath) {
+          const dirName = getSessionDirName(session.worktreePath);
+          if (dirName) unregisterSession(dirName);
+        }
 
         if (result === null) {
           // Blank session was deleted by backend (no messages)

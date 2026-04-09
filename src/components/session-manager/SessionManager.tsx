@@ -5,6 +5,7 @@ import { useAppStore } from '@/stores/appStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { navigate } from '@/lib/navigation';
 import { updateSession as updateSessionApi } from '@/lib/api';
+import { registerSession, getSessionDirName } from '@/lib/tauri';
 import { HistoryList } from './HistoryList';
 import { ArchiveSessionDialog } from '@/components/dialogs/ArchiveSessionDialog';
 import { ArchivedSessionPreviewDialog } from '@/components/dialogs/ArchivedSessionPreviewDialog';
@@ -20,6 +21,14 @@ export function SessionManager() {
   const unarchiveSession = useAppStore((s) => s.unarchiveSession);
   const { expandWorkspace } = useSettingsStore();
   const { requestArchive, dialogProps: archiveDialogProps } = useArchiveSession();
+
+  // Re-register a session with the file watcher after unarchiving
+  const reregisterWatcher = useCallback((session: WorktreeSession) => {
+    if (session.worktreePath) {
+      const dirName = getSessionDirName(session.worktreePath);
+      if (dirName) registerSession(dirName, session.id);
+    }
+  }, []);
 
   // Preview dialog state
   const [previewTarget, setPreviewTarget] = useState<{ session: WorktreeSession; workspace: Workspace } | null>(null);
@@ -64,6 +73,7 @@ export function SessionManager() {
         try {
           await updateSessionApi(workspaceId, sessionId, { archived: false });
           unarchiveSession(sessionId);
+          reregisterWatcher(session);
         } catch (error) {
           console.error('Failed to unarchive session:', error);
           return;
@@ -76,7 +86,7 @@ export function SessionManager() {
         contentView: { type: 'conversation' },
       });
     },
-    [sessions, expandWorkspace, unarchiveSession]
+    [sessions, expandWorkspace, unarchiveSession, reregisterWatcher]
   );
 
   // Handle archive session
@@ -110,11 +120,12 @@ export function SessionManager() {
         await updateSessionApi(session.workspaceId, sessionId, { archived: false });
         // Update local store
         unarchiveSession(sessionId);
+        reregisterWatcher(session);
       } catch (error) {
         console.error('Failed to unarchive session:', error);
       }
     },
-    [sessions, unarchiveSession]
+    [sessions, unarchiveSession, reregisterWatcher]
   );
 
   return (

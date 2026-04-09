@@ -21,6 +21,7 @@ import { useBranchCacheStore } from '@/stores/branchCacheStore';
 import { useSlashCommandStore } from '@/stores/slashCommandStore';
 import { notifyDesktop, getConversationLabel } from '@/hooks/useDesktopNotifications';
 import { trackEvent } from '@/lib/telemetry';
+import { unregisterSession, getSessionDirName } from '@/lib/tauri';
 
 // Import extracted modules
 import { markPlanModeExited, isInPlanModeExitCooldown, clearPlanModeState } from '@/hooks/useWebSocketPlanMode';
@@ -1598,6 +1599,11 @@ export function useWebSocket(enabled: boolean = true) {
                     archived: true,
                     ...(deleteBranchOnArchive ? { deleteBranch: true } : {}),
                   }).then((result) => {
+                    // Unregister from file watcher — no need to watch archived/deleted sessions
+                    if (session.worktreePath) {
+                      const dirName = getSessionDirName(session.worktreePath);
+                      if (dirName) unregisterSession(dirName);
+                    }
                     if (result === null) {
                       getStore().removeSession(sid);
                     } else {
