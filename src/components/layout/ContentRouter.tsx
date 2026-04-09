@@ -60,7 +60,6 @@ export function ContentRouter({
           onOpenSettings={onOpenSettings}
           onOpenShortcuts={onOpenShortcuts}
           onOpenWorkspaceSettings={onOpenWorkspaceSettings}
-          showLeftSidebar={showLeftSidebar}
         />
       )}
       {contentView.type === 'history' && (
