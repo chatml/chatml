@@ -436,11 +436,32 @@ export interface GhCliStatus {
   username: string | null;
 }
 
+// Module-level cache for GH CLI status to avoid re-running 3 subprocesses on every tab visit
+let ghStatusCache: { data: GhCliStatus; timestamp: number } | null = null;
+const GH_STATUS_CACHE_TTL = 30_000; // 30 seconds
+
+/**
+ * Return cached GH CLI status if fresh (within TTL), otherwise null.
+ */
+export function getCachedGhAuthStatus(): GhCliStatus | null {
+  if (ghStatusCache && Date.now() - ghStatusCache.timestamp < GH_STATUS_CACHE_TTL) {
+    return ghStatusCache.data;
+  }
+  return null;
+}
+
 /**
  * Check GitHub CLI installation and authentication status.
+ * Caches the result for 30s to avoid repeated subprocess calls.
  */
 export async function checkGhAuthStatus(): Promise<GhCliStatus | null> {
-  return safeInvoke<GhCliStatus>('check_gh_auth_status');
+  const result = await safeInvoke<GhCliStatus>('check_gh_auth_status');
+  if (result) {
+    ghStatusCache = { data: result, timestamp: Date.now() };
+  } else {
+    ghStatusCache = null;
+  }
+  return result;
 }
 
 // ============================================

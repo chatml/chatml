@@ -30,6 +30,7 @@ vi.mock('@/lib/linearAuth', () => ({
 
 vi.mock('@/lib/tauri', () => ({
   checkGhAuthStatus: (...args: unknown[]) => mockCheckGhAuthStatus(...args),
+  getCachedGhAuthStatus: () => null,
   openUrlInBrowser: (...args: unknown[]) => mockOpenUrlInBrowser(...args),
 }));
 
