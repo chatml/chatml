@@ -1,4 +1,4 @@
-import { GitBranch, GitMerge, GitPullRequest, GitPullRequestClosed } from 'lucide-react';
+import { CircleX, GitBranch, GitMerge, GitPullRequest, GitPullRequestClosed } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface GitStatusIconProps {
@@ -15,7 +15,7 @@ export function GitStatusIcon({ prStatus, checkStatus, hasMergeConflict, classNa
 
   if (prStatus === 'closed') {
     if (checkStatus === 'failure' || hasMergeConflict) {
-      return <GitPullRequestClosed className={cn(className, 'text-text-error')} />;
+      return <CircleX className={cn(className, 'text-text-error')} />;
     }
     return <GitPullRequestClosed className={cn(className, 'text-muted-foreground')} />;
   }
@@ -23,10 +23,10 @@ export function GitStatusIcon({ prStatus, checkStatus, hasMergeConflict, classNa
   if (prStatus === 'open') {
     // Priority: failure > conflict > pending > passing
     if (checkStatus === 'failure') {
-      return <GitPullRequest className={cn(className, 'text-text-error')} />;
+      return <CircleX className={cn(className, 'text-text-error')} />;
     }
     if (hasMergeConflict) {
-      return <GitPullRequest className={cn(className, 'text-orange-400')} />;
+      return <CircleX className={cn(className, 'text-orange-400')} />;
     }
     if (checkStatus === 'pending') {
       return <GitPullRequest className={cn(className, 'text-amber-500')} />;
