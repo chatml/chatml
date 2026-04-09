@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState, useCallback } from 'react';
+import { useMemo, useState, useCallback, useEffect } from 'react';
 import { useAppStore } from '@/stores/appStore';
 import { useScheduledTaskStore } from '@/stores/scheduledTaskStore';
 import { navigate } from '@/lib/navigation';
@@ -76,6 +76,14 @@ export function AttentionQueue() {
   const workspaces = useAppStore((s) => s.workspaces);
   const taskRuns = useScheduledTaskStore((s) => s.runs);
   const [dismissed, setDismissed] = useState(() => getDismissedIds());
+
+  // Capture current time in state to satisfy React purity rules (Date.now() is impure).
+  // Refreshes every 60s so stale-session checks stay reasonably current.
+  const [now, setNow] = useState(Date.now);
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 60_000);
+    return () => clearInterval(id);
+  }, []);
 
   const wsMap = useMemo(() => {
     const m = new Map<string, string>();
@@ -181,7 +189,7 @@ export function AttentionQueue() {
       if (
         s.status === 'idle' &&
         !['done', 'cancelled'].includes(s.taskStatus) &&
-        Date.now() - new Date(s.updatedAt).getTime() > TWO_HOURS
+        now - new Date(s.updatedAt).getTime() > TWO_HOURS
       ) {
         result.push({
           id: `stale-${s.id}`,
@@ -203,7 +211,7 @@ export function AttentionQueue() {
     }
 
     // P1: Scheduled task failures (recent 24h)
-    const dayAgo = Date.now() - 24 * 60 * 60 * 1000;
+    const dayAgo = now - 24 * 60 * 60 * 1000;
     for (const runs of Object.values(taskRuns)) {
       for (const run of runs) {
         if (
@@ -234,7 +242,7 @@ export function AttentionQueue() {
     result.sort((a, b) => severityOrder[a.severity] - severityOrder[b.severity]);
 
     return result;
-  }, [sessions, wsMap, taskRuns]);
+  }, [sessions, wsMap, taskRuns, now]);
 
   const visibleItems = useMemo(
     () => items.filter((item) => !dismissed.has(item.id)),
