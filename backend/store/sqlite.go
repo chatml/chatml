@@ -3461,3 +3461,114 @@ func (s *SQLiteStore) ListReviewScorecards(ctx context.Context, sessionID string
 	}
 	return scorecards, rows.Err()
 }
+
+// GetSpendStats aggregates cost data from message run_summaries over the given period.
+// It returns totals, daily breakdown, per-model, and per-workspace cost breakdowns.
+func (s *SQLiteStore) GetSpendStats(ctx context.Context, days int) (*models.SpendStats, error) {
+	if days <= 0 {
+		days = 14
+	}
+
+	since := time.Now().AddDate(0, 0, -days)
+
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT m.run_summary, c.session_id, s.workspace_id, date(m.timestamp) as day
+		FROM messages m
+		JOIN conversations c ON m.conversation_id = c.id
+		JOIN sessions s ON c.session_id = s.id
+		WHERE m.run_summary IS NOT NULL
+		  AND m.timestamp >= ?
+		ORDER BY m.timestamp
+	`, since)
+	if err != nil {
+		return nil, fmt.Errorf("GetSpendStats query: %w", err)
+	}
+	defer rows.Close()
+
+	now := time.Now()
+	todayStr := now.Format("2006-01-02")
+	// Week start = 7 days ago at midnight
+	weekStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.Local).AddDate(0, 0, -6)
+
+	stats := &models.SpendStats{
+		ByModel:     make(map[string]float64),
+		ByWorkspace: make(map[string]float64),
+	}
+	dailyMap := make(map[string]float64)
+
+	// Track per-workspace cost by ID; resolve names in a single batch after the loop
+	costByWorkspaceID := make(map[string]float64)
+
+	for rows.Next() {
+		var runSummaryJSON string
+		var sessionID, workspaceID, day string
+		if err := rows.Scan(&runSummaryJSON, &sessionID, &workspaceID, &day); err != nil {
+			return nil, fmt.Errorf("GetSpendStats scan: %w", err)
+		}
+
+		var rs models.RunSummary
+		if err := json.Unmarshal([]byte(runSummaryJSON), &rs); err != nil {
+			continue // skip malformed entries
+		}
+		if rs.Cost <= 0 {
+			continue
+		}
+
+		// Daily breakdown
+		dailyMap[day] += rs.Cost
+
+		// Today total
+		if day == todayStr {
+			stats.TodayTotal += rs.Cost
+		}
+
+		// Week total (parse day to check)
+		if dayTime, err := time.Parse("2006-01-02", day); err == nil {
+			if !dayTime.Before(weekStart) {
+				stats.WeekTotal += rs.Cost
+			}
+		}
+
+		// Per-model breakdown from ModelUsage
+		if rs.ModelUsage != nil {
+			for model, usage := range rs.ModelUsage {
+				if usage.CostUSD > 0 {
+					stats.ByModel[model] += usage.CostUSD
+				}
+			}
+		} else if rs.Cost > 0 {
+			// Fallback: if no model usage breakdown, attribute to "unknown"
+			stats.ByModel["unknown"] += rs.Cost
+		}
+
+		costByWorkspaceID[workspaceID] += rs.Cost
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("GetSpendStats rows: %w", err)
+	}
+
+	// Batch-fetch workspace names in a single query
+	wsIDs := make([]string, 0, len(costByWorkspaceID))
+	for id := range costByWorkspaceID {
+		wsIDs = append(wsIDs, id)
+	}
+	repos, _ := s.GetReposByIDs(ctx, wsIDs)
+	for id, cost := range costByWorkspaceID {
+		name := id[:8] // truncated ID fallback
+		if repo, ok := repos[id]; ok {
+			name = repo.Name
+		}
+		stats.ByWorkspace[name] = cost
+	}
+
+	// Build sorted daily breakdown (fill in gaps with zero)
+	for i := 0; i < days; i++ {
+		d := now.AddDate(0, 0, -days+1+i).Format("2006-01-02")
+		stats.DailyBreakdown = append(stats.DailyBreakdown, models.DailySpend{
+			Date:  d,
+			Total: dailyMap[d],
+		})
+	}
+
+	return stats, nil
+}

@@ -92,6 +92,7 @@ import {
   GripVertical,
   Pin,
   PinOff,
+  LayoutDashboard,
 } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
@@ -100,6 +101,7 @@ import { TASK_STATUS_OPTIONS } from '@/lib/session-fields';
 import { TaskStatusIcon } from '@/components/icons/TaskStatusIcon';
 import { GitStatusIcon } from '@/components/icons/GitStatusIcon';
 import { useToast } from '@/components/ui/toast';
+import { useAttentionCount } from '@/hooks/useAttentionCount';
 import {
   Dialog,
   DialogContent,
@@ -146,6 +148,7 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onGitHubRepos,
   const [addMenuOpen, setAddMenuOpen] = useState(false);
   const [newSessionMenuOpen, setNewSessionMenuOpen] = useState(false);
   const { error: showError } = useToast();
+  const attentionCount = useAttentionCount();
 
   const menuHandlers = {
     open: onOpenProject,
@@ -603,6 +606,33 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onGitHubRepos,
 
       {/* Global Navigation */}
       <div className="px-1 py-2 shrink-0">
+        <div
+          className={cn(
+            "group flex items-center gap-2 px-2 py-1.5 rounded-md cursor-pointer",
+            contentView.type === 'dashboard'
+              ? "bg-surface-2 text-foreground"
+              : "hover:bg-surface-1"
+          )}
+          onClick={() => navigate({ contentView: { type: 'dashboard' } })}
+        >
+          <LayoutDashboard className={cn(
+            "w-4 h-4",
+            contentView.type === 'dashboard' ? "text-foreground" : "text-foreground/70"
+          )} />
+          <span className={cn(
+            "text-base font-medium",
+            contentView.type === 'dashboard'
+              ? "text-foreground"
+              : "text-muted-foreground group-hover:text-foreground"
+          )}>
+            Dashboard
+          </span>
+          {attentionCount > 0 && (
+            <span className="ml-auto text-[10px] font-medium text-white bg-red-500 rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1">
+              {attentionCount > 9 ? '9+' : attentionCount}
+            </span>
+          )}
+        </div>
         <div
           className={cn(
             "group flex items-center gap-2 px-2 py-1.5 rounded-md cursor-pointer",

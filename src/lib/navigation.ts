@@ -95,6 +95,8 @@ export function buildNavigationLabel(
       const ws = wsName(contentView.workspaceId);
       return ws ? `${ws} › Branches` : 'Branches';
     }
+    case 'dashboard':
+      return 'Dashboard';
     case 'repositories':
       return 'Repositories';
     case 'history':
@@ -178,6 +180,7 @@ function isEntryValid(entry: NavigationEntry): boolean {
         return workspaces.some((w) => w.id === cv.workspaceId);
       }
       return true;
+    case 'dashboard':
     case 'repositories':
     case 'history':
     case 'skills-store':

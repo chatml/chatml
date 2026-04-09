@@ -143,6 +143,9 @@ func NewRouter(ctx context.Context, s *store.SQLiteStore, hub *Hub, agentMgr *ag
 	// Sessions endpoint — returns all sessions across all workspaces in a single query
 	r.Get("/api/sessions", h.ListAllSessions)
 
+	// Dashboard stats endpoints
+	r.Get("/api/stats/spend", h.GetSpendStats)
+
 	// Scheduled tasks endpoints
 	r.Get("/api/scheduled-tasks", h.ListAllScheduledTasks)
 	r.Route("/api/scheduled-tasks/{taskId}", func(r chi.Router) {

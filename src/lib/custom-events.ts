@@ -25,6 +25,8 @@ export interface AppCustomEventMap {
   'primary-action-execute': { message: string; templateKey?: string | null; templateContent?: string; workspaceId: string };
   /** Switch the sidebar bottom panel to a specific tab (e.g. 'background' when a task starts) */
   'sidebar-switch-bottom-tab': { tab: AllBottomPanelTab; sessionId: string };
+  /** Dashboard spend data needs refresh (fired when a message with cost data arrives) */
+  'dashboard-spend-invalidate': void;
 }
 
 type EventDetail<K extends keyof AppCustomEventMap> =

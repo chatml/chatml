@@ -450,6 +450,10 @@ export function useWebSocket(enabled: boolean = true) {
           event.success !== false ? 'Task completed' : 'Task finished with errors',
           getConversationLabel(conversationId),
         );
+        // Invalidate dashboard spend data when a turn completes with cost
+        if (event.cost && event.cost > 0) {
+          dispatchAppEvent('dashboard-spend-invalidate');
+        }
         break;
       }
 

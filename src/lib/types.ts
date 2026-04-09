@@ -930,6 +930,15 @@ export interface ScheduledTask {
   updatedAt: string;
 }
 
+// SpendStats contains aggregated cost data for the dashboard spend tracker
+export interface SpendStats {
+  todayTotal: number;
+  weekTotal: number;
+  dailyBreakdown: { date: string; total: number }[];
+  byModel: Record<string, number>;
+  byWorkspace: Record<string, number>;
+}
+
 // ScheduledTaskRun represents a single execution of a scheduled task
 export interface ScheduledTaskRun {
   id: string;
