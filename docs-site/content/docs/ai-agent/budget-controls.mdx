@@ -1,7 +1,9 @@
 ---
 title: Budget Controls
-description: Manage costs with spending limits, turn caps, and thinking budgets.
+description: Manage costs with spending limits, turn caps, thinking budgets, and spend analytics.
 ---
+
+import { Callout } from 'fumadocs-ui/components/callout';
 
 Budget controls help you manage the cost and scope of AI operations.
 
@@ -30,9 +32,19 @@ Configure budget controls in **Settings > AI**:
 2. Limits apply per conversation
 3. When a limit is reached, the agent stops and notifies you
 
-## Tips
+## Spend Analytics
 
+The [Mission Control Dashboard](/docs/core-concepts/mission-control) includes a Spend Tracker that visualizes your API costs:
+
+- **14-day rolling history** — See your spending trend over two weeks
+- **Per-model breakdown** — Understand cost distribution across Claude Opus, Sonnet, and Haiku
+- **Hourly breakdown** — Identify peak usage periods
+- **Per-session costs** — See how much each active session is consuming
+
+<Callout type="warn" title="Cost Management Tips">
 - Start with conservative limits when exploring unfamiliar tasks
 - Increase limits for complex, multi-step work
 - Use turn limits to prevent runaway agent loops
 - Monitor context window usage — high utilization can affect response quality
+- Watch for sub-agent usage, which multiplies cost since parallel agents each consume tokens
+</Callout>

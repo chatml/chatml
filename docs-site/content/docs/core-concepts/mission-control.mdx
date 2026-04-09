@@ -1,0 +1,50 @@
+---
+title: Mission Control Dashboard
+description: Monitor all active sessions, spending, and items needing attention from a single dashboard.
+---
+
+import { Callout } from 'fumadocs-ui/components/callout';
+
+Mission Control is your home base in ChatML — a single dashboard that gives you visibility across all your sessions, spending, and items that need attention.
+
+## Attention Queue
+
+The Attention Queue surfaces sessions and items that need your action, organized by priority:
+
+| Priority | Color | Meaning |
+|----------|-------|---------|
+| **P0** | Red | Critical — agent errors, blocked sessions, failed CI |
+| **P1** | Orange | High — sessions waiting for approval (Plan Mode), review needed |
+| **P2-Green** | Green | Normal — completed work ready for review |
+| **P2-Blue** | Blue | Info — status updates, PR merged notifications |
+
+Each item in the queue links directly to the relevant session and conversation, so you can act on it immediately.
+
+## Live Activity
+
+The Live Activity feed shows real-time events across all your sessions:
+
+- Agent start/stop events
+- File modifications
+- Git operations (commits, pushes)
+- PR status changes
+- CI/CD run results
+
+This gives you a bird's-eye view of what's happening across all parallel sessions without switching between them.
+
+## Spend Tracker
+
+The Spend Tracker visualizes your API costs over time:
+
+- **14-day rolling history** with sparkline chart
+- **Per-model breakdown** — see spending across Claude Opus, Sonnet, and Haiku
+- **Hourly breakdown** — identify peak usage periods
+- **Current session costs** — real-time cost tracking per active session
+
+<Callout type="info">
+Pair the Spend Tracker with [budget controls](/docs/ai-agent/budget-controls) to set per-conversation cost limits and prevent unexpected spending.
+</Callout>
+
+## Accessing Mission Control
+
+Mission Control is available from the sidebar. Click the dashboard icon or use the command palette (`Cmd+K`) to navigate to it.

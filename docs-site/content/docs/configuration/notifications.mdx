@@ -1,0 +1,43 @@
+---
+title: Notifications & Sound
+description: Configure desktop notifications and sound alerts for agent activity.
+---
+
+import { Callout } from 'fumadocs-ui/components/callout';
+
+ChatML can notify you when important events happen — especially useful when running multiple sessions in parallel.
+
+## Desktop Notifications
+
+When ChatML is not in focus, macOS notifications alert you about:
+
+| Event | When |
+|-------|------|
+| **Agent completed** | Claude finishes responding in a session |
+| **Agent error** | An error occurs during agent execution |
+| **Plan ready** | Claude has a plan ready for your approval |
+
+Notifications are debounced per conversation (5-second throttle) to avoid notification spam during rapid agent activity.
+
+Clicking a notification brings ChatML to the foreground and navigates to the relevant conversation.
+
+<Callout type="info">
+Notifications only appear when ChatML is not the focused application. If you're actively working in ChatML, no notifications are sent.
+</Callout>
+
+## Sound Effects
+
+ChatML can play sound effects for agent events:
+
+- **Completion sound** — Plays when an agent finishes its work
+- **Error sound** — Plays when an error occurs
+
+Configure sounds in **Settings** (`Cmd+,`) > **Appearance** > **Sound Effects**.
+
+## macOS Configuration
+
+If you're not seeing notifications:
+
+1. Open **System Settings > Notifications > ChatML**
+2. Ensure notifications are allowed
+3. Choose your preferred notification style (Banners or Alerts)

@@ -1,12 +1,10 @@
 import Image from 'next/image';
-import { source } from '@/lib/source';
-import { DocsLayout } from 'fumadocs-ui/layouts/docs';
+import { HomeLayout } from 'fumadocs-ui/layouts/home';
 import type { ReactNode } from 'react';
 
 export default function Layout({ children }: { children: ReactNode }) {
   return (
-    <DocsLayout
-      tree={source.pageTree}
+    <HomeLayout
       nav={{
         title: (
           <span className="flex items-center gap-2">
@@ -25,23 +23,13 @@ export default function Layout({ children }: { children: ReactNode }) {
           </span>
         ),
       }}
-      sidebar={{
-        defaultOpenLevel: 0,
-      }}
       links={[
-        {
-          text: 'Documentation',
-          url: '/docs',
-          active: 'nested-url',
-        },
-        {
-          text: "What's New",
-          url: '/docs/changelog/whats-new',
-        },
+        { text: 'Documentation', url: '/docs' },
+        { text: "What's New", url: '/docs/changelog/whats-new' },
       ]}
       githubUrl="https://github.com/chatml/chatml"
     >
       {children}
-    </DocsLayout>
+    </HomeLayout>
   );
 }

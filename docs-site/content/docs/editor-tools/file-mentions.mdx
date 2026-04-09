@@ -1,0 +1,53 @@
+---
+title: File @ Mentions
+description: Reference files directly in the chat input using @ mention syntax.
+---
+
+import { Callout } from 'fumadocs-ui/components/callout';
+import { Steps, Step } from 'fumadocs-ui/components/steps';
+
+File @ mentions let you reference specific files from your session's worktree directly in the chat input, giving Claude targeted context about the files you want to discuss or modify.
+
+## How It Works
+
+<Steps>
+<Step>
+### Type @ in the Chat Input
+
+Start typing `@` followed by a filename or path. An autocomplete dropdown appears with matching files from your session's worktree.
+</Step>
+<Step>
+### Select a File
+
+Use arrow keys to navigate the results and press **Enter** or **Tab** to select. The file appears as a styled pill in your message input.
+</Step>
+<Step>
+### Send Your Message
+
+When you send the message, the referenced file's content is included in Claude's context, so it has the full file available for analysis or modification.
+</Step>
+</Steps>
+
+## File Search
+
+The autocomplete uses fuzzy matching to find files:
+
+- Search by filename: `@Button` matches `src/components/Button.tsx`
+- Search by path segments: `@api/auth` matches `src/lib/api/auth.ts`
+- Results are limited to 50 matches for performance
+- Files are shown with their relative path and file type icon
+
+<Callout type="info">
+The `@` trigger is smart enough to avoid activating on email addresses. It only triggers at the start of a word or after a space.
+</Callout>
+
+## What Gets Sent to Claude
+
+When you mention a file, its full content is attached to your message as context. This is more efficient than asking Claude to read the file in a separate tool call, and ensures Claude has the right file in focus from the start.
+
+## Tips
+
+- Use @ mentions when you want Claude to focus on specific files rather than searching the whole codebase
+- Mention multiple files to give Claude context about related code
+- Combine with a clear instruction: `@auth.ts @middleware.ts Add rate limiting to the auth middleware`
+- Works in all conversation types (Task, Review, Chat)

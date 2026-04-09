@@ -3,30 +3,38 @@ title: Installation
 description: Download and install ChatML on macOS.
 ---
 
-## System Requirements
+import { Callout } from 'fumadocs-ui/components/callout';
+import { Steps, Step } from 'fumadocs-ui/components/steps';
 
-- **macOS 10.15 (Catalina)** or later
-- **Git** installed (comes pre-installed on macOS)
-- An **Anthropic API key** for Claude access
+<Callout type="info" title="System Requirements">
+**macOS 13 (Ventura)** or later, **Git** installed (comes pre-installed on macOS), and an **Anthropic API key** for Claude access.
+</Callout>
 
 ## Download
 
 Download the latest version of ChatML from the [GitHub Releases](https://github.com/chatml/chatml/releases) page.
 
-1. Download the `.dmg` file for your Mac (Apple Silicon or Intel)
-2. Open the `.dmg` file
-3. Drag **ChatML** to your **Applications** folder
-4. Launch ChatML from Applications
+<Steps>
+<Step>
+### Download the DMG
 
-## First Launch
+Download the `.dmg` file for your Mac (Apple Silicon or Intel).
+</Step>
+<Step>
+### Install the App
 
-On first launch, macOS may show a security prompt since ChatML is distributed outside the App Store:
+Open the `.dmg` file and drag **ChatML** to your **Applications** folder.
+</Step>
+<Step>
+### Launch ChatML
 
-1. If you see "ChatML can't be opened", go to **System Settings > Privacy & Security**
-2. Scroll down and click **Open Anyway** next to the ChatML message
-3. Click **Open** in the confirmation dialog
+Launch ChatML from Applications. On first launch, the [onboarding wizard](/docs/getting-started/onboarding) walks you through initial setup.
+</Step>
+</Steps>
 
-ChatML will start the [onboarding wizard](/docs/getting-started/onboarding) to walk you through initial setup.
+<Callout type="warn" title="macOS Security Prompt">
+On first launch, macOS may show a security prompt since ChatML is distributed outside the App Store. Go to **System Settings > Privacy & Security**, scroll down, and click **Open Anyway** next to the ChatML message.
+</Callout>
 
 ## Auto-Updates
 

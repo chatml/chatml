@@ -2,17 +2,14 @@
   "title": "Documentation",
   "pages": [
     "index",
-    "---Getting Started---",
     "getting-started",
-    "---Core Concepts---",
     "core-concepts",
-    "---Features---",
-    "features",
-    "---Integrations---",
+    "ai-agent",
+    "editor-tools",
+    "code-review-prs",
     "integrations",
-    "---Configuration---",
     "configuration",
-    "---Support---",
-    "troubleshooting"
+    "troubleshooting",
+    "changelog"
   ]
 }

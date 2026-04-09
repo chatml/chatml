@@ -1,0 +1,13 @@
+{
+  "title": "AI Agent",
+  "defaultOpen": false,
+  "pages": [
+    "ai-chat",
+    "extended-thinking",
+    "plan-mode",
+    "skills",
+    "sub-agents",
+    "budget-controls",
+    "checkpoints"
+  ]
+}

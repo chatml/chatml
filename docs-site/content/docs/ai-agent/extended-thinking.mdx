@@ -1,0 +1,60 @@
+---
+title: Extended Thinking
+description: Deep reasoning mode that lets Claude think through complex problems before responding.
+---
+
+import { Callout } from 'fumadocs-ui/components/callout';
+import { Steps, Step } from 'fumadocs-ui/components/steps';
+
+Extended Thinking allows Claude to reason through complex problems before responding. When enabled, Claude's internal reasoning process is displayed in a collapsible section above the final response.
+
+## How It Works
+
+With Extended Thinking enabled:
+
+1. Claude receives your message and begins an internal reasoning phase
+2. The reasoning appears in real time in a collapsible "Thinking" section
+3. After reasoning, Claude produces a more thorough, well-considered response
+4. The thinking tokens are counted separately from the response tokens
+
+The thinking process is especially valuable for complex tasks where Claude needs to consider multiple approaches, understand existing code patterns, or reason about edge cases.
+
+## Configuration
+
+<Steps>
+<Step>
+### Enable Extended Thinking
+
+Go to **Settings** (`Cmd+,`) > **AI** > **Extended Thinking** and toggle it on.
+</Step>
+<Step>
+### Set the Thinking Budget
+
+Configure **Max Thinking Tokens** to control how much reasoning Claude can do. The default is 16,000 tokens. Higher values allow deeper reasoning but increase cost and latency.
+</Step>
+</Steps>
+
+## When to Use Extended Thinking
+
+Extended Thinking adds the most value for:
+
+- **Complex refactoring** — Understanding interrelated code before making changes
+- **Architecture decisions** — Weighing trade-offs between approaches
+- **Unfamiliar codebases** — Building a mental model of existing patterns
+- **Bug diagnosis** — Reasoning through potential causes systematically
+- **Multi-file changes** — Planning coordinated modifications
+
+<Callout type="info">
+Extended Thinking pairs well with [Plan Mode](/docs/ai-agent/plan-mode). Enable both to let Claude think deeply about the problem, research the codebase in read-only mode, and present a well-reasoned plan for your approval.
+</Callout>
+
+## Thinking Budget Tips
+
+- Start with the default (16,000 tokens) for most tasks
+- Increase to 32,000+ for complex architectural work
+- Lower to 8,000 for simpler tasks where you want faster responses
+- The thinking budget is part of your overall [cost controls](/docs/ai-agent/budget-controls)
+
+## Viewing Thinking Output
+
+During streaming, the thinking section appears as a collapsible block above Claude's response. Click to expand or collapse it. The thinking content shows Claude's step-by-step reasoning, including what it considered and why it chose a particular approach.

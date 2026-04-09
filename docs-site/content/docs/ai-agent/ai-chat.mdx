@@ -1,0 +1,65 @@
+---
+title: AI Chat
+description: Real-time AI-assisted coding with Claude, including streaming and tool execution.
+---
+
+import { Callout } from 'fumadocs-ui/components/callout';
+
+ChatML's AI chat provides real-time interaction with Claude, giving it direct access to your codebase.
+
+## Real-Time Streaming
+
+When Claude works, you see everything as it happens:
+
+- **Text streaming** — Response text appears as it's generated, rendered as Markdown with syntax highlighting
+- **Tool execution** — Each tool call shows its name, parameters, status (running/success/failure), and duration
+- **Extended thinking** — When enabled, Claude's reasoning process is displayed in a collapsible section (see [Extended Thinking](/docs/ai-agent/extended-thinking))
+- **Sub-agent tracking** — When Claude spawns sub-agents for parallel tasks, each is tracked independently (see [Sub-Agents](/docs/ai-agent/sub-agents))
+- **Elapsed time** — A running timer shows how long the current response has been generating
+
+## Sending Messages
+
+Type your message in the input area and press **Enter** to send. Claude receives your message along with the full conversation context and begins working.
+
+### Message Features
+
+- **Markdown formatting** — Messages support full Markdown
+- **File @ mentions** — Type `@` to reference files from your worktree (see [File @ Mentions](/docs/editor-tools/file-mentions))
+- **Multi-line input** — Use `Shift+Enter` for new lines
+- **Message recall** — Press `Up Arrow` in an empty input to recall your last message
+- **Draft persistence** — Your unsent message is automatically saved when you switch sessions and restored when you return
+
+### Attachments
+
+Attach files and images to give Claude additional context:
+
+- **Drag and drop** — Drop files directly onto the chat input
+- **Paste from clipboard** — Paste images or screenshots with `Cmd+V`
+- **Long text auto-conversion** — Very long pasted text is automatically converted to an attachment
+- **File type support** — Code files, images, and common document formats
+
+### Slash Commands
+
+Type `/` in the message input to access slash commands — quick actions for common tasks like starting a code review, creating a PR, or invoking specific [skills](/docs/ai-agent/skills). Commands are filtered and scored as you type.
+
+## Stopping the Agent
+
+- `Cmd+Shift+S` — Stop the current agent
+- `Cmd+.` — Interrupt the agent (softer stop)
+- Click the **Stop** button in the UI
+
+## Model Selection
+
+Choose your Claude model in **Settings > AI > Model**:
+
+| Model | Best For |
+|-------|----------|
+| **Claude Opus** | Complex reasoning, large codebases, multi-step tasks |
+| **Claude Sonnet** | Balanced capability and speed for most tasks |
+| **Claude Haiku** | Quick tasks, simple questions, fast iteration |
+
+You can also set a fallback model that activates when the primary model fails.
+
+## Recently Closed Conversations
+
+Accidentally closed a conversation? ChatML keeps a history of recently closed conversations (within 24 hours). Look for the recently closed popover in the conversation tabs area to restore them with one click.

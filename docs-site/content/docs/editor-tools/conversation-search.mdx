@@ -1,0 +1,35 @@
+---
+title: Conversation Search
+description: Search across conversation history with full-text search.
+---
+
+Search lets you find specific messages, code snippets, or topics within your conversation history.
+
+## Opening Search
+
+Press `Cmd+Shift+F` in a conversation to open the search bar, or click the search icon in the conversation toolbar.
+
+## Searching
+
+Type your query in the search bar. Results are highlighted in the conversation as you type, with a debounced 200ms delay for smooth performance.
+
+## Navigating Results
+
+| Action | Shortcut |
+|--------|----------|
+| Next match | `Enter` |
+| Previous match | `Shift+Enter` |
+| Close search | `Escape` |
+
+The conversation automatically scrolls to the current match. A counter shows your position (e.g., "3 of 12 matches").
+
+## Search Scope
+
+Search operates within the current conversation. It searches through:
+
+- Your messages
+- Claude's responses
+- Tool call names and parameters
+- Code blocks in responses
+
+If not all messages are loaded (for long conversations), a "partial results" indicator appears to let you know some messages weren't searched.

@@ -1,0 +1,70 @@
+---
+title: What's New
+description: Recent updates and improvements to ChatML.
+---
+
+import { Callout } from 'fumadocs-ui/components/callout';
+
+<Callout type="info">
+ChatML auto-updates in the background. When a new version is available, a notification appears in the app — click to download and restart.
+</Callout>
+
+## Latest Release
+
+### Mission Control Dashboard
+
+A new home dashboard that gives you visibility across all sessions:
+
+- **Attention Queue** — Sessions and items needing your action, organized by priority (P0–P2)
+- **Live Activity Feed** — Real-time events across all active sessions
+- **Spend Tracker** — 14-day rolling cost visualization with per-model breakdown
+
+### Voice Dictation
+
+Speak your messages to Claude using macOS's built-in speech recognition. Click the microphone icon in the chat input to start dictating.
+
+### File @ Mentions
+
+Type `@` in the chat input to reference files from your session's worktree. Selected files are included as context in your message.
+
+### Conversation Search
+
+Press `Cmd+Shift+F` to search within conversation history. Navigate between matches with Enter/Shift+Enter.
+
+---
+
+## Previous Updates
+
+### Parallel Sessions & Sub-Agents
+
+- Claude can now spawn sub-agents for parallel task execution
+- Multiple AI processes work on independent subtasks simultaneously
+- Sub-agent progress is tracked inline in the conversation
+
+### Plan Mode Improvements
+
+- Enhanced plan approval flow with clearer UI indicators
+- Better integration with Extended Thinking for deeper analysis
+- Read-only mode restrictions enforced more reliably
+
+### Code Review Enhancements
+
+- Inline comments with severity levels (Error, Warning, Suggestion, Info)
+- Resolution tracking with per-file statistics
+- Custom review prompts per workspace
+
+### Sentry Integration
+
+- Connect Sentry for error tracking context in AI sessions
+- Claude can investigate production issues with full stack trace visibility
+
+### Desktop Notifications
+
+- macOS notifications when agents complete work in background sessions
+- Configurable sound effects for completion and error events
+- Smart debouncing to prevent notification spam
+
+### CLAUDE.md Support
+
+- Project-level AI instructions via `CLAUDE.md` files in repository roots
+- Persistent context about coding conventions, architecture, and standards

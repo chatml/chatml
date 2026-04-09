@@ -1,0 +1,72 @@
+---
+title: CLAUDE.md
+description: Configure project-level AI instructions using CLAUDE.md files.
+---
+
+import { Callout } from 'fumadocs-ui/components/callout';
+
+`CLAUDE.md` is a special file that provides project-level instructions to Claude. When present in your repository, its content is injected into Claude's system prompt, giving it persistent context about your project's conventions, architecture, and coding standards.
+
+## How It Works
+
+When a session starts, ChatML looks for a `CLAUDE.md` file in the root of the workspace's repository. If found, its content becomes part of Claude's instructions for every conversation in that session.
+
+This means you can define rules like "always use TypeScript strict mode" or "follow our naming conventions" once, and Claude will follow them automatically without being reminded each time.
+
+## File Location
+
+Place `CLAUDE.md` in the root of your git repository:
+
+```
+my-project/
+├── CLAUDE.md          # Project instructions for Claude
+├── src/
+├── package.json
+└── ...
+```
+
+## What to Include
+
+Good `CLAUDE.md` content includes:
+
+- **Tech stack overview** — Languages, frameworks, key dependencies
+- **Coding conventions** — Naming patterns, file organization, import ordering
+- **Testing expectations** — Test framework, coverage requirements, test patterns
+- **Architecture notes** — Key directories, data flow, important abstractions
+- **Do/Don't rules** — Specific patterns to follow or avoid
+
+### Example
+
+```markdown
+# CLAUDE.md
+
+## Stack
+- TypeScript + React 19 + Next.js 15
+- Tailwind CSS for styling
+- Vitest for testing
+
+## Conventions
+- Use `snake_case` for database columns, `camelCase` for TypeScript
+- Prefer named exports over default exports
+- Always add JSDoc for public API functions
+
+## Testing
+- Write tests for all new features
+- Use `vi.mock()` sparingly — prefer dependency injection
+- Run `npm test` before completing any task
+```
+
+<Callout type="info">
+`CLAUDE.md` is checked into your repository, so your whole team benefits from consistent AI behavior. Treat it like any other project configuration file.
+</Callout>
+
+## Per-Workspace Override
+
+Since `CLAUDE.md` lives in the repository, each workspace automatically gets its own instructions. Different projects can have completely different AI behavior rules.
+
+## Tips
+
+- Keep `CLAUDE.md` concise — Claude processes it every conversation, so brevity matters
+- Focus on rules that Claude wouldn't infer from the code alone
+- Update it when conventions change — stale instructions cause confusion
+- Use Markdown formatting for readability
