@@ -17,6 +17,9 @@ import {
   useDroppable,
   pointerWithin,
   DragOverlay,
+  PointerSensor,
+  useSensor,
+  useSensors,
   type DragStartEvent,
   type DragEndEvent,
 } from '@dnd-kit/core';
@@ -78,6 +81,7 @@ function collectAllDirPaths(nodes: FileNode[]): string[] {
 export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileTree({ files, onFileSelect, onFilePreview, onContextAction, onRename, onMoveFile, filterQuery = '', changedPaths, fileStatuses, folderIndicators, showChangedOnly = false }, ref) {
   const [expandedPaths, setExpandedPaths] = useState<Set<string>>(new Set());
   const [renamingPath, setRenamingPath] = useState<string | null>(null);
+  const renameHandledRef = useRef(false);
   const [selectedPaths, setSelectedPaths] = useState<Set<string>>(new Set());
   const [anchorPath, setAnchorPath] = useState<string | null>(null);
   // Lightweight fingerprint for detecting session switches — top-level paths only
@@ -224,6 +228,9 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
   }, [anchorPath, flatVisiblePaths]);
 
   const handleRenameConfirm = useCallback((oldPath: string, newName: string) => {
+    // Guard against double-fire (Enter keydown confirms, then blur fires on unmount)
+    if (renameHandledRef.current) return;
+    renameHandledRef.current = true;
     setRenamingPath(null);
     if (!newName.trim()) return;
     const parentDir = oldPath.includes('/') ? oldPath.substring(0, oldPath.lastIndexOf('/')) : '';
@@ -233,11 +240,15 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
     }
   }, [onRename]);
 
-  const handleCancelRename = useCallback(() => setRenamingPath(null), []);
+  const handleCancelRename = useCallback(() => {
+    renameHandledRef.current = true;
+    setRenamingPath(null);
+  }, []);
 
   const handleContextAction = useCallback((action: ContextAction, node: FileNode | null) => {
     // Intercept rename to handle inline
     if (action === 'rename' && node) {
+      renameHandledRef.current = false;
       setRenamingPath(node.path);
       return;
     }
@@ -310,8 +321,17 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
     setDraggedPath(null);
   }, []);
 
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 5,
+      },
+    })
+  );
+
   return (
     <DndContext
+      sensors={sensors}
       collisionDetection={pointerWithin}
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
@@ -550,7 +570,8 @@ function FileTreeNode({ node, depth, onFileSelect, onFilePreview, onContextActio
             }
             e.stopPropagation();
           }}
-          onBlur={(e) => onRenameConfirm?.(node.path, e.target.value)}
+          onBlur={(e) => onRenameConfirm?.(node.path, e.currentTarget.value)}
+          onPointerDown={(e) => e.stopPropagation()}
           onClick={(e) => e.stopPropagation()}
         />
       ) : (
