@@ -1,6 +1,8 @@
 'use client';
 
-import { useState, useMemo, useEffect, useCallback, useImperativeHandle, forwardRef, useRef } from 'react';
+import { useState, useMemo, useEffect, useCallback, useImperativeHandle, forwardRef, useRef, memo, createContext, useContext } from 'react';
+import { createStore } from 'zustand/vanilla';
+import { useStore } from 'zustand';
 import { Icon } from '@iconify/react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { ContextMenu, ContextMenuTrigger } from '@/components/ui/context-menu';
@@ -9,7 +11,7 @@ import { cn } from '@/lib/utils';
 import { getFileIcon, getFolderIcon, getIconifyName, preloadFolderIcons } from '@/lib/vscodeIcons';
 import { ErrorBoundary } from '@/components/shared/ErrorBoundary';
 import { FileContextMenu, FolderContextMenu, BackgroundContextMenu, MultiSelectContextMenu, type ContextAction } from './FileTreeContextMenu';
-import { statusColorClass, type FileStatus } from '@/lib/fileTreeUtils';
+
 import { fuzzyMatch } from '@/lib/fuzzyMatch';
 import {
   DndContext,
@@ -23,6 +25,7 @@ import {
   type DragStartEvent,
   type DragEndEvent,
 } from '@dnd-kit/core';
+import type { StoreApi } from 'zustand/vanilla';
 
 // Preload folder icons on module load to prevent flicker
 let iconsPreloaded = false;
@@ -41,27 +44,29 @@ export interface FileNode {
   truncated?: boolean;
 }
 
-interface FileTreeProps {
-  files: FileNode[];
-  onFileSelect?: (path: string) => void;
-  onFilePreview?: (path: string) => void;
-  onContextAction?: (action: ContextAction, node: FileNode | null) => void;
-  onRename?: (oldPath: string, newPath: string) => void;
-  onMoveFile?: (sourcePath: string, destDir: string) => void;
-  filterQuery?: string;
-  changedPaths?: Set<string>;
-  fileStatuses?: Map<string, FileStatus>;
-  folderIndicators?: Map<string, number>;
-  showChangedOnly?: boolean;
-  workspacePath?: string;
-  workspaceName?: string;
-}
+// ---------------------------------------------------------------------------
+// FileTree-scoped Zustand store
+// ---------------------------------------------------------------------------
 
-export interface FileTreeHandle {
-  collapseAll: () => void;
+interface FileTreeStoreState {
+  expandedPaths: Set<string>;
+  selectedPaths: Set<string>;
+  anchorPath: string | null;
+  renamingPath: string | null;
+  _files: FileNode[];
+
+  // Actions
+  togglePath: (path: string) => void;
+  expandAllUnder: (parentPath: string) => void;
+  collapseAllUnder: (parentPath: string) => void;
   expandAll: () => void;
-  getSelectedPaths: () => Set<string>;
-  clearSelection: () => void;
+  collapseAll: () => void;
+  resetExpanded: () => void;
+  setSelectedPaths: (paths: Set<string>) => void;
+  setAnchorPath: (path: string | null) => void;
+  setRenamingPath: (path: string | null) => void;
+  setFiles: (files: FileNode[]) => void;
+  handleNodeClick: (path: string, isDir: boolean, metaKey: boolean, shiftKey: boolean) => boolean;
 }
 
 function collectAllDirPaths(nodes: FileNode[]): string[] {
@@ -78,90 +83,211 @@ function collectAllDirPaths(nodes: FileNode[]): string[] {
   return paths;
 }
 
-export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileTree({ files, onFileSelect, onFilePreview, onContextAction, onRename, onMoveFile, filterQuery = '', changedPaths, fileStatuses, folderIndicators, showChangedOnly = false }, ref) {
-  const [expandedPaths, setExpandedPaths] = useState<Set<string>>(new Set());
-  const [renamingPath, setRenamingPath] = useState<string | null>(null);
+function computeFlatVisiblePaths(files: FileNode[], expandedPaths: Set<string>): string[] {
+  const paths: string[] = [];
+  function walk(nodes: FileNode[]) {
+    for (const node of nodes) {
+      paths.push(node.path);
+      if (node.isDir && expandedPaths.has(node.path) && node.children) {
+        walk(node.children);
+      }
+    }
+  }
+  walk(files);
+  return paths;
+}
+
+function createFileTreeStore() {
+  return createStore<FileTreeStoreState>((set, get) => ({
+    expandedPaths: new Set<string>(),
+    selectedPaths: new Set<string>(),
+    anchorPath: null,
+    renamingPath: null,
+    _files: [],
+
+    togglePath: (path) => set(state => {
+      const next = new Set(state.expandedPaths);
+      if (next.has(path)) next.delete(path);
+      else next.add(path);
+      return { expandedPaths: next };
+    }),
+
+    expandAllUnder: (parentPath) => {
+      const { _files } = get();
+      function walkAll(nodes: FileNode[]): string[] {
+        const dirs: string[] = [];
+        for (const node of nodes) {
+          if (node.isDir) {
+            if (node.path === parentPath || node.path.startsWith(parentPath + '/')) {
+              dirs.push(node.path);
+            }
+            if (node.children) dirs.push(...walkAll(node.children));
+          }
+        }
+        return dirs;
+      }
+      const childDirs = walkAll(_files);
+      set(state => {
+        const next = new Set(state.expandedPaths);
+        for (const d of childDirs) next.add(d);
+        return { expandedPaths: next };
+      });
+    },
+
+    collapseAllUnder: (parentPath) => set(state => {
+      const next = new Set(state.expandedPaths);
+      for (const p of state.expandedPaths) {
+        if (p === parentPath || p.startsWith(parentPath + '/')) {
+          next.delete(p);
+        }
+      }
+      return { expandedPaths: next };
+    }),
+
+    expandAll: () => {
+      const { _files } = get();
+      set({ expandedPaths: new Set(collectAllDirPaths(_files)) });
+    },
+
+    collapseAll: () => set({ expandedPaths: new Set() }),
+
+    resetExpanded: () => set({ expandedPaths: new Set() }),
+
+    setSelectedPaths: (paths) => set({ selectedPaths: paths }),
+
+    setAnchorPath: (path) => set({ anchorPath: path }),
+
+    setRenamingPath: (path) => set({ renamingPath: path }),
+
+    setFiles: (files) => set({ _files: files }),
+
+    handleNodeClick: (path, _isDir, metaKey, shiftKey) => {
+      const state = get();
+      if (metaKey) {
+        const next = new Set(state.selectedPaths);
+        if (next.has(path)) next.delete(path);
+        else next.add(path);
+        set({ selectedPaths: next, anchorPath: path });
+        return true;
+      }
+      if (shiftKey && state.anchorPath) {
+        const flatVisiblePaths = computeFlatVisiblePaths(state._files, state.expandedPaths);
+        const anchorIdx = flatVisiblePaths.indexOf(state.anchorPath);
+        const targetIdx = flatVisiblePaths.indexOf(path);
+        if (anchorIdx !== -1 && targetIdx !== -1) {
+          const start = Math.min(anchorIdx, targetIdx);
+          const end = Math.max(anchorIdx, targetIdx);
+          const range = new Set(flatVisiblePaths.slice(start, end + 1));
+          set({ selectedPaths: range });
+        }
+        return true;
+      }
+      // Regular click — clear selection (reuse empty set to avoid notifying subscribers needlessly)
+      const next = state.selectedPaths.size > 0 ? new Set<string>() : state.selectedPaths;
+      set({ selectedPaths: next, anchorPath: path });
+      return false;
+    },
+  }));
+}
+
+type FileTreeStore = StoreApi<FileTreeStoreState>;
+
+// ---------------------------------------------------------------------------
+// Contexts
+// ---------------------------------------------------------------------------
+
+const FileTreeStoreContext = createContext<FileTreeStore | null>(null);
+
+function useFileTreeStore<T>(selector: (state: FileTreeStoreState) => T): T {
+  const store = useContext(FileTreeStoreContext);
+  if (!store) throw new Error('useFileTreeStore must be used within FileTree');
+  return useStore(store, selector);
+}
+
+interface FileTreeDataContextValue {
+  filterQuery: string;
+  matchingPaths: Set<string> | null;
+  foldersWithChanges: Set<string>;
+  changedPaths?: Set<string>;
+}
+
+interface FileTreeCallbacksContextValue {
+  onFileSelect?: (path: string) => void;
+  onFilePreview?: (path: string) => void;
+  onContextAction?: (action: ContextAction, node: FileNode) => void;
+  onRenameConfirm?: (oldPath: string, newName: string) => void;
+  onCancelRename?: () => void;
+}
+
+const FileTreeDataContext = createContext<FileTreeDataContextValue | null>(null);
+const FileTreeCallbacksContext = createContext<FileTreeCallbacksContextValue | null>(null);
+
+function useFileTreeData(): FileTreeDataContextValue {
+  const ctx = useContext(FileTreeDataContext);
+  if (!ctx) throw new Error('useFileTreeData must be used within FileTree');
+  return ctx;
+}
+
+function useFileTreeCallbacks(): FileTreeCallbacksContextValue {
+  const ctx = useContext(FileTreeCallbacksContext);
+  if (!ctx) throw new Error('useFileTreeCallbacks must be used within FileTree');
+  return ctx;
+}
+
+// ---------------------------------------------------------------------------
+// FileTree (public component)
+// ---------------------------------------------------------------------------
+
+interface FileTreeProps {
+  files: FileNode[];
+  onFileSelect?: (path: string) => void;
+  onFilePreview?: (path: string) => void;
+  onContextAction?: (action: ContextAction, node: FileNode | null) => void;
+  onRename?: (oldPath: string, newPath: string) => void;
+  onMoveFile?: (sourcePath: string, destDir: string) => void;
+  filterQuery?: string;
+  changedPaths?: Set<string>;
+  workspacePath?: string;
+  workspaceName?: string;
+}
+
+export interface FileTreeHandle {
+  collapseAll: () => void;
+  expandAll: () => void;
+  getSelectedPaths: () => Set<string>;
+  clearSelection: () => void;
+}
+
+export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileTree({ files, onFileSelect, onFilePreview, onContextAction, onRename, onMoveFile, filterQuery = '', changedPaths }, ref) {
+  // Create store once per FileTree instance
+  const storeRef = useRef<FileTreeStore>();
+  if (!storeRef.current) {
+    storeRef.current = createFileTreeStore();
+  }
+  const store = storeRef.current;
+
   const renameHandledRef = useRef(false);
-  const [selectedPaths, setSelectedPaths] = useState<Set<string>>(new Set());
-  const [anchorPath, setAnchorPath] = useState<string | null>(null);
-  // Lightweight fingerprint for detecting session switches — top-level paths only
-  const filesKey = useMemo(() => {
-    if (files.length === 0) return '';
-    return files.map(f => f.path).join('\0') + ':' + files.length;
-  }, [files]);
-  const [prevKey, setPrevKey] = useState(filesKey);
 
   // Preload folder icons on first render
   useEffect(() => {
     ensureIconsPreloaded();
   }, []);
 
-  // Reset expanded state when file list content changes (e.g., switching sessions)
-  if (prevKey !== filesKey) {
-    setPrevKey(filesKey);
-    setExpandedPaths(new Set());
-  }
-
-  const togglePath = useCallback((path: string) => {
-    setExpandedPaths(prev => {
-      const next = new Set(prev);
-      if (next.has(path)) {
-        next.delete(path);
-      } else {
-        next.add(path);
-      }
-      return next;
-    });
-  }, []);
-
-  // Folder-scoped expand: expand all directories under a given path
-  const expandAllUnder = useCallback((parentPath: string) => {
-    function walkAll(nodes: FileNode[]): string[] {
-      const dirs: string[] = [];
-      for (const node of nodes) {
-        if (node.isDir) {
-          if (node.path === parentPath || node.path.startsWith(parentPath + '/')) {
-            dirs.push(node.path);
-          }
-          if (node.children) dirs.push(...walkAll(node.children));
-        }
-      }
-      return dirs;
-    }
-    const childDirs = walkAll(files);
-    setExpandedPaths(prev => {
-      const next = new Set(prev);
-      for (const d of childDirs) next.add(d);
-      return next;
-    });
+  // Lightweight fingerprint for detecting session switches — top-level paths only
+  const filesKey = useMemo(() => {
+    if (files.length === 0) return '';
+    return files.map(f => f.path).join('\0') + ':' + files.length;
   }, [files]);
 
-  const collapseAllUnder = useCallback((parentPath: string) => {
-    setExpandedPaths(prev => {
-      const next = new Set(prev);
-      for (const p of prev) {
-        if (p === parentPath || p.startsWith(parentPath + '/')) {
-          next.delete(p);
-        }
-      }
-      return next;
-    });
-  }, []);
-
-  // Build flat list of visible paths for range selection
-  const flatVisiblePaths = useMemo(() => {
-    const paths: string[] = [];
-    function walk(nodes: FileNode[]) {
-      for (const node of nodes) {
-        paths.push(node.path);
-        if (node.isDir && expandedPaths.has(node.path) && node.children) {
-          walk(node.children);
-        }
-      }
+  // Sync files into store and reset expanded state on session switch
+  const filesKeyRef = useRef(filesKey);
+  useEffect(() => {
+    if (filesKeyRef.current !== filesKey) {
+      filesKeyRef.current = filesKey;
+      store.getState().resetExpanded();
     }
-    walk(files);
-    return paths;
-  }, [files, expandedPaths]);
+    store.getState().setFiles(files);
+  }, [store, files, filesKey]);
 
   // Pre-compute filter matching: O(n) walk once instead of O(n*d) per-node recursive checks
   const matchingPaths = useMemo(() => {
@@ -197,88 +323,75 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
     return folders;
   }, [changedPaths]);
 
-  const handleNodeClick = useCallback((path: string, isDir: boolean, e: React.MouseEvent) => {
-    if (e.metaKey || e.ctrlKey) {
-      // Toggle selection
-      setSelectedPaths(prev => {
-        const next = new Set(prev);
-        if (next.has(path)) next.delete(path);
-        else next.add(path);
-        return next;
-      });
-      setAnchorPath(path);
-      return true; // Consumed
-    }
-    if (e.shiftKey && anchorPath) {
-      // Range select
-      const anchorIdx = flatVisiblePaths.indexOf(anchorPath);
-      const targetIdx = flatVisiblePaths.indexOf(path);
-      if (anchorIdx !== -1 && targetIdx !== -1) {
-        const start = Math.min(anchorIdx, targetIdx);
-        const end = Math.max(anchorIdx, targetIdx);
-        const range = new Set(flatVisiblePaths.slice(start, end + 1));
-        setSelectedPaths(range);
-      }
-      return true; // Consumed
-    }
-    // Regular click — clear selection
-    setSelectedPaths(new Set());
-    setAnchorPath(path);
-    return false; // Not consumed — let normal click handle it
-  }, [anchorPath, flatVisiblePaths]);
-
   const handleRenameConfirm = useCallback((oldPath: string, newName: string) => {
     // Guard against double-fire (Enter keydown confirms, then blur fires on unmount)
     if (renameHandledRef.current) return;
     renameHandledRef.current = true;
-    setRenamingPath(null);
+    store.getState().setRenamingPath(null);
     if (!newName.trim()) return;
     const parentDir = oldPath.includes('/') ? oldPath.substring(0, oldPath.lastIndexOf('/')) : '';
     const newPath = parentDir ? `${parentDir}/${newName}` : newName;
     if (newPath !== oldPath) {
       onRename?.(oldPath, newPath);
     }
-  }, [onRename]);
+  }, [onRename, store]);
 
   const handleCancelRename = useCallback(() => {
     renameHandledRef.current = true;
-    setRenamingPath(null);
-  }, []);
+    store.getState().setRenamingPath(null);
+  }, [store]);
 
   const handleContextAction = useCallback((action: ContextAction, node: FileNode | null) => {
+    const state = store.getState();
     // Intercept rename to handle inline
     if (action === 'rename' && node) {
       renameHandledRef.current = false;
-      setRenamingPath(node.path);
+      state.setRenamingPath(node.path);
       return;
     }
     // Handle tree-local actions internally
     if (action === 'expand-all' && node) {
-      expandAllUnder(node.path);
+      state.expandAllUnder(node.path);
       return;
     }
     if (action === 'collapse-all' && node) {
-      collapseAllUnder(node.path);
+      state.collapseAllUnder(node.path);
       return;
     }
     if (action === 'expand-all' && !node) {
-      setExpandedPaths(new Set(collectAllDirPaths(files)));
+      state.expandAll();
       return;
     }
     if (action === 'collapse-all' && !node) {
-      setExpandedPaths(new Set());
+      state.collapseAll();
       return;
     }
     // Delegate all other actions to parent
     onContextAction?.(action, node);
-  }, [expandAllUnder, collapseAllUnder, files, onContextAction]);
+  }, [store, onContextAction]);
 
   useImperativeHandle(ref, () => ({
-    collapseAll: () => setExpandedPaths(new Set()),
-    expandAll: () => setExpandedPaths(new Set(collectAllDirPaths(files))),
-    getSelectedPaths: () => selectedPaths,
-    clearSelection: () => setSelectedPaths(new Set()),
-  }), [files, selectedPaths]);
+    collapseAll: () => store.getState().collapseAll(),
+    expandAll: () => store.getState().expandAll(),
+    getSelectedPaths: () => store.getState().selectedPaths,
+    clearSelection: () => store.getState().setSelectedPaths(new Set()),
+  }), [store]);
+
+  // Split contexts: data changes on filter/file updates; callbacks are stable references
+  const dataContext = useMemo<FileTreeDataContextValue>(() => ({
+    filterQuery,
+    matchingPaths,
+    foldersWithChanges,
+    changedPaths,
+  }), [filterQuery, matchingPaths, foldersWithChanges, changedPaths]);
+
+  const callbacksContext = useMemo<FileTreeCallbacksContextValue>(() => ({
+    onFileSelect,
+    onFilePreview,
+    onContextAction: handleContextAction,
+    onRenameConfirm: handleRenameConfirm,
+    onCancelRename: handleCancelRename,
+  }), [onFileSelect, onFilePreview, handleContextAction, handleRenameConfirm, handleCancelRename]);
 
   // Drag & drop state
   const [draggedPath, setDraggedPath] = useState<string | null>(null);
@@ -330,85 +443,60 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
   );
 
   return (
-    <DndContext
-      sensors={sensors}
-      collisionDetection={pointerWithin}
-      onDragStart={handleDragStart}
-      onDragEnd={handleDragEnd}
-      onDragCancel={handleDragCancel}
-    >
-      <ContextMenu>
-        <ContextMenuTrigger asChild>
-          <ScrollArea className="h-full w-full">
-            <div className="py-1 pr-2 min-h-full">
-              {files.map((node) => (
-                <FileTreeNode
-                  key={node.path}
-                  node={node}
-                  depth={0}
-                  onFileSelect={onFileSelect}
-                  onFilePreview={onFilePreview}
-                  onContextAction={handleContextAction}
-                  onRenameConfirm={handleRenameConfirm}
-                  renamingPath={renamingPath}
-                  onCancelRename={handleCancelRename}
-                  filterQuery={filterQuery}
-                  matchingPaths={matchingPaths}
-                  foldersWithChanges={foldersWithChanges}
-                  showChangedOnly={showChangedOnly}
-                  changedPaths={changedPaths}
-                  fileStatuses={fileStatuses}
-                  folderIndicators={folderIndicators}
-                  expandedPaths={expandedPaths}
-                  onToggle={togglePath}
-                  selectedPaths={selectedPaths}
-                  onNodeClick={handleNodeClick}
-                />
-              ))}
-            </div>
-          </ScrollArea>
-        </ContextMenuTrigger>
-        <BackgroundContextMenu
-          showChangedOnly={showChangedOnly}
-          onAction={(action) => handleContextAction(action, null)}
-        />
-      </ContextMenu>
-      <DragOverlay dropAnimation={null}>
-        {draggedNode && (
-          <div className="flex items-center gap-1.5 py-0.5 px-2 bg-surface-2 border border-border rounded-sm shadow-md text-base opacity-90">
-            {draggedNode.isDir ? (
-              <SafeIcon icon={getIconifyName(getFolderIcon(draggedNode.name, false))} className="w-4 h-4 shrink-0" />
-            ) : (
-              <FileIcon filename={draggedNode.name} />
+    <FileTreeStoreContext.Provider value={store}>
+      <FileTreeDataContext.Provider value={dataContext}>
+      <FileTreeCallbacksContext.Provider value={callbacksContext}>
+        <DndContext
+          sensors={sensors}
+          collisionDetection={pointerWithin}
+          onDragStart={handleDragStart}
+          onDragEnd={handleDragEnd}
+          onDragCancel={handleDragCancel}
+        >
+          <ContextMenu>
+            <ContextMenuTrigger asChild>
+              <ScrollArea className="h-full w-full">
+                <div className="py-1 pr-2 min-h-full">
+                  {files.map((node) => (
+                    <FileTreeNode
+                      key={node.path}
+                      node={node}
+                      depth={0}
+                    />
+                  ))}
+                </div>
+              </ScrollArea>
+            </ContextMenuTrigger>
+            <BackgroundContextMenu
+              onAction={(action) => handleContextAction(action, null)}
+            />
+          </ContextMenu>
+          <DragOverlay dropAnimation={null}>
+            {draggedNode && (
+              <div className="flex items-center gap-1.5 py-0.5 px-2 bg-surface-2 border border-border rounded-sm shadow-md text-base opacity-90">
+                {draggedNode.isDir ? (
+                  <SafeIcon icon={getIconifyName(getFolderIcon(draggedNode.name, false))} className="w-4 h-4 shrink-0" />
+                ) : (
+                  <FileIcon filename={draggedNode.name} />
+                )}
+                <span className="truncate">{draggedNode.name}</span>
+              </div>
             )}
-            <span className="truncate">{draggedNode.name}</span>
-          </div>
-        )}
-      </DragOverlay>
-    </DndContext>
+          </DragOverlay>
+        </DndContext>
+      </FileTreeCallbacksContext.Provider>
+      </FileTreeDataContext.Provider>
+    </FileTreeStoreContext.Provider>
   );
 });
+
+// ---------------------------------------------------------------------------
+// FileTreeNode (memoized, subscribes to store for own state)
+// ---------------------------------------------------------------------------
 
 interface FileTreeNodeProps {
   node: FileNode;
   depth: number;
-  onFileSelect?: (path: string) => void;
-  onFilePreview?: (path: string) => void;
-  onContextAction?: (action: ContextAction, node: FileNode) => void;
-  onRenameConfirm?: (oldPath: string, newName: string) => void;
-  renamingPath?: string | null;
-  onCancelRename?: () => void;
-  filterQuery?: string;
-  matchingPaths?: Set<string> | null;
-  foldersWithChanges: Set<string>;
-  showChangedOnly?: boolean;
-  changedPaths?: Set<string>;
-  fileStatuses?: Map<string, FileStatus>;
-  folderIndicators?: Map<string, number>;
-  expandedPaths: Set<string>;
-  onToggle: (path: string) => void;
-  selectedPaths: Set<string>;
-  onNodeClick: (path: string, isDir: boolean, e: React.MouseEvent) => boolean;
 }
 
 // Render a file name with fuzzy match highlights
@@ -425,8 +513,20 @@ function HighlightedName({ name, ranges, className }: { name: string; ranges: [n
   return <span className={cn('truncate', className)}>{parts}</span>;
 }
 
-function FileTreeNode({ node, depth, onFileSelect, onFilePreview, onContextAction, onRenameConfirm, renamingPath, onCancelRename, filterQuery = '', matchingPaths, foldersWithChanges, showChangedOnly = false, changedPaths, fileStatuses, folderIndicators, expandedPaths, onToggle, selectedPaths, onNodeClick }: FileTreeNodeProps) {
-  const isExpanded = node.isDir && expandedPaths.has(node.path);
+const FileTreeNode = memo(function FileTreeNode({ node, depth }: FileTreeNodeProps) {
+  // Granular store subscriptions — each returns a primitive
+  const isExpanded = useFileTreeStore(s => node.isDir && s.expandedPaths.has(node.path));
+  const isSelected = useFileTreeStore(s => s.selectedPaths.has(node.path));
+  // Whether this is a multi-select scenario (>1 items selected). Only needed for context menu branching.
+  const isMultiSelected = useFileTreeStore(s => s.selectedPaths.has(node.path) && s.selectedPaths.size > 1);
+  const isRenaming = useFileTreeStore(s => s.renamingPath === node.path);
+  const togglePath = useFileTreeStore(s => s.togglePath);
+  const handleNodeClick = useFileTreeStore(s => s.handleNodeClick);
+
+  // Shared data from contexts (split for granular invalidation)
+  const { filterQuery, matchingPaths, foldersWithChanges, changedPaths } = useFileTreeData();
+  const { onFileSelect, onFilePreview, onContextAction, onRenameConfirm, onCancelRename } = useFileTreeCallbacks();
+
   const isChanged = changedPaths?.has(node.path) ?? false;
 
   // Filter logic — uses pre-computed sets (O(1) lookups instead of recursive walks)
@@ -436,12 +536,6 @@ function FileTreeNode({ node, depth, onFileSelect, onFilePreview, onContextActio
   const isVisible = !filterQuery || isDirectMatch || hasMatchingChild;
   const isDimmed = filterQuery && !isDirectMatch && hasMatchingChild;
   const hasChangedChildren = node.isDir && foldersWithChanges.has(node.path);
-
-  // showChangedOnly: hide nodes with no changes and no changed descendants
-  const hiddenByChangedFilter = showChangedOnly && !isChanged && !hasChangedChildren;
-  const fileStatus = fileStatuses?.get(node.path);
-  const folderChangeCount = node.isDir ? folderIndicators?.get(node.path) : undefined;
-  const isRenaming = renamingPath === node.path;
   const renameInputRef = useRef<HTMLInputElement>(null);
 
   // Drag & drop
@@ -477,15 +571,13 @@ function FileTreeNode({ node, depth, onFileSelect, onFilePreview, onContextActio
     }
   }, [isRenaming, node.name, node.isDir]);
 
-  const isSelected = selectedPaths.has(node.path);
-
   const handleClick = (e: React.MouseEvent) => {
     // Let multi-select handle modifier clicks
-    const consumed = onNodeClick(node.path, node.isDir, e);
+    const consumed = handleNodeClick(node.path, node.isDir, e.metaKey || e.ctrlKey, e.shiftKey);
     if (consumed) return;
     // Normal click — toggle folder or open preview immediately
     if (node.isDir) {
-      onToggle(node.path);
+      togglePath(node.path);
     } else {
       // Single click → preview (no delay — VS Code pattern)
       (onFilePreview ?? onFileSelect)?.(node.path);
@@ -501,8 +593,8 @@ function FileTreeNode({ node, depth, onFileSelect, onFilePreview, onContextActio
 
   const isHidden = node.name.startsWith('.');
 
-  // Hide nodes that don't match filter, have no matching descendants, or are filtered by changed-only mode
-  if (!isVisible || hiddenByChangedFilter) return null;
+  // Hide nodes that don't match filter or have no matching descendants
+  if (!isVisible) return null;
 
   if (node.truncated && !node.isDir) {
     return (
@@ -577,15 +669,9 @@ function FileTreeNode({ node, depth, onFileSelect, onFilePreview, onContextActio
       ) : (
         <>
           {matchResult?.ranges.length ? (
-            <HighlightedName name={node.name} ranges={matchResult.ranges} className={fileStatus ? statusColorClass(fileStatus) : undefined} />
+            <HighlightedName name={node.name} ranges={matchResult.ranges} />
           ) : (
-            <span className={cn('truncate', fileStatus && statusColorClass(fileStatus))}>{node.name}</span>
-          )}
-          {/* Folder change count badge */}
-          {node.isDir && folderChangeCount && folderChangeCount > 0 && !isExpanded && (
-            <span className="ml-auto text-[11px] text-muted-foreground bg-surface-2 rounded-full px-1.5 py-0 leading-tight shrink-0">
-              {folderChangeCount}
-            </span>
+            <span className="truncate">{node.name}</span>
           )}
         </>
       )}
@@ -598,12 +684,8 @@ function FileTreeNode({ node, depth, onFileSelect, onFilePreview, onContextActio
         <ContextMenuTrigger asChild>
           {nodeContent}
         </ContextMenuTrigger>
-        {isSelected && selectedPaths.size > 1 ? (
-          <MultiSelectContextMenu
-            selectedCount={selectedPaths.size}
-            hasChangedFiles={(() => { if (!changedPaths) return false; for (const p of selectedPaths) { if (changedPaths.has(p)) return true; } return false; })()}
-            onAction={(action) => onContextAction?.(action, node)}
-          />
+        {isMultiSelected ? (
+          <MultiSelectMenuContent node={node} changedPaths={changedPaths} onContextAction={onContextAction} />
         ) : node.isDir ? (
           <FolderContextMenu
             node={node}
@@ -646,23 +728,6 @@ function FileTreeNode({ node, depth, onFileSelect, onFilePreview, onContextActio
               <FileTreeNode
                 node={child}
                 depth={depth + 1}
-                onFileSelect={onFileSelect}
-                onFilePreview={onFilePreview}
-                onContextAction={onContextAction}
-                onRenameConfirm={onRenameConfirm}
-                renamingPath={renamingPath}
-                onCancelRename={onCancelRename}
-                filterQuery={filterQuery}
-                matchingPaths={matchingPaths}
-                foldersWithChanges={foldersWithChanges}
-                showChangedOnly={showChangedOnly}
-                changedPaths={changedPaths}
-                fileStatuses={fileStatuses}
-                folderIndicators={folderIndicators}
-                expandedPaths={expandedPaths}
-                onToggle={onToggle}
-                selectedPaths={selectedPaths}
-                onNodeClick={onNodeClick}
               />
             </ErrorBoundary>
           ))}
@@ -670,10 +735,35 @@ function FileTreeNode({ node, depth, onFileSelect, onFilePreview, onContextActio
       )}
     </div>
   );
+});
+
+// ---------------------------------------------------------------------------
+// MultiSelectMenuContent (subscribes to full selectedPaths — isolated to avoid
+// re-rendering the entire FileTreeNode on every selection change)
+// ---------------------------------------------------------------------------
+
+function MultiSelectMenuContent({ node, changedPaths, onContextAction }: { node: FileNode; changedPaths?: Set<string>; onContextAction?: (action: ContextAction, node: FileNode) => void }) {
+  const selectedPaths = useFileTreeStore(s => s.selectedPaths);
+  let hasChangedFiles = false;
+  if (changedPaths) {
+    for (const p of selectedPaths) {
+      if (changedPaths.has(p)) { hasChangedFiles = true; break; }
+    }
+  }
+  return (
+    <MultiSelectContextMenu
+      selectedCount={selectedPaths.size}
+      hasChangedFiles={hasChangedFiles}
+      onAction={(action) => onContextAction?.(action, node)}
+    />
+  );
 }
 
-// Safe icon wrapper that catches rendering errors
-function SafeIcon({ icon, className }: { icon: string; className?: string }) {
+// ---------------------------------------------------------------------------
+// Safe icon wrapper (memoized)
+// ---------------------------------------------------------------------------
+
+const SafeIcon = memo(function SafeIcon({ icon, className }: { icon: string; className?: string }) {
   return (
     <ErrorBoundary
       section="Icon"
@@ -682,10 +772,10 @@ function SafeIcon({ icon, className }: { icon: string; className?: string }) {
       <Icon icon={icon} className={className} />
     </ErrorBoundary>
   );
-}
+});
 
-// File icon component using VS Code icons
-export function FileIcon({ filename, className }: { filename: string; className?: string }) {
+// File icon component using VS Code icons (memoized)
+export const FileIcon = memo(function FileIcon({ filename, className }: { filename: string; className?: string }) {
   const iconName = getFileIcon(filename);
 
   return (
@@ -694,4 +784,4 @@ export function FileIcon({ filename, className }: { filename: string; className?
       className={cn('w-4 h-4 shrink-0', className)}
     />
   );
-}
+});
