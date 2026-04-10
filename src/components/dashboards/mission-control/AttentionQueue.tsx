@@ -57,7 +57,7 @@ export function AttentionQueue() {
   }, []);
 
   const dismissed = useMemo(
-    () => getActiveDismissedIds(dismissedEntries),
+    () => getActiveDismissedIds(dismissedEntries, now),
     [dismissedEntries, now],
   );
 

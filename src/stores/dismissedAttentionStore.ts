@@ -19,9 +19,9 @@ interface DismissEntry {
 }
 
 /** Returns the set of currently-active (non-expired) dismissed IDs. */
-export function getActiveDismissedIds(entries: DismissEntry[]): Set<string> {
-  const now = Date.now();
-  return new Set(entries.filter((e) => now - e.at < DISMISS_TTL_MS).map((e) => e.id));
+export function getActiveDismissedIds(entries: DismissEntry[], now?: number): Set<string> {
+  const t = now ?? Date.now();
+  return new Set(entries.filter((e) => t - e.at < DISMISS_TTL_MS).map((e) => e.id));
 }
 
 interface DismissedAttentionState {

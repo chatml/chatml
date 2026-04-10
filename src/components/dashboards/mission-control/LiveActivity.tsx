@@ -4,7 +4,6 @@ import { useMemo } from 'react';
 import { useAppStore } from '@/stores/appStore';
 import { useScheduledTaskStore } from '@/stores/scheduledTaskStore';
 import { navigate } from '@/lib/navigation';
-import { DISMISS_TTL_MS } from '@/stores/dismissedAttentionStore';
 import { Circle, CheckCircle2, XCircle, Clock } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { formatTimeAgo } from '@/lib/format';
@@ -52,8 +51,7 @@ export function LiveActivity() {
 
   const recentlyCompleted = useMemo(
     () => sessions
-      .filter((s) => (s.status === 'done' || s.status === 'error') &&
-        (!s.archived || Date.now() - new Date(s.updatedAt).getTime() < DISMISS_TTL_MS))
+      .filter((s) => s.status === 'done' || s.status === 'error')
       .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
       .slice(0, 5),
     [sessions],
