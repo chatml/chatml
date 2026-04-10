@@ -93,7 +93,8 @@ func (r *Runner) ProducedOutput() bool                 { return r.core.ProducedO
 // --- Type-adapting methods ---
 
 // SendMessageWithAttachments converts backend Attachment types to core types.
-func (r *Runner) SendMessageWithAttachments(content string, attachments []models.Attachment) error {
+// messageUuid is ignored by the native loop (no agent-runner ack signal).
+func (r *Runner) SendMessageWithAttachments(content string, attachments []models.Attachment, messageUuid string) error {
 	return r.core.SendMessageWithAttachments(content, convertAttachments(attachments))
 }
 

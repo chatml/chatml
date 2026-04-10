@@ -206,7 +206,7 @@ export function SessionToolbarContent() {
     updateConversation(selectedConversationId, { status: 'active' });
     setStreaming(selectedConversationId, true);
 
-    sendConversationMessage(selectedConversationId, content, [templateAttachment]).catch((error) => {
+    sendConversationMessage(selectedConversationId, content, { attachments: [templateAttachment] }).catch((error) => {
       console.error('Failed to send action message:', error);
       setStreaming(selectedConversationId, false);
       updateConversation(selectedConversationId, { status: 'idle' });
@@ -336,7 +336,7 @@ export function SessionToolbarContent() {
       console.error('Failed to fetch CI failure context:', error);
       // Fallback: send without failure details
       try {
-        await sendConversationMessage(selectedConversationId, 'Fix the failing CI checks', [templateAttachment]);
+        await sendConversationMessage(selectedConversationId, 'Fix the failing CI checks', { attachments: [templateAttachment] });
         showWarning('Could not fetch CI details. Sent generic request.');
       } catch {
         setStreaming(selectedConversationId, false);
@@ -377,7 +377,7 @@ export function SessionToolbarContent() {
       isInstruction: false,
     };
     try {
-      await sendConversationMessage(selectedConversationId, 'Fix the failing CI checks', [templateAttachment, failureAttachment]);
+      await sendConversationMessage(selectedConversationId, 'Fix the failing CI checks', { attachments: [templateAttachment, failureAttachment] });
     } catch {
       setStreaming(selectedConversationId, false);
       updateConversation(selectedConversationId, { status: 'idle' });

@@ -450,7 +450,7 @@ func (m *Manager) StartConversation(ctx context.Context, sessionID, conversation
 			}
 		}
 
-		if err := backend.SendMessageWithAttachments(initialMessage, attachments); err != nil {
+		if err := backend.SendMessageWithAttachments(initialMessage, attachments, ""); err != nil {
 			return conv, fmt.Errorf("failed to send initial message: %w", err)
 		}
 
@@ -1064,6 +1064,11 @@ outer:
 			case EventTypeMessageCancelled:
 				logger.Manager.Debugf("[%s] Message cancelled", convID)
 
+			case EventTypeMessageReceived:
+				// Agent-runner acknowledged receipt of a queued user message.
+				// Already forwarded to frontend via onConversationEvent above.
+				logger.Manager.Debugf("[%s] Message received by agent-runner: %s", convID, event.MessageUuid)
+
 			// ── SDK 0.2.84+ event types ──────────────────────────────────
 
 			case EventTypeStopFailure:
@@ -1165,6 +1170,25 @@ outer:
 							sortPriority: 0, // Sort before other items at the same timestamp
 							entry:        models.TimelineEntry{Type: "status", Content: statusContent, Variant: "config"},
 						})
+					}
+					// Embed pending user message at its chronological position in the timeline
+					if pending != nil {
+						entry := models.TimelineEntry{
+							Type:      "user_message",
+							Content:   pending.Content,
+							MessageID: pending.ID,
+						}
+						if len(pending.Attachments) > 0 {
+							for _, a := range pending.Attachments {
+								entry.AttachmentIDs = append(entry.AttachmentIDs, a.ID)
+							}
+						}
+						items = append(items, timelineItem{
+							timestamp:    pending.Timestamp,
+							sortPriority: 1,
+							entry:        entry,
+						})
+						pending.EmbeddedInTimeline = true
 					}
 					sort.Slice(items, func(i, j int) bool {
 						if items[i].timestamp.Equal(items[j].timestamp) {
@@ -1659,8 +1683,9 @@ func (m *Manager) handleConversationCompletion(convID string, proc ConversationB
 	}
 }
 
-// SendConversationMessage sends a follow-up message to an existing conversation
-func (m *Manager) SendConversationMessage(ctx context.Context, convID, message string, attachments []models.Attachment, planMode *bool) error {
+// SendConversationMessage sends a follow-up message to an existing conversation.
+// messageUuid is the frontend's message ID used for agent-runner delivery acknowledgment.
+func (m *Manager) SendConversationMessage(ctx context.Context, convID, message string, attachments []models.Attachment, planMode *bool, messageUuid string) error {
 	// Track whether we should generate a title (set in the idle-start path)
 	var shouldGenerateTitle bool
 	var titleSessionID string
@@ -1902,7 +1927,7 @@ func (m *Manager) SendConversationMessage(ctx context.Context, convID, message s
 	// Send to process with attachments
 	logger.Manager.Infof("Sending message to conv %s (content=%d chars, attachments=%d, processRestarted=%v)",
 		convID, len(message), len(attachments), needsRestart)
-	if err := proc.SendMessageWithAttachments(message, attachments); err != nil {
+	if err := proc.SendMessageWithAttachments(message, attachments, messageUuid); err != nil {
 		// Discard the pending message — it was never delivered to the agent,
 		// so it should not be flushed to the DB later.
 		proc.TakePendingUserMessage()
@@ -3644,7 +3669,7 @@ func (m *Manager) prepareOllamaAndStart(convID, sessionID string, session *model
 			}
 		}
 
-		if err := backend.SendMessageWithAttachments(initialMessage, attachments); err != nil {
+		if err := backend.SendMessageWithAttachments(initialMessage, attachments, ""); err != nil {
 			logger.Manager.Errorf("Failed to send initial message for conversation %s: %v", convID, err)
 		}
 
@@ -3727,7 +3752,7 @@ func (m *Manager) prepareOllamaAndRestart(convID string, session *models.Session
 		}
 
 		if len(attachments) > 0 {
-			if err := backend.SendMessageWithAttachments(message, attachments); err != nil {
+			if err := backend.SendMessageWithAttachments(message, attachments, ""); err != nil {
 				logger.Manager.Errorf("Failed to send message after restart for conversation %s: %v", convID, err)
 			}
 		} else {

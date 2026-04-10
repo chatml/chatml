@@ -872,6 +872,11 @@ function setupInputQueue(): void {
 
       // Queue "message" type inputs for the next turn
       if (input.type === "message" && input.content) {
+        // Acknowledge receipt to backend → frontend before processing
+        if (input.messageUuid) {
+          emit({ type: "message_received", messageUuid: input.messageUuid });
+        }
+
         const queued: QueuedMessage = {
           content: input.content,
           attachments: input.attachments,

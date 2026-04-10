@@ -918,15 +918,23 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
         await sendConversationMessage(
           selectedConversationId,
           trimmedContent,
-          loadedAttachments.length > 0 ? loadedAttachments : undefined,
-          modelChanged ? modelToSend : undefined,
-          mentionedFiles.length > 0 ? mentionedFiles : undefined,
-          planModeEnabled
+          {
+            attachments: loadedAttachments.length > 0 ? loadedAttachments : undefined,
+            model: modelChanged ? modelToSend : undefined,
+            mentionedFiles: mentionedFiles.length > 0 ? mentionedFiles : undefined,
+            planMode: planModeEnabled,
+            messageUuid: shouldQueue ? messageId : undefined,
+          },
         );
-        // Mark queued message as sent once backend acknowledges receipt,
-        // so it renders as a regular user message instead of "Queued".
+        // markQueuedMessageSent is normally called when the agent-runner
+        // emits a message_received event via WebSocket (see useWebSocket.ts).
+        // Fallback: if the ack never arrives (agent crash, WS drop), mark
+        // as sent after 10 s so the message doesn't stay "Queued" forever.
+        // markQueuedMessageSent is idempotent so double-calls are safe.
         if (shouldQueue) {
-          markQueuedMessageSent(selectedConversationId, messageId);
+          const convId = selectedConversationId;
+          const msgId = messageId;
+          setTimeout(() => markQueuedMessageSent(convId, msgId), 10_000);
         }
       }
 

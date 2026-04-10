@@ -235,7 +235,7 @@ export interface QueuedMessage {
 }
 
 /** Convert a QueuedMessage into a store Message for a given conversation. */
-function queuedToMessage(queued: QueuedMessage, conversationId: string): Message {
+function queuedToMessage(queued: QueuedMessage, conversationId: string, opts?: { embeddedInTimeline?: boolean }): Message {
   return {
     id: queued.id,
     conversationId,
@@ -243,6 +243,7 @@ function queuedToMessage(queued: QueuedMessage, conversationId: string): Message
     content: queued.content,
     attachments: queued.attachments,
     timestamp: queued.timestamp,
+    ...(opts?.embeddedInTimeline ? { embeddedInTimeline: true } : {}),
   };
 }
 
@@ -2362,6 +2363,20 @@ updateFileTabContent: (id, content) => set((state) => ({
           entry: { type: 'compact', content: streaming.compactBoundary.label, summary: streaming.compactBoundary.summary },
         });
       }
+      // Embed queued user message at its chronological position in the timeline
+      if (queued) {
+        const queuedTs = new Date(queued.timestamp).getTime();
+        const attachmentIds = queued.attachments?.map(a => a.id);
+        timelineItems.push({
+          timestamp: queuedTs,
+          entry: {
+            type: 'user_message',
+            messageId: queued.id,
+            content: queued.content,
+            ...(attachmentIds && attachmentIds.length > 0 ? { attachmentIds } : {}),
+          },
+        });
+      }
       timelineItems.sort((a, b) => a.timestamp - b.timestamp);
       const timeline: TimelineEntry[] | undefined =
         timelineItems.length > 0 ? timelineItems.map(item => item.entry) : undefined;
@@ -2407,7 +2422,7 @@ updateFileTabContent: (id, content) => set((state) => ({
       // (queued and remaining already computed above)
       const existing = state.messagesByConversation[conversationId] ?? [];
       const updatedMessages = queued
-        ? [...existing, newMessage, queuedToMessage(queued, conversationId)]
+        ? [...existing, newMessage, queuedToMessage(queued, conversationId, { embeddedInTimeline: true })]
         : [...existing, newMessage];
 
       const convPagination = state.messagePagination[conversationId];
@@ -2439,14 +2454,15 @@ updateFileTabContent: (id, content) => set((state) => ({
         ...((queued || metadata.terminal) ? {
           queuedMessages: { ...state.queuedMessages, [conversationId]: remaining },
         } : {}),
-        // Keep pagination totalCount in sync: +1 for the assistant message,
-        // +1 more if a queued user message was also committed.
+        // Keep pagination totalCount in sync: +1 for the assistant message.
+        // Queued user messages embedded in the timeline don't count — they
+        // render inline, not as standalone rows.
         ...(convPagination ? {
           messagePagination: {
             ...state.messagePagination,
             [conversationId]: {
               ...convPagination,
-              totalCount: convPagination.totalCount + 1 + (queued ? 1 : 0),
+              totalCount: convPagination.totalCount + 1,
             },
           },
         } : {}),
