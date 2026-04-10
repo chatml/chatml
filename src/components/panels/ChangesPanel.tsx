@@ -11,6 +11,11 @@ import { formatReviewFeedback } from '@/lib/formatReviewFeedback';
 import { dispatchAppEvent } from '@/lib/custom-events';
 import type { Attachment } from '@/lib/types';
 import { FileTree, FileIcon, type FileNode, type FileTreeHandle } from '@/components/files/FileTree';
+import type { ContextAction } from '@/components/files/FileTreeContextMenu';
+import { buildStatusMap, buildFolderIndicators } from '@/lib/fileTreeUtils';
+import { useFileOperations } from '@/hooks/useFileOperations';
+import { ConfirmDeleteDialog, ConfirmDiscardDialog, NewItemDialog } from '@/components/files/FileOperationDialogs';
+import { FileTreeFilter } from '@/components/files/FileTreeFilter';
 import { TodoPanel } from '@/components/panels/TodoPanel';
 import { BudgetStatusPanel } from '@/components/panels/BudgetStatusPanel';
 import { ChecksPanel, type ChecksPanelHandle } from '@/components/panels/ChecksPanel';
@@ -84,12 +89,26 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { isBinaryFile } from '@/lib/fileUtils';
+import { copyToClipboard, showInFinder, openInVSCode, openInTerminal } from '@/lib/tauri';
 import { useDiffPrefetch } from '@/hooks/useDiffPrefetch';
 import { useFileContentPrefetch } from '@/hooks/useFileContentPrefetch';
 import { useSessionSnapshot } from '@/hooks/useSessionSnapshot';
 
 // Maximum file size for diff viewing (2MB)
 const MAX_DIFF_SIZE = 2 * 1024 * 1024;
+
+// Recursively collect all file paths under a set of nodes
+function collectFilePaths(nodes: FileNode[]): string[] {
+  const paths: string[] = [];
+  for (const node of nodes) {
+    if (!node.isDir) {
+      paths.push(node.path);
+    } else if (node.children) {
+      paths.push(...collectFilePaths(node.children));
+    }
+  }
+  return paths;
+}
 
 export function ChangesPanel() {
   // Use optimized selectors to prevent unnecessary re-renders
@@ -209,8 +228,38 @@ export function ChangesPanel() {
     return () => observer.disconnect();
   }, []);
 
+  // Build a set of changed file paths for context menu conditional items
+  const changedPaths = useMemo(() => {
+    const paths = new Set<string>();
+    for (const c of allChanges) paths.add(c.path);
+    for (const c of changes) paths.add(c.path);
+    return paths;
+  }, [changes, allChanges]);
+
+  // Git status decorations for file tree
+  const fileStatuses = useMemo(() => buildStatusMap(changes, allChanges), [changes, allChanges]);
+  const folderIndicators = useMemo(() => buildFolderIndicators(changes, allChanges), [changes, allChanges]);
+
+  // Toggle: show only changed files in the file tree
+  const [showChangedOnly, setShowChangedOnly] = useState(false);
+  // File tree filter
+  const [filterQuery, setFilterQuery] = useState('');
+  const [filterVisible, setFilterVisible] = useState(false);
+
+  // File operation dialog state
+  const [deleteDialog, setDeleteDialog] = useState<{ open: boolean; paths: string[]; name: string; isDir: boolean }>({ open: false, paths: [], name: '', isDir: false });
+  const [discardDialog, setDiscardDialog] = useState<{ open: boolean; paths: string[]; name: string; isFolder: boolean }>({ open: false, paths: [], name: '', isFolder: false });
+  const [newItemDialog, setNewItemDialog] = useState<{ open: boolean; type: 'file' | 'folder'; parentPath: string }>({ open: false, type: 'file', parentPath: '' });
+
+  // File operations hook
+  const fileOps = useFileOperations({
+    workspaceId: selectedWorkspaceId,
+    sessionId: selectedSessionId,
+    onFilesRefresh: setFiles,
+  });
+
   // Handle file selection from file tree (session-scoped tab)
-  const handleFileSelect = async (path: string) => {
+  const openFileAsTab = async (path: string, isPreview: boolean) => {
     if (!selectedWorkspaceId || !selectedSessionId) return;
 
     const filename = path.split('/').pop() || path;
@@ -235,6 +284,7 @@ export function ChangesPanel() {
         content: cached.content ?? '',
         originalContent: cached.content ?? '',
         isEmpty,
+        isPreview,
       });
       return;
     }
@@ -248,6 +298,7 @@ export function ChangesPanel() {
       name: filename,
       isLoading: true,
       viewMode: 'file',
+      isPreview,
     };
 
     openFileTab(newTab);
@@ -274,6 +325,205 @@ export function ChangesPanel() {
       });
     }
   };
+
+  const handleFileSelect = (path: string) => openFileAsTab(path, false);
+  const handleFilePreview = (path: string) => openFileAsTab(path, true);
+
+  // Use ref for sessions to avoid recreating handleContextAction on every session status change
+  const sessionsRef = useRef(sessions);
+  sessionsRef.current = sessions;
+
+  // Handle context menu actions from the file tree
+  const handleContextAction = useCallback(async (action: ContextAction, node: FileNode | null) => {
+    const currentSession = sessionsRef.current.find(s => s.id === selectedSessionId);
+    const worktreePath = currentSession?.worktreePath;
+
+    switch (action) {
+      // Open actions — delegate to existing handlers
+      case 'open':
+      case 'open-new-tab':
+        if (node && !node.isDir) handleFileSelect(node.path);
+        break;
+      case 'open-to-side':
+        // For now, same as open (side-by-side is a future enhancement)
+        if (node && !node.isDir) handleFileSelect(node.path);
+        break;
+
+      // View diff
+      case 'view-diff':
+        if (node && !node.isDir) handleChangedFileSelect(node.path);
+        break;
+
+      // Clipboard actions
+      case 'copy-path':
+        if (node && worktreePath) {
+          copyToClipboard(`${worktreePath}/${node.path}`);
+        }
+        break;
+      case 'copy-relative-path':
+        if (node) {
+          copyToClipboard(node.path);
+        }
+        break;
+      case 'copy-name':
+        if (node) {
+          copyToClipboard(node.name);
+        }
+        break;
+
+      // Open In actions
+      case 'reveal-in-finder':
+        if (node && worktreePath) {
+          showInFinder(`${worktreePath}/${node.path}`);
+        }
+        break;
+      case 'open-in-terminal':
+        if (node && worktreePath) {
+          const terminalPath = node.isDir
+            ? `${worktreePath}/${node.path}`
+            : `${worktreePath}/${node.path.split('/').slice(0, -1).join('/')}`;
+          openInTerminal(terminalPath || worktreePath);
+        }
+        break;
+      case 'open-in-vscode':
+        if (node && worktreePath) {
+          openInVSCode(`${worktreePath}/${node.path}`);
+        }
+        break;
+
+      // Background-only actions
+      case 'show-changed-only':
+        setShowChangedOnly(prev => !prev);
+        break;
+      case 'refresh':
+        refetchSnapshot();
+        if (selectedWorkspaceId && selectedSessionId) {
+          invalidateSessionData(selectedWorkspaceId, selectedSessionId);
+          invalidateDiffCache(selectedWorkspaceId, selectedSessionId);
+          invalidateFileContentCache(selectedWorkspaceId, selectedSessionId);
+          // Re-fetch files
+          setFilesLoading(true);
+          listSessionFiles(selectedWorkspaceId, selectedSessionId).then(fetchedFiles => {
+            setFiles(fetchedFiles);
+            setFilesLoading(false);
+          }).catch(() => setFilesLoading(false));
+        }
+        break;
+
+      // AI actions — compose into chat input
+      case 'ai-add-to-context':
+        if (node) {
+          dispatchAppEvent('compose-action', { text: `@${node.path} ` });
+        }
+        break;
+      case 'ai-add-all-to-context':
+        if (node && node.isDir && node.children) {
+          const filePaths = collectFilePaths(node.children);
+          const mentions = filePaths.map(p => `@${p}`).join(' ');
+          dispatchAppEvent('compose-action', { text: mentions + ' ' });
+        }
+        break;
+      case 'ai-explain':
+        if (node) {
+          dispatchAppEvent('compose-action', { text: `Explain this file: @${node.path}` });
+        }
+        break;
+      case 'ai-explain-module':
+        if (node) {
+          dispatchAppEvent('compose-action', { text: `Explain this module/directory: @${node.path}` });
+        }
+        break;
+      case 'ai-generate-tests':
+        if (node) {
+          dispatchAppEvent('compose-action', { text: `Generate comprehensive tests for: @${node.path}` });
+        }
+        break;
+      case 'ai-review':
+        if (node) {
+          dispatchAppEvent('compose-action', { text: `Review this file for bugs, performance issues, and improvements: @${node.path}` });
+        }
+        break;
+
+      // File operations
+      case 'new-file':
+        setNewItemDialog({ open: true, type: 'file', parentPath: node?.isDir ? node.path : '' });
+        break;
+      case 'new-folder':
+        setNewItemDialog({ open: true, type: 'folder', parentPath: node?.isDir ? node.path : '' });
+        break;
+      case 'rename':
+        // Handled by FileTree inline rename (sets renamingPath internally)
+        break;
+      case 'duplicate':
+        if (node && !node.isDir) fileOps.duplicate(node.path);
+        break;
+      case 'delete':
+        if (node) {
+          setDeleteDialog({ open: true, paths: [node.path], name: node.name, isDir: node.isDir });
+        }
+        break;
+      case 'discard-changes':
+        if (node) {
+          setDiscardDialog({ open: true, paths: [node.path], name: node.name, isFolder: false });
+        }
+        break;
+      case 'discard-folder-changes':
+        if (node) {
+          setDiscardDialog({ open: true, paths: [node.path], name: node.name, isFolder: true });
+        }
+        break;
+      case 'find-in-folder':
+        setFilterVisible(true);
+        if (node) setFilterQuery('');
+        break;
+
+      // Multi-select actions
+      case 'delete-selected': {
+        const selected = fileTreeRef.current?.getSelectedPaths();
+        if (selected && selected.size > 0) {
+          setDeleteDialog({
+            open: true,
+            paths: [...selected],
+            name: `${selected.size} selected item${selected.size > 1 ? 's' : ''}`,
+            isDir: false,
+          });
+        }
+        break;
+      }
+      case 'discard-selected': {
+        const selected = fileTreeRef.current?.getSelectedPaths();
+        if (selected && selected.size > 0) {
+          setDiscardDialog({
+            open: true,
+            paths: [...selected],
+            name: `${selected.size} selected file${selected.size > 1 ? 's' : ''}`,
+            isFolder: false,
+          });
+        }
+        break;
+      }
+      case 'copy-selected-paths': {
+        const selected = fileTreeRef.current?.getSelectedPaths();
+        if (selected && selected.size > 0 && worktreePath) {
+          const paths = [...selected].map(p => `${worktreePath}/${p}`).join('\n');
+          copyToClipboard(paths);
+        }
+        break;
+      }
+      case 'ai-add-selected-to-context': {
+        const selected = fileTreeRef.current?.getSelectedPaths();
+        if (selected && selected.size > 0) {
+          const mentions = [...selected].map(p => `@${p}`).join(' ');
+          dispatchAppEvent('compose-action', { text: mentions + ' ' });
+        }
+        break;
+      }
+
+      default:
+        break;
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- handleFileSelect, handleChangedFileSelect, and invalidate* are stable; sessions accessed via ref
+  }, [selectedSessionId, selectedWorkspaceId, refetchSnapshot, fileOps]);
 
   // Shared helper: check cache then fetch diff, applying size check and updating tab state.
   const loadDiffForTab = async (tabId: string, workspaceId: string, sessionId: string, path: string) => {
@@ -722,16 +972,34 @@ export function ChangesPanel() {
                 </div>
               </div>
             ) : (
-              <div className="h-full min-h-0 p-1 overflow-hidden">
-                <ErrorBoundary section="FileTree" fallback={<InlineErrorFallback message="Unable to display file tree" />}>
-                  <FileTree
-                    ref={fileTreeRef}
-                    files={files}
-                    onFileSelect={handleFileSelect}
-                    workspacePath={currentSession?.worktreePath}
-                    workspaceName={currentWorkspace?.name}
+              <div className="h-full min-h-0 flex flex-col overflow-hidden">
+                {filterVisible && (
+                  <FileTreeFilter
+                    value={filterQuery}
+                    onChange={setFilterQuery}
+                    onClose={() => { setFilterVisible(false); setFilterQuery(''); }}
                   />
-                </ErrorBoundary>
+                )}
+                <div className="flex-1 min-h-0 p-1">
+                  <ErrorBoundary section="FileTree" fallback={<InlineErrorFallback message="Unable to display file tree" />}>
+                    <FileTree
+                      ref={fileTreeRef}
+                      files={files}
+                      onFileSelect={handleFileSelect}
+                      onFilePreview={handleFilePreview}
+                      onContextAction={handleContextAction}
+                      onRename={fileOps.rename}
+                      filterQuery={filterQuery}
+                      changedPaths={changedPaths}
+                      fileStatuses={fileStatuses}
+                      folderIndicators={folderIndicators}
+                      showChangedOnly={showChangedOnly}
+                      onMoveFile={fileOps.move}
+                      workspacePath={currentSession?.worktreePath}
+                      workspaceName={currentWorkspace?.name}
+                    />
+                  </ErrorBoundary>
+                </div>
               </div>
             )}
           </div>
@@ -838,6 +1106,56 @@ export function ChangesPanel() {
           </div>
         </ResizablePanel>
       </ResizablePanelGroup>
+
+      {/* File operation dialogs */}
+      <ConfirmDeleteDialog
+        open={deleteDialog.open}
+        onOpenChange={(open) => setDeleteDialog(prev => ({ ...prev, open }))}
+        onConfirm={() => {
+          if (deleteDialog.paths.length > 1) {
+            fileOps.deleteFiles(deleteDialog.paths);
+            fileTreeRef.current?.clearSelection();
+          } else if (deleteDialog.paths.length === 1) {
+            fileOps.deleteFile(deleteDialog.paths[0], deleteDialog.isDir);
+          }
+          setDeleteDialog(prev => ({ ...prev, open: false }));
+        }}
+        name={deleteDialog.name}
+        isDir={deleteDialog.isDir}
+        isLoading={fileOps.loading === 'delete' || fileOps.loading === 'deleteFiles'}
+      />
+      <ConfirmDiscardDialog
+        open={discardDialog.open}
+        onOpenChange={(open) => setDiscardDialog(prev => ({ ...prev, open }))}
+        onConfirm={() => {
+          if (discardDialog.paths.length > 1) {
+            fileOps.discardChanges(discardDialog.paths);
+            fileTreeRef.current?.clearSelection();
+          } else if (discardDialog.paths.length === 1) {
+            fileOps.discard(discardDialog.paths[0]);
+          }
+          setDiscardDialog(prev => ({ ...prev, open: false }));
+        }}
+        name={discardDialog.name}
+        isFolder={discardDialog.isFolder}
+        isLoading={fileOps.loading === 'discard' || fileOps.loading === 'discardChanges'}
+      />
+      <NewItemDialog
+        open={newItemDialog.open}
+        onOpenChange={(open) => setNewItemDialog(prev => ({ ...prev, open }))}
+        onConfirm={(name) => {
+          const fullPath = newItemDialog.parentPath ? `${newItemDialog.parentPath}/${name}` : name;
+          if (newItemDialog.type === 'file') {
+            fileOps.createFile(fullPath);
+          } else {
+            fileOps.createFolder(fullPath);
+          }
+          setNewItemDialog(prev => ({ ...prev, open: false }));
+        }}
+        type={newItemDialog.type}
+        parentPath={newItemDialog.parentPath}
+        isLoading={fileOps.loading === 'createFile' || fileOps.loading === 'createFolder'}
+      />
     </div>
   );
 }

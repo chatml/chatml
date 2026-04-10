@@ -44,6 +44,7 @@ function SortableTabItem({
   onClose,
   onPin,
   onRename,
+  onPromotePreview,
   statusIndicator,
 }: {
   tab: TabItemData;
@@ -53,6 +54,7 @@ function SortableTabItem({
   onClose: (e?: React.MouseEvent) => void;
   onPin?: (pinned: boolean) => void;
   onRename?: () => void;
+  onPromotePreview?: (id: string) => void;
   statusIndicator?: React.ReactNode;
 }) {
   const {
@@ -81,6 +83,7 @@ function SortableTabItem({
         onClose={onClose}
         onPin={onPin}
         onRename={onRename}
+        onPromotePreview={onPromotePreview}
         statusIndicator={statusIndicator}
       />
     </div>
@@ -107,6 +110,7 @@ export function TabBar({
   onCloseTab,
   onPinTab,
   onReorder,
+  onPromotePreview,
   onNewSession,
   onNewTerminal,
   onRenameConversation,
@@ -190,6 +194,7 @@ export function TabBar({
             ? () => onRenameConversation(tab.id)
             : undefined
         }
+        onPromotePreview={onPromotePreview}
         statusIndicator={statusIndicator}
       />
     ),
@@ -200,6 +205,7 @@ export function TabBar({
       handleClose,
       onPinTab,
       onRenameConversation,
+      onPromotePreview,
     ]
   );
 

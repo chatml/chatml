@@ -769,6 +769,7 @@ export interface FileTab {
   loadError?: string;         // Error message if loading failed
   saveError?: string;         // Error message if saving failed
   isPinned?: boolean;         // Pin support - pinned tabs won't auto-close
+  isPreview?: boolean;        // Preview tab — transient, replaced by next single-click
   openedAt?: string;          // ISO timestamp for ordering/history
   lastAccessedAt?: string;    // ISO timestamp for LRU tab closing
   // Editor state restoration fields

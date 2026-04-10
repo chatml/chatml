@@ -1497,6 +1497,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (existing) {
       // Tab already open - select it, update lastAccessedAt, and merge new properties
       // This allows setting isLoading: true when re-opening a tab that needs content loaded
+      // If opening a persistent tab that was previously preview, promote it
       return {
         fileTabs: state.fileTabs.map((t) =>
           t.id === tab.id
@@ -1504,6 +1505,8 @@ export const useAppStore = create<AppState>((set, get) => ({
                 ...t,
                 ...tab, // Merge incoming properties (e.g., isLoading: true)
                 lastAccessedAt: now,
+                // Promote preview to persistent when explicitly opened without isPreview
+                isPreview: tab.isPreview ?? false,
               }
             : t
         ),
@@ -1518,7 +1521,22 @@ export const useAppStore = create<AppState>((set, get) => ({
       lastAccessedAt: now,
     };
 
-    let newTabs = [...state.fileTabs, newTab];
+    // If opening a preview tab, replace any existing preview tab (in same session)
+    let newTabs: FileTab[];
+    if (newTab.isPreview) {
+      const existingPreviewIdx = state.fileTabs.findIndex(
+        (t) => t.isPreview && t.sessionId === newTab.sessionId
+      );
+      if (existingPreviewIdx !== -1) {
+        // Replace existing preview tab in place (same position)
+        newTabs = [...state.fileTabs];
+        newTabs[existingPreviewIdx] = newTab;
+      } else {
+        newTabs = [...state.fileTabs, newTab];
+      }
+    } else {
+      newTabs = [...state.fileTabs, newTab];
+    }
 
     // If over limit, close oldest unpinned AND non-dirty tab.
     // Never auto-close tabs with unsaved changes (safety) or pinned tabs (user intent).
@@ -1586,6 +1604,7 @@ updateFileTabContent: (id, content) => set((state) => ({
             ...t,
             content,
             isDirty: content !== t.originalContent,
+            isPreview: false, // Editing promotes preview to persistent
           }
         : t
     ),

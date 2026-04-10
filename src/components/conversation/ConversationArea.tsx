@@ -413,6 +413,7 @@ export function ConversationArea({ children }: ConversationAreaProps) {
       icon: <FileTabIcon filename={tab.name} className="w-3 h-3" />,
       isDirty: tab.isDirty,
       isPinned: tab.isPinned,
+      isPreview: tab.isPreview,
       isActive: selectedFileTabId === tab.id,
       group,
       fileTab: tab,
@@ -963,6 +964,7 @@ export function ConversationArea({ children }: ConversationAreaProps) {
         onSelectTab={handleTabSelect}
         onCloseTab={handleTabClose}
         onPinTab={(id, pinned) => pinFileTab(id, pinned)}
+        onPromotePreview={(id) => updateFileTab(id, { isPreview: false })}
         onReorder={reorderFileTabs}
         onNewSession={() => handleNewConversation('task')}
         onNewTerminal={handleNewClaudeTerminal}

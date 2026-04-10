@@ -31,6 +31,7 @@ export const TabItem = memo(function TabItem({
   onClose,
   onPin,
   onRename,
+  onPromotePreview,
   statusIndicator,
 }: TabItemProps) {
   const [isHovered, setIsHovered] = useState(false);
@@ -93,6 +94,7 @@ export const TabItem = memo(function TabItem({
             transitionDuration: `${ANIMATION_DURATION}ms`,
           }}
           onClick={onSelect}
+          onDoubleClick={tab.isPreview ? () => onPromotePreview?.(tab.id) : undefined}
           onKeyDown={handleKeyDown}
           onMouseEnter={() => setIsHovered(true)}
           onMouseLeave={() => setIsHovered(false)}
@@ -120,8 +122,8 @@ export const TabItem = memo(function TabItem({
           {/* Status indicator (for conversation tabs) or icon (for file tabs) */}
           {!tab.fileTab?.saveError && (statusIndicator || tab.icon)}
 
-          {/* Tab label */}
-          <span className="truncate flex-1">{tab.label}</span>
+          {/* Tab label — italic for preview tabs */}
+          <span className={cn('truncate flex-1', tab.isPreview && 'italic')}>{tab.label}</span>
 
           {/* Fixed-size container for dot/close button - prevents layout shift */}
           <div className="w-4 h-4 flex items-center justify-center shrink-0">
