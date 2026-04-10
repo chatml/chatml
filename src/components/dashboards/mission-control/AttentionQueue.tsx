@@ -1,8 +1,9 @@
 'use client';
 
-import { useMemo, useState, useCallback, useEffect } from 'react';
+import { useMemo, useCallback, useEffect, useState } from 'react';
 import { useAppStore } from '@/stores/appStore';
 import { useScheduledTaskStore } from '@/stores/scheduledTaskStore';
+import { useDismissedAttentionStore, getActiveDismissedIds, attentionId } from '@/stores/dismissedAttentionStore';
 import { navigate } from '@/lib/navigation';
 import { Button } from '@/components/ui/button';
 import {
@@ -33,37 +34,6 @@ interface AttentionItem {
   primaryAction: { label: string; handler: () => void };
 }
 
-const DISMISS_STORAGE_KEY = 'dashboard-dismissed-attention';
-const DISMISS_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
-
-function getDismissedIds(): Set<string> {
-  try {
-    const raw = localStorage.getItem(DISMISS_STORAGE_KEY);
-    if (!raw) return new Set();
-    const entries: { id: string; at: number }[] = JSON.parse(raw);
-    const now = Date.now();
-    const valid = entries.filter((e) => now - e.at < DISMISS_TTL_MS);
-    // Clean up expired
-    if (valid.length !== entries.length) {
-      localStorage.setItem(DISMISS_STORAGE_KEY, JSON.stringify(valid));
-    }
-    return new Set(valid.map((e) => e.id));
-  } catch {
-    return new Set();
-  }
-}
-
-function dismissItem(id: string) {
-  try {
-    const raw = localStorage.getItem(DISMISS_STORAGE_KEY);
-    const entries: { id: string; at: number }[] = raw ? JSON.parse(raw) : [];
-    entries.push({ id, at: Date.now() });
-    localStorage.setItem(DISMISS_STORAGE_KEY, JSON.stringify(entries));
-  } catch {
-    // Ignore
-  }
-}
-
 const severityConfig: Record<AttentionSeverity, { icon: typeof AlertCircle; color: string; bg: string }> = {
   'p0': { icon: XCircle, color: 'text-red-500', bg: 'bg-red-500/10' },
   'p1': { icon: AlertTriangle, color: 'text-yellow-500', bg: 'bg-yellow-500/10' },
@@ -75,15 +45,21 @@ export function AttentionQueue() {
   const sessions = useAppStore((s) => s.sessions);
   const workspaces = useAppStore((s) => s.workspaces);
   const taskRuns = useScheduledTaskStore((s) => s.runs);
-  const [dismissed, setDismissed] = useState(() => getDismissedIds());
+  const dismissedEntries = useDismissedAttentionStore((s) => s.entries);
+  const dismissAction = useDismissedAttentionStore((s) => s.dismiss);
 
   // Capture current time in state to satisfy React purity rules (Date.now() is impure).
-  // Refreshes every 60s so stale-session checks stay reasonably current.
+  // Refreshes every 60s so stale-session checks and dismiss TTLs stay current.
   const [now, setNow] = useState(Date.now);
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), 60_000);
     return () => clearInterval(id);
   }, []);
+
+  const dismissed = useMemo(
+    () => getActiveDismissedIds(dismissedEntries),
+    [dismissedEntries, now],
+  );
 
   const wsMap = useMemo(() => {
     const m = new Map<string, string>();
@@ -102,7 +78,7 @@ export function AttentionQueue() {
       // P0: Session errors
       if (s.status === 'error') {
         result.push({
-          id: `error-${s.id}`,
+          id: attentionId.error(s.id),
           severity: 'p0',
           type: 'Session Error',
           label: 'Session Error',
@@ -122,7 +98,7 @@ export function AttentionQueue() {
       // P0: CI failures
       if (s.checkStatus === 'failure' && s.prStatus === 'open') {
         result.push({
-          id: `ci-${s.id}`,
+          id: attentionId.ci(s.id),
           severity: 'p0',
           type: 'CI Failed',
           label: 'CI Failed',
@@ -145,7 +121,7 @@ export function AttentionQueue() {
       // P1: Merge conflicts
       if (s.hasMergeConflict) {
         result.push({
-          id: `conflict-${s.id}`,
+          id: attentionId.conflict(s.id),
           severity: 'p1',
           type: 'Merge Conflict',
           label: 'Merge Conflict',
@@ -165,7 +141,7 @@ export function AttentionQueue() {
       // P2-green: Ready to merge
       if (s.checkStatus === 'success' && s.prStatus === 'open' && !s.hasMergeConflict) {
         result.push({
-          id: `merge-${s.id}`,
+          id: attentionId.merge(s.id),
           severity: 'p2-green',
           type: 'Ready to Merge',
           label: 'Ready to Merge',
@@ -192,7 +168,7 @@ export function AttentionQueue() {
         now - new Date(s.updatedAt).getTime() > TWO_HOURS
       ) {
         result.push({
-          id: `stale-${s.id}`,
+          id: attentionId.stale(s.id),
           severity: 'p2-blue',
           type: 'Stale Session',
           label: 'Stale Session',
@@ -219,7 +195,7 @@ export function AttentionQueue() {
           new Date(run.triggeredAt).getTime() > dayAgo
         ) {
           result.push({
-            id: `task-${run.id}`,
+            id: attentionId.task(run.id),
             severity: 'p1',
             type: run.status === 'failed' ? 'Task Failed' : 'Task Skipped',
             label: run.status === 'failed' ? 'Task Failed' : 'Task Skipped',
@@ -250,9 +226,8 @@ export function AttentionQueue() {
   );
 
   const handleDismiss = useCallback((id: string) => {
-    dismissItem(id);
-    setDismissed((prev) => new Set([...prev, id]));
-  }, []);
+    dismissAction(id);
+  }, [dismissAction]);
 
   if (visibleItems.length === 0) {
     return (
@@ -318,7 +293,8 @@ export function AttentionQueue() {
               {item.primaryAction.label}
             </Button>
             <button
-              className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-surface-3 transition-opacity shrink-0"
+              aria-label={`Dismiss ${item.label} for 24 hours`}
+              className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 p-1.5 rounded hover:bg-surface-3 transition-opacity shrink-0"
               onClick={() => handleDismiss(item.id)}
               title="Dismiss for 24h"
             >

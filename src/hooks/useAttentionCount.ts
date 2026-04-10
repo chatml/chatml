@@ -1,24 +1,25 @@
 import { useMemo } from 'react';
 import { useAppStore } from '@/stores/appStore';
+import { useDismissedAttentionStore, getActiveDismissedIds, attentionId } from '@/stores/dismissedAttentionStore';
 
 /**
  * Returns the count of P0+P1 attention items for the dashboard badge.
- * Derives from existing session data — no new API calls.
+ * Respects dismissed items from the shared store.
  */
 export function useAttentionCount(): number {
   const sessions = useAppStore((s) => s.sessions);
+  const dismissedEntries = useDismissedAttentionStore((s) => s.entries);
 
   return useMemo(() => {
+    const dismissed = getActiveDismissedIds(dismissedEntries);
+
     let count = 0;
     for (const s of sessions) {
       if (s.archived) continue;
-      // P0: Session errors
-      if (s.status === 'error') count++;
-      // P0: CI failures
-      if (s.checkStatus === 'failure' && s.prStatus === 'open') count++;
-      // P1: Merge conflicts
-      if (s.hasMergeConflict) count++;
+      if (s.status === 'error' && !dismissed.has(attentionId.error(s.id))) count++;
+      if (s.checkStatus === 'failure' && s.prStatus === 'open' && !dismissed.has(attentionId.ci(s.id))) count++;
+      if (s.hasMergeConflict && !dismissed.has(attentionId.conflict(s.id))) count++;
     }
     return count;
-  }, [sessions]);
+  }, [sessions, dismissedEntries]);
 }
