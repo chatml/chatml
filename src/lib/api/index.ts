@@ -3,6 +3,7 @@ export * from './repositories';
 export * from './sessions';
 export * from './conversations';
 export * from './files';
+export * from './file-operations';
 export * from './git';
 export * from './branches';
 export * from './pr';

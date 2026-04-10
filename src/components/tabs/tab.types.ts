@@ -11,6 +11,7 @@ export interface TabItemData {
   icon?: ReactNode;
   isDirty?: boolean;
   isPinned?: boolean;
+  isPreview?: boolean;
   isActive: boolean;
   group: 'session' | 'conversation'; // All file tabs are now session-scoped
   // Original data reference for type-specific operations
@@ -35,6 +36,7 @@ export interface TabBarProps {
   onCloseTab: (id: string, type: 'file' | 'conversation' | 'terminal', e?: MouseEvent) => void;
   onPinTab?: (id: string, pinned: boolean) => void;
   onReorder?: (activeId: string, overId: string) => void;
+  onPromotePreview?: (id: string) => void;
   onNewSession: () => void;
   onNewTerminal?: () => void;
   onRenameConversation?: (id: string) => void;
@@ -53,6 +55,7 @@ export interface TabItemProps {
   onClose: (e?: MouseEvent) => void;
   onPin?: (pinned: boolean) => void;
   onRename?: () => void;
+  onPromotePreview?: (id: string) => void;
   // Status indicator for conversations
   statusIndicator?: ReactNode;
 }
