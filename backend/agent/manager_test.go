@@ -299,7 +299,7 @@ func TestManager_StartConversation_SessionNotFound(t *testing.T) {
 func TestManager_SendConversationMessage_ConversationNotFound(t *testing.T) {
 	manager, _ := setupTestManager(t)
 
-	err := manager.SendConversationMessage(context.Background(), "nonexistent", "hello", nil, nil)
+	err := manager.SendConversationMessage(context.Background(), "nonexistent", "hello", nil, nil, "")
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "conversation not found")
 }

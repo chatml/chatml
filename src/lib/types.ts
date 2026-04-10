@@ -165,7 +165,8 @@ export type TimelineEntry =
   | { type: 'thinking'; content: string }
   | { type: 'plan'; content: string }
   | { type: 'status'; content: string; variant: 'thinking_enabled' | 'config' | 'info' }
-  | { type: 'compact'; content: string; summary?: string };
+  | { type: 'compact'; content: string; summary?: string }
+  | { type: 'user_message'; messageId: string; content: string; attachmentIds?: string[] };
 
 // Active tool during streaming (real-time tracking)
 export interface ActiveTool {
@@ -294,6 +295,9 @@ export interface Message {
   checkpointUuid?: string;
   // True when loaded in compact mode (heavy fields stripped); needs hydration for full details
   compacted?: boolean;
+  // When true, this user message is rendered inline in the preceding assistant message's timeline.
+  // VirtualizedMessageList should skip rendering it as a standalone bubble.
+  embeddedInTimeline?: boolean;
 }
 
 // Run statistics from agent
@@ -529,6 +533,9 @@ export interface AgentEvent {
 
   // Session state changed fields (SDK 0.2.84)
   state?: string;
+
+  // Agent-runner message acknowledgment
+  messageUuid?: string;
 }
 
 // Rate limit info from claude.ai subscription (SDK 0.2.72)

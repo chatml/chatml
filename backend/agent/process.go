@@ -70,6 +70,7 @@ type InputMessage struct {
 	PermissionMode string              `json:"permissionMode,omitempty"`
 	CheckpointUuid string              `json:"checkpointUuid,omitempty"`
 	Attachments    []models.Attachment `json:"attachments,omitempty"`
+	MessageUuid    string              `json:"messageUuid,omitempty"` // Frontend message ID for receipt acknowledgment
 	// User question response fields (for AskUserQuestion tool)
 	QuestionRequestID string            `json:"questionRequestId,omitempty"`
 	Answers           map[string]string `json:"answers,omitempty"`
@@ -503,7 +504,7 @@ func (p *Process) SendMessage(content string) error {
 // SendMessageWithAttachments sends a user message with file attachments to the running agent process.
 // For image attachments, the base64 data is offloaded to a temp file so only the path
 // travels through stdin — avoiding pipe buffer saturation in the SDK → cli.js chain.
-func (p *Process) SendMessageWithAttachments(content string, attachments []models.Attachment) error {
+func (p *Process) SendMessageWithAttachments(content string, attachments []models.Attachment, messageUuid string) error {
 	// Offload image base64 data to temp files to keep stdin payloads small.
 	// The agent-runner reads the temp file and instructs Claude to use the Read tool.
 	processed := make([]models.Attachment, len(attachments))
@@ -563,6 +564,7 @@ func (p *Process) SendMessageWithAttachments(content string, attachments []model
 		Type:        "message",
 		Content:     content,
 		Attachments: processed,
+		MessageUuid: messageUuid,
 	})
 }
 

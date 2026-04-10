@@ -991,7 +991,7 @@ func TestProcess_PlanModeActive_InitFromOptions(t *testing.T) {
 
 func TestProcess_SendMessageWithAttachments_NotRunning(t *testing.T) {
 	p := NewProcess("test-attach", "/tmp", "conv-attach")
-	err := p.SendMessageWithAttachments("test", nil)
+	err := p.SendMessageWithAttachments("test", nil, "")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "not running")
 }

@@ -1107,6 +1107,13 @@ export function useWebSocket(enabled: boolean = true) {
         // Informational events — no frontend state changes needed
         break;
 
+      case 'message_received':
+        // Agent-runner acknowledged receipt of a queued user message
+        if (event.messageUuid) {
+          store.markQueuedMessageSent(conversationId, event.messageUuid as string);
+        }
+        break;
+
       // SDK 0.2.84+ events
 
       case 'api_retry': {

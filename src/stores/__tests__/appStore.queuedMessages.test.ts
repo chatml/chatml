@@ -24,7 +24,7 @@ describe('appStore - queued message ordering', () => {
     vi.useRealTimers();
   });
 
-  it('places queued user message AFTER assistant message on turn_complete', () => {
+  it('places queued user message AFTER assistant message on turn_complete with embeddedInTimeline', () => {
     // Set up: user1 already in messages, assistant is streaming, user2 is queued
     useAppStore.setState({
       messagesByConversation: {
@@ -78,6 +78,15 @@ describe('appStore - queued message ordering', () => {
     expect(messages[1].content).toBe('Assistant response to first message.');
     expect(messages[2].role).toBe('user');
     expect(messages[2].content).toBe('Second user message');
+    // Queued message committed on main path should be embedded in timeline
+    expect(messages[2].embeddedInTimeline).toBe(true);
+    // Assistant message timeline should contain the user_message entry
+    expect(messages[1].timeline).toBeDefined();
+    const userEntry = messages[1].timeline!.find(e => e.type === 'user_message');
+    expect(userEntry).toBeDefined();
+    if (userEntry!.type !== 'user_message') throw new Error('expected user_message timeline entry');
+    expect(userEntry!.messageId).toBe('msg-user2');
+    expect(userEntry!.content).toBe('Second user message');
   });
 
   it('commits queued user message on result event with runSummary', () => {
@@ -208,7 +217,7 @@ describe('appStore - queued message ordering', () => {
     expect(queued).toHaveLength(0);
   });
 
-  it('appends queued message correctly when no streaming text exists', () => {
+  it('appends queued message correctly when no streaming text exists (NOT embedded)', () => {
     // This covers the !streaming?.text branch (e.g. turn_complete after result already finalized)
     useAppStore.setState({
       messagesByConversation: {
@@ -264,6 +273,8 @@ describe('appStore - queued message ordering', () => {
     expect(messages[1].role).toBe('assistant');
     expect(messages[2].role).toBe('user');
     expect(messages[2].content).toBe('Second user message');
+    // No streaming text → no assistant timeline to embed into → not embedded
+    expect(messages[2].embeddedInTimeline).toBeUndefined();
   });
 
   it('commits queued message on init-triggered finalize (streaming text still present)', () => {
@@ -499,6 +510,58 @@ describe('appStore - queued message ordering', () => {
     const queued = useAppStore.getState().queuedMessages[conversationId] ?? [];
     expect(queued).toHaveLength(1);
     expect(queued[0].content).toBe('Third user message');
+  });
+
+  it('does not increment totalCount for embedded queued messages', () => {
+    useAppStore.setState({
+      messagesByConversation: {
+        [conversationId]: [
+          {
+            id: 'msg-user1',
+            conversationId,
+            role: 'user',
+            content: 'First user message',
+            timestamp: '2025-07-01T12:00:00Z',
+          },
+        ],
+      },
+      streamingState: {
+        [conversationId]: {
+          text: 'Assistant response.',
+          segments: [],
+          currentSegmentId: null,
+          isStreaming: true,
+          error: null,
+          thinking: null,
+          isThinking: false,
+          planModeActive: false,
+          pendingPlanApproval: null,
+        },
+      },
+      queuedMessages: {
+        [conversationId]: [
+          {
+            id: 'msg-user2',
+            content: 'Second user message',
+            attachments: [],
+            timestamp: '2025-07-01T12:00:05Z',
+          },
+        ],
+      },
+      messagePagination: {
+        [conversationId]: { totalCount: 1, pageSize: 50, hasMore: false },
+      },
+    });
+
+    useAppStore.getState().finalizeStreamingMessage(conversationId, {
+      durationMs: 5000,
+      commitQueued: true,
+    });
+
+    // totalCount should only increment by 1 (assistant message),
+    // not 2, because the embedded queued message doesn't count as a standalone row
+    const pagination = useAppStore.getState().messagePagination[conversationId];
+    expect(pagination?.totalCount).toBe(2);
   });
 
   it('does not add queued message when none exists', () => {

@@ -37,7 +37,9 @@ type ConversationBackend interface {
 	SendMessage(content string) error
 
 	// SendMessageWithAttachments sends a user message with file attachments.
-	SendMessageWithAttachments(content string, attachments []models.Attachment) error
+	// messageUuid is the frontend's message ID used for delivery acknowledgment
+	// (only meaningful for agent-runner Process backends; ignored by native loop).
+	SendMessageWithAttachments(content string, attachments []models.Attachment, messageUuid string) error
 
 	// SendStop sends a graceful stop signal.
 	SendStop() error

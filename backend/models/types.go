@@ -221,9 +221,10 @@ type Message struct {
 	ThinkingContent string             `json:"thinkingContent,omitempty"` // Extended thinking/reasoning content
 	DurationMs      int                `json:"durationMs,omitempty"`      // Turn duration in milliseconds
 	Timeline        []TimelineEntry    `json:"timeline,omitempty"`        // Interleaved text/tool ordering
-	PlanContent     string             `json:"planContent,omitempty"`     // Approved plan content
-	CheckpointUuid  string             `json:"checkpointUuid,omitempty"`  // File checkpoint UUID for revert
-	Timestamp       time.Time          `json:"timestamp"`
+	PlanContent        string             `json:"planContent,omitempty"`        // Approved plan content
+	CheckpointUuid     string             `json:"checkpointUuid,omitempty"`     // File checkpoint UUID for revert
+	EmbeddedInTimeline bool               `json:"embeddedInTimeline,omitempty"` // When true, rendered inline in preceding assistant message's timeline
+	Timestamp          time.Time          `json:"timestamp"`
 }
 
 // ToolUsageRecord represents detailed tool usage information stored per-message
@@ -242,10 +243,13 @@ type ToolUsageRecord struct {
 
 // TimelineEntry represents an entry in the interleaved message timeline
 type TimelineEntry struct {
-	Type    string `json:"type"`              // "text", "tool", "thinking", "plan", or "status"
-	Content string `json:"content,omitempty"` // For text, thinking, plan, and status entries
-	ToolID  string `json:"toolId,omitempty"`  // For tool entries, references ToolUsageRecord.ID
-	Variant string `json:"variant,omitempty"` // For status entries: "thinking_enabled", "config", "info"
+	Type          string   `json:"type"`                      // "text", "tool", "thinking", "plan", "status", "compact", or "user_message"
+	Content       string   `json:"content,omitempty"`         // For text, thinking, plan, status, compact, and user_message entries
+	ToolID        string   `json:"toolId,omitempty"`          // For tool entries, references ToolUsageRecord.ID
+	Variant       string   `json:"variant,omitempty"`         // For status entries: "thinking_enabled", "config", "info"
+	Summary       string   `json:"summary,omitempty"`         // For compact entries
+	MessageID     string   `json:"messageId,omitempty"`       // For user_message entries, references the standalone Message.ID
+	AttachmentIDs []string `json:"attachmentIds,omitempty"`   // For user_message entries, references attachment IDs
 }
 
 // ToolAction represents a tool usage record for the summary

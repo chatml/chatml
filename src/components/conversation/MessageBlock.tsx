@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useCallback, useMemo, memo } from 'react';
+import { useState, useCallback, useMemo, memo, type ReactNode } from 'react';
+import { useAppStore } from '@/stores/appStore';
 import { Button } from '@/components/ui/button';
 import {
   ContextMenu,
@@ -82,6 +83,56 @@ const ToolUsageSummary = memo(function ToolUsageSummary({ tools, worktreePath, c
         </div>
       </CollapsibleContent>
     </Collapsible>
+  );
+});
+
+/** Inline user message rendered within an assistant's timeline.
+ *  Looks up the referenced message's attachments from the store. */
+const InlineUserMessage = memo(function InlineUserMessage({
+  messageId,
+  content,
+  conversationId,
+}: {
+  messageId: string;
+  content: string;
+  conversationId: string;
+}) {
+  const [previewIndex, setPreviewIndex] = useState<number | null>(null);
+  const attachments = useAppStore((s) => {
+    const msgs = s.messagesByConversation[conversationId];
+    if (!msgs) return undefined;
+    const msg = msgs.find(m => m.id === messageId);
+    return msg?.attachments;
+  });
+
+  return (
+    <div className="pb-2 pt-3 flex justify-end">
+      <div className="max-w-[85%]">
+        <div className="bg-surface-2 dark:bg-[#2D1B4E] rounded-lg px-4 py-2.5">
+          {attachments && attachments.length > 0 && (
+            <>
+              <AttachmentGrid
+                attachments={attachments}
+                onPreview={(index) => setPreviewIndex(index)}
+                readOnly
+              />
+              {previewIndex !== null && (
+                <AttachmentPreviewModal
+                  open
+                  onOpenChange={(open) => { if (!open) setPreviewIndex(null); }}
+                  attachments={attachments}
+                  initialIndex={previewIndex}
+                  fromHistory
+                />
+              )}
+            </>
+          )}
+          <p className="text-base leading-relaxed whitespace-pre-wrap">
+            <MentionText content={content} />
+          </p>
+        </div>
+      </div>
+    </div>
   );
 });
 
@@ -270,6 +321,15 @@ export const MessageBlock = memo(function MessageBlock({
                         cacheKey={`compact:${message.id}`}
                         content={entry.content}
                         compactSummary={entry.summary}
+                      />
+                    );
+                  } else if (entry.type === 'user_message') {
+                    return (
+                      <InlineUserMessage
+                        key={`tl-user-${idx}`}
+                        messageId={entry.messageId}
+                        content={entry.content}
+                        conversationId={message.conversationId}
                       />
                     );
                   }

@@ -96,10 +96,34 @@ export function ConversationMessagePane({
     [queuedMessages]
   );
 
-  // Hide the setupInfo system card once the user has sent their first message
+  // Hide the setupInfo system card once the user has sent their first message.
+  // Also filter out user messages embedded in an assistant's timeline — they
+  // render inline within the assistant message, not as standalone rows.
+  // The embeddedInTimeline flag is set in memory during streaming but is NOT
+  // persisted to the DB. On reload, we reconstruct it by scanning assistant
+  // timelines for user_message entries referencing standalone message IDs.
   const conversationMessages = useMemo(() => {
-    if (!hasUserMessages) return allConversationMessages;
-    return allConversationMessages.filter(m => !(m.role === 'system' && m.setupInfo));
+    // Build set of message IDs referenced by assistant timeline user_message entries.
+    // This reconstructs the embeddedInTimeline flag for messages loaded from the DB.
+    const embeddedIds = new Set<string>();
+    for (const m of allConversationMessages) {
+      if (m.role === 'assistant' && m.timeline) {
+        for (const entry of m.timeline) {
+          if (entry.type === 'user_message') {
+            embeddedIds.add(entry.messageId);
+          }
+        }
+      }
+    }
+
+    let msgs = allConversationMessages;
+    if (hasUserMessages) {
+      msgs = msgs.filter(m => !(m.role === 'system' && m.setupInfo));
+    }
+    // Filter using both the in-memory flag (streaming path) and the
+    // reconstructed set (historical/reload path).
+    msgs = msgs.filter(m => !m.embeddedInTimeline && !embeddedIds.has(m.id));
+    return msgs;
   }, [allConversationMessages, hasUserMessages]);
 
   const hasMessages = conversationMessages.length > 0;

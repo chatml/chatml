@@ -107,10 +107,13 @@ export interface ToolUsageDTO {
 }
 
 export interface TimelineEntryDTO {
-  type: 'text' | 'tool' | 'thinking' | 'plan' | 'status';
+  type: 'text' | 'tool' | 'thinking' | 'plan' | 'status' | 'compact' | 'user_message';
   content?: string;
   toolId?: string;
   variant?: 'thinking_enabled' | 'config' | 'info';
+  summary?: string;
+  messageId?: string;       // For user_message entries
+  attachmentIds?: string[]; // For user_message entries
 }
 
 export interface MessageDTO {
@@ -127,6 +130,7 @@ export interface MessageDTO {
   planContent?: string;
   checkpointUuid?: string;
   timestamp: string;
+  embeddedInTimeline?: boolean;
 }
 
 export interface ToolActionDTO {
@@ -176,6 +180,7 @@ export function toStoreMessage(dto: MessageDTO, conversationId: string, opts?: {
     checkpointUuid: dto.checkpointUuid,
     timestamp: dto.timestamp,
     compacted: opts?.compacted,
+    embeddedInTimeline: dto.embeddedInTimeline,
   };
 }
 
@@ -258,18 +263,23 @@ export async function getMessage(convId: string, msgId: string): Promise<Message
   return handleResponse<MessageDTO>(res);
 }
 
+export interface SendMessageOptions {
+  attachments?: AttachmentDTO[];
+  model?: string;
+  mentionedFiles?: string[];
+  planMode?: boolean;
+  messageUuid?: string;
+}
+
 export async function sendConversationMessage(
   convId: string,
   content: string,
-  attachments?: AttachmentDTO[],
-  model?: string,
-  mentionedFiles?: string[],
-  planMode?: boolean
+  options?: SendMessageOptions,
 ): Promise<void> {
   const res = await fetchWithAuth(`${getApiBase()}/api/conversations/${convId}/messages`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ content, attachments, model, mentionedFiles, planMode }),
+    body: JSON.stringify({ content, ...options }),
   });
   if (!res.ok) {
     const text = await res.text();
