@@ -51,7 +51,7 @@ export function LiveActivity() {
 
   const recentlyCompleted = useMemo(
     () => sessions
-      .filter((s) => (s.status === 'done' || s.status === 'error') && !s.archived)
+      .filter((s) => s.status === 'done' || s.status === 'error')
       .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
       .slice(0, 5),
     [sessions],
