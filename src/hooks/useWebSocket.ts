@@ -438,6 +438,7 @@ export function useWebSocket(enabled: boolean = true) {
         freshStore.clearPendingUserQuestion(conversationId);
         freshStore.clearPendingToolApproval(conversationId);
         freshStore.clearPendingPlanApproval(conversationId);
+        freshStore.clearBackgroundTasks(conversationId);
         const resultConv = freshStore.conversations.find((c) => c.id === conversationId);
         if (resultConv) {
           freshStore.setLastTurnCompletedAt(resultConv.sessionId, Date.now());
@@ -474,6 +475,7 @@ export function useWebSocket(enabled: boolean = true) {
           turnStore.clearAgentTodos(conversationId);
           turnStore.clearPendingToolApproval(conversationId);
           turnStore.clearPendingPlanApproval(conversationId);
+          turnStore.clearBackgroundTasks(conversationId);
           const turnConvSkip = turnStore.conversations.find((c) => c.id === conversationId);
           if (turnConvSkip) {
             turnStore.setLastTurnCompletedAt(turnConvSkip.sessionId, Date.now());
@@ -506,6 +508,7 @@ export function useWebSocket(enabled: boolean = true) {
         turnStore.clearAgentTodos(conversationId);
         turnStore.clearPendingToolApproval(conversationId);
         turnStore.clearPendingPlanApproval(conversationId);
+        turnStore.clearBackgroundTasks(conversationId);
         const turnConv = turnStore.conversations.find((c) => c.id === conversationId);
         if (turnConv) {
           turnStore.setLastTurnCompletedAt(turnConv.sessionId, Date.now());
@@ -521,6 +524,7 @@ export function useWebSocket(enabled: boolean = true) {
         store.clearPendingUserQuestion(conversationId);
         store.clearPendingToolApproval(conversationId);
         store.clearPendingPlanApproval(conversationId);
+        store.clearBackgroundTasks(conversationId);
         store.updateConversation(conversationId, { status: 'idle' });
         const completeConv = store.conversations.find((c) => c.id === conversationId);
         if (completeConv) {

@@ -553,6 +553,7 @@ interface AppState {
   updateBackgroundTask: (conversationId: string, taskId: string, update: Partial<import('@/lib/types').BackgroundTask>) => void;
   stopBackgroundTask: (conversationId: string, taskId: string) => void;
   clearBackgroundTasks: (conversationId: string) => void;
+  clearStoppedBackgroundTasks: (conversationId: string) => void;
   removeBackgroundTask: (conversationId: string, taskId: string) => void;
 
   restoreStreamingFromSnapshot: (conversationId: string, snapshot: {
@@ -2136,6 +2137,12 @@ updateFileTabContent: (id, content) => set((state) => ({
     backgroundTasks: {
       ...state.backgroundTasks,
       [conversationId]: [],
+    },
+  })),
+  clearStoppedBackgroundTasks: (conversationId) => set((state) => ({
+    backgroundTasks: {
+      ...state.backgroundTasks,
+      [conversationId]: (state.backgroundTasks[conversationId] || []).filter((t) => t.status !== 'stopped'),
     },
   })),
   removeBackgroundTask: (conversationId, taskId) => set((state) => {
