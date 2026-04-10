@@ -694,9 +694,17 @@ function setupInputQueue(): void {
       if (input.type === "stop_task" && input.taskId) {
         if (queryRef) {
           debug(`Stopping task: ${input.taskId}`);
+          // Pre-mark as user-stopped so subagentStopHook skips the bridge emission
+          userStoppedTaskIds.add(input.taskId);
           void queryRef.stopTask(input.taskId).then(() => {
             emit({ type: "task_stopped", taskId: input.taskId! });
           }).catch((cmdErr: unknown) => {
+            // If subagentStopHook already consumed the entry, it suppressed the
+            // bridge emission — emit task_stopped defensively so the task doesn't
+            // become a ghost in the UI.
+            if (!userStoppedTaskIds.delete(input.taskId!)) {
+              emit({ type: "task_stopped", taskId: input.taskId! });
+            }
             emit({ type: "command_error", command: "stop_task", error: String(cmdErr) });
           });
         } else {
@@ -1132,6 +1140,10 @@ const sessionToAgentId = new Map<string, string>();
 const subagentActiveTools = new Map<string, { agentId: string; tool: string; startTime: number }>();
 // Track Task tool descriptions by tool_use_id for sub-agent description plumbing (Issue 3)
 const taskToolDescriptions = new Map<string, string>();
+// Track background task session → taskId for bridging subagent_stopped → task_stopped
+const sessionIdToTaskId = new Map<string, string>();
+// Track user-stopped task IDs to avoid duplicate task_stopped emissions
+const userStoppedTaskIds = new Set<string>();
 
 // Track statistics for the run
 interface RunStats {
@@ -1505,6 +1517,19 @@ const subagentStopHook: HookCallback = async (input) => {
     transcriptPath: hookInput.agent_transcript_path,
     sessionId: hookInput.session_id,
   });
+
+  // Bridge: emit task_stopped for background agents that completed naturally.
+  // The SDK emits task_started/task_progress but has no task completion event.
+  // We bridge subagent_stopped → task_stopped so the UI can clean up.
+  const taskId = sessionIdToTaskId.get(hookInput.session_id);
+  if (taskId) {
+    sessionIdToTaskId.delete(hookInput.session_id);
+    if (!userStoppedTaskIds.delete(taskId)) {
+      // Natural completion — emit task_stopped (user-stopped tasks already emit from stop_task handler)
+      emit({ type: "task_stopped", taskId });
+    }
+  }
+
   return {};
 };
 
@@ -2939,6 +2964,14 @@ function handleMessage(message: SDKMessage): void {
       } else if (sysMsg.subtype === "task_started") {
         // Background task (sub-agent) started (SDK 0.2.51+)
         const taskMsg = sysMsg as SDKTaskStartedMessage;
+        // Track session → task mapping so subagentStopHook can emit task_stopped on completion
+        if (taskMsg.session_id && taskMsg.task_id) {
+          const existing = sessionIdToTaskId.get(taskMsg.session_id);
+          if (existing) {
+            debug(`Warning: session ${taskMsg.session_id} already mapped to task ${existing}, overwriting with ${taskMsg.task_id}`);
+          }
+          sessionIdToTaskId.set(taskMsg.session_id, taskMsg.task_id);
+        }
         emit({
           type: "task_started",
           taskId: taskMsg.task_id,
@@ -3156,6 +3189,8 @@ async function cleanup(reason: string): Promise<void> {
     });
   }
   subagentActiveTools.clear();
+  sessionIdToTaskId.clear();
+  userStoppedTaskIds.clear();
 
   // 5. Flush any remaining buffered text
   flushBlockBuffer();

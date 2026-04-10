@@ -1,7 +1,7 @@
 'use client';
 
-import { memo, useCallback, useEffect, useRef, useState } from 'react';
-import { Circle, Square } from 'lucide-react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Circle, Square, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { useBackgroundTasks } from '@/stores/selectors';
@@ -134,6 +134,13 @@ interface BackgroundTasksPanelProps {
 
 export function BackgroundTasksPanel({ conversationId }: BackgroundTasksPanelProps) {
   const tasks = useBackgroundTasks(conversationId);
+  const hasStoppedTasks = useMemo(() => tasks.some((t) => t.status === 'stopped'), [tasks]);
+
+  const handleClear = useCallback(() => {
+    if (conversationId) {
+      useAppStore.getState().clearStoppedBackgroundTasks(conversationId);
+    }
+  }, [conversationId]);
 
   if (!conversationId || tasks.length === 0) {
     return (
@@ -145,6 +152,19 @@ export function BackgroundTasksPanel({ conversationId }: BackgroundTasksPanelPro
 
   return (
     <div className="h-full overflow-y-auto">
+      {hasStoppedTasks && (
+        <div className="flex justify-end px-3 py-1">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-5 text-2xs text-muted-foreground hover:text-foreground"
+            onClick={handleClear}
+          >
+            <X className="h-3 w-3 mr-1" />
+            Clear
+          </Button>
+        </div>
+      )}
       {tasks.map((task) => (
         <TaskRow key={task.taskId} task={task} conversationId={conversationId} />
       ))}
