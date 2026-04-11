@@ -260,6 +260,7 @@ export function ConversationMessagePane({
   const userScrolledUpRef = useRef(false);
   const isStreamingRef = useRef(selectedStreaming.isStreaming);
   const isActiveRef = useRef(isActive);
+  const prevIsStreamingForScrollRef = useRef(false);
 
   /** Reset all follow-state refs atomically. */
   const resetFollowState = useCallback(() => {
@@ -399,6 +400,40 @@ export function ConversationMessagePane({
       scrollerEl.removeEventListener('touchstart', handleTouchStart);
       scrollerEl.removeEventListener('touchmove', handleTouchMove);
       scrollerEl.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [selectedStreaming.isStreaming, isActive]);
+
+  // Bridge the gap when streaming ends: the ResizeObserver above disconnects
+  // exactly when the footer collapses (StreamingMessage → null), leaving
+  // Virtuoso with stale measurements and content above the viewport.
+  // Detect the true→false transition and force scroll-to-bottom.
+  useEffect(() => {
+    const wasStreaming = prevIsStreamingForScrollRef.current;
+    prevIsStreamingForScrollRef.current = selectedStreaming.isStreaming;
+
+    if (!wasStreaming || selectedStreaming.isStreaming) return;
+    if (!isActive) return;
+    if (userScrolledUpRef.current) return;
+
+    // Two frames: frame 1 catches the footer collapse layout shift,
+    // frame 2 catches Virtuoso's deferred measurement recalibration.
+    let cancelled = false;
+    const scroll = () => {
+      if (cancelled || userScrolledUpRef.current) return;
+      messageListRef.current?.scrollToBottom('auto');
+      setShowScrollButton(false);
+    };
+
+    let raf2: number | undefined;
+    const raf1 = requestAnimationFrame(() => {
+      scroll();
+      raf2 = requestAnimationFrame(scroll);
+    });
+
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(raf1);
+      if (raf2 !== undefined) cancelAnimationFrame(raf2);
     };
   }, [selectedStreaming.isStreaming, isActive]);
 
