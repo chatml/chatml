@@ -259,12 +259,8 @@ export interface FileTreeHandle {
 }
 
 export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileTree({ files, onFileSelect, onFilePreview, onContextAction, onRename, onMoveFile, filterQuery = '', changedPaths }, ref) {
-  // Create store once per FileTree instance
-  const storeRef = useRef<FileTreeStore>();
-  if (!storeRef.current) {
-    storeRef.current = createFileTreeStore();
-  }
-  const store = storeRef.current;
+  // Create store once per FileTree instance (lazy initializer runs only on mount)
+  const [store] = useState(() => createFileTreeStore());
 
   const renameHandledRef = useRef(false);
 
