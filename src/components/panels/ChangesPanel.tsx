@@ -12,7 +12,6 @@ import { dispatchAppEvent } from '@/lib/custom-events';
 import type { Attachment } from '@/lib/types';
 import { FileTree, FileIcon, type FileNode, type FileTreeHandle } from '@/components/files/FileTree';
 import type { ContextAction } from '@/components/files/FileTreeContextMenu';
-import { buildStatusMap, buildFolderIndicators } from '@/lib/fileTreeUtils';
 import { useFileOperations } from '@/hooks/useFileOperations';
 import { ConfirmDeleteDialog, ConfirmDiscardDialog, NewItemDialog } from '@/components/files/FileOperationDialogs';
 import { FileTreeFilter } from '@/components/files/FileTreeFilter';
@@ -236,12 +235,6 @@ export function ChangesPanel() {
     return paths;
   }, [changes, allChanges]);
 
-  // Git status decorations for file tree
-  const fileStatuses = useMemo(() => buildStatusMap(changes, allChanges), [changes, allChanges]);
-  const folderIndicators = useMemo(() => buildFolderIndicators(changes, allChanges), [changes, allChanges]);
-
-  // Toggle: show only changed files in the file tree
-  const [showChangedOnly, setShowChangedOnly] = useState(false);
   // File tree filter
   const [filterQuery, setFilterQuery] = useState('');
   const [filterVisible, setFilterVisible] = useState(false);
@@ -326,8 +319,12 @@ export function ChangesPanel() {
     }
   };
 
-  const handleFileSelect = (path: string) => openFileAsTab(path, false);
-  const handleFilePreview = (path: string) => openFileAsTab(path, true);
+  // Stabilize callbacks via ref — openFileAsTab has many dependencies but these wrappers
+  // must be referentially stable so FileTree's callbacks context doesn't invalidate every render
+  const openFileAsTabRef = useRef(openFileAsTab);
+  openFileAsTabRef.current = openFileAsTab;
+  const handleFileSelect = useCallback((path: string) => openFileAsTabRef.current(path, false), []);
+  const handleFilePreview = useCallback((path: string) => openFileAsTabRef.current(path, true), []);
 
   // Use ref for sessions to avoid recreating handleContextAction on every session status change
   const sessionsRef = useRef(sessions);
@@ -392,9 +389,6 @@ export function ChangesPanel() {
         break;
 
       // Background-only actions
-      case 'show-changed-only':
-        setShowChangedOnly(prev => !prev);
-        break;
       case 'refresh':
         refetchSnapshot();
         if (selectedWorkspaceId && selectedSessionId) {
@@ -991,9 +985,6 @@ export function ChangesPanel() {
                       onRename={fileOps.rename}
                       filterQuery={filterQuery}
                       changedPaths={changedPaths}
-                      fileStatuses={fileStatuses}
-                      folderIndicators={folderIndicators}
-                      showChangedOnly={showChangedOnly}
                       onMoveFile={fileOps.move}
                       workspacePath={currentSession?.worktreePath}
                       workspaceName={currentWorkspace?.name}

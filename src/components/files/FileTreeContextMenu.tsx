@@ -63,7 +63,6 @@ export type ContextAction =
   | 'expand-all'
   | 'collapse-all'
   | 'find-in-folder'
-  | 'show-changed-only'
   | 'refresh'
   // Open In actions
   | 'reveal-in-finder'
@@ -329,11 +328,10 @@ export function FolderContextMenu({ node, hasChanges, onAction }: FolderContextM
 }
 
 interface BackgroundContextMenuProps {
-  showChangedOnly: boolean;
   onAction: (action: ContextAction) => void;
 }
 
-export function BackgroundContextMenu({ showChangedOnly, onAction }: BackgroundContextMenuProps) {
+export function BackgroundContextMenu({ onAction }: BackgroundContextMenuProps) {
   return (
     <ContextMenuContent className="w-56">
       {/* Create actions */}
@@ -356,10 +354,6 @@ export function BackgroundContextMenu({ showChangedOnly, onAction }: BackgroundC
       <ContextMenuItem onClick={() => onAction('collapse-all')}>
         <ChevronsDownUp className="size-4" />
         Collapse All
-      </ContextMenuItem>
-      <ContextMenuItem onClick={() => onAction('show-changed-only')}>
-        <GitCompareArrows className="size-4" />
-        {showChangedOnly ? 'Show All Files' : 'Show Changed Files Only'}
       </ContextMenuItem>
 
       <ContextMenuSeparator />
