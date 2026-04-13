@@ -199,13 +199,11 @@ fn path_cache_file() -> Option<std::path::PathBuf> {
         std::path::PathBuf::from(local_app_data).join(app_name)
     } else {
         // Linux: XDG_DATA_HOME or ~/.local/share
-        let data_dir = std::env::var("XDG_DATA_HOME")
-            .ok()
-            .or_else(|| {
-                std::env::var("HOME")
-                    .ok()
-                    .map(|h| format!("{}/.local/share", h))
-            })?;
+        let data_dir = std::env::var("XDG_DATA_HOME").ok().or_else(|| {
+            std::env::var("HOME")
+                .ok()
+                .map(|h| format!("{}/.local/share", h))
+        })?;
         std::path::PathBuf::from(data_dir).join(app_name)
     };
 

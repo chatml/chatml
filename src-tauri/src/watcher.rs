@@ -3,7 +3,7 @@ use notify_debouncer_mini::{new_debouncer, DebouncedEventKind};
 use serde::Serialize;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, LazyLock, Mutex, RwLock};
+use std::sync::{Arc, Mutex, OnceLock, RwLock};
 use std::time::Duration;
 use tauri::{Emitter, Manager};
 
@@ -70,12 +70,17 @@ const IGNORED_DIRECTORIES: &[&str] = &[
 ];
 
 /// Pre-compiled ignore patterns to avoid heap allocations on every file event.
-static IGNORE_PATTERNS: LazyLock<Vec<(String, String)>> = LazyLock::new(|| {
-    IGNORED_DIRECTORIES
-        .iter()
-        .map(|dir| (format!("/{}/", dir), format!("\\{}\\", dir)))
-        .collect()
-});
+/// Uses `OnceLock` (stable since Rust 1.70) instead of `LazyLock` (1.80+) for MSRV compat.
+static IGNORE_PATTERNS: OnceLock<Vec<(String, String)>> = OnceLock::new();
+
+fn ignore_patterns() -> &'static Vec<(String, String)> {
+    IGNORE_PATTERNS.get_or_init(|| {
+        IGNORED_DIRECTORIES
+            .iter()
+            .map(|dir| (format!("/{}/", dir), format!("\\{}\\", dir)))
+            .collect()
+    })
+}
 
 /// Check if a path should be ignored based on directory patterns.
 ///
@@ -85,7 +90,7 @@ static IGNORE_PATTERNS: LazyLock<Vec<(String, String)>> = LazyLock::new(|| {
 /// (without trailing content). This is intentional because file watcher events always
 /// include a filename after the directory, so bare directory paths won't occur.
 pub(crate) fn should_ignore_path(path: &str) -> bool {
-    IGNORE_PATTERNS
+    ignore_patterns()
         .iter()
         .any(|(unix, windows)| path.contains(unix.as_str()) || path.contains(windows.as_str()))
 }
