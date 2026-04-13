@@ -10,9 +10,9 @@
  * - Use direct selector for single primitives or existing store values
  * - Scope to specific conversation/session IDs where possible
  *
- * IMPORTANT: Selectors that filter arrays (useMessages, useActiveTools) create new
- * array references on every store update. Consumers should wrap results with useMemo
- * if referential stability is needed for downstream dependencies.
+ * IMPORTANT: Array selectors (useMessages, useActiveTools, useSubAgents) use useShallow
+ * to provide referential stability — Zustand preserves the previous snapshot when the
+ * array contents haven't changed, even if the store creates a new array reference.
  */
 
 import { useCallback, useMemo, useRef } from 'react';
@@ -37,6 +37,7 @@ const EMPTY_SUB_AGENTS: readonly SubAgent[] = [];
 const EMPTY_ACTIVE_IDS: readonly string[] = [];
 const EMPTY_SEGMENT_STUBS: readonly { id: string; timestamp: number }[] = [];
 const EMPTY_SENT_QUEUED: readonly import('./appStore').QueuedMessage[] = [];
+
 const EMPTY_FILE_COMMENT_STATS = new Map<string, { total: number; unresolved: number }>();
 
 // ============================================================================
@@ -390,17 +391,27 @@ export const useStreamingChatInput = (conversationId: string | null) =>
 
 /**
  * Active tools scoped to a conversation.
+ * Uses useShallow so Zustand preserves the previous snapshot when the store
+ * creates a new activeTools record (via spread) but this conversation's
+ * tools haven't actually changed.
  * Use in: StreamingMessage, ToolDisplay
  */
 export const useActiveTools = (conversationId: string | null) =>
-  useAppStore((s) => (conversationId ? s.activeTools[conversationId] ?? EMPTY_TOOLS : EMPTY_TOOLS));
+  useAppStore(
+    useShallow((s) => (conversationId ? s.activeTools[conversationId] ?? EMPTY_TOOLS : EMPTY_TOOLS))
+  );
 
 /**
  * Sub-agents scoped to a conversation.
+ * Uses useShallow so Zustand preserves the previous snapshot when unrelated
+ * store mutations create a new subAgents record but this conversation's
+ * agents haven't changed.
  * Use in: StreamingMessage, SubAgentGroup
  */
 export const useSubAgents = (conversationId: string | null) =>
-  useAppStore((s) => (conversationId ? s.subAgents[conversationId] ?? EMPTY_SUB_AGENTS : EMPTY_SUB_AGENTS));
+  useAppStore(
+    useShallow((s) => (conversationId ? s.subAgents[conversationId] ?? EMPTY_SUB_AGENTS : EMPTY_SUB_AGENTS))
+  );
 
 // ============================================================================
 // File Tab State

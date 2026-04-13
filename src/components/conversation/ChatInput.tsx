@@ -1067,6 +1067,7 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
             preserveAspectRatio="none"
           >
             <rect
+              className="plan-mode-marching-ants"
               x="0"
               y="0"
               width="100%"
@@ -1078,7 +1079,6 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
               strokeWidth="2"
               strokeDasharray="6 4"
               strokeOpacity="0.6"
-              style={{ animation: 'marching-ants-dash 1s linear infinite' }}
             />
           </svg>
         )}

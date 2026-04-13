@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
 import type { PlateInputHandle } from './PlateInput';
 import type { ThinkingLevel } from '@/lib/thinkingLevels';
 import type { ModelEntry } from '@/lib/models';
@@ -20,6 +20,11 @@ interface UseChatInputKeyboardShortcutsOptions {
 /**
  * Registers global keyboard shortcuts and native Tauri menu event listeners
  * for the chat input area.
+ *
+ * All callback and state dependencies are stored in a ref so the event
+ * listeners are mounted once and never torn down / re-added on parent
+ * re-renders. This eliminates listener churn from the previous 11-dependency
+ * useEffect.
  */
 export function useChatInputKeyboardShortcuts({
   plateInputRef,
@@ -34,29 +39,63 @@ export function useChatInputKeyboardShortcuts({
   setLinearPickerOpen,
   getAvailableThinkingLevels,
 }: UseChatInputKeyboardShortcutsOptions) {
+  // Keep all mutable deps in a ref so handlers always read the latest values
+  // without requiring effect re-runs.
+  const depsRef = useRef({
+    plateInputRef,
+    selectedModel,
+    MODELS,
+    setSelectedModel,
+    setThinkingLevel,
+    setMessage,
+    handlePlanModeToggle,
+    handleFastModeToggle,
+    handleOpenFilePicker,
+    setLinearPickerOpen,
+    getAvailableThinkingLevels,
+  });
+  // Sync on every render (intentional — keeps ref current for event handlers)
+  useEffect(() => {
+    depsRef.current = {
+      plateInputRef,
+      selectedModel,
+      MODELS,
+      setSelectedModel,
+      setThinkingLevel,
+      setMessage,
+      handlePlanModeToggle,
+      handleFastModeToggle,
+      handleOpenFilePicker,
+      setLinearPickerOpen,
+      getAvailableThinkingLevels,
+    };
+  });
+
+  // Mount all listeners once — handlers close over depsRef, not the values.
   useEffect(() => {
     const handleGlobalKeyDown = (e: globalThis.KeyboardEvent) => {
+      const d = depsRef.current;
       // Cmd+L to focus input
       if (e.code === 'KeyL' && (e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey) {
         e.preventDefault();
-        plateInputRef.current?.focus();
+        d.plateInputRef.current?.focus();
       }
       // Alt+1..9 to select model by index
       if (e.altKey && !e.metaKey && !e.ctrlKey && !e.shiftKey) {
         const digit = e.code.match(/^Digit([1-9])$/)?.[1];
         if (digit) {
           const idx = parseInt(digit, 10) - 1;
-          if (idx >= 0 && idx < MODELS.length) {
+          if (idx >= 0 && idx < d.MODELS.length) {
             e.preventDefault();
-            setSelectedModel(MODELS[idx]);
+            d.setSelectedModel(d.MODELS[idx]);
           }
         }
       }
       // Alt+T to cycle thinking levels
       if (e.code === 'KeyT' && e.altKey && !e.metaKey && !e.ctrlKey && !e.shiftKey) {
         e.preventDefault();
-        setThinkingLevel(prev => {
-          const available = getAvailableThinkingLevels(selectedModel);
+        d.setThinkingLevel(prev => {
+          const available = d.getAvailableThinkingLevels(d.selectedModel);
           const idx = available.indexOf(prev);
           return available[(idx + 1) % available.length];
         });
@@ -64,44 +103,46 @@ export function useChatInputKeyboardShortcuts({
       // Shift+Tab to toggle plan mode
       if (e.code === 'Tab' && e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey) {
         e.preventDefault();
-        handlePlanModeToggle();
+        d.handlePlanModeToggle();
       }
       // Alt+F to toggle fast mode
       if (e.code === 'KeyF' && e.altKey && !e.metaKey && !e.ctrlKey && !e.shiftKey) {
         e.preventDefault();
-        handleFastModeToggle();
+        d.handleFastModeToggle();
       }
       // Cmd+U to open file picker
       if (e.code === 'KeyU' && (e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey) {
         e.preventDefault();
-        handleOpenFilePicker();
+        d.handleOpenFilePicker();
       }
       // Cmd+I to open Linear issue picker
       if (e.code === 'KeyI' && (e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey) {
         e.preventDefault();
-        setLinearPickerOpen(true);
+        d.setLinearPickerOpen(true);
       }
     };
 
     // Handle menu events from native Tauri menu
-    const handleFocusInput = () => plateInputRef.current?.focus();
+    const handleFocusInput = () => depsRef.current.plateInputRef.current?.focus();
     const handleToggleThinking = () => {
-      setThinkingLevel(prev => {
-        const available = getAvailableThinkingLevels(selectedModel);
+      const d = depsRef.current;
+      d.setThinkingLevel(prev => {
+        const available = d.getAvailableThinkingLevels(d.selectedModel);
         const idx = available.indexOf(prev);
         return available[(idx + 1) % available.length];
       });
     };
-    const handleTogglePlanMode = () => handlePlanModeToggle();
-    const handleToggleFastMode = () => handleFastModeToggle();
+    const handleTogglePlanMode = () => depsRef.current.handlePlanModeToggle();
+    const handleToggleFastMode = () => depsRef.current.handleFastModeToggle();
 
     // Handle template selection from SessionHomeState quick actions
     const handleTemplateSelected = (e: Event) => {
+      const d = depsRef.current;
       const text = (e as CustomEvent<{ text: string }>).detail.text;
-      plateInputRef.current?.setText(text);
-      setMessage(text);
+      d.plateInputRef.current?.setText(text);
+      d.setMessage(text);
       // Use requestAnimationFrame to ensure the editor has updated before focusing
-      requestAnimationFrame(() => plateInputRef.current?.focus());
+      requestAnimationFrame(() => d.plateInputRef.current?.focus());
     };
 
     document.addEventListener('keydown', handleGlobalKeyDown);
@@ -118,5 +159,5 @@ export function useChatInputKeyboardShortcuts({
       window.removeEventListener('toggle-fast-mode', handleToggleFastMode);
       window.removeEventListener('session-home-template-selected', handleTemplateSelected);
     };
-  }, [handlePlanModeToggle, handleFastModeToggle, handleOpenFilePicker, selectedModel, MODELS, setMessage, plateInputRef, setSelectedModel, setThinkingLevel, setLinearPickerOpen, getAvailableThinkingLevels]);
+  }, []);
 }
