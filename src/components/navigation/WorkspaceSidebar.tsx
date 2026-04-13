@@ -1112,25 +1112,27 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onGitHubRepos,
                               </span>
                             </div>
                             <CollapsibleContent>
-                              {group.sessions.map((session) => {
-                                const runDate = new Date(session.createdAt ?? session.updatedAt);
-                                const dateLabel = runDate.toLocaleDateString([], { month: 'short', day: 'numeric' });
-                                const isSelected = selectedSessionId === session.id && contentView.type === 'conversation';
-                                return (
-                                  <button
-                                    key={session.id}
-                                    className={`flex items-center gap-1.5 px-2 py-1 ml-4 mr-1 rounded-md text-sm cursor-pointer w-full text-left ${isSelected ? 'bg-accent' : 'hover:bg-surface-1'}`}
-                                    onClick={(e) => handleSelectSession(session.workspaceId, session.id, e)}
-                                  >
-                                    <span className="truncate flex-1 text-muted-foreground">
-                                      {dateLabel} – {group.taskName}
-                                    </span>
-                                    <span className="text-[10px] text-muted-foreground shrink-0">
-                                      {formatTimeAgo(session.updatedAt ?? session.createdAt)}
-                                    </span>
-                                  </button>
-                                );
-                              })}
+                              <div className="pl-4 pr-1">
+                                {group.sessions.map((session) => {
+                                  const runDate = new Date(session.createdAt ?? session.updatedAt);
+                                  const dateLabel = runDate.toLocaleDateString([], { month: 'short', day: 'numeric' });
+                                  const isSelected = selectedSessionId === session.id && contentView.type === 'conversation';
+                                  return (
+                                    <button
+                                      key={session.id}
+                                      className={`flex items-center gap-1.5 px-2 py-1 rounded-md text-sm cursor-pointer w-full text-left ${isSelected ? 'bg-accent' : 'hover:bg-surface-1'}`}
+                                      onClick={(e) => handleSelectSession(session.workspaceId, session.id, e)}
+                                    >
+                                      <span className="truncate flex-1 text-muted-foreground">
+                                        {dateLabel} – {group.taskName}
+                                      </span>
+                                      <span className="text-[10px] text-muted-foreground shrink-0">
+                                        {formatTimeAgo(session.updatedAt ?? session.createdAt)}
+                                      </span>
+                                    </button>
+                                  );
+                                })}
+                              </div>
                             </CollapsibleContent>
                           </Collapsible>
                         );
