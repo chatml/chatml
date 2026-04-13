@@ -86,7 +86,7 @@ const ElapsedTimer = memo(function ElapsedTimer({ startTime, isStreaming }: { st
       if (startTimeRef.current) {
         setElapsedMs(Date.now() - startTimeRef.current);
       }
-    }, 50);
+    }, 100);
 
     return () => clearInterval(interval);
   }, [isStreaming, startTime]);

@@ -62,7 +62,9 @@ export function useTabScroll(
     [scrollRef]
   );
 
-  // Set up scroll event listener and resize observer
+  // Set up scroll event listener and resize observer.
+  // All three triggers (scroll, resize, mutation) are batched through rAF
+  // so checkScroll runs at most once per frame even when multiple fire together.
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
@@ -70,19 +72,33 @@ export function useTabScroll(
     // Check initial scroll state
     checkScroll();
 
+    let rafPending = false;
+    let rafId = 0;
+    const scheduleCheck = () => {
+      if (rafPending) return;
+      rafPending = true;
+      rafId = requestAnimationFrame(() => {
+        rafPending = false;
+        checkScroll();
+      });
+    };
+
     // Listen to scroll events
-    el.addEventListener('scroll', checkScroll, { passive: true });
+    el.addEventListener('scroll', scheduleCheck, { passive: true });
 
     // Listen to resize events (tabs may overflow differently)
-    const resizeObserver = new ResizeObserver(checkScroll);
+    const resizeObserver = new ResizeObserver(scheduleCheck);
     resizeObserver.observe(el);
 
-    // Also observe content changes via mutation observer
-    const mutationObserver = new MutationObserver(checkScroll);
+    // Observe child and subtree changes — subtree is needed so that tab label
+    // renames (text node mutations inside tab elements) trigger a scroll check
+    // when the new width pushes content past the overflow boundary.
+    const mutationObserver = new MutationObserver(scheduleCheck);
     mutationObserver.observe(el, { childList: true, subtree: true });
 
     return () => {
-      el.removeEventListener('scroll', checkScroll);
+      cancelAnimationFrame(rafId);
+      el.removeEventListener('scroll', scheduleCheck);
       resizeObserver.disconnect();
       mutationObserver.disconnect();
     };

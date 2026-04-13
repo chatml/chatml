@@ -10,9 +10,10 @@
  * - Use direct selector for single primitives or existing store values
  * - Scope to specific conversation/session IDs where possible
  *
- * IMPORTANT: Selectors that filter arrays (useMessages, useActiveTools) create new
- * array references on every store update. Consumers should wrap results with useMemo
- * if referential stability is needed for downstream dependencies.
+ * IMPORTANT: Some array selectors (useMessages) create new array references on every
+ * store update — consumers should wrap results with useMemo if referential stability
+ * is needed. Others (useActiveTools, useSubAgents) use a custom shallow-array equality
+ * function so Zustand preserves the previous snapshot automatically.
  */
 
 import { useCallback, useMemo, useRef } from 'react';
@@ -37,6 +38,11 @@ const EMPTY_SUB_AGENTS: readonly SubAgent[] = [];
 const EMPTY_ACTIVE_IDS: readonly string[] = [];
 const EMPTY_SEGMENT_STUBS: readonly { id: string; timestamp: number }[] = [];
 const EMPTY_SENT_QUEUED: readonly import('./appStore').QueuedMessage[] = [];
+
+/** Shallow element-wise equality for array selectors — avoids re-renders when
+ *  the store creates a new array reference but the elements are identical. */
+const shallowArrayEquals = <T>(a: readonly T[], b: readonly T[]) =>
+  a === b || (a.length === b.length && a.every((t, i) => t === b[i]));
 const EMPTY_FILE_COMMENT_STATS = new Map<string, { total: number; unresolved: number }>();
 
 // ============================================================================
@@ -390,17 +396,29 @@ export const useStreamingChatInput = (conversationId: string | null) =>
 
 /**
  * Active tools scoped to a conversation.
+ * Uses a custom equality function so Zustand preserves the previous snapshot
+ * when the store creates a new activeTools record (via spread) but this
+ * conversation's tools haven't actually changed.
  * Use in: StreamingMessage, ToolDisplay
  */
 export const useActiveTools = (conversationId: string | null) =>
-  useAppStore((s) => (conversationId ? s.activeTools[conversationId] ?? EMPTY_TOOLS : EMPTY_TOOLS));
+  useAppStore(
+    (s) => (conversationId ? s.activeTools[conversationId] ?? EMPTY_TOOLS : EMPTY_TOOLS),
+    shallowArrayEquals
+  );
 
 /**
  * Sub-agents scoped to a conversation.
+ * Uses a custom equality function so Zustand preserves the previous snapshot
+ * when unrelated store mutations create a new subAgents record but this
+ * conversation's agents haven't changed.
  * Use in: StreamingMessage, SubAgentGroup
  */
 export const useSubAgents = (conversationId: string | null) =>
-  useAppStore((s) => (conversationId ? s.subAgents[conversationId] ?? EMPTY_SUB_AGENTS : EMPTY_SUB_AGENTS));
+  useAppStore(
+    (s) => (conversationId ? s.subAgents[conversationId] ?? EMPTY_SUB_AGENTS : EMPTY_SUB_AGENTS),
+    shallowArrayEquals
+  );
 
 // ============================================================================
 // File Tab State

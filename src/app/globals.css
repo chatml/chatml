@@ -804,6 +804,10 @@ html:not(.dark) .xterm .scrollbar .slider:hover {
   }
 }
 
+.plan-mode-marching-ants {
+  animation: marching-ants-dash 1s linear infinite;
+}
+
 /* Plan approval border styling (awaiting approval state) */
 .plan-approval-border {
   position: relative;
@@ -954,6 +958,12 @@ html:not(.dark) .xterm .scrollbar .slider:hover {
   .hover-scale:hover,
   .hover-scale:active {
     transform: none;
+  }
+
+  /* Disable continuous marching/dashed border animations */
+  .streaming-border-svg rect,
+  .plan-mode-marching-ants {
+    animation: none;
   }
 }
 

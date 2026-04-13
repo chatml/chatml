@@ -45,17 +45,19 @@ interface PlateInputProps {
   onBlur?: () => void;
 }
 
-// Extract text and mentioned files from Plate value in a single pass
+// Extract text and mentioned files from Plate value in a single pass.
+// Uses array-join instead of string concatenation for better performance
+// on large pastes where the node tree can be deep.
 function extractContent(value: Value): { text: string; mentionedFiles: string[] } {
-  let text = '';
+  const parts: string[] = [];
   const mentionedFiles: string[] = [];
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Plate nodes have dynamic structure
   const processNode = (node: any) => {
     if (node.text !== undefined) {
-      text += node.text;
+      parts.push(node.text);
     } else if (node.type === 'mention') {
-      text += `@${node.value}`;
+      parts.push(`@${node.value}`);
       if (node.value) {
         mentionedFiles.push(node.value);
       }
@@ -68,11 +70,11 @@ function extractContent(value: Value): { text: string; mentionedFiles: string[] 
     processNode(node);
     // Add newline between paragraphs (except after last one)
     if (index < value.length - 1) {
-      text += '\n';
+      parts.push('\n');
     }
   });
 
-  return { text: text.trim(), mentionedFiles };
+  return { text: parts.join('').trim(), mentionedFiles };
 }
 
 const emptyValue: Value = [{ type: 'p', children: [{ text: '' }] }];

@@ -254,7 +254,15 @@ export function ConversationMessagePane({
 
   // Auto-scroll management via Virtuoso
   const messageListRef = useRef<VirtualizedMessageListHandle>(null);
-  const [showScrollButton, setShowScrollButton] = useState(false);
+  const [showScrollButton, setShowScrollButtonRaw] = useState(false);
+  const showScrollButtonRef = useRef(false);
+  // Wrapper that deduplicates state updates — avoids redundant React reconciliation
+  // when scroll handlers fire 60+ times/sec with the same value.
+  const setShowScrollButton = useCallback((show: boolean) => {
+    if (showScrollButtonRef.current === show) return;
+    showScrollButtonRef.current = show;
+    setShowScrollButtonRaw(show);
+  }, []);
   const isAtBottomRef = useRef(true);
   const forceFollowRef = useRef(false);
   const userScrolledUpRef = useRef(false);
@@ -299,13 +307,13 @@ export function ConversationMessagePane({
     if (!isActiveRef.current) return;
     if (atBottom) resetFollowState();
     setShowScrollButton(!atBottom);
-  }, [resetFollowState]);
+  }, [resetFollowState, setShowScrollButton]);
 
   const forceScrollToBottom = useCallback(() => {
     setShowScrollButton(false);
     resetFollowState();
     messageListRef.current?.scrollToBottom('auto');
-  }, [resetFollowState]);
+  }, [resetFollowState, setShowScrollButton]);
 
   // Footer for VirtualizedMessageList
   const messageListFooter = useMemo(() => (
@@ -446,20 +454,24 @@ export function ConversationMessagePane({
     if (!isActive || !hasMessages) return;
 
     let scrollCleanup: (() => void) | null = null;
+    let cancelled = false;
+    let rafId = 0;
 
-    // Poll until Virtuoso mounts and exposes the scroller element
-    const timerId = setInterval(() => {
+    // Wait for Virtuoso to mount and expose its scroller element using rAF
+    // instead of polling with setInterval. Typically resolves in 1-2 frames.
+    function tryAttach() {
+      if (cancelled) return;
       const scrollerEl = messageListRef.current?.getScrollerElement();
-      if (!scrollerEl) return;
-      clearInterval(timerId);
+      if (!scrollerEl) {
+        rafId = requestAnimationFrame(tryAttach);
+        return;
+      }
 
       const handleScroll = () => {
         const threshold = isStreamingRef.current ? 200 : 50;
         const atBottom = scrollerEl.scrollHeight - scrollerEl.scrollTop - scrollerEl.clientHeight <= threshold;
         // Only override to show the pill; let Virtuoso handle the "returned to bottom" case.
-        // No guard on isAtBottomRef — the pill must show whenever we're not at
-        // bottom, even if the ref was already false (e.g. atBottomStateChange
-        // fired while the pane was inactive, setting the ref but not the state).
+        // setShowScrollButton wrapper deduplicates redundant updates automatically.
         if (!atBottom) {
           isAtBottomRef.current = false;
           setShowScrollButton(true);
@@ -473,13 +485,15 @@ export function ConversationMessagePane({
       scrollCleanup = () => {
         scrollerEl.removeEventListener('scroll', handleScroll);
       };
-    }, 100);
+    }
+    rafId = requestAnimationFrame(tryAttach);
 
     return () => {
-      clearInterval(timerId);
+      cancelled = true;
+      cancelAnimationFrame(rafId);
       scrollCleanup?.();
     };
-  }, [isActive, hasMessages]);
+  }, [isActive, hasMessages, setShowScrollButton]);
 
   // Scroll handler for conversation markers minimap
   const handleMarkerScrollToIndex = useCallback((index: number) => {
