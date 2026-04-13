@@ -168,6 +168,12 @@ export type TimelineEntry =
   | { type: 'compact'; content: string; summary?: string }
   | { type: 'user_message'; messageId: string; content: string; attachmentIds?: string[] };
 
+// Progress update for a long-running tool (e.g., elapsed time ticks)
+export interface ToolProgressUpdate {
+  elapsedTimeSeconds?: number;
+  toolName?: string;
+}
+
 // Active tool during streaming (real-time tracking)
 export interface ActiveTool {
   id: string;

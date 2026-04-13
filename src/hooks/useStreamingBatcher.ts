@@ -14,11 +14,17 @@
  * error, interrupted, turn_complete, conversation_status).
  */
 
+import type { ToolProgressUpdate } from '@/lib/types';
+
+export type { ToolProgressUpdate };
+
 export interface StreamingBatcher {
   /** Buffer an assistant_text chunk for deferred store update. */
   batchText(conversationId: string, text: string): void;
   /** Buffer a thinking_delta chunk for deferred store update. */
   batchThinking(conversationId: string, text: string): void;
+  /** Buffer a tool_progress update for deferred store update. */
+  batchToolProgress(conversationId: string, toolId: string, progress: ToolProgressUpdate): void;
   /** Force-flush all pending buffers immediately. */
   flush(): void;
   /** Tear down — cancel pending frame and clear buffers. */
@@ -32,13 +38,17 @@ export interface StreamingBatcher {
  *                     Should handle `appendStreamingText`, `setThinking(false)`, and
  *                     `clearInputSuggestion` since those are deferred to flush time.
  * @param onFlushThinking  Called once per conversation per flush with accumulated thinking text.
+ * @param onFlushToolProgress  Called once per flush with all accumulated tool progress updates.
  */
 export function createStreamingBatcher(
   onFlushText: (conversationId: string, text: string) => void,
   onFlushThinking: (conversationId: string, text: string) => void,
+  onFlushToolProgress?: (updates: Array<{ conversationId: string; toolId: string; progress: ToolProgressUpdate }>) => void,
 ): StreamingBatcher {
   const textBuffers = new Map<string, string>();
   const thinkingBuffers = new Map<string, string>();
+  // Key: "convId\0toolId" — only the latest progress per tool is kept
+  const toolProgressBuffers = new Map<string, { conversationId: string; toolId: string; progress: ToolProgressUpdate }>();
   let frameId: number | null = null;
 
   const useRAF = typeof requestAnimationFrame === 'function';
@@ -57,6 +67,12 @@ export function createStreamingBatcher(
       onFlushThinking(convId, text);
     }
     thinkingBuffers.clear();
+
+    // Flush tool progress buffers — single batch call for all tools
+    if (onFlushToolProgress && toolProgressBuffers.size > 0) {
+      onFlushToolProgress(Array.from(toolProgressBuffers.values()));
+    }
+    toolProgressBuffers.clear();
   }
 
   function scheduleFlush() {
@@ -87,6 +103,11 @@ export function createStreamingBatcher(
       scheduleFlush();
     },
 
+    batchToolProgress(conversationId: string, toolId: string, progress: ToolProgressUpdate) {
+      toolProgressBuffers.set(`${conversationId}\0${toolId}`, { conversationId, toolId, progress });
+      scheduleFlush();
+    },
+
     flush() {
       cancelFrame();
       flushAll();
@@ -96,6 +117,7 @@ export function createStreamingBatcher(
       cancelFrame();
       textBuffers.clear();
       thinkingBuffers.clear();
+      toolProgressBuffers.clear();
     },
   };
 }

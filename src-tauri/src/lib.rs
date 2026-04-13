@@ -173,6 +173,7 @@ pub fn run() {
             commands::check_gh_auth_status,
             // Resolved user PATH (version manager shims)
             commands::get_resolved_path,
+            commands::invalidate_path_cache,
             // Speech-to-text dictation
             commands::check_dictation_permissions,
             commands::start_dictation,

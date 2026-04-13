@@ -29,6 +29,7 @@ import type {
   TimelineEntry,
   InputSuggestion,
   SessionToggleState,
+  ToolProgressUpdate,
 } from '@/lib/types';
 import type { StreamingSnapshotDTO, SnapshotSubAgent } from '@/lib/api';
 import { useSettingsStore } from './settingsStore';
@@ -537,7 +538,8 @@ interface AppState {
   clearApprovedPlanContent: (conversationId: string) => void;
   addActiveTool: (conversationId: string, tool: ActiveTool, opts?: { skipTimeout?: boolean }) => void;
   completeActiveTool: (conversationId: string, toolId: string, success?: boolean, summary?: string, stdout?: string, stderr?: string, metadata?: import('@/lib/types').ToolMetadata) => void;
-  updateToolProgress: (conversationId: string, toolId: string, progress: { elapsedTimeSeconds?: number; toolName?: string }) => void;
+  updateToolProgress: (conversationId: string, toolId: string, progress: ToolProgressUpdate) => void;
+  updateToolProgressBatch: (updates: Array<{ conversationId: string; toolId: string; progress: ToolProgressUpdate }>) => void;
   clearActiveTools: (conversationId: string) => void;
 
   // Sub-agent actions
@@ -1764,12 +1766,22 @@ updateFileTabContent: (id, content) => set((state) => ({
     let newSegments: TextSegment[];
     let newCurrentSegmentId: string | null;
 
-    if (currentSegmentId) {
-      newSegments = existingSegments.map(seg =>
-        seg.id === currentSegmentId
-          ? { ...seg, text: seg.text + text }
-          : seg
-      );
+    if (currentSegmentId && existingSegments.length > 0) {
+      // The current segment is always the last one — update it directly
+      // instead of scanning all segments with map (avoids n string comparisons).
+      const lastIdx = existingSegments.length - 1;
+      const lastSeg = existingSegments[lastIdx];
+      if (lastSeg.id === currentSegmentId) {
+        newSegments = existingSegments.slice();
+        newSegments[lastIdx] = { ...lastSeg, text: lastSeg.text + text };
+      } else {
+        // Fallback: scan for the segment (shouldn't happen in practice)
+        newSegments = existingSegments.map(seg =>
+          seg.id === currentSegmentId
+            ? { ...seg, text: seg.text + text }
+            : seg
+        );
+      }
       newCurrentSegmentId = currentSegmentId;
     } else {
       const segmentId = `seg-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
@@ -2032,6 +2044,23 @@ updateFileTabContent: (id, content) => set((state) => ({
         ),
       },
     };
+  }),
+  updateToolProgressBatch: (updates) => set((state) => {
+    if (updates.length === 0) return state;
+    const newActiveTools = { ...state.activeTools };
+    let changed = false;
+    for (const { conversationId, toolId, progress } of updates) {
+      const tools = newActiveTools[conversationId] || [];
+      const hasMatch = tools.some(t => t.id === toolId && !t.endTime);
+      if (!hasMatch) continue;
+      changed = true;
+      newActiveTools[conversationId] = tools.map(t =>
+        t.id === toolId
+          ? { ...t, elapsedSeconds: progress.elapsedTimeSeconds }
+          : t
+      );
+    }
+    return changed ? { activeTools: newActiveTools } : state;
   }),
   clearActiveTools: (conversationId) => {
     // Clear all timeouts for this conversation's tools

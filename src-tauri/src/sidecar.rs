@@ -169,12 +169,117 @@ pub fn kill_stored_sidecar(state: &AppState) {
     }
 }
 
-/// Resolve the user's login shell PATH.
+/// How long a cached PATH is considered fresh before re-resolving.
+/// 15 minutes balances avoiding login-shell spawns with picking up PATH changes
+/// (e.g. after `nvm use`, Homebrew installs, fnm version switches).
+const PATH_CACHE_TTL: Duration = Duration::from_secs(900); // 15 minutes
+
+/// Return the cache file location inside the platform-specific app data directory.
+///
+/// - macOS:   `~/Library/Application Support/ChatML/path_cache`
+/// - Windows: `%LOCALAPPDATA%/ChatML/path_cache`
+/// - Linux:   `$XDG_DATA_HOME/ChatML/path_cache` (fallback `~/.local/share/ChatML`)
+///
+/// Debug builds use `ChatML-Dev` to isolate from production.
+fn path_cache_file() -> Option<std::path::PathBuf> {
+    let app_name = if cfg!(debug_assertions) {
+        "ChatML-Dev"
+    } else {
+        "ChatML"
+    };
+
+    let base = if cfg!(target_os = "macos") {
+        let home = std::env::var("HOME").ok()?;
+        std::path::PathBuf::from(home)
+            .join("Library")
+            .join("Application Support")
+            .join(app_name)
+    } else if cfg!(target_os = "windows") {
+        let local_app_data = std::env::var("LOCALAPPDATA").ok()?;
+        std::path::PathBuf::from(local_app_data).join(app_name)
+    } else {
+        // Linux: XDG_DATA_HOME or ~/.local/share
+        let data_dir = std::env::var("XDG_DATA_HOME").ok().or_else(|| {
+            std::env::var("HOME")
+                .ok()
+                .map(|h| format!("{}/.local/share", h))
+        })?;
+        std::path::PathBuf::from(data_dir).join(app_name)
+    };
+
+    Some(base.join("path_cache"))
+}
+
+/// Try to read a cached PATH if the cache file exists and is fresh.
+fn read_cached_path() -> Option<String> {
+    let cache_file = path_cache_file()?;
+    let metadata = std::fs::metadata(&cache_file).ok()?;
+    let age = metadata.modified().ok()?.elapsed().ok()?;
+    if age > PATH_CACHE_TTL {
+        return None;
+    }
+    let cached = std::fs::read_to_string(&cache_file).ok()?;
+    let cached = cached.trim().to_string();
+    if cached.is_empty() {
+        return None;
+    }
+    log::info!(
+        "Using cached PATH ({} entries, age={:.0}s)",
+        cached.matches(':').count() + 1,
+        age.as_secs_f64()
+    );
+    Some(cached)
+}
+
+/// Write the resolved PATH to the cache file.
+fn write_cached_path(path: &str) {
+    if let Some(cache_file) = path_cache_file() {
+        if let Some(parent) = cache_file.parent() {
+            if let Err(e) = std::fs::create_dir_all(parent) {
+                log::warn!("Failed to create PATH cache dir: {}", e);
+                return;
+            }
+        }
+        if let Err(e) = std::fs::write(&cache_file, path) {
+            log::warn!("Failed to write PATH cache: {}", e);
+        }
+    }
+}
+
+/// Delete the cached PATH file so the next call to `resolve_user_path` re-resolves
+/// from the login shell. Called by the `invalidate_path_cache` Tauri command.
+pub fn invalidate_path_cache() {
+    if let Some(cache_file) = path_cache_file() {
+        match std::fs::remove_file(&cache_file) {
+            Ok(()) => log::info!("PATH cache invalidated"),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                log::info!("PATH cache already absent, nothing to invalidate");
+            }
+            Err(e) => log::warn!("Failed to remove PATH cache: {}", e),
+        }
+    }
+}
+
+/// Resolve the user's login shell PATH, using a file-based cache to avoid
+/// spawning a login shell on every app launch.
 ///
 /// macOS apps launched from Finder have a minimal PATH (`/usr/bin:/bin:/usr/sbin:/sbin`).
 /// Tools like `node`, `git`, and `gh` are typically in paths managed by Homebrew, nvm, fnm, etc.
-/// This function spawns the user's login shell to capture the full PATH.
+/// On first launch (or when cache is stale), this spawns the user's login shell to capture
+/// the full PATH and caches the result for 15 minutes.
 pub fn resolve_user_path() -> String {
+    // Fast path: use cached PATH if available and fresh
+    if let Some(cached) = read_cached_path() {
+        return cached;
+    }
+
+    let resolved = resolve_user_path_uncached();
+    write_cached_path(&resolved);
+    resolved
+}
+
+/// Resolve the user's login shell PATH without caching.
+fn resolve_user_path_uncached() -> String {
     let shell_path = std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".to_string());
     let is_fish = shell_path.ends_with("/fish");
 

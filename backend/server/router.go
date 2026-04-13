@@ -65,7 +65,7 @@ func NewRouter(ctx context.Context, s *store.SQLiteStore, hub *Hub, agentMgr *ag
 	}
 
 	r.Use(RequestIDMiddleware)
-	r.Use(middleware.Compress(5))
+	r.Use(middleware.Compress(2)) // level 2: negligible size difference vs 5 for JSON, measurably faster
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
 	r.Use(TokenAuthMiddleware)

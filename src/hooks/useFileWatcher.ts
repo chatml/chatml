@@ -129,7 +129,7 @@ export function useFileWatcher(enabled: boolean = true) {
     const onFileChange = (event: FileChangedEvent) => {
       // Write to store so other hooks (useGitStatus, ChangesPanel) can react.
       // The Rust watcher already batches events per workspace, so this fires
-      // at most once per workspace per debounce window (~2 seconds).
+      // at most once per workspace per debounce window (~500ms).
       setLastFileChange(event);
       // Handle tab conflicts/reloads for all files in the batch
       handleFileChange(event);

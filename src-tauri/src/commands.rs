@@ -87,6 +87,13 @@ pub fn get_resolved_path(state: State<'_, Arc<AppState>>) -> Result<String, Stri
         .ok_or_else(|| "Resolved PATH not yet available".to_string())
 }
 
+/// Invalidate the cached login-shell PATH so the next resolution re-spawns the shell.
+/// Useful after installing new tools (nvm, Homebrew, etc.) that modify PATH.
+#[tauri::command]
+pub fn invalidate_path_cache() {
+    sidecar::invalidate_path_cache();
+}
+
 /// Get the port the backend sidecar is running on
 #[tauri::command]
 pub fn get_backend_port(state: State<'_, Arc<AppState>>) -> Result<u16, String> {
