@@ -36,16 +36,28 @@ func NewSQLiteStore() (*SQLiteStore, error) {
 
 	logger.SQLite.Infof("Opening database at %s", dbPath)
 
-	// Open database with optimized settings
-	db, err := sql.Open("sqlite", dbPath+"?_pragma=foreign_keys(1)&_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)")
+	// Open database with optimized settings.
+	// - synchronous(NORMAL): safe with WAL, avoids extra fsyncs on every write
+	// - cache_size(-20000): ~20 MB page cache (negative value = KiB)
+	// - mmap_size(268435456): 256 MB memory-mapped I/O for large read queries
+	// - temp_store(MEMORY): keep temporary tables/indices in RAM
+	db, err := sql.Open("sqlite", dbPath+
+		"?_pragma=foreign_keys(1)"+
+		"&_pragma=journal_mode(WAL)"+
+		"&_pragma=busy_timeout(5000)"+
+		"&_pragma=synchronous(NORMAL)"+
+		"&_pragma=cache_size(-20000)"+
+		"&_pragma=mmap_size(268435456)"+
+		"&_pragma=temp_store(MEMORY)")
 	if err != nil {
 		return nil, err
 	}
 
-	// Allow multiple connections for nested queries (reading conversations with messages)
-	// SQLite with WAL mode handles concurrent readers well
-	db.SetMaxOpenConns(10)
-	db.SetMaxIdleConns(5)
+	// Allow multiple connections for nested queries (reading conversations with messages).
+	// SQLite with WAL mode handles concurrent readers well; desktop app has no
+	// connection-exhaustion risk so we use higher limits for better parallelism.
+	db.SetMaxOpenConns(20)
+	db.SetMaxIdleConns(10)
 	db.SetConnMaxLifetime(0)
 
 	s := &SQLiteStore{

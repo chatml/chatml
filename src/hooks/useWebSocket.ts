@@ -101,6 +101,10 @@ export function useWebSocket(enabled: boolean = true) {
       (convId, text) => {
         useAppStore.getState().appendThinkingText(convId, text);
       },
+      // onFlushToolProgress: single batch store update for all accumulated tool progress
+      (updates) => {
+        useAppStore.getState().updateToolProgressBatch(updates);
+      },
     );
   }
 
@@ -765,7 +769,7 @@ export function useWebSocket(enabled: boolean = true) {
       case 'tool_progress':
         if (event?.parentToolUseId || event?.id) {
           const toolId = (event.id ?? event.parentToolUseId) as string;
-          store.updateToolProgress(conversationId, toolId, {
+          batcher.batchToolProgress(conversationId, toolId, {
             elapsedTimeSeconds: event.elapsedTimeSeconds as number | undefined,
             toolName: event.toolName as string | undefined,
           });

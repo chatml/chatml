@@ -1,8 +1,9 @@
 use notify::RecursiveMode;
 use notify_debouncer_mini::{new_debouncer, DebouncedEventKind};
+use serde::Serialize;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex, RwLock};
+use std::sync::{Arc, LazyLock, Mutex, RwLock};
 use std::time::Duration;
 use tauri::{Emitter, Manager};
 
@@ -28,6 +29,32 @@ static GLOBAL_WATCHER: Mutex<Option<GlobalFileWatcher>> = Mutex::new(None);
 /// Per-workspace accumulated file changes: vec of (relative_path, full_path)
 type WorkspaceChanges = Vec<(String, String)>;
 
+/// Typed event payloads — avoids intermediate serde_json::Value allocations
+/// that the json!() macro creates on every emit.
+#[derive(Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct FileChangedPayload<'a> {
+    workspace_id: &'a str,
+    path: &'a str,
+    full_path: &'a str,
+    files: Vec<FileEntry<'a>>,
+    file_count: usize,
+}
+
+#[derive(Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct FileEntry<'a> {
+    path: &'a str,
+    full_path: &'a str,
+}
+
+#[derive(Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct SessionDeletedPayload<'a> {
+    session_dir: &'a str,
+    path: String,
+}
+
 /// Directories to ignore when watching for file changes
 const IGNORED_DIRECTORIES: &[&str] = &[
     ".git",
@@ -42,6 +69,14 @@ const IGNORED_DIRECTORIES: &[&str] = &[
     "venv",
 ];
 
+/// Pre-compiled ignore patterns to avoid heap allocations on every file event.
+static IGNORE_PATTERNS: LazyLock<Vec<(String, String)>> = LazyLock::new(|| {
+    IGNORED_DIRECTORIES
+        .iter()
+        .map(|dir| (format!("/{}/", dir), format!("\\{}\\", dir)))
+        .collect()
+});
+
 /// Check if a path should be ignored based on directory patterns.
 ///
 /// This function checks if any segment of the path matches an ignored directory.
@@ -50,11 +85,9 @@ const IGNORED_DIRECTORIES: &[&str] = &[
 /// (without trailing content). This is intentional because file watcher events always
 /// include a filename after the directory, so bare directory paths won't occur.
 pub(crate) fn should_ignore_path(path: &str) -> bool {
-    IGNORED_DIRECTORIES.iter().any(|dir| {
-        let unix_pattern = format!("/{}/", dir);
-        let windows_pattern = format!("\\{}\\", dir);
-        path.contains(&unix_pattern) || path.contains(&windows_pattern)
-    })
+    IGNORE_PATTERNS
+        .iter()
+        .any(|(unix, windows)| path.contains(unix.as_str()) || path.contains(windows.as_str()))
 }
 
 /// Extract the session directory name from an event path by stripping the base path.
@@ -116,8 +149,9 @@ pub fn start_global_watcher(
     // Create a channel to receive file change events
     let (tx, rx) = channel();
 
-    // Create a debounced watcher with 2 second delay
-    let mut debouncer = new_debouncer(Duration::from_secs(2), tx)
+    // Create a debounced watcher — 500ms is responsive enough for UX while
+    // still batching rapid multi-file changes (e.g. git checkout, build output).
+    let mut debouncer = new_debouncer(Duration::from_millis(500), tx)
         .map_err(|e| AppError::Watcher(format!("Failed to create file watcher: {}", e)))?;
 
     // Start watching the entire base directory recursively
@@ -179,10 +213,10 @@ pub fn start_global_watcher(
                                     );
                                     // Emit event to frontend for visibility
                                     if let Some(window) = app_handle.get_webview_window("main") {
-                                        let payload = serde_json::json!({
-                                            "sessionDir": session_dir,
-                                            "path": session_path.to_string_lossy(),
-                                        });
+                                        let payload = SessionDeletedPayload {
+                                            session_dir: &session_dir,
+                                            path: session_path.to_string_lossy().into_owned(),
+                                        };
                                         let _ = window.emit("session-deleted-externally", payload);
                                     }
                                 }
@@ -230,19 +264,20 @@ pub fn start_global_watcher(
                             let Some((last_path, last_full)) = files.last() else {
                                 continue;
                             };
-                            let file_list: Vec<serde_json::Value> = files
+                            let file_list: Vec<FileEntry<'_>> = files
                                 .iter()
-                                .map(|(path, full)| {
-                                    serde_json::json!({ "path": path, "fullPath": full })
+                                .map(|(path, full)| FileEntry {
+                                    path: path.as_str(),
+                                    full_path: full.as_str(),
                                 })
                                 .collect();
-                            let payload = serde_json::json!({
-                                "workspaceId": workspace_id,
-                                "path": last_path,
-                                "fullPath": last_full,
-                                "files": file_list,
-                                "fileCount": count,
-                            });
+                            let payload = FileChangedPayload {
+                                workspace_id: workspace_id.as_str(),
+                                path: last_path.as_str(),
+                                full_path: last_full.as_str(),
+                                files: file_list,
+                                file_count: count,
+                            };
                             if let Err(e) = window.emit("file-changed", payload) {
                                 log::error!("Failed to emit file-changed event: {}", e);
                             }

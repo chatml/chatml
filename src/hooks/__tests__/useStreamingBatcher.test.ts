@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { createStreamingBatcher, StreamingBatcher } from '../useStreamingBatcher';
+import type { ToolProgressUpdate } from '@/lib/types';
 
 /**
  * Tests for the streaming event batcher.
@@ -16,6 +17,7 @@ describe('createStreamingBatcher', () => {
   let batcher: StreamingBatcher;
   let onFlushText: ReturnType<typeof vi.fn>;
   let onFlushThinking: ReturnType<typeof vi.fn>;
+  let onFlushToolProgress: ReturnType<typeof vi.fn>;
   let rafCallbacks: Array<() => void>;
   let nextRafId: number;
 
@@ -35,7 +37,8 @@ describe('createStreamingBatcher', () => {
 
     onFlushText = vi.fn();
     onFlushThinking = vi.fn();
-    batcher = createStreamingBatcher(onFlushText, onFlushThinking);
+    onFlushToolProgress = vi.fn();
+    batcher = createStreamingBatcher(onFlushText, onFlushThinking, onFlushToolProgress);
   });
 
   afterEach(() => {
@@ -293,6 +296,108 @@ describe('createStreamingBatcher', () => {
 
       expect(onFlushText).toHaveBeenCalledTimes(1);
       expect(onFlushText).toHaveBeenCalledWith(CONV_A, 'cycle2');
+    });
+  });
+
+  // ==========================================================================
+  // 7. Tool progress batching
+  // ==========================================================================
+
+  describe('tool progress batching', () => {
+    it('keeps only the latest progress per tool (last-write-wins)', () => {
+      batcher.batchToolProgress(CONV_A, 'tool-1', { elapsedTimeSeconds: 1 });
+      batcher.batchToolProgress(CONV_A, 'tool-1', { elapsedTimeSeconds: 2 });
+      batcher.batchToolProgress(CONV_A, 'tool-1', { elapsedTimeSeconds: 3 });
+
+      triggerRAF();
+
+      expect(onFlushToolProgress).toHaveBeenCalledTimes(1);
+      expect(onFlushToolProgress).toHaveBeenCalledWith([
+        { conversationId: CONV_A, toolId: 'tool-1', progress: { elapsedTimeSeconds: 3 } },
+      ]);
+    });
+
+    it('flushes progress for different tools independently', () => {
+      batcher.batchToolProgress(CONV_A, 'tool-1', { elapsedTimeSeconds: 5 });
+      batcher.batchToolProgress(CONV_A, 'tool-2', { elapsedTimeSeconds: 10, toolName: 'Bash' });
+
+      triggerRAF();
+
+      expect(onFlushToolProgress).toHaveBeenCalledTimes(1);
+      const updates = onFlushToolProgress.mock.calls[0][0] as Array<{
+        conversationId: string;
+        toolId: string;
+        progress: ToolProgressUpdate;
+      }>;
+      expect(updates).toHaveLength(2);
+      expect(updates).toContainEqual({
+        conversationId: CONV_A, toolId: 'tool-1', progress: { elapsedTimeSeconds: 5 },
+      });
+      expect(updates).toContainEqual({
+        conversationId: CONV_A, toolId: 'tool-2', progress: { elapsedTimeSeconds: 10, toolName: 'Bash' },
+      });
+    });
+
+    it('keeps tools from different conversations separate', () => {
+      batcher.batchToolProgress(CONV_A, 'tool-1', { elapsedTimeSeconds: 1 });
+      batcher.batchToolProgress(CONV_B, 'tool-1', { elapsedTimeSeconds: 2 });
+
+      triggerRAF();
+
+      expect(onFlushToolProgress).toHaveBeenCalledTimes(1);
+      const updates = onFlushToolProgress.mock.calls[0][0] as Array<{
+        conversationId: string;
+        toolId: string;
+        progress: ToolProgressUpdate;
+      }>;
+      expect(updates).toHaveLength(2);
+      expect(updates).toContainEqual({
+        conversationId: CONV_A, toolId: 'tool-1', progress: { elapsedTimeSeconds: 1 },
+      });
+      expect(updates).toContainEqual({
+        conversationId: CONV_B, toolId: 'tool-1', progress: { elapsedTimeSeconds: 2 },
+      });
+    });
+
+    it('force-flushes tool progress on flush() call', () => {
+      batcher.batchToolProgress(CONV_A, 'tool-1', { elapsedTimeSeconds: 7 });
+
+      batcher.flush();
+
+      expect(onFlushToolProgress).toHaveBeenCalledTimes(1);
+      expect(onFlushToolProgress).toHaveBeenCalledWith([
+        { conversationId: CONV_A, toolId: 'tool-1', progress: { elapsedTimeSeconds: 7 } },
+      ]);
+    });
+
+    it('destroy() clears tool progress buffers', () => {
+      batcher.batchToolProgress(CONV_A, 'tool-1', { elapsedTimeSeconds: 5 });
+
+      batcher.destroy();
+
+      // Triggering rAF after destroy — should not flush
+      triggerRAF();
+
+      expect(onFlushToolProgress).not.toHaveBeenCalled();
+    });
+
+    it('does not call onFlushToolProgress when no progress was batched', () => {
+      batcher.batchText(CONV_A, 'text only');
+      triggerRAF();
+
+      expect(onFlushToolProgress).not.toHaveBeenCalled();
+    });
+
+    it('does not call onFlushToolProgress when callback is omitted', () => {
+      const batcherNoProgress = createStreamingBatcher(onFlushText, onFlushThinking);
+
+      batcherNoProgress.batchToolProgress(CONV_A, 'tool-1', { elapsedTimeSeconds: 1 });
+      // Should not throw even without the callback
+      expect(() => {
+        batcherNoProgress.flush();
+      }).not.toThrow();
+
+      batcherNoProgress.destroy();
     });
   });
 });
