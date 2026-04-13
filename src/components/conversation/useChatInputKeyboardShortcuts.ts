@@ -159,5 +159,5 @@ export function useChatInputKeyboardShortcuts({
       window.removeEventListener('toggle-fast-mode', handleToggleFastMode);
       window.removeEventListener('session-home-template-selected', handleTemplateSelected);
     };
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps -- deps accessed via ref
+  }, []);
 }

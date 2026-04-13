@@ -443,7 +443,7 @@ export function ConversationMessagePane({
       cancelAnimationFrame(raf1);
       if (raf2 !== undefined) cancelAnimationFrame(raf2);
     };
-  }, [selectedStreaming.isStreaming, isActive]);
+  }, [selectedStreaming.isStreaming, isActive, setShowScrollButton]);
 
   // Supplementary scroll listener: ensures the scroll-to-bottom pill shows
   // even when Virtuoso's atBottomStateChange doesn't fire on initial scroll
