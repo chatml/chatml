@@ -227,8 +227,10 @@ func (h *Handlers) initBaseSession(ctx context.Context, workspaceID, name, branc
 // Returns "session" as the default fallback.
 func (h *Handlers) resolveRepoBranchPrefix(repo *models.Repo) string {
 	var githubUsername string
-	if user := h.ghClient.GetStoredUser(); user != nil {
-		githubUsername = user.Login
+	if h.ghClient != nil {
+		if user := h.ghClient.GetStoredUser(); user != nil {
+			githubUsername = user.Login
+		}
 	}
 	return repo.ResolveBranchPrefix(githubUsername)
 }
