@@ -160,6 +160,32 @@ func (rm *RepoManager) ListRemoteBranches(ctx context.Context, repoPath string, 
 	return branches, nil
 }
 
+// LocalBranchNamesWithPrefix returns local branch names matching the given prefix,
+// with the prefix stripped. For example, prefix "session/" returns ["orion", "vega"]
+// for branches "session/orion" and "session/vega".
+// Returns nil (not an error) if prefix is empty.
+// Returns an error if the git command fails (e.g. repo doesn't exist).
+func LocalBranchNamesWithPrefix(ctx context.Context, repoPath, prefix string) ([]string, error) {
+	if prefix == "" {
+		return nil, nil
+	}
+	cmd, cancel := gitCmdWithContext(ctx, TimeoutFast, repoPath, "branch", "--list", "--format=%(refname:short)", prefix+"*")
+	defer cancel()
+	out, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("failed to list local branches with prefix %q: %w", prefix, err)
+	}
+	var names []string
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		names = append(names, strings.TrimPrefix(line, prefix))
+	}
+	return names, nil
+}
+
 // RefExists checks whether a git ref (branch, tag, or commit) exists in the repository.
 func (rm *RepoManager) RefExists(ctx context.Context, repoPath, ref string) bool {
 	cmd, cancel := gitCmdWithContext(ctx, TimeoutFast, repoPath, "rev-parse", "--verify", "--quiet", ref)

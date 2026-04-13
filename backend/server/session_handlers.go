@@ -226,20 +226,13 @@ func (h *Handlers) initBaseSession(ctx context.Context, workspaceID, name, branc
 // For the "github" case, it resolves to the authenticated GitHub user's login.
 // Returns "session" as the default fallback.
 func (h *Handlers) resolveRepoBranchPrefix(repo *models.Repo) string {
-	switch repo.BranchPrefix {
-	case "custom":
-		if repo.CustomPrefix != "" {
-			return repo.CustomPrefix
-		}
-	case "none":
-		return ""
-	case "github":
-		if user := h.ghClient.GetStoredUser(); user != nil && user.Login != "" {
-			return user.Login
+	var githubUsername string
+	if h.ghClient != nil {
+		if user := h.ghClient.GetStoredUser(); user != nil {
+			githubUsername = user.Login
 		}
 	}
-	// "", or anything else → "session" (backend default)
-	return "session"
+	return repo.ResolveBranchPrefix(githubUsername)
 }
 
 func (h *Handlers) CreateSession(w http.ResponseWriter, r *http.Request) {
@@ -371,6 +364,17 @@ func (h *Handlers) CreateSession(w http.ResponseWriter, r *http.Request) {
 		// Atomic session name generation with retry loop.
 		// Retries on both directory collisions AND branch collisions, so stale
 		// git branches from previously deleted sessions don't block the user.
+
+		// Seed the name cache with existing branch names so the generator
+		// avoids names that would collide with stale branches.
+		if branchPrefix != "" {
+			if branchNames, err := git.LocalBranchNamesWithPrefix(ctx, repo.Path, branchPrefix+"/"); err == nil {
+				for _, name := range branchNames {
+					h.sessionNameCache.Add(name)
+				}
+			}
+		}
+
 		const maxRetries = 10
 		for attempt := 0; attempt < maxRetries; attempt++ {
 			// Get existing names from cache (initializes on first call)
@@ -423,9 +427,10 @@ func (h *Handlers) CreateSession(w http.ResponseWriter, r *http.Request) {
 				break
 			}
 
-			// Branch collision - roll back directory and retry with a new name
+			// Branch collision - roll back directory and retry with a new name.
+			// Keep the name in the cache: the branch still exists even though
+			// the directory was rolled back, so this name should not be retried.
 			if errors.Is(wtErr, git.ErrLocalBranchExists) || errors.Is(wtErr, git.ErrBranchAlreadyCheckedOut) {
-				h.sessionNameCache.Remove(candidateName)
 				if removeErr := os.RemoveAll(path); removeErr != nil {
 					logger.Handlers.Warnf("Failed to rollback session directory %s: %v", path, removeErr)
 				}

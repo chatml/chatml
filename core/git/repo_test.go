@@ -1134,6 +1134,59 @@ func TestListRemoteBranches_Success(t *testing.T) {
 }
 
 // ============================================================================
+// LocalBranchNamesWithPrefix Tests
+// ============================================================================
+
+func TestLocalBranchNamesWithPrefix_MatchingBranches(t *testing.T) {
+	repoPath := createTestGitRepo(t)
+
+	// Create session branches
+	createBranch(t, repoPath, "session/orion")
+	createBranch(t, repoPath, "session/vega")
+	createBranch(t, repoPath, "session/sirius")
+	// Create a non-session branch to verify it's excluded
+	createBranch(t, repoPath, "feature/unrelated")
+
+	names, err := LocalBranchNamesWithPrefix(context.Background(), repoPath, "session/")
+	require.NoError(t, err)
+	assert.Len(t, names, 3)
+	assert.Contains(t, names, "orion")
+	assert.Contains(t, names, "vega")
+	assert.Contains(t, names, "sirius")
+}
+
+func TestLocalBranchNamesWithPrefix_NoMatches(t *testing.T) {
+	repoPath := createTestGitRepo(t)
+
+	names, err := LocalBranchNamesWithPrefix(context.Background(), repoPath, "session/")
+	require.NoError(t, err)
+	assert.Empty(t, names)
+}
+
+func TestLocalBranchNamesWithPrefix_EmptyPrefix(t *testing.T) {
+	repoPath := createTestGitRepo(t)
+
+	names, err := LocalBranchNamesWithPrefix(context.Background(), repoPath, "")
+	require.NoError(t, err)
+	assert.Nil(t, names)
+}
+
+func TestLocalBranchNamesWithPrefix_NestedPrefix(t *testing.T) {
+	repoPath := createTestGitRepo(t)
+
+	// Branch with nested prefix (e.g., "mcastilho/session-name")
+	createBranch(t, repoPath, "mcastilho/orion")
+	createBranch(t, repoPath, "mcastilho/vega")
+	createBranch(t, repoPath, "session/other")
+
+	names, err := LocalBranchNamesWithPrefix(context.Background(), repoPath, "mcastilho/")
+	require.NoError(t, err)
+	assert.Len(t, names, 2)
+	assert.Contains(t, names, "orion")
+	assert.Contains(t, names, "vega")
+}
+
+// ============================================================================
 // RefExists Tests
 // ============================================================================
 
