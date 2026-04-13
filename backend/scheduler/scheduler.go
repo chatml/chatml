@@ -243,12 +243,32 @@ func (sc *Scheduler) dispatchTask(ctx context.Context, task *models.ScheduledTas
 		logger.Main.Warnf("Scheduler: could not read workspaces dir for name seeding: %v", err)
 	}
 
+	// Resolve branch prefix from repo settings (no GitHub client in scheduler,
+	// so "github" prefix falls back to "session").
+	branchPrefix := repo.ResolveBranchPrefix("")
+
+	// Also seed with existing branch names — stale branches from
+	// previously deleted sessions can cause worktree creation failures even
+	// when no matching directory exists.
+	if branchPrefix != "" {
+		if branchNames, err := git.LocalBranchNamesWithPrefix(ctx, repo.Path, branchPrefix+"/"); err == nil {
+			for _, name := range branchNames {
+				existingNames = append(existingNames, strings.ToLower(name))
+			}
+		} else {
+			logger.Main.Warnf("Scheduler: could not list %s branches for name seeding: %v", branchPrefix, err)
+		}
+	}
+
 	// Generate session name and create worktree with retry on collisions
 	const maxRetries = 10
 	var sessionName, branchName, worktreePath, baseCommitSHA string
 	for attempt := 0; attempt < maxRetries; attempt++ {
 		candidateName := naming.GenerateUniqueSessionName(existingNames)
-		candidateBranch := fmt.Sprintf("session/%s", candidateName)
+		candidateBranch := candidateName
+		if branchPrefix != "" {
+			candidateBranch = fmt.Sprintf("%s/%s", branchPrefix, candidateName)
+		}
 
 		sessionPath, dirErr := git.CreateSessionDirectoryAtomic(workspacesDir, candidateName)
 		if dirErr != nil {

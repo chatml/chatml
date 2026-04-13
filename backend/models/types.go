@@ -17,6 +17,25 @@ type Repo struct {
 	CreatedAt    time.Time `json:"createdAt"`
 }
 
+// ResolveBranchPrefix returns the effective branch prefix for this repo.
+// Pass the GitHub username when available (from ghClient); pass "" otherwise.
+// Falls back to "session" when the prefix cannot be resolved.
+func (r *Repo) ResolveBranchPrefix(githubUsername string) string {
+	switch r.BranchPrefix {
+	case "custom":
+		if r.CustomPrefix != "" {
+			return r.CustomPrefix
+		}
+	case "none":
+		return ""
+	case "github":
+		if githubUsername != "" {
+			return githubUsername
+		}
+	}
+	return "session"
+}
+
 // Session represents a worktree session within a workspace
 type Session struct {
 	ID               string        `json:"id"`
