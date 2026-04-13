@@ -44,6 +44,16 @@ type UpdateScheduledTaskRequest struct {
 	Enabled            *bool   `json:"enabled,omitempty"`
 }
 
+// isValidScheduledPermissionMode reports whether mode is safe for unattended execution.
+// Only modes that never prompt a human are allowed.
+func isValidScheduledPermissionMode(mode string) bool {
+	switch mode {
+	case "bypassPermissions", "dontAsk":
+		return true
+	}
+	return false
+}
+
 // validateScheduleParams checks that schedule fields are within valid ranges
 func validateScheduleParams(hour, minute, dayOfWeek, dayOfMonth int) string {
 	if hour < 0 || hour > 23 {
@@ -112,6 +122,15 @@ func (h *Handlers) CreateScheduledTask(w http.ResponseWriter, r *http.Request) {
 	}
 	if msg := validateScheduleParams(req.ScheduleHour, req.ScheduleMinute, req.ScheduleDayOfWeek, req.ScheduleDayOfMonth); msg != "" {
 		writeValidationError(w, msg)
+		return
+	}
+	// Scheduled tasks run unattended — "default" and "acceptEdits" can prompt for
+	// tool approval with no human present, blocking forever.
+	if req.PermissionMode == "" || req.PermissionMode == "default" || req.PermissionMode == "acceptEdits" {
+		req.PermissionMode = "bypassPermissions"
+	}
+	if !isValidScheduledPermissionMode(req.PermissionMode) {
+		writeValidationError(w, "permissionMode must be one of: bypassPermissions, dontAsk")
 		return
 	}
 
@@ -206,6 +225,17 @@ func (h *Handlers) UpdateScheduledTask(w http.ResponseWriter, r *http.Request) {
 	if req.ScheduleDayOfMonth != nil && (*req.ScheduleDayOfMonth < 1 || *req.ScheduleDayOfMonth > 28) {
 		writeValidationError(w, "scheduleDayOfMonth must be 1–28")
 		return
+	}
+	if req.PermissionMode != nil {
+		mode := *req.PermissionMode
+		if mode == "default" || mode == "" || mode == "acceptEdits" {
+			mode = "bypassPermissions"
+		}
+		if !isValidScheduledPermissionMode(mode) {
+			writeValidationError(w, "permissionMode must be one of: bypassPermissions, dontAsk")
+			return
+		}
+		req.PermissionMode = &mode
 	}
 
 	err := h.store.UpdateScheduledTask(r.Context(), taskID, func(task *models.ScheduledTask) {

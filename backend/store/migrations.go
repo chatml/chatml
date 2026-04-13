@@ -160,6 +160,14 @@ var migrations = []Migration{
 			return nil
 		},
 	},
+	{
+		Version:     9,
+		Description: "Default scheduled task permission_mode to bypassPermissions",
+		Up: func(_ context.Context, tx *sql.Tx) error {
+			_, err := tx.Exec(`UPDATE scheduled_tasks SET permission_mode = 'bypassPermissions' WHERE permission_mode IN ('default', '', 'acceptEdits')`)
+			return err
+		},
+	},
 }
 
 // RunMigrations ensures the schema_version table exists, applies the baseline

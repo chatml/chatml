@@ -40,8 +40,6 @@ const FREQUENCY_OPTIONS: { value: ScheduledTaskFrequency; label: string }[] = [
 ];
 
 const PERMISSION_OPTIONS = [
-  { value: 'default', label: 'Ask permissions' },
-  { value: 'acceptEdits', label: 'Accept edits' },
   { value: 'bypassPermissions', label: 'Bypass permissions' },
   { value: 'dontAsk', label: "Don't ask" },
 ];
@@ -68,7 +66,7 @@ export function ScheduledTaskDialog({ open, onOpenChange, editTask }: ScheduledT
   const [description, setDescription] = useState('');
   const [prompt, setPrompt] = useState('');
   const [model, setModel] = useState('');
-  const [permissionMode, setPermissionMode] = useState('default');
+  const [permissionMode, setPermissionMode] = useState('bypassPermissions');
   const [workspaceId, setWorkspaceId] = useState('');
   const [frequency, setFrequency] = useState<ScheduledTaskFrequency>('daily');
   const [scheduleHour, setScheduleHour] = useState(9);
@@ -90,7 +88,11 @@ export function ScheduledTaskDialog({ open, onOpenChange, editTask }: ScheduledT
       setDescription(editTask.description);
       setPrompt(editTask.prompt);
       setModel(editTask.model || '');
-      setPermissionMode(editTask.permissionMode || 'default');
+      setPermissionMode(
+        editTask.permissionMode === 'default' || editTask.permissionMode === 'acceptEdits'
+          ? 'bypassPermissions'
+          : (editTask.permissionMode || 'bypassPermissions'),
+      );
       setWorkspaceId(editTask.workspaceId);
       setFrequency(editTask.frequency);
       setScheduleHour(editTask.scheduleHour);
@@ -102,7 +104,7 @@ export function ScheduledTaskDialog({ open, onOpenChange, editTask }: ScheduledT
       setDescription('');
       setPrompt('');
       setModel('');
-      setPermissionMode('default');
+      setPermissionMode('bypassPermissions');
       setWorkspaceId(workspaces[0]?.id || '');
       setFrequency('daily');
       setScheduleHour(9);

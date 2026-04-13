@@ -313,13 +313,15 @@ func (sc *Scheduler) dispatchTask(ctx context.Context, task *models.ScheduledTas
 		return run, fmt.Errorf("failed to create session: %w", err)
 	}
 
-	// Start conversation with the task prompt
-	var opts *agent.StartConversationOptions
-	if task.Model != "" || task.PermissionMode != "" {
-		opts = &agent.StartConversationOptions{
-			Model:          task.Model,
-			PermissionMode: task.PermissionMode,
-		}
+	// Start conversation with the task prompt.
+	// Scheduled tasks must not use modes that prompt a human — no one is present to approve.
+	permMode := task.PermissionMode
+	if permMode == "" || permMode == "default" || permMode == "acceptEdits" {
+		permMode = "bypassPermissions"
+	}
+	opts := &agent.StartConversationOptions{
+		Model:          task.Model,
+		PermissionMode: permMode,
 	}
 
 	_, err = sc.agentMgr.StartConversation(ctx, sessionID, "task", task.Prompt, opts)
