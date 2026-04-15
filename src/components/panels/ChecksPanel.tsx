@@ -769,12 +769,12 @@ function CIChecksSection({
           ) : (
             // Fallback: flat list from checkDetails (no workflow data available)
             <div className="space-y-0.5">
-              {sortedChecks.map((check) => {
+              {sortedChecks.map((check, index) => {
                 const statusInfo = getCheckStatusInfo(check.status, check.conclusion);
                 const StatusIcon = statusInfo.icon;
 
                 return (
-                  <div key={check.name} className="flex items-center gap-2 py-0.5 px-1 min-w-0">
+                  <div key={`${check.name}-${index}`} className="flex items-center gap-2 py-0.5 px-1 min-w-0">
                     <StatusIcon className={cn('h-3 w-3 shrink-0', statusInfo.color)} />
                     <span className="text-xs truncate flex-1">{check.name}</span>
                     {check.durationSeconds !== undefined && check.conclusion !== 'skipped' && check.conclusion !== 'cancelled' && (
