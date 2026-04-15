@@ -20,6 +20,7 @@ import {
 } from '@/components/ui/dialog';
 import {
   AlertCircle,
+  Archive,
   ChevronLeft,
   Clock,
   Folder,
@@ -42,7 +43,7 @@ interface ScheduledTaskDetailViewProps {
 }
 
 export function ScheduledTaskDetailView({ taskId }: ScheduledTaskDetailViewProps) {
-  const { tasks, runs, fetchTasks, fetchRuns, toggleEnabled, deleteTask, triggerNow } =
+  const { tasks, runs, fetchTasks, fetchRuns, toggleEnabled, deleteTask, archiveTask, triggerNow } =
     useScheduledTaskStore();
   const workspaces = useAppStore(useShallow((s) => s.workspaces));
 
@@ -55,6 +56,7 @@ export function ScheduledTaskDetailView({ taskId }: ScheduledTaskDetailViewProps
 
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [archiveDialogOpen, setArchiveDialogOpen] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [isTriggering, setIsTriggering] = useState(false);
 
@@ -98,6 +100,18 @@ export function ScheduledTaskDetailView({ taskId }: ScheduledTaskDetailViewProps
       setDeleteDialogOpen(false);
     }
   }, [taskId, deleteTask]);
+
+  const handleConfirmArchive = useCallback(async () => {
+    setActionError(null);
+    try {
+      await archiveTask(taskId);
+      navigate({ contentView: { type: 'scheduled-tasks' } });
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'Failed to archive task');
+    } finally {
+      setArchiveDialogOpen(false);
+    }
+  }, [taskId, archiveTask]);
 
   const handleToggleEnabled = useCallback(async () => {
     setActionError(null);
@@ -214,6 +228,14 @@ export function ScheduledTaskDetailView({ taskId }: ScheduledTaskDetailViewProps
                   onClick={() => setEditDialogOpen(true)}
                 >
                   <Pencil className="w-4 h-4" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8"
+                  onClick={() => setArchiveDialogOpen(true)}
+                >
+                  <Archive className="w-4 h-4" />
                 </Button>
                 <Button
                   variant="ghost"
@@ -372,6 +394,25 @@ export function ScheduledTaskDetailView({ taskId }: ScheduledTaskDetailViewProps
             <Button variant="destructive" onClick={handleConfirmDelete}>
               Delete
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Archive confirmation dialog */}
+      <Dialog open={archiveDialogOpen} onOpenChange={(open) => !open && setArchiveDialogOpen(false)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Archive scheduled task</DialogTitle>
+            <DialogDescription>
+              &ldquo;{task.name}&rdquo; will be hidden from the sidebar. Its run history is
+              preserved.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setArchiveDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleConfirmArchive}>Archive</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

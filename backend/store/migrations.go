@@ -168,6 +168,14 @@ var migrations = []Migration{
 			return err
 		},
 	},
+	{
+		Version:     10,
+		Description: "Add archived column to scheduled_tasks",
+		Up: func(_ context.Context, tx *sql.Tx) error {
+			_, err := tx.Exec(`ALTER TABLE scheduled_tasks ADD COLUMN archived INTEGER NOT NULL DEFAULT 0`)
+			return err
+		},
+	},
 }
 
 // RunMigrations ensures the schema_version table exists, applies the baseline

@@ -42,6 +42,7 @@ type UpdateScheduledTaskRequest struct {
 	ScheduleDayOfWeek  *int    `json:"scheduleDayOfWeek,omitempty"`
 	ScheduleDayOfMonth *int    `json:"scheduleDayOfMonth,omitempty"`
 	Enabled            *bool   `json:"enabled,omitempty"`
+	Archived           *bool   `json:"archived,omitempty"`
 }
 
 // isValidScheduledPermissionMode reports whether mode is safe for unattended execution.
@@ -274,6 +275,12 @@ func (h *Handlers) UpdateScheduledTask(w http.ResponseWriter, r *http.Request) {
 		}
 		if req.Enabled != nil {
 			task.Enabled = *req.Enabled
+		}
+		if req.Archived != nil {
+			task.Archived = *req.Archived
+			if *req.Archived {
+				task.NextRunAt = nil
+			}
 		}
 
 		// Recompute next_run_at if schedule changed
