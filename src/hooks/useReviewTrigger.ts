@@ -321,6 +321,7 @@ export function useReviewTrigger() {
           type: conv.type,
           name: conv.name,
           status: conv.status,
+          model: conv.model,
           messages: [],
           toolSummary: [],
           createdAt: conv.createdAt,
