@@ -333,12 +333,14 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onGitHubRepos,
       grouped[taskId].sessions.push(session);
     }
 
-    return Object.entries(grouped).map(([taskId, data]) => ({
-      taskId,
-      taskName: data.taskName,
-      task: scheduledTasks.find((t) => t.id === taskId),
-      sessions: data.sessions,
-    }));
+    return Object.entries(grouped)
+      .filter(([taskId]) => scheduledTasks.some((t) => t.id === taskId))
+      .map(([taskId, data]) => ({
+        taskId,
+        taskName: data.taskName,
+        task: scheduledTasks.find((t) => t.id === taskId),
+        sessions: data.sessions,
+      }));
   }, [scheduledSessionsList, scheduledTasks]);
 
   const formatTimeAgo = (date: string) => {

@@ -587,6 +587,7 @@ type ScheduledTask struct {
 	ScheduleDayOfWeek  int        `json:"scheduleDayOfWeek"`            // 0=Sun..6=Sat (for weekly)
 	ScheduleDayOfMonth int        `json:"scheduleDayOfMonth"`           // 1-31 (for monthly)
 	Enabled            bool       `json:"enabled"`
+	Archived           bool       `json:"archived"`
 	LastRunAt          *time.Time `json:"lastRunAt,omitempty"`
 	NextRunAt          *time.Time `json:"nextRunAt,omitempty"`
 	CreatedAt          time.Time  `json:"createdAt"`

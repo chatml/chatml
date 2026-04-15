@@ -3182,31 +3182,31 @@ func (s *SQLiteStore) AddScheduledTask(ctx context.Context, task *models.Schedul
 			INSERT INTO scheduled_tasks (id, workspace_id, name, description, prompt, model,
 				permission_mode, frequency, cron_expression,
 				schedule_hour, schedule_minute, schedule_day_of_week, schedule_day_of_month,
-				enabled, last_run_at, next_run_at, created_at, updated_at)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+				enabled, archived, last_run_at, next_run_at, created_at, updated_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			task.ID, task.WorkspaceID, task.Name, task.Description, task.Prompt, task.Model,
 			task.PermissionMode, task.Frequency, task.CronExpression,
 			task.ScheduleHour, task.ScheduleMinute, task.ScheduleDayOfWeek, task.ScheduleDayOfMonth,
-			boolToInt(task.Enabled), task.LastRunAt, task.NextRunAt, task.CreatedAt, task.UpdatedAt)
+			boolToInt(task.Enabled), boolToInt(task.Archived), task.LastRunAt, task.NextRunAt, task.CreatedAt, task.UpdatedAt)
 		return err
 	})
 }
 
 func (s *SQLiteStore) GetScheduledTask(ctx context.Context, id string) (*models.ScheduledTask, error) {
 	var task models.ScheduledTask
-	var enabled int
+	var enabled, archived int
 	var lastRunAt, nextRunAt sql.NullTime
 
 	err := s.db.QueryRowContext(ctx, `
 		SELECT id, workspace_id, name, description, prompt, model,
 			permission_mode, frequency, cron_expression,
 			schedule_hour, schedule_minute, schedule_day_of_week, schedule_day_of_month,
-			enabled, last_run_at, next_run_at, created_at, updated_at
+			enabled, archived, last_run_at, next_run_at, created_at, updated_at
 		FROM scheduled_tasks WHERE id = ?`, id).Scan(
 		&task.ID, &task.WorkspaceID, &task.Name, &task.Description, &task.Prompt, &task.Model,
 		&task.PermissionMode, &task.Frequency, &task.CronExpression,
 		&task.ScheduleHour, &task.ScheduleMinute, &task.ScheduleDayOfWeek, &task.ScheduleDayOfMonth,
-		&enabled, &lastRunAt, &nextRunAt, &task.CreatedAt, &task.UpdatedAt)
+		&enabled, &archived, &lastRunAt, &nextRunAt, &task.CreatedAt, &task.UpdatedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -3215,6 +3215,7 @@ func (s *SQLiteStore) GetScheduledTask(ctx context.Context, id string) (*models.
 	}
 
 	task.Enabled = intToBool(enabled)
+	task.Archived = intToBool(archived)
 	if lastRunAt.Valid {
 		task.LastRunAt = &lastRunAt.Time
 	}
@@ -3229,8 +3230,8 @@ func (s *SQLiteStore) ListAllScheduledTasks(ctx context.Context) ([]*models.Sche
 		SELECT id, workspace_id, name, description, prompt, model,
 			permission_mode, frequency, cron_expression,
 			schedule_hour, schedule_minute, schedule_day_of_week, schedule_day_of_month,
-			enabled, last_run_at, next_run_at, created_at, updated_at
-		FROM scheduled_tasks ORDER BY created_at DESC`)
+			enabled, archived, last_run_at, next_run_at, created_at, updated_at
+		FROM scheduled_tasks WHERE archived = 0 ORDER BY created_at DESC`)
 	if err != nil {
 		return nil, fmt.Errorf("ListAllScheduledTasks: %w", err)
 	}
@@ -3243,8 +3244,8 @@ func (s *SQLiteStore) ListScheduledTasks(ctx context.Context, workspaceID string
 		SELECT id, workspace_id, name, description, prompt, model,
 			permission_mode, frequency, cron_expression,
 			schedule_hour, schedule_minute, schedule_day_of_week, schedule_day_of_month,
-			enabled, last_run_at, next_run_at, created_at, updated_at
-		FROM scheduled_tasks WHERE workspace_id = ? ORDER BY created_at DESC`, workspaceID)
+			enabled, archived, last_run_at, next_run_at, created_at, updated_at
+		FROM scheduled_tasks WHERE workspace_id = ? AND archived = 0 ORDER BY created_at DESC`, workspaceID)
 	if err != nil {
 		return nil, fmt.Errorf("ListScheduledTasks: %w", err)
 	}
@@ -3256,18 +3257,19 @@ func (s *SQLiteStore) scanScheduledTasks(rows *sql.Rows) ([]*models.ScheduledTas
 	tasks := []*models.ScheduledTask{}
 	for rows.Next() {
 		var task models.ScheduledTask
-		var enabled int
+		var enabled, archived int
 		var lastRunAt, nextRunAt sql.NullTime
 
 		if err := rows.Scan(
 			&task.ID, &task.WorkspaceID, &task.Name, &task.Description, &task.Prompt, &task.Model,
 			&task.PermissionMode, &task.Frequency, &task.CronExpression,
 			&task.ScheduleHour, &task.ScheduleMinute, &task.ScheduleDayOfWeek, &task.ScheduleDayOfMonth,
-			&enabled, &lastRunAt, &nextRunAt, &task.CreatedAt, &task.UpdatedAt); err != nil {
+			&enabled, &archived, &lastRunAt, &nextRunAt, &task.CreatedAt, &task.UpdatedAt); err != nil {
 			return nil, fmt.Errorf("scanScheduledTasks: %w", err)
 		}
 
 		task.Enabled = intToBool(enabled)
+		task.Archived = intToBool(archived)
 		if lastRunAt.Valid {
 			task.LastRunAt = &lastRunAt.Time
 		}
@@ -3299,12 +3301,12 @@ func (s *SQLiteStore) UpdateScheduledTask(ctx context.Context, id string, update
 				name = ?, description = ?, prompt = ?, model = ?,
 				permission_mode = ?, frequency = ?, cron_expression = ?,
 				schedule_hour = ?, schedule_minute = ?, schedule_day_of_week = ?, schedule_day_of_month = ?,
-				enabled = ?, last_run_at = ?, next_run_at = ?, updated_at = ?
+				enabled = ?, archived = ?, last_run_at = ?, next_run_at = ?, updated_at = ?
 			WHERE id = ?`,
 			task.Name, task.Description, task.Prompt, task.Model,
 			task.PermissionMode, task.Frequency, task.CronExpression,
 			task.ScheduleHour, task.ScheduleMinute, task.ScheduleDayOfWeek, task.ScheduleDayOfMonth,
-			boolToInt(task.Enabled), task.LastRunAt, task.NextRunAt, task.UpdatedAt, id)
+			boolToInt(task.Enabled), boolToInt(task.Archived), task.LastRunAt, task.NextRunAt, task.UpdatedAt, id)
 		return err
 	})
 }
@@ -3329,9 +3331,9 @@ func (s *SQLiteStore) ListDueScheduledTasks(ctx context.Context, before time.Tim
 		SELECT id, workspace_id, name, description, prompt, model,
 			permission_mode, frequency, cron_expression,
 			schedule_hour, schedule_minute, schedule_day_of_week, schedule_day_of_month,
-			enabled, last_run_at, next_run_at, created_at, updated_at
+			enabled, archived, last_run_at, next_run_at, created_at, updated_at
 		FROM scheduled_tasks
-		WHERE enabled = 1 AND next_run_at IS NOT NULL AND next_run_at <= ?
+		WHERE enabled = 1 AND archived = 0 AND next_run_at IS NOT NULL AND next_run_at <= ?
 		ORDER BY next_run_at ASC`, before)
 	if err != nil {
 		return nil, fmt.Errorf("ListDueScheduledTasks: %w", err)

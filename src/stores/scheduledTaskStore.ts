@@ -13,6 +13,7 @@ interface ScheduledTaskState {
   createTask: (workspaceId: string, data: CreateScheduledTaskRequest) => Promise<ScheduledTask>;
   updateTask: (taskId: string, updates: Partial<ScheduledTask>) => Promise<void>;
   deleteTask: (taskId: string) => Promise<void>;
+  archiveTask: (taskId: string) => Promise<void>;
   toggleEnabled: (taskId: string) => Promise<void>;
   fetchRuns: (taskId: string) => Promise<void>;
   triggerNow: (taskId: string) => Promise<void>;
@@ -50,6 +51,17 @@ export const useScheduledTaskStore = create<ScheduledTaskState>((set, get) => ({
 
   deleteTask: async (taskId) => {
     await api.deleteScheduledTask(taskId);
+    set((state) => {
+      const { [taskId]: _, ...remainingRuns } = state.runs;
+      return {
+        tasks: state.tasks.filter((t) => t.id !== taskId),
+        runs: remainingRuns,
+      };
+    });
+  },
+
+  archiveTask: async (taskId) => {
+    await api.updateScheduledTask(taskId, { archived: true });
     set((state) => {
       const { [taskId]: _, ...remainingRuns } = state.runs;
       return {

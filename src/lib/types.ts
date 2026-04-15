@@ -938,6 +938,7 @@ export interface ScheduledTask {
   scheduleDayOfWeek: number;
   scheduleDayOfMonth: number;
   enabled: boolean;
+  archived: boolean;
   lastRunAt?: string;
   nextRunAt?: string;
   createdAt: string;
