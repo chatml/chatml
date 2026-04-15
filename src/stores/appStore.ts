@@ -1130,8 +1130,12 @@ export const useAppStore = create<AppState>((set, get) => ({
     let newSelectedConversationId = state.selectedConversationId;
 
     if (state.selectedSessionId === id) {
+      const { showBaseBranchSessions } = useSettingsStore.getState();
       const otherSessions = updatedSessions.filter(
-        (s) => s.workspaceId === session.workspaceId && !s.archived
+        (s) =>
+          s.workspaceId === session.workspaceId &&
+          !s.archived &&
+          (s.sessionType !== 'base' || showBaseBranchSessions)
       );
       newSelectedSessionId = otherSessions[0]?.id || null;
 
