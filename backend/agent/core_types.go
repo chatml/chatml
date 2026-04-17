@@ -143,6 +143,8 @@ const (
 	EventTypeAPIRetry            = coreagent.EventTypeAPIRetry
 	EventTypeSessionStateChanged = coreagent.EventTypeSessionStateChanged
 
+	EventTypeMemoryRecall = coreagent.EventTypeMemoryRecall
+
 	// ChatML-specific events (emitted by agent-runner, not the Claude SDK)
 	EventTypeMessageReceived = "message_received"
 )

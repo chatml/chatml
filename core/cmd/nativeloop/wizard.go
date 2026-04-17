@@ -140,7 +140,7 @@ func (m wizardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "enter":
 				switch m.selected {
 				case 0:
-					m.model = "claude-opus-4-6"
+					m.model = "claude-opus-4-7"
 				case 1:
 					m.model = "claude-sonnet-4-6"
 				case 2:

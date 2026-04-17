@@ -1158,6 +1158,12 @@ export function useWebSocket(enabled: boolean = true) {
         break;
       }
 
+      case 'memory_recall': {
+        // Memory recall (SDK 0.2.105) — agent surfaced relevant memories into the turn
+        // Informational; no state tracking needed for now
+        break;
+      }
+
       case 'cwd_changed': {
         // Working directory changed — dispatch custom event for file tree refresh
         window.dispatchEvent(new CustomEvent('cwd-changed', {

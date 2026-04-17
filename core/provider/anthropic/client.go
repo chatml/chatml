@@ -28,6 +28,7 @@ const (
 
 // modelContextWindows maps model IDs to their context window sizes.
 var modelContextWindows = map[string]int{
+	"claude-opus-4-7":            1000000,
 	"claude-opus-4-6":            1000000,
 	"claude-sonnet-4-6":          200000,
 	"claude-haiku-4-5-20251001":  200000,

@@ -142,6 +142,8 @@ export const BATCHABLE_EVENTS = new Set([
   'api_retry', 'session_state_changed', 'stop_failure',
   'cwd_changed', 'file_changed', 'task_created',
   'task_started', 'task_progress', 'task_stopped',
+  // SDK 0.2.105+ events
+  'memory_recall',
   // Agent-runner custom events
   'message_received',
 ]);

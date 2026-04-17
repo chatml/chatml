@@ -1077,8 +1077,8 @@ outer:
 			case EventTypeAPIRetry:
 				logger.Manager.Debugf("[%s] API retry attempt %d/%d (status %d, delay %dms)", convID, event.Attempt, event.MaxRetries, event.ErrorStatus, event.RetryDelayMs)
 
-			case EventTypeCwdChanged, EventTypeFileChanged, EventTypeTaskCreated, EventTypeSessionStateChanged:
-				// Informational — no state tracking needed
+			case EventTypeCwdChanged, EventTypeFileChanged, EventTypeTaskCreated, EventTypeSessionStateChanged, EventTypeMemoryRecall:
+				// Informational — no state tracking needed, forwarded to frontend via onConversationEvent
 
 			case EventTypeTurnComplete, EventTypeComplete, EventTypeResult:
 				// Atomically clear the active turn flag and take any deferred
@@ -2323,9 +2323,9 @@ func (m *Manager) GetActiveStreamingConversations() []string {
 }
 
 // betasForModel returns comma-separated beta flags for the given model.
-// Opus 4.6 and Sonnet 4.6 support 1M context window via the context-1m beta.
+// Opus 4.7, Opus 4.6, and Sonnet 4.6 support 1M context window via the context-1m beta.
 func betasForModel(model string) string {
-	if strings.Contains(model, "opus-4-6") || strings.Contains(model, "sonnet-4-6") {
+	if strings.Contains(model, "opus-4-7") || strings.Contains(model, "opus-4-6") || strings.Contains(model, "sonnet-4-6") {
 		return "context-1m-2025-08-07"
 	}
 	return ""

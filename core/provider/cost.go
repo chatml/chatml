@@ -12,6 +12,12 @@ type modelCost struct {
 
 // Model pricing as of 2025 (USD per million tokens).
 var modelCosts = map[string]modelCost{
+	"claude-opus-4-7": {
+		InputPerMillion:         15.0,
+		OutputPerMillion:        75.0,
+		CacheReadPerMillion:     1.5,
+		CacheCreationPerMillion: 18.75,
+	},
 	"claude-opus-4-6": {
 		InputPerMillion:         15.0,
 		OutputPerMillion:        75.0,
