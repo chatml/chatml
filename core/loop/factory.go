@@ -270,6 +270,8 @@ func modelInfo(model string) (marketingName, modelID, cutoff string) {
 	}
 
 	switch {
+	case strings.Contains(model, "opus-4-7"):
+		return "Opus 4.7 (1M context)", model, "May 2025"
 	case strings.Contains(model, "opus-4-6"):
 		return "Opus 4.6 (1M context)", model, "May 2025"
 	case strings.Contains(model, "sonnet-4-6"):
@@ -304,7 +306,7 @@ func resolveModelAlias(model string) string {
 	case "sonnet":
 		return "claude-sonnet-4-6"
 	case "opus":
-		return "claude-opus-4-6"
+		return "claude-opus-4-7"
 	default:
 		return model // Already a full model ID
 	}

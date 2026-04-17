@@ -13,7 +13,7 @@ interface ModelCatalogEntry {
 /** Canonical display names and descriptions, keyed by base model ID. */
 const MODEL_CATALOG: Record<string, ModelCatalogEntry> = {
   // Cloud models (Anthropic)
-  'claude-opus-4-6':   { displayName: 'Opus 4.6 (1M context)', description: 'Most capable for ambitious work' },
+  'claude-opus-4-7':   { displayName: 'Opus 4.7 (1M context)', description: 'Most capable for ambitious work' },
   'claude-sonnet-4-6': { displayName: 'Sonnet 4.6',            description: 'Most efficient for everyday tasks' },
   'claude-haiku-4-5':  { displayName: 'Haiku 4.5',             description: 'Fastest for quick answers' },
   // Local models (Ollama) — keep in sync with backend/ollama/models.go
@@ -66,7 +66,7 @@ export function getModelDescription(sdkValue: string): string | undefined {
 // toBaseId handles the mapping transparently.
 export const MODELS = [
   // Cloud models
-  { id: 'claude-opus-4-6', name: MODEL_CATALOG['claude-opus-4-6'].displayName, description: MODEL_CATALOG['claude-opus-4-6'].description, provider: 'claude' as const, supportsThinking: true, supportsEffort: true, supportsFastMode: true },
+  { id: 'claude-opus-4-7', name: MODEL_CATALOG['claude-opus-4-7'].displayName, description: MODEL_CATALOG['claude-opus-4-7'].description, provider: 'claude' as const, supportsThinking: true, supportsEffort: true, supportsFastMode: true },
   { id: 'claude-sonnet-4-6', name: MODEL_CATALOG['claude-sonnet-4-6'].displayName, description: MODEL_CATALOG['claude-sonnet-4-6'].description, provider: 'claude' as const, supportsThinking: true, supportsEffort: true, supportsFastMode: true },
   { id: 'claude-haiku-4-5-20251001', name: MODEL_CATALOG['claude-haiku-4-5'].displayName, description: MODEL_CATALOG['claude-haiku-4-5'].description, provider: 'claude' as const, supportsThinking: true, supportsEffort: false, supportsFastMode: false },
   // Local models

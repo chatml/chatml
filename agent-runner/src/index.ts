@@ -1,5 +1,6 @@
 import {
   query,
+  startup,
   forkSession as sdkForkSession,
   // Message types
   type SDKMessage,
@@ -25,6 +26,8 @@ import {
   // Message types (SDK 0.2.84)
   type SDKAPIRetryMessage,
   type SDKSessionStateChangedMessage,
+  // Message types (SDK 0.2.105)
+  type SDKMemoryRecallMessage,
   // Core types
   type AgentDefinition,
   type Query,
@@ -2071,21 +2074,9 @@ async function main(): Promise<void> {
   lifecycle("input queue ready");
 
   // Pre-warm the CLI subprocess so the first query() is ~20x faster (SDK 0.2.89+)
-  // startup() is exported at runtime but not yet in the SDK's .d.ts — access via require().
   try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const sdkModule = require("@anthropic-ai/claude-agent-sdk") as Record<string, unknown>;
-    const startupFn = sdkModule.startup as ((opts: { cwd: string }) => Promise<void>) | undefined;
-    if (startupFn) {
-      const STARTUP_TIMEOUT_MS = 5_000;
-      await Promise.race([
-        startupFn({ cwd }),
-        new Promise<void>((_, reject) =>
-          setTimeout(() => reject(new Error("startup() timed out")), STARTUP_TIMEOUT_MS),
-        ),
-      ]);
-      lifecycle("CLI subprocess pre-warmed");
-    }
+    await startup({ initializeTimeoutMs: 5_000 });
+    lifecycle("CLI subprocess pre-warmed");
   } catch (e) {
     // Non-fatal: failure or timeout just means normal cold start on first query
     lifecycle(`startup() pre-warm failed (non-fatal): ${e}`);
@@ -2783,7 +2774,7 @@ function handleMessage(message: SDKMessage): void {
           subtype: "success",
           summary: resultMsg.result,
           stopReason: resultMsg.stop_reason,
-          terminalReason: (resultMsg as Record<string, unknown>).terminal_reason,
+          terminalReason: resultMsg.terminal_reason,
           cost: resultMsg.total_cost_usd,
           turns: resultMsg.num_turns,
           durationMs: resultMsg.duration_ms,
@@ -2814,7 +2805,7 @@ function handleMessage(message: SDKMessage): void {
           success: false,
           subtype: resultMsg.subtype,
           stopReason: resultMsg.stop_reason,
-          terminalReason: (resultMsg as Record<string, unknown>).terminal_reason,
+          terminalReason: resultMsg.terminal_reason,
           errors: resultErrors,
           cost: resultMsg.total_cost_usd,
           turns: resultMsg.num_turns,
@@ -2872,7 +2863,7 @@ function handleMessage(message: SDKMessage): void {
     }
 
     case "system": {
-      const sysMsg = message as SDKSystemMessage | SDKCompactBoundaryMessage | SDKStatusMessage | SDKHookResponseMessage | SDKTaskNotificationMessage | SDKTaskStartedMessage | SDKTaskProgressMessage | SDKFilesPersistedEvent | SDKElicitationCompleteMessage | SDKHookProgressMessage | SDKHookStartedMessage | SDKAPIRetryMessage | SDKSessionStateChangedMessage;
+      const sysMsg = message as SDKSystemMessage | SDKCompactBoundaryMessage | SDKStatusMessage | SDKHookResponseMessage | SDKTaskNotificationMessage | SDKTaskStartedMessage | SDKTaskProgressMessage | SDKFilesPersistedEvent | SDKElicitationCompleteMessage | SDKHookProgressMessage | SDKHookStartedMessage | SDKAPIRetryMessage | SDKSessionStateChangedMessage | SDKMemoryRecallMessage;
 
       if (sysMsg.subtype === "init") {
         const initMsg = sysMsg as SDKSystemMessage;
@@ -3052,6 +3043,14 @@ function handleMessage(message: SDKMessage): void {
           type: "session_state_changed",
           state: stateMsg.state,
           sessionId: stateMsg.session_id,
+        });
+      } else if (sysMsg.subtype === "memory_recall") {
+        // Memory recall (SDK 0.2.105) — agent surfaced relevant memories
+        const memMsg = sysMsg as SDKMemoryRecallMessage;
+        emit({
+          type: "memory_recall",
+          mode: memMsg.mode,
+          memories: memMsg.memories,
         });
       }
       break;

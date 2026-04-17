@@ -440,6 +440,9 @@ const (
 	EventTypeTaskCreated         = "task_created"
 	EventTypeAPIRetry            = "api_retry"
 	EventTypeSessionStateChanged = "session_state_changed"
+
+	// New event types from SDK 0.2.105
+	EventTypeMemoryRecall = "memory_recall"
 )
 
 // TodoItem represents a single todo item from the agent's TodoWrite tool

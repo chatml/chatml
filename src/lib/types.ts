@@ -540,6 +540,9 @@ export interface AgentEvent {
   // Session state changed fields (SDK 0.2.84)
   state?: string;
 
+  // Memory recall fields (SDK 0.2.105)
+  memories?: unknown[];
+
   // Agent-runner message acknowledgment
   messageUuid?: string;
 }

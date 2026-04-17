@@ -222,7 +222,7 @@ func (b *Builder) environmentSection() string {
 	}
 
 	// Latest model family info
-	parts = append(parts, " - The most recent Claude model family is Claude 4.5/4.6. Model IDs — Opus 4.6: 'claude-opus-4-6', Sonnet 4.6: 'claude-sonnet-4-6', Haiku 4.5: 'claude-haiku-4-5-20251001'. When building AI applications, default to the latest and most capable Claude models.")
+	parts = append(parts, " - The latest Claude models include: Opus 4.7 ('claude-opus-4-7'), Sonnet 4.6 ('claude-sonnet-4-6'), Haiku 4.5 ('claude-haiku-4-5-20251001'). When building AI applications, default to the latest and most capable Claude models.")
 
 	// Claude Code availability
 	parts = append(parts, " - Claude Code is available as a CLI in the terminal, desktop app (Mac/Windows), web app (claude.ai/code), and IDE extensions (VS Code, JetBrains).")
