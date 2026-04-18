@@ -184,7 +184,7 @@ export function highlightSearchMatches(
           "rounded-sm px-0.5",
           isCurrentMatch
             ? "bg-yellow-400 dark:bg-yellow-500 text-black"
-            : "bg-yellow-200 dark:bg-yellow-700/50"
+            : "bg-yellow-200 dark:bg-yellow-700/50 text-foreground"
         )}
         data-match-index={globalMatchOffset + matchCount}
       >

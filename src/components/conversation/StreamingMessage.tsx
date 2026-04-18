@@ -13,6 +13,7 @@ import { TurnStatusIndicator } from '@/components/conversation/TurnStatusIndicat
 import { CachedMarkdown } from '@/components/shared/CachedMarkdown';
 import { StreamingMarkdown } from '@/components/shared/StreamingMarkdown';
 import { MessageBody } from '@/components/conversation/QueuedMessageBubble';
+import { UserBubble } from '@/components/conversation/UserBubble';
 import { cn } from '@/lib/utils';
 import { PROSE_CLASSES } from '@/lib/constants';
 import { getModelInfo, buildTurnConfigLabel } from '@/lib/models';
@@ -279,9 +280,9 @@ const TimelineUserMessage = memo(function TimelineUserMessage({
   return (
     <div className="pb-2 pt-3 flex justify-end">
       <div className="max-w-[85%]">
-        <div className="bg-surface-2 dark:bg-[#2D1B4E] rounded-lg px-4 py-2.5">
+        <UserBubble>
           <MessageBody message={message} />
-        </div>
+        </UserBubble>
       </div>
     </div>
   );
