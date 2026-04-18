@@ -32,6 +32,7 @@ import { InlineErrorFallback } from '@/components/shared/ErrorFallbacks';
 import { AttachmentGrid } from '@/components/conversation/AttachmentGrid';
 import { AttachmentPreviewModal } from '@/components/conversation/AttachmentPreviewModal';
 import { MentionText } from '@/components/conversation/MentionText';
+import { UserBubble } from '@/components/conversation/UserBubble';
 import { ApprovedPlanBlock } from '@/components/conversation/ApprovedPlanBlock';
 import { CompactBoundaryCard } from '@/components/conversation/CompactBoundaryCard';
 import { TurnStatusIndicator } from '@/components/conversation/TurnStatusIndicator';
@@ -108,7 +109,7 @@ const InlineUserMessage = memo(function InlineUserMessage({
   return (
     <div className="pb-2 pt-3 flex justify-end">
       <div className="max-w-[85%]">
-        <div className="bg-surface-2 dark:bg-[#2D1B4E] rounded-lg px-4 py-2.5">
+        <UserBubble>
           {attachments && attachments.length > 0 && (
             <>
               <AttachmentGrid
@@ -130,7 +131,7 @@ const InlineUserMessage = memo(function InlineUserMessage({
           <p className="text-base leading-relaxed whitespace-pre-wrap">
             <MentionText content={content} />
           </p>
-        </div>
+        </UserBubble>
       </div>
     </div>
   );
@@ -196,7 +197,7 @@ export const MessageBlock = memo(function MessageBlock({
     return (
       <div className={cn('py-2 flex justify-end', !isFirst && 'pt-3')}>
         <div className="max-w-[85%]">
-          <div className="bg-surface-2 dark:bg-[#2D1B4E] rounded-lg px-4 py-2.5">
+          <UserBubble>
             {message.attachments && message.attachments.length > 0 && (
               <>
                 <AttachmentGrid
@@ -218,7 +219,7 @@ export const MessageBlock = memo(function MessageBlock({
             <p className="text-base leading-relaxed whitespace-pre-wrap">
               {highlightedContent || <MentionText content={message.content} />}
             </p>
-          </div>
+          </UserBubble>
         </div>
       </div>
     );

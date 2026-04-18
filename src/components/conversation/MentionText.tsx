@@ -104,7 +104,7 @@ export function MentionText({ content, className }: MentionTextProps) {
         result.push(
           <span
             key={`mention-${m.index}`}
-            className="inline-flex items-center gap-1 rounded-md bg-muted mx-0.5 px-1.5 -my-px align-middle leading-none font-medium text-sm"
+            className="inline-flex items-center gap-1 rounded-md bg-muted text-foreground mx-0.5 px-1.5 -my-px align-middle leading-none font-medium text-sm"
           >
             <FileIcon filename={fileName} className="h-3.5 w-3.5" />
             <span>{fileName}</span>

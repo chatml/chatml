@@ -5,6 +5,7 @@ import { Clock, X } from 'lucide-react';
 import { AttachmentGrid } from '@/components/conversation/AttachmentGrid';
 import { AttachmentPreviewModal } from '@/components/conversation/AttachmentPreviewModal';
 import { MentionText } from '@/components/conversation/MentionText';
+import { UserBubble } from '@/components/conversation/UserBubble';
 import type { QueuedMessage } from '@/stores/appStore';
 
 interface QueuedMessageBubbleProps {
@@ -51,7 +52,7 @@ function QueuedMessageItem({ message, index, total, onDelete }: {
 }) {
   return (
     <div className="flex justify-end group">
-      <div className="bg-surface-2 dark:bg-[#2D1B4E] rounded-lg px-4 py-2.5 opacity-70 relative max-w-[85%]">
+      <UserBubble className="opacity-70 relative max-w-[85%]">
         {/* Delete button - appears on hover */}
         <button
           onClick={onDelete}
@@ -67,7 +68,7 @@ function QueuedMessageItem({ message, index, total, onDelete }: {
             <span>#{index}</span>
           </div>
         )}
-      </div>
+      </UserBubble>
     </div>
   );
 }

@@ -237,6 +237,9 @@ code.hljs { padding: 3px 5px; }
   --nav-icon-prs: #7c3aed;
   --nav-icon-skills: oklch(0.65 0.18 85);
   --brand: oklch(0.623 0.214 292);
+
+  /* User message bubble (light mode) — tailwind blue-50 */
+  --user-bubble: #eff6ff;
 }
 
 .dark {
@@ -319,6 +322,9 @@ code.hljs { padding: 3px 5px; }
   --nav-icon-prs: #a78bfa;
   --nav-icon-skills: #fbbf24;
   --brand: oklch(0.707 0.165 292);
+
+  /* User message bubble (dark mode) — tailwind blue-950 at 40% opacity over chat bg */
+  --user-bubble: rgba(23, 37, 84, 0.4);
 }
 
 @theme inline {
@@ -393,6 +399,9 @@ code.hljs { padding: 3px 5px; }
   --radius-xl: calc(var(--radius) + 4px);
   --radius-2xl: calc(var(--radius) + 8px);
   --color-brand: var(--brand);
+
+  /* User message bubble background */
+  --color-user-bubble: var(--user-bubble);
 }
 
 @layer base {
