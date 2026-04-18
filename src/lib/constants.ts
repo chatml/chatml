@@ -36,3 +36,11 @@ export const TOOL_COMMAND_TRUNCATE = 80;
 // Feature flags (build-time)
 /** Enable browser-style multi-tab navigation. Set to false to disable. */
 export const ENABLE_BROWSER_TABS = true;
+
+/**
+ * Show unreleased features in dev only. Set NEXT_PUBLIC_SIMULATE_PROD=1 to
+ * simulate a production build while running `npm run dev`.
+ */
+export const SHOW_UNRELEASED =
+  process.env.NODE_ENV === 'development' &&
+  process.env.NEXT_PUBLIC_SIMULATE_PROD !== '1';

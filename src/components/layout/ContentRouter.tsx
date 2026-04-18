@@ -10,6 +10,7 @@ import { SessionManager } from '@/components/session-manager';
 import { SkillsStore } from '@/components/skills/SkillsStore';
 import { ScheduledTasksDashboard } from '@/components/scheduled/ScheduledTasksDashboard';
 import { ScheduledTaskDetailView } from '@/components/scheduled/ScheduledTaskDetailView';
+import { SHOW_UNRELEASED } from '@/lib/constants';
 
 interface ContentRouterProps {
   selectedSessionId: string | null;
@@ -39,7 +40,7 @@ export function ContentRouter({
 
   return (
     <ErrorBoundary section="FullContent">
-      {contentView.type === 'dashboard' && (
+      {SHOW_UNRELEASED && contentView.type === 'dashboard' && (
         <MissionControlDashboard />
       )}
       {contentView.type === 'pr-dashboard' && (
@@ -68,14 +69,40 @@ export function ContentRouter({
       {contentView.type === 'skills-store' && (
         <SkillsStore />
       )}
-      {contentView.type === 'scheduled-tasks' && (
+      {SHOW_UNRELEASED && contentView.type === 'scheduled-tasks' && (
         <ScheduledTasksDashboard />
       )}
-      {contentView.type === 'scheduled-task-detail' && (
+      {SHOW_UNRELEASED && contentView.type === 'scheduled-task-detail' && (
         <ScheduledTaskDetailView taskId={contentView.taskId} />
       )}
       {!selectedSessionId && contentView.type === 'conversation' && (
-        <MissionControlDashboard />
+        SHOW_UNRELEASED ? (
+          <MissionControlDashboard />
+        ) : (
+          <RepositoriesDashboard
+            onOpenProject={onOpenProject}
+            onCloneFromUrl={onCloneFromUrl}
+            onGitHubRepos={onGitHubRepos}
+            onOpenSettings={onOpenSettings}
+            onOpenShortcuts={onOpenShortcuts}
+            onOpenWorkspaceSettings={onOpenWorkspaceSettings}
+          />
+        )
+      )}
+      {/* Fallback for gated views reached via tab history or deep links */}
+      {!SHOW_UNRELEASED && (
+        contentView.type === 'dashboard' ||
+        contentView.type === 'scheduled-tasks' ||
+        contentView.type === 'scheduled-task-detail'
+      ) && (
+        <RepositoriesDashboard
+          onOpenProject={onOpenProject}
+          onCloneFromUrl={onCloneFromUrl}
+          onGitHubRepos={onGitHubRepos}
+          onOpenSettings={onOpenSettings}
+          onOpenShortcuts={onOpenShortcuts}
+          onOpenWorkspaceSettings={onOpenWorkspaceSettings}
+        />
       )}
     </ErrorBoundary>
   );

@@ -3,6 +3,7 @@ import { persist } from 'zustand/middleware';
 import type { Workspace, SessionTaskStatus } from '@/lib/types';
 import { useAuthStore } from '@/stores/authStore';
 import type { ThinkingLevel } from '@/lib/thinkingLevels';
+import { SHOW_UNRELEASED } from '@/lib/constants';
 
 // Bottom panel tab IDs that can be toggled (Tasks is always visible)
 // TODO: Re-add 'scripts' to BottomPanelTab when the Scripts feature is reintroduced (see ScriptsPanel.tsx)
@@ -550,6 +551,17 @@ export const useSettingsStore = create<SettingsState>()(
         }
         if (merged.reviewModel === 'auto') {
           merged.reviewModel = 'claude-haiku-4-5-20251001';
+        }
+
+        // Coerce gated local models (Gemma) when unreleased features are hidden,
+        // so devs switching to prod builds don't land on an unselectable model.
+        if (!SHOW_UNRELEASED) {
+          if (typeof merged.defaultModel === 'string' && merged.defaultModel.startsWith('gemma-')) {
+            merged.defaultModel = SETTINGS_DEFAULTS.defaultModel;
+          }
+          if (typeof merged.reviewModel === 'string' && merged.reviewModel.startsWith('gemma-')) {
+            merged.reviewModel = SETTINGS_DEFAULTS.reviewModel;
+          }
         }
 
         // Migrate removed sprint groupBy options → project

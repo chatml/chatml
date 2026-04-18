@@ -27,6 +27,7 @@ import { navigate, navigateOrOpenTab } from '@/lib/navigation';
 import { useSettingsStore, getBranchPrefix, getWorkspaceBranchPrefix, type ContentView, type SidebarGroupBy } from '@/stores/settingsStore';
 import { useSidebarSessions, isSidebarGroupExpanded, type SidebarGroup } from '@/hooks/useSidebarSessions';
 import { createSession as createSessionApi, listConversations as listConversationsApi, updateSession as updateSessionApi, deleteRepo as deleteRepoApi, addRepo as addRepoApi, mapSessionDTO, refreshPRStatus, unlinkPR } from '@/lib/api';
+import { SHOW_UNRELEASED } from '@/lib/constants';
 import { registerSession, getSessionDirName } from '@/lib/tauri';
 import { prefetchSessionData, cancelPrefetch } from '@/lib/sessionPrefetch';
 import { Button } from '@/components/ui/button';
@@ -236,12 +237,16 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onGitHubRepos,
   const scheduledTasks = useScheduledTaskStore((s) => s.tasks);
 
   useEffect(() => {
+    if (!SHOW_UNRELEASED) return;
     useScheduledTaskStore.getState().fetchTasks();
   }, []);
 
   // Separate scheduled sessions from regular sessions BEFORE they enter useSidebarSessions
   // so they don't appear in workspace groups or status groups.
   const { regularSessions, scheduledSessionsList } = useMemo(() => {
+    if (!SHOW_UNRELEASED) {
+      return { regularSessions: sessions, scheduledSessionsList: [] as typeof sessions };
+    }
     const regular: typeof sessions = [];
     const scheduled: typeof sessions = [];
     for (const s of sessions) {
@@ -608,7 +613,7 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onGitHubRepos,
 
       {/* Global Navigation */}
       <div className="px-1 py-2 shrink-0">
-        <div
+        {SHOW_UNRELEASED && (<div
           className={cn(
             "group flex items-center gap-2 px-2 py-1.5 rounded-md cursor-pointer",
             contentView.type === 'dashboard'
@@ -634,7 +639,7 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onGitHubRepos,
               {attentionCount > 9 ? '9+' : attentionCount}
             </span>
           )}
-        </div>
+        </div>)}
         <div
           className={cn(
             "group flex items-center gap-2 px-2 py-1.5 rounded-md cursor-pointer",
@@ -745,7 +750,7 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onGitHubRepos,
             Skills
           </span>
         </div>
-        <div
+        {SHOW_UNRELEASED && (<div
           className={cn(
             "group flex items-center gap-2 px-2 py-1.5 rounded-md cursor-pointer",
             contentView.type === 'scheduled-tasks'
@@ -766,7 +771,7 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onGitHubRepos,
           )}>
             Scheduled
           </span>
-        </div>
+        </div>)}
       </div>
 
       {/* Session List */}

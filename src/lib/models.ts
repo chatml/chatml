@@ -1,5 +1,6 @@
 import React from 'react';
 import { useAppStore } from '@/stores/appStore';
+import { SHOW_UNRELEASED } from './constants';
 
 // ---------------------------------------------------------------------------
 // Canonical model catalog — single source of truth for display names & descriptions
@@ -64,7 +65,7 @@ export function getModelDescription(sdkValue: string): string | undefined {
 // its catalog key ('claude-haiku-4-5'). This is intentional — the SDK reports
 // the dated variant and stored user settings reference it. catalogLookup via
 // toBaseId handles the mapping transparently.
-export const MODELS = [
+const ALL_MODELS = [
   // Cloud models
   { id: 'claude-opus-4-7', name: MODEL_CATALOG['claude-opus-4-7'].displayName, description: MODEL_CATALOG['claude-opus-4-7'].description, provider: 'claude' as const, supportsThinking: true, supportsEffort: true, supportsFastMode: true },
   { id: 'claude-sonnet-4-6', name: MODEL_CATALOG['claude-sonnet-4-6'].displayName, description: MODEL_CATALOG['claude-sonnet-4-6'].description, provider: 'claude' as const, supportsThinking: true, supportsEffort: true, supportsFastMode: true },
@@ -76,7 +77,11 @@ export const MODELS = [
   { id: 'gemma-4-31b', name: MODEL_CATALOG['gemma-4-31b'].displayName, description: MODEL_CATALOG['gemma-4-31b'].description, provider: 'ollama' as const, supportsThinking: false, supportsEffort: false, supportsFastMode: false },
 ] as const;
 
-export type ModelId = (typeof MODELS)[number]['id'];
+export const MODELS: ReadonlyArray<(typeof ALL_MODELS)[number]> = SHOW_UNRELEASED
+  ? ALL_MODELS
+  : ALL_MODELS.filter((m) => m.provider !== 'ollama');
+
+export type ModelId = (typeof ALL_MODELS)[number]['id'];
 
 export type ModelProvider = 'claude' | 'ollama';
 
