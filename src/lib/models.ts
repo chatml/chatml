@@ -37,6 +37,27 @@ function catalogLookup(sdkValue: string): ModelCatalogEntry | undefined {
   return MODEL_CATALOG[toBaseId(sdkValue)];
 }
 
+// Keep in sync with backend/agent/manager.go:betasForModel — the backend source
+// of truth for which models receive the `context-1m-2025-08-07` beta header.
+// Note: the backend uses substring matching (strings.Contains), while this
+// frontend check requires an exact base-ID match after toBaseId() normalization.
+// This is intentionally stricter — if a new model ID pattern is added, update
+// this set (and toBaseId if it introduces a new suffix shape).
+const EXTENDED_CONTEXT_BASE_IDS = new Set<string>([
+  'claude-opus-4-7',
+  'claude-opus-4-6',
+  'claude-sonnet-4-6',
+]);
+
+/**
+ * Does this model support the 1M extended context window?
+ * Matches on the base ID so variants like `claude-opus-4-7[1m]` or
+ * `claude-sonnet-4-6-20251022` resolve correctly.
+ */
+export function supportsExtendedContext(modelId: string): boolean {
+  return EXTENDED_CONTEXT_BASE_IDS.has(toBaseId(modelId));
+}
+
 // ---------------------------------------------------------------------------
 // Display name & description helpers
 // ---------------------------------------------------------------------------

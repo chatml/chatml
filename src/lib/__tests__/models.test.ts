@@ -9,7 +9,7 @@ vi.mock('@/stores/appStore', () => ({
   },
 }));
 
-const { getModelDisplayName, getModelInfo, getModelDescription, buildTurnConfigLabel, MODELS, toShortDisplayName, buildStaticModelList } = await import('../models');
+const { getModelDisplayName, getModelInfo, getModelDescription, buildTurnConfigLabel, MODELS, toShortDisplayName, buildStaticModelList, supportsExtendedContext } = await import('../models');
 
 describe('getModelDisplayName', () => {
   it('returns short display name for known static models', () => {
@@ -91,6 +91,27 @@ describe('getModelDescription', () => {
 
   it('returns undefined for unknown models', () => {
     expect(getModelDescription('custom-model')).toBeUndefined();
+  });
+});
+
+describe('supportsExtendedContext', () => {
+  it('returns true for 1M-capable families regardless of suffix', () => {
+    expect(supportsExtendedContext('claude-opus-4-7')).toBe(true);
+    expect(supportsExtendedContext('claude-opus-4-7[1m]')).toBe(true);
+    expect(supportsExtendedContext('claude-opus-4-7-20260101')).toBe(true);
+    expect(supportsExtendedContext('claude-opus-4-6')).toBe(true);
+    expect(supportsExtendedContext('claude-opus-4-6[1m]')).toBe(true);
+    expect(supportsExtendedContext('claude-opus-4-6-20251022')).toBe(true);
+    expect(supportsExtendedContext('claude-sonnet-4-6')).toBe(true);
+    expect(supportsExtendedContext('claude-sonnet-4-6[1m]')).toBe(true);
+    expect(supportsExtendedContext('claude-sonnet-4-6-20251022')).toBe(true);
+  });
+
+  it('returns false for non-1M models', () => {
+    expect(supportsExtendedContext('claude-haiku-4-5-20251001')).toBe(false);
+    expect(supportsExtendedContext('claude-haiku-4-5')).toBe(false);
+    expect(supportsExtendedContext('unknown-model')).toBe(false);
+    expect(supportsExtendedContext('')).toBe(false);
   });
 });
 

@@ -34,7 +34,7 @@ import type {
 import type { StreamingSnapshotDTO, SnapshotSubAgent } from '@/lib/api';
 import { useSettingsStore } from './settingsStore';
 import { refreshPRStatus } from '@/lib/api';
-import { buildTurnConfigLabel } from '@/lib/models';
+import { buildTurnConfigLabel, supportsExtendedContext } from '@/lib/models';
 import { cleanupConversationState } from '@/hooks/useWebSocket';
 
 // Throttle on-select PR refresh to avoid excessive API calls.
@@ -2832,14 +2832,17 @@ updateFileTabContent: (id, content) => set((state) => ({
 
   // Context usage actions
   setContextUsage: (conversationId, usage) => set((state) => {
-    // Derive default from model — extended context [1m] = 1M tokens
+    // Derive default from model — 1M-capable families (opus-4-7, opus-4-6,
+    // sonnet-4-6) get a 1M default even without the `[1m]` suffix in the ID,
+    // since the backend always attaches the context-1m beta for these models.
     const model = state.streamingState[conversationId]?.turnStartMeta?.model
       ?? state.conversations.find((c) => c.id === conversationId)?.model;
-    const isExtendedContext = model?.includes('[1m]');
+    const isExtendedContext = model ? supportsExtendedContext(model) : false;
     const defaultContextWindow = isExtendedContext ? 1_000_000 : 200_000;
 
-    // If the model is a [1m] variant, don't allow the SDK-reported contextWindow
-    // to downgrade from 1M (the SDK reports the base 200K window, not the extended one)
+    // For 1M-capable models, don't let SDK-reported contextWindow downgrade
+    // below 1M (the SDK sometimes reports the base 200K window even when the
+    // context-1m beta is active).
     const sanitizedUsage = (isExtendedContext && usage.contextWindow !== undefined && usage.contextWindow < 1_000_000)
       ? { ...usage, contextWindow: 1_000_000 }
       : usage;
