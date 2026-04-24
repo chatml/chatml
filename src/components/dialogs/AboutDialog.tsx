@@ -118,7 +118,7 @@ export function AboutDialog({ open, onOpenChange }: AboutDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="sm:max-w-[360px] p-0 overflow-hidden gap-0"
+        className="sm:max-w-[400px] p-0 overflow-hidden gap-0"
         showCloseButton={false}
       >
         <DialogTitle className="sr-only">About ChatML</DialogTitle>
@@ -164,13 +164,13 @@ export function AboutDialog({ open, onOpenChange }: AboutDialogProps) {
         </div>
 
         {/* Links */}
-        <div className="flex items-center justify-center gap-1 px-6 py-3 border-t border-border/50">
+        <div className="flex items-center justify-center gap-0.5 px-4 py-3 border-t border-border/50">
           {links.map(({ label, icon: Icon, url }) => (
             <Button
               key={label}
               variant="ghost"
               size="sm"
-              className="gap-1.5 text-xs text-muted-foreground hover:text-foreground"
+              className="h-8 px-2 gap-1.5 text-xs text-muted-foreground hover:text-foreground"
               onClick={() => openUrlInBrowser(url)}
             >
               <Icon className="w-3.5 h-3.5" />
