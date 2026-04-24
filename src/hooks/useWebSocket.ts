@@ -395,8 +395,8 @@ export function useWebSocket(enabled: boolean = true) {
           : undefined;
 
         // Extract context window size BEFORE finalization — finalizeStreamingMessage
-        // clears turnStartMeta, which setContextUsage needs to detect [1m] models
-        // and clamp the SDK-reported 200K window to the correct 1M.
+        // clears turnStartMeta. supportsExtendedContext also falls back to
+        // conversation.model, but extracting early avoids a race with finalization.
         const resultModelUsage = event.modelUsage as Record<string, { contextWindow?: number }> | undefined;
         if (resultModelUsage) {
           for (const key of Object.keys(resultModelUsage)) {

@@ -129,7 +129,7 @@ describe('appStore — contextUsage', () => {
       expect(state[CONV_ID_2].contextWindow).toBe(1000000);
     });
 
-    it('clamps SDK contextWindow to 1M for [1m] extended context models', () => {
+    it('clamps SDK contextWindow to 1M for [1m]-suffixed model variants', () => {
       useAppStore.setState({
         streamingState: {
           [CONV_ID]: streamingStateWithModel('claude-opus-4-6[1m]'),
@@ -147,10 +147,44 @@ describe('appStore — contextUsage', () => {
       expect(useAppStore.getState().contextUsage[CONV_ID].inputTokens).toBe(1000);
     });
 
-    it('allows SDK contextWindow for non-[1m] models', () => {
+    it('defaults to 1M for suffix-less 1M-capable models (claude-opus-4-7)', () => {
+      useAppStore.setState({
+        streamingState: {
+          [CONV_ID]: streamingStateWithModel('claude-opus-4-7'),
+        },
+      });
+
+      useAppStore.getState().setContextUsage(CONV_ID, { inputTokens: 1000 });
+      expect(useAppStore.getState().contextUsage[CONV_ID].contextWindow).toBe(1_000_000);
+    });
+
+    it('clamps SDK 200K contextWindow to 1M for suffix-less 1M-capable models', () => {
+      useAppStore.setState({
+        streamingState: {
+          [CONV_ID]: streamingStateWithModel('claude-opus-4-7'),
+        },
+      });
+
+      useAppStore.getState().setContextUsage(CONV_ID, { inputTokens: 1000 });
+      useAppStore.getState().setContextUsage(CONV_ID, { contextWindow: 200000 });
+      expect(useAppStore.getState().contextUsage[CONV_ID].contextWindow).toBe(1_000_000);
+    });
+
+    it('treats claude-sonnet-4-6 (with date suffix) as 1M-capable', () => {
       useAppStore.setState({
         streamingState: {
           [CONV_ID]: streamingStateWithModel('claude-sonnet-4-6-20250514'),
+        },
+      });
+
+      useAppStore.getState().setContextUsage(CONV_ID, { inputTokens: 1000 });
+      expect(useAppStore.getState().contextUsage[CONV_ID].contextWindow).toBe(1_000_000);
+    });
+
+    it('allows SDK contextWindow for non-1M-capable models (Haiku)', () => {
+      useAppStore.setState({
+        streamingState: {
+          [CONV_ID]: streamingStateWithModel('claude-haiku-4-5-20251001'),
         },
       });
 
@@ -170,31 +204,29 @@ describe('appStore — contextUsage', () => {
       expect(useAppStore.getState().contextUsage[CONV_ID].contextWindow).toBe(1_000_000);
     });
 
-    it('does NOT clamp when turnStartMeta is cleared (regression: result after finalization)', () => {
-      // Simulate turn 1: turnStartMeta has [1m] model, context_usage sets 1M default
+    it('falls back to conversation.model for 1M detection when turnStartMeta is cleared', () => {
+      // Simulate turn 1: turnStartMeta has model, context_usage sets 1M default
       useAppStore.setState({
         streamingState: {
-          [CONV_ID]: streamingStateWithModel('claude-opus-4-6[1m]'),
+          [CONV_ID]: streamingStateWithModel('claude-opus-4-7'),
         },
       });
       useAppStore.getState().setContextUsage(CONV_ID, { inputTokens: 5000 });
       expect(useAppStore.getState().contextUsage[CONV_ID].contextWindow).toBe(1_000_000);
 
-      // Simulate finalization clearing turnStartMeta (and no [1m] on conversation.model)
+      // After finalization clears turnStartMeta, conversation.model is still available
       useAppStore.setState({
         streamingState: { [CONV_ID]: {} as ReturnType<typeof useAppStore.getState>['streamingState'][string] },
-        conversations: [{ id: CONV_ID, model: 'claude-opus-4-6' } as ReturnType<typeof useAppStore.getState>['conversations'][number]],
+        conversations: [{ id: CONV_ID, model: 'claude-opus-4-7' } as ReturnType<typeof useAppStore.getState>['conversations'][number]],
       });
 
-      // SDK-reported contextWindow arrives AFTER finalization — no [1m] detected, NOT clamped
+      // SDK-reported 200K arrives AFTER finalization — still clamped because
+      // supportsExtendedContext resolves from the conversation's base model.
       useAppStore.getState().setContextUsage(CONV_ID, { contextWindow: 200000 });
-      // Store correctly downgrades — it has no [1m] info once turnStartMeta is cleared.
-      // The fix is in useWebSocket.ts: call setContextUsage BEFORE finalizeStreamingMessage.
-      expect(useAppStore.getState().contextUsage[CONV_ID].contextWindow).toBe(200000);
+      expect(useAppStore.getState().contextUsage[CONV_ID].contextWindow).toBe(1_000_000);
     });
 
     it('clamps correctly when called BEFORE finalization clears turnStartMeta', () => {
-      // Simulate the FIXED flow: setContextUsage called while turnStartMeta still exists
       useAppStore.setState({
         streamingState: {
           [CONV_ID]: streamingStateWithModel('claude-opus-4-6[1m]'),
@@ -202,7 +234,6 @@ describe('appStore — contextUsage', () => {
       });
       useAppStore.getState().setContextUsage(CONV_ID, { inputTokens: 5000 });
 
-      // SDK contextWindow arrives BEFORE finalization — [1m] detected, clamped to 1M
       useAppStore.getState().setContextUsage(CONV_ID, { contextWindow: 200000 });
       expect(useAppStore.getState().contextUsage[CONV_ID].contextWindow).toBe(1_000_000);
     });
