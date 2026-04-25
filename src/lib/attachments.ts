@@ -11,8 +11,8 @@ import { toBase64 } from './utils';
 // ============================================================================
 
 export const ATTACHMENT_LIMITS = {
-  MAX_FILE_SIZE: 5 * 1024 * 1024,      // 5MB per file
-  MAX_TOTAL_SIZE: 20 * 1024 * 1024,    // 20MB total per message
+  MAX_FILE_SIZE: 10 * 1024 * 1024,     // 10MB per file
+  MAX_TOTAL_SIZE: 40 * 1024 * 1024,    // 40MB total per message
   MAX_ATTACHMENTS: 10,                  // Max files per message
   PREVIEW_LENGTH: 500,                  // Characters for text preview
 };
