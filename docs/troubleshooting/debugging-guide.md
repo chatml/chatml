@@ -343,7 +343,7 @@ If a process crashes:
 1. Check the WebSocket for a matching `tool_end` event
 2. If no `tool_end`: the agent may be stuck. Stop the conversation and retry
 3. If `tool_end` was sent: check if the frontend received it (WS Messages tab)
-4. The frontend has a tool timeout display — tools showing "timed out" had no `tool_end` within the expected window
+4. Long-running tools (sub-agents, Bash) can legitimately run for many minutes — the SDK has no built-in timeout. The frontend keeps the spinner active until `tool_end` arrives or the turn finalizes.
 
 ### Scenario: Session creation fails
 

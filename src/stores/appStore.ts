@@ -139,46 +139,6 @@ export function clearScriptOutputBuffers(sessionId: string) {
   for (const key of keysToDelete) scriptOutputBuffers.delete(key);
 }
 
-// Timeout tracking for orphaned tool cleanup
-const toolTimeouts = new Map<string, ReturnType<typeof setTimeout>>();
-
-// Maximum time a tool can be active before forced completion (5 minutes)
-const TOOL_TIMEOUT_MS = 5 * 60 * 1000;
-
-/** Clear all tool timeouts for a given conversation */
-function clearToolTimeoutsForConversation(conversationId: string, tools: { id: string }[]) {
-  for (const tool of tools) {
-    const key = `${conversationId}:${tool.id}`;
-    const timeout = toolTimeouts.get(key);
-    if (timeout) {
-      clearTimeout(timeout);
-      toolTimeouts.delete(key);
-    }
-  }
-}
-
-/** Clear all tool timeouts for conversations matching the given IDs */
-function clearToolTimeoutsForConversations(conversationIds: string[]) {
-  const convIdSet = new Set(conversationIds);
-  const keysToDelete: string[] = [];
-  for (const [key, timeout] of toolTimeouts) {
-    const convId = key.split(':')[0];
-    if (convIdSet.has(convId)) {
-      clearTimeout(timeout);
-      keysToDelete.push(key);
-    }
-  }
-  for (const key of keysToDelete) toolTimeouts.delete(key);
-}
-
-/** Clear all tool timeouts globally (for HMR, tests, or app teardown) */
-export function clearAllToolTimeouts() {
-  for (const timeout of toolTimeouts.values()) {
-    clearTimeout(timeout);
-  }
-  toolTimeouts.clear();
-}
-
 // Default streaming state for a conversation (avoids repeating defaults across actions)
 const DEFAULT_STREAMING: StreamingState = {
   text: '',
@@ -536,7 +496,7 @@ interface AppState {
   clearPendingBatchToolApproval: (conversationId: string) => void;
   setApprovedPlanContent: (conversationId: string, content: string) => void;
   clearApprovedPlanContent: (conversationId: string) => void;
-  addActiveTool: (conversationId: string, tool: ActiveTool, opts?: { skipTimeout?: boolean }) => void;
+  addActiveTool: (conversationId: string, tool: ActiveTool) => void;
   completeActiveTool: (conversationId: string, toolId: string, success?: boolean, summary?: string, stdout?: string, stderr?: string, metadata?: import('@/lib/types').ToolMetadata) => void;
   updateToolProgress: (conversationId: string, toolId: string, progress: ToolProgressUpdate) => void;
   updateToolProgressBatch: (updates: Array<{ conversationId: string; toolId: string; progress: ToolProgressUpdate }>) => void;
@@ -952,7 +912,6 @@ export const useAppStore = create<AppState>((set, get) => ({
       .filter((c) => c.sessionId === id)
       .map((c) => c.id);
     clearScriptOutputBuffers(id);
-    clearToolTimeoutsForConversations(sessionConvIds);
     sessionConvIds.forEach(cleanupConversationState);
 
     set((state) => {
@@ -1240,11 +1199,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       },
     };
   }),
-  removeConversation: (id) => {
-    // Clean up external buffers before updating Zustand state
-    clearToolTimeoutsForConversations([id]);
-
-    return set((state) => {
+  removeConversation: (id) => set((state) => {
     // Clean up orphaned state for the removed conversation
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { [id]: _streaming, ...remainingStreamingState } = state.streamingState;
@@ -1317,8 +1272,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       messagePagination: remainingPagination,
       messagesLoading: remainingMessagesLoading,
     };
-  });
-  },
+  }),
   selectConversation: (id) => {
     const state = get();
     const conversation = id ? state.conversations.find(c => c.id === id) : undefined;
@@ -1967,33 +1921,12 @@ updateFileTabContent: (id, content) => set((state) => ({
       approvedPlanTimestamp: undefined,
     }),
   })),
-  addActiveTool: (conversationId, tool, opts) => {
+  addActiveTool: (conversationId, tool) => {
     return set((state) => {
       const existing = state.activeTools[conversationId] || [];
       // Dedup: skip if a tool with this id is already tracked (snapshot + live event race)
       if (existing.some(t => t.id === tool.id)) {
         return {};
-      }
-
-      // Set up timeout to force-complete orphaned tools (skip for synthetic entries that will be completed immediately).
-      // Registered after dedup check so a duplicate call doesn't orphan the original tool's timeout.
-      if (!opts?.skipTimeout) {
-        const timeoutKey = `${conversationId}:${tool.id}`;
-        const existingTimeout = toolTimeouts.get(timeoutKey);
-        if (existingTimeout) clearTimeout(existingTimeout);
-
-        const timeout = setTimeout(() => {
-          toolTimeouts.delete(timeoutKey);
-          const current = useAppStore.getState().activeTools[conversationId] || [];
-          const stillActive = current.find(t => t.id === tool.id && !t.endTime);
-          if (stillActive) {
-            console.warn(`[Store] Tool timeout: ${tool.tool} (${tool.id}) - forcing completion after ${TOOL_TIMEOUT_MS}ms`);
-            useAppStore.getState().completeActiveTool(
-              conversationId, tool.id, false, 'Tool timed out', undefined, undefined
-            );
-          }
-        }, TOOL_TIMEOUT_MS);
-        toolTimeouts.set(timeoutKey, timeout);
       }
 
       return {
@@ -2009,14 +1942,6 @@ updateFileTabContent: (id, content) => set((state) => ({
     });
   },
   completeActiveTool: (conversationId, toolId, success, summary, stdout, stderr, metadata) => {
-    // Clear the timeout for this tool
-    const timeoutKey = `${conversationId}:${toolId}`;
-    const timeout = toolTimeouts.get(timeoutKey);
-    if (timeout) {
-      clearTimeout(timeout);
-      toolTimeouts.delete(timeoutKey);
-    }
-
     return set((state) => {
       const tools = state.activeTools[conversationId] || [];
       if (!tools.some(t => t.id === toolId)) {
@@ -2066,18 +1991,12 @@ updateFileTabContent: (id, content) => set((state) => ({
     }
     return changed ? { activeTools: newActiveTools } : state;
   }),
-  clearActiveTools: (conversationId) => {
-    // Clear all timeouts for this conversation's tools
-    const tools = useAppStore.getState().activeTools[conversationId] || [];
-    clearToolTimeoutsForConversation(conversationId, tools);
-
-    return set((state) => ({
-      activeTools: {
-        ...state.activeTools,
-        [conversationId]: [],
-      },
-    }));
-  },
+  clearActiveTools: (conversationId) => set((state) => ({
+    activeTools: {
+      ...state.activeTools,
+      [conversationId]: [],
+    },
+  })),
 
   // Sub-agent actions
   addSubAgent: (conversationId, agent) => set((state) => {
@@ -2300,10 +2219,6 @@ updateFileTabContent: (id, content) => set((state) => ({
   // Atomic streaming finalization - creates message and clears streaming in one update
   // This prevents the data loss bug where streaming text could be cleared before message is saved
   finalizeStreamingMessage: (conversationId, metadata) => {
-    // Clear tool timeouts before clearing active tools
-    const currentTools = useAppStore.getState().activeTools[conversationId] || [];
-    clearToolTimeoutsForConversation(conversationId, currentTools);
-
     return set((state) => {
       const streaming = state.streamingState[conversationId];
       const queuedQueue = state.queuedMessages[conversationId] ?? [];
