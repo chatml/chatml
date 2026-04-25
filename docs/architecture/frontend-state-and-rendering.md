@@ -235,10 +235,6 @@ File tabs use LRU (Least Recently Used) eviction with `MAX_TABS` (20). When a ne
 
 Script run output is stored in a plain `Map` outside the Zustand store to avoid O(n^2) array copies on every output line. The store only tracks the current `Map` reference, not the individual lines.
 
-### Tool Timeout
-
-Active tools have a timeout of `TOOL_TIMEOUT_MS` (5 minutes). If a tool hasn't completed within this time, it's considered stale and can be cleaned up.
-
 ## Plan Mode UI
 
 Plan mode has a dedicated UI flow:

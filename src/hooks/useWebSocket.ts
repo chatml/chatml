@@ -310,13 +310,12 @@ export function useWebSocket(enabled: boolean = true) {
               agentId,
             });
           } else {
-            const isUserInteractiveTool = event.tool === 'ExitPlanMode' || event.tool === 'AskUserQuestion';
             store.addActiveTool(conversationId, {
               id: event.id,
               tool: event.tool,
               params: event.params,
               startTime: Date.now(),
-            }, isUserInteractiveTool ? { skipTimeout: true } : undefined);
+            });
           }
         }
         break;
@@ -342,7 +341,7 @@ export function useWebSocket(enabled: boolean = true) {
                 tool: event.tool as string,
                 startTime: Date.now(),
                 untracked: true,
-              }, { skipTimeout: true });
+              });
               store.completeActiveTool(conversationId, event.id, event.success, event.summary, stdout, stderr, metadata);
             }
           }
