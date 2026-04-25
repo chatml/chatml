@@ -1104,7 +1104,7 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
             <Upload className="w-8 h-8 text-muted-foreground mb-2" />
             <span className="font-medium text-foreground">Drop files here</span>
             <span className="text-xs text-muted-foreground mt-1">
-              Images, code, and text files (max 5MB each)
+              Images, code, and text files (max 10MB each)
             </span>
           </div>
         )}

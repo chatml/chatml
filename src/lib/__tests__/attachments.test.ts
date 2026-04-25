@@ -592,8 +592,8 @@ describe('getAttachmentSubtitle', () => {
 
 describe('ATTACHMENT_LIMITS', () => {
   it('has expected limits', () => {
-    expect(ATTACHMENT_LIMITS.MAX_FILE_SIZE).toBe(5 * 1024 * 1024);
-    expect(ATTACHMENT_LIMITS.MAX_TOTAL_SIZE).toBe(20 * 1024 * 1024);
+    expect(ATTACHMENT_LIMITS.MAX_FILE_SIZE).toBe(10 * 1024 * 1024);
+    expect(ATTACHMENT_LIMITS.MAX_TOTAL_SIZE).toBe(40 * 1024 * 1024);
     expect(ATTACHMENT_LIMITS.MAX_ATTACHMENTS).toBe(10);
   });
 });

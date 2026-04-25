@@ -996,13 +996,13 @@ function buildUserMessage(msg: QueuedMessage): SDKUserMessage {
       // SDK → CLI child process chain). Instead, write to a temp file and use
       // the same text-instruction approach as the file-based path.
       const rawSizeBytes = Math.ceil(attachment.base64Data.length * 3 / 4);
-      const MAX_IMAGE_BYTES = 5 * 1024 * 1024; // 5MB
+      const MAX_IMAGE_BYTES = 10 * 1024 * 1024; // 10MB
       if (rawSizeBytes > MAX_IMAGE_BYTES) {
         const sizeMB = (rawSizeBytes / (1024 * 1024)).toFixed(1);
-        lifecycle(`image "${attachment.name}" too large: ${sizeMB}MB (limit 5MB)`);
+        lifecycle(`image "${attachment.name}" too large: ${sizeMB}MB (limit 10MB)`);
         emit({
           type: "error",
-          message: `Image "${attachment.name}" is ${sizeMB}MB which exceeds the 5MB API limit. Please use a smaller image.`,
+          message: `Image "${attachment.name}" is ${sizeMB}MB which exceeds the 10MB API limit. Please use a smaller image.`,
         });
         continue;
       }
