@@ -826,15 +826,6 @@ export interface TerminalInstance {
   workspacePath: string; // cwd for this terminal's PTY
 }
 
-export interface ClaudeTerminalInstance {
-  id: string;              // "claude-term-{sessionId}-{slot}"
-  sessionId: string;
-  slotNumber: number;      // 1-3
-  status: 'active' | 'exited';
-  workspacePath: string;
-  name: string;            // "Claude Code 1", "Claude Code 2", etc.
-}
-
 // Background task spawned by the Agent tool with run_in_background: true
 export interface BackgroundTask {
   taskId: string;

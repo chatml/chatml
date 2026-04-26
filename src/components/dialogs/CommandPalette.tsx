@@ -49,7 +49,6 @@ import {
   PanelRight,
   ExternalLink,
   Terminal,
-  SquareTerminal,
   Search,
   Cpu,
   // Git
@@ -382,15 +381,6 @@ const COMMANDS: Command[] = [
     keywords: ['shell', 'console', 'cli', 'bash', 'zsh'],
     available: () => useAppStore.getState().selectedSessionId !== null,
     action: () => window.dispatchEvent(new CustomEvent('show-bottom-panel')),
-  },
-  {
-    id: 'open-claude-terminal',
-    category: 'Actions',
-    label: 'Open Claude Code Terminal',
-    icon: SquareTerminal,
-    keywords: ['claude', 'code', 'cli', 'terminal', 'agent', 'pty'],
-    available: () => useAppStore.getState().selectedSessionId !== null,
-    action: () => window.dispatchEvent(new CustomEvent('new-claude-terminal')),
   },
   {
     id: 'toggle-bottom-panel',

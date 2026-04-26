@@ -17,14 +17,8 @@ import {
   horizontalListSortingStrategy,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { Plus, MessageCirclePlus, SquareTerminal, ChevronDown } from 'lucide-react';
+import { Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
 import { cn } from '@/lib/utils';
 import { TabItem } from './TabItem';
 import { TabScrollArea } from './TabScrollArea';
@@ -112,7 +106,6 @@ export function TabBar({
   onReorder,
   onPromotePreview,
   onNewSession,
-  onNewTerminal,
   onRenameConversation,
   onRestoreConversation,
   sessionId,
@@ -162,7 +155,7 @@ export function TabBar({
 
   // Handle tab close with animation
   const handleClose = useCallback(
-    (id: string, type: 'file' | 'conversation' | 'terminal', e?: React.MouseEvent) => {
+    (id: string, type: 'file' | 'conversation', e?: React.MouseEvent) => {
       e?.stopPropagation();
       startClose(id, () => {
         onCloseTab(id, type, e);
@@ -254,43 +247,16 @@ export function TabBar({
             onRestore={onRestoreConversation}
           />
         )}
-        {onNewTerminal ? (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-7 w-7 text-muted-foreground hover:text-foreground"
-                title="New..."
-                aria-label="New tab"
-              >
-                <Plus className="h-4 w-4" />
-                <ChevronDown className="h-2.5 w-2.5 -ml-0.5" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="min-w-[180px]">
-              <DropdownMenuItem onClick={onNewSession}>
-                <MessageCirclePlus className="h-3.5 w-3.5 mr-2" />
-                New Conversation
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={onNewTerminal}>
-                <SquareTerminal className="h-3.5 w-3.5 mr-2" />
-                Claude Code Terminal
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        ) : (
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-7 w-7 text-muted-foreground hover:text-foreground"
-            onClick={onNewSession}
-            title="New conversation"
-            aria-label="New conversation"
-          >
-            <Plus className="h-4 w-4" />
-          </Button>
-        )}
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-7 w-7 text-muted-foreground hover:text-foreground"
+          onClick={onNewSession}
+          title="New conversation"
+          aria-label="New conversation"
+        >
+          <Plus className="h-4 w-4" />
+        </Button>
       </div>
     </div>
   );
