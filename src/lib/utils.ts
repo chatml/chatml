@@ -19,6 +19,12 @@ export function toBase64(text: string): string {
   return btoa(binary);
 }
 
+/** Return a shallow copy of `obj` with `key` removed. */
+export function omitKey<V>(obj: Record<string, V>, key: string): Record<string, V> {
+  const { [key]: _removed, ...rest } = obj;
+  return rest;
+}
+
 export function toRelativePath(absolutePath: string, worktreePath: string | undefined | null): string {
   if (!worktreePath || !absolutePath) return absolutePath;
 

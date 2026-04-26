@@ -692,7 +692,21 @@ export interface PendingUserQuestion {
   requestId: string;
   questions: UserQuestion[];
   currentIndex: number;  // Track which question is being shown
-  answers: Record<string, string>;  // header -> selected label(s)
+  // Selection state is stored by option index (per-question, keyed by header)
+  // so duplicate or comma-containing labels can't collide. The wire-format
+  // answer (Record<string, string>) is built only at submit time.
+  selectedIndices: Record<string, number[]>;
+  // Whether the "Other" / free-text option is selected per question. Independent
+  // of otherText so "selected with empty text" is a legible explicit state, not a
+  // sentinel encoded in undefined-vs-string.
+  otherSelected: Record<string, boolean>;
+  // Custom text typed into the "Other" input (option-based questions).
+  // Kept independent of otherSelected: deselecting Other does NOT clear the
+  // text, but a regular-option pick in single-select does (mutex rule).
+  otherText: Record<string, string>;
+  // Answer for free-text questions (questions with no options). Separate slot
+  // from otherText so the two question shapes never share state semantics.
+  freeTextAnswer: Record<string, string>;
 }
 
 export interface PendingQAHandoff {

@@ -9,8 +9,7 @@ import { ChevronLeft, ChevronRight, ArrowRight, Loader2, X, Pencil, Check } from
 import { answerConversationQuestion } from '@/lib/api';
 import { useToast } from '@/components/ui/toast';
 import type { UserQuestion } from '@/lib/types';
-
-const OTHER_OPTION_LABEL = '__other__';
+import { isUserQuestionAnswered, serializeUserQuestionAnswers } from '@/lib/userQuestion';
 
 interface UserQuestionPromptProps {
   conversationId: string;
@@ -18,20 +17,26 @@ interface UserQuestionPromptProps {
 
 export function UserQuestionPrompt({ conversationId }: UserQuestionPromptProps) {
   const pending = usePendingUserQuestion(conversationId);
-  const { updateUserQuestionAnswer, nextUserQuestion, prevUserQuestion, clearPendingUserQuestion } = useUserQuestionActions();
+  const {
+    toggleUserQuestionOption,
+    selectUserQuestionOther,
+    deselectUserQuestionOther,
+    setUserQuestionOtherText,
+    setUserQuestionFreeText,
+    nextUserQuestion,
+    prevUserQuestion,
+    clearPendingUserQuestion,
+  } = useUserQuestionActions();
   const { error: showError } = useToast();
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [freeTextValue, setFreeTextValue] = useState('');
-  const [otherSelected, setOtherSelected] = useState(false);
-  const [otherTextValue, setOtherTextValue] = useState('');
   const autoSubmitTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const otherSelectedRef = useRef(otherSelected);
-
-  // Keep ref in sync via effect (react-hooks/refs disallows render-time ref mutation)
+  // Ref-mirror of isSubmitting so the auto-submit timer can bail when a manual
+  // submit/dismiss is already in flight (closures captured `isSubmitting` would be stale).
+  const isSubmittingRef = useRef(false);
   useEffect(() => {
-    otherSelectedRef.current = otherSelected;
-  }, [otherSelected]);
+    isSubmittingRef.current = isSubmitting;
+  }, [isSubmitting]);
 
   // Clear auto-submit timeout on unmount
   useEffect(() => {
@@ -45,111 +50,88 @@ export function UserQuestionPrompt({ conversationId }: UserQuestionPromptProps) 
   const currentQuestion: UserQuestion | undefined = pending?.questions[pending.currentIndex];
   const totalQuestions = pending?.questions.length ?? 0;
   const currentIndex = pending?.currentIndex ?? 0;
+  const currentHeader = currentQuestion?.header;
 
-  // Get selected values for current question
-  const selectedValues = useMemo(() => {
-    if (!pending || !currentQuestion) return new Set<string>();
-    const answer = pending.answers[currentQuestion.header];
-    if (!answer) return new Set<string>();
-    // For multi-select, answers are comma-separated
-    return new Set(answer.split(',').filter(Boolean));
-  }, [pending, currentQuestion]);
+  // Selected option indices for the current question (Set for fast lookup).
+  const selectedIndexSet = useMemo(() => {
+    if (!pending || !currentHeader) return new Set<number>();
+    return new Set(pending.selectedIndices[currentHeader] ?? []);
+  }, [pending, currentHeader]);
 
-  const handleOptionToggle = useCallback((label: string) => {
+  // Other / free-text state — derived directly from store.
+  const otherSelected = currentHeader ? !!pending?.otherSelected[currentHeader] : false;
+  const otherText = currentHeader ? (pending?.otherText[currentHeader] ?? '') : '';
+  const freeTextValue = currentHeader ? (pending?.freeTextAnswer[currentHeader] ?? '') : '';
+
+  const handleOptionToggle = useCallback((optionIndex: number) => {
     if (!currentQuestion || isSubmitting) return;
-
-    // Handle "Other" option selection
-    if (label === OTHER_OPTION_LABEL) {
-      if (currentQuestion.multiSelect) {
-        if (otherSelectedRef.current) {
-          // Toggle off: remove custom text from answer
-          setOtherSelected(false);
-          setOtherTextValue('');
-          const currentAnswer = useAppStore.getState().pendingUserQuestion[conversationId]?.answers[currentQuestion.header] || '';
-          const optionLabels = new Set(currentQuestion.options.map(o => o.label));
-          const regularOnly = currentAnswer.split(',').filter(v => v && optionLabels.has(v));
-          updateUserQuestionAnswer(conversationId, currentQuestion.header, regularOnly.join(','));
-        } else {
-          setOtherSelected(true);
-        }
-      } else {
-        // Single-select: select "Other", clear any regular selection
-        setOtherSelected(true);
-        setOtherTextValue('');
-        updateUserQuestionAnswer(conversationId, currentQuestion.header, '');
-        // Cancel any pending auto-submit from a previous regular option click
-        if (autoSubmitTimeoutRef.current) {
-          clearTimeout(autoSubmitTimeoutRef.current);
-          autoSubmitTimeoutRef.current = null;
-        }
-      }
-      return;
+    // Cancel any pending auto-submit (e.g. from a previous single-select click).
+    if (autoSubmitTimeoutRef.current) {
+      clearTimeout(autoSubmitTimeoutRef.current);
+      autoSubmitTimeoutRef.current = null;
     }
 
-    // Regular option clicked — clear "Other" state for single-select
-    if (!currentQuestion.multiSelect && otherSelectedRef.current) {
-      setOtherSelected(false);
-      setOtherTextValue('');
-    }
+    toggleUserQuestionOption(conversationId, currentQuestion.header, optionIndex, currentQuestion.multiSelect);
 
-    if (currentQuestion.multiSelect) {
-      // Read current answer directly from store to avoid stale closure
-      const currentAnswer = useAppStore.getState().pendingUserQuestion[conversationId]?.answers[currentQuestion.header] || '';
-      const currentSet = new Set(currentAnswer.split(',').filter(Boolean));
-      if (currentSet.has(label)) {
-        currentSet.delete(label);
-      } else {
-        currentSet.add(label);
-      }
-      updateUserQuestionAnswer(conversationId, currentQuestion.header, [...currentSet].join(','));
-    } else {
-      // Single select - replace and show selection briefly before auto-submit/advance
-      updateUserQuestionAnswer(conversationId, currentQuestion.header, label);
-
-      // Brief delay so user sees the selection highlight before advancing
-      if (autoSubmitTimeoutRef.current) {
-        clearTimeout(autoSubmitTimeoutRef.current);
-      }
+    // Single-select: brief delay so user sees the highlight, then advance/auto-submit.
+    if (!currentQuestion.multiSelect) {
       const clickedIndex = useAppStore.getState().pendingUserQuestion[conversationId]?.currentIndex;
       autoSubmitTimeoutRef.current = setTimeout(() => {
         autoSubmitTimeoutRef.current = null;
-
-        // Read fresh state to avoid stale closures
+        // Bail if a manual submit/dismiss is already in flight — without this we
+        // could fire a duplicate `answerConversationQuestion` for the same requestId.
+        if (isSubmittingRef.current) return;
         const pendingState = useAppStore.getState().pendingUserQuestion[conversationId];
         if (!pendingState) return;
-
-        // Bail if the user navigated away from this question before the timer fired
+        // Bail if user navigated away from this question before the timer fired.
         if (pendingState.currentIndex !== clickedIndex) return;
 
         const freshTotal = pendingState.questions.length;
         const freshIndex = pendingState.currentIndex;
-        const freshQuestion = pendingState.questions[freshIndex];
-        if (!freshQuestion) return;
+        const allAnswered = pendingState.questions.every((q) => isUserQuestionAnswered(pendingState, q));
 
-        const allAnswered = pendingState.questions.every((q) => {
-          if (q.header === freshQuestion.header) return true; // this one is now answered
-          const answer = pendingState.answers[q.header];
-          return answer && answer.length > 0;
-        });
-
-        if (allAnswered && freshTotal <= 1) {
-          // Only question — auto-submit with the updated answers
-          const answers = { ...pendingState.answers, [freshQuestion.header]: label };
+        if (allAnswered) {
           setIsSubmitting(true);
-          answerConversationQuestion(conversationId, pendingState.requestId, answers)
+          answerConversationQuestion(conversationId, pendingState.requestId, serializeUserQuestionAnswers(pendingState))
             .then(() => clearPendingUserQuestion(conversationId))
             .catch((error) => showError(error instanceof Error ? error.message : 'Failed to submit answer'))
             .finally(() => setIsSubmitting(false));
         } else if (freshIndex < freshTotal - 1) {
-          // More questions in wizard — advance to next
           nextUserQuestion(conversationId);
         }
       }, 200);
     }
-  }, [conversationId, currentQuestion, isSubmitting, updateUserQuestionAnswer, nextUserQuestion, clearPendingUserQuestion, showError]);
+  }, [conversationId, currentQuestion, isSubmitting, toggleUserQuestionOption, nextUserQuestion, clearPendingUserQuestion, showError]);
+
+  const handleOtherToggle = useCallback(() => {
+    if (!currentQuestion || isSubmitting) return;
+    if (autoSubmitTimeoutRef.current) {
+      clearTimeout(autoSubmitTimeoutRef.current);
+      autoSubmitTimeoutRef.current = null;
+    }
+    if (otherSelected) {
+      deselectUserQuestionOther(conversationId, currentQuestion.header);
+    } else {
+      selectUserQuestionOther(conversationId, currentQuestion.header, currentQuestion.multiSelect);
+    }
+  }, [conversationId, currentQuestion, isSubmitting, otherSelected, selectUserQuestionOther, deselectUserQuestionOther]);
+
+  const handleOtherTextChange = useCallback((text: string) => {
+    if (!currentQuestion) return;
+    setUserQuestionOtherText(conversationId, currentQuestion.header, text);
+  }, [conversationId, currentQuestion, setUserQuestionOtherText]);
+
+  const handleFreeTextChange = useCallback((text: string) => {
+    if (!currentQuestion) return;
+    setUserQuestionFreeText(conversationId, currentQuestion.header, text);
+  }, [conversationId, currentQuestion, setUserQuestionFreeText]);
 
   const handleDismiss = useCallback(async () => {
     if (!pending || isSubmitting) return;
+    if (autoSubmitTimeoutRef.current) {
+      clearTimeout(autoSubmitTimeoutRef.current);
+      autoSubmitTimeoutRef.current = null;
+    }
     // Send cancellation to the agent so it doesn't wait for timeout
     try {
       await answerConversationQuestion(conversationId, pending.requestId, { __cancelled: 'true' });
@@ -169,10 +151,14 @@ export function UserQuestionPrompt({ conversationId }: UserQuestionPromptProps) 
 
   const handleSubmit = useCallback(async () => {
     if (!pending || isSubmitting) return;
+    if (autoSubmitTimeoutRef.current) {
+      clearTimeout(autoSubmitTimeoutRef.current);
+      autoSubmitTimeoutRef.current = null;
+    }
 
     setIsSubmitting(true);
     try {
-      await answerConversationQuestion(conversationId, pending.requestId, pending.answers);
+      await answerConversationQuestion(conversationId, pending.requestId, serializeUserQuestionAnswers(pending));
       clearPendingUserQuestion(conversationId);
     } catch (error) {
       showError(error instanceof Error ? error.message : 'Failed to submit answer');
@@ -181,73 +167,20 @@ export function UserQuestionPrompt({ conversationId }: UserQuestionPromptProps) 
     }
   }, [conversationId, pending, isSubmitting, clearPendingUserQuestion, showError]);
 
-  // Check if all questions have answers
+  // Check if all questions have answers (for final-submit gate)
   const canSubmit = useMemo(() => {
     if (!pending) return false;
-    return pending.questions.every((q) => {
-      const answer = pending.answers[q.header];
-      return answer && answer.length > 0;
-    });
+    return pending.questions.every((q) => isUserQuestionAnswered(pending, q));
   }, [pending]);
 
   // Check if the current question has an answer (for advancing in multi-question flows)
   const currentQuestionAnswered = useMemo(() => {
     if (!pending || !currentQuestion) return false;
-    const answer = pending.answers[currentQuestion.header];
-    return !!answer && answer.length > 0;
+    return isUserQuestionAnswered(pending, currentQuestion);
   }, [pending, currentQuestion]);
 
   const isLastQuestion = currentIndex === totalQuestions - 1;
   const shouldAdvance = !isLastQuestion && currentQuestionAnswered && !canSubmit;
-
-  // Sync free-text state when the current question changes
-  const currentHeader = currentQuestion?.header;
-  const hasFreeText = currentQuestion && currentQuestion.options.length === 0;
-  useEffect(() => {
-    if (hasFreeText && currentHeader && pending) {
-      setFreeTextValue(pending.answers[currentHeader] || '');
-    }
-  }, [currentHeader, hasFreeText, pending]);
-
-  // Restore "Other" state when navigating to a different question.
-  // Only fires on currentHeader change (not on answer updates for the current question).
-  useEffect(() => {
-    if (!currentQuestion || currentQuestion.options.length === 0 || !currentHeader) {
-      setOtherSelected(false);
-      setOtherTextValue('');
-      return;
-    }
-    // Read answer directly from store snapshot (not from `pending` dep)
-    const pendingState = useAppStore.getState().pendingUserQuestion[conversationId];
-    const answer = pendingState?.answers[currentHeader];
-    if (!answer) {
-      setOtherSelected(false);
-      setOtherTextValue('');
-      return;
-    }
-    if (!currentQuestion.multiSelect) {
-      const matchesOption = currentQuestion.options.some(o => o.label === answer);
-      if (!matchesOption) {
-        setOtherSelected(true);
-        setOtherTextValue(answer);
-      } else {
-        setOtherSelected(false);
-        setOtherTextValue('');
-      }
-    } else {
-      const values = answer.split(',').filter(Boolean);
-      const optionLabels = new Set(currentQuestion.options.map(o => o.label));
-      const otherValues = values.filter(v => !optionLabels.has(v));
-      if (otherValues.length > 0) {
-        setOtherSelected(true);
-        setOtherTextValue(otherValues[0]);
-      } else {
-        setOtherSelected(false);
-        setOtherTextValue('');
-      }
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentHeader, conversationId]);
 
   // Total options count including "Other" (for keyboard shortcut numbering)
   const otherNumber = currentQuestion ? currentQuestion.options.length + 1 : 0;
@@ -269,27 +202,32 @@ export function UserQuestionPrompt({ conversationId }: UserQuestionPromptProps) 
 
       if (num <= currentQuestion.options.length) {
         e.preventDefault();
-        handleOptionToggle(currentQuestion.options[num - 1].label);
+        handleOptionToggle(num - 1);
       } else if (num === otherNumber) {
         e.preventDefault();
-        handleOptionToggle(OTHER_OPTION_LABEL);
+        handleOtherToggle();
       }
     };
 
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [currentQuestion, isSubmitting, otherNumber, handleOptionToggle]);
+  }, [currentQuestion, isSubmitting, otherNumber, handleOptionToggle, handleOtherToggle]);
 
-  // Whether user is actively typing custom "Other" text
-  const isOtherTextActive = otherSelected && otherTextValue.length > 0;
+  // Whether user is actively typing custom "Other" text (for the dim-non-other rows)
+  const isOtherTextActive = otherSelected && otherText.length > 0;
 
-  // Selected count for multi-select footer
+  // Selected count for multi-select footer. Only counts Other once it has text —
+  // empty Other isn't sent on submit (see serializeUserQuestionAnswers), so it shouldn't pad the count.
   const selectedCount = useMemo(() => {
     if (!currentQuestion?.multiSelect) return 0;
-    return selectedValues.size + (isOtherTextActive ? 1 : 0);
-  }, [currentQuestion?.multiSelect, selectedValues.size, isOtherTextActive]);
+    return selectedIndexSet.size + (isOtherTextActive ? 1 : 0);
+  }, [currentQuestion?.multiSelect, selectedIndexSet.size, isOtherTextActive]);
 
   if (!pending || !currentQuestion) return null;
+
+  const isFreeText = currentQuestion.options.length === 0;
+  // In single-select, regular options become non-interactive while Other is being typed.
+  const optionsDimmed = isOtherTextActive && !currentQuestion.multiSelect;
 
   return (
     <div ref={containerRef} className="pt-1 px-3 pb-3">
@@ -341,23 +279,29 @@ export function UserQuestionPrompt({ conversationId }: UserQuestionPromptProps) 
 
         {/* Options List or Free-text Input — key forces remount when question changes */}
         <div key={currentQuestion.header} className="px-2 pb-1">
-          {currentQuestion.options.length > 0 ? (
+          {!isFreeText ? (
             <>
-              {/* Option rows with dividers */}
+              {/* Option rows with dividers.
+                  Key combines index + label so duplicate labels remain distinct
+                  rows; the outer wrapper at the top of this block keys on
+                  `currentQuestion.header`, so the option list is remounted on
+                  question change — index is stable for this list's lifetime. */}
               {currentQuestion.options.map((option, index) => {
-                const isSelected = selectedValues.has(option.label);
-                const effectiveSelected = isSelected && (!otherSelected || currentQuestion.multiSelect);
+                const isSelected = selectedIndexSet.has(index);
                 return (
-                  <div key={option.label}>
+                  <div key={`${index}-${option.label}`}>
                     <button
                       type="button"
-                      onClick={() => handleOptionToggle(option.label)}
+                      onClick={() => handleOptionToggle(index)}
                       className={cn(
                         'w-full flex items-center gap-3 px-3 py-3 text-left rounded-lg transition-all duration-150',
-                        effectiveSelected
+                        isSelected
                           ? 'bg-brand/10 text-foreground'
                           : 'text-foreground/80 hover:bg-muted/30 hover:text-foreground',
-                        isOtherTextActive && !currentQuestion.multiSelect && 'opacity-50'
+                        // While the user is typing in "Other" (single-select), regular options
+                        // are de-emphasized but stay clickable — clicking one is the explicit
+                        // signal to switch off Other (handled in the store action).
+                        optionsDimmed && 'opacity-50'
                       )}
                       data-testid={`option-${index}`}
                     >
@@ -365,11 +309,11 @@ export function UserQuestionPrompt({ conversationId }: UserQuestionPromptProps) 
                       {currentQuestion.multiSelect ? (
                         <div className={cn(
                           'flex items-center justify-center h-5 w-5 rounded border-2 shrink-0 transition-colors',
-                          effectiveSelected
+                          isSelected
                             ? 'border-brand bg-brand'
                             : 'border-muted-foreground/30'
                         )}>
-                          {effectiveSelected && <Check className="h-3 w-3 text-primary-foreground" />}
+                          {isSelected && <Check className="h-3 w-3 text-primary-foreground" />}
                         </div>
                       ) : (
                         <span className="flex items-center justify-center h-7 w-7 rounded-full bg-muted/50 text-xs font-medium text-muted-foreground shrink-0">
@@ -383,7 +327,7 @@ export function UserQuestionPrompt({ conversationId }: UserQuestionPromptProps) 
                         )}
                       </div>
                       {/* Right arrow for selected single-select option */}
-                      {!currentQuestion.multiSelect && effectiveSelected && (
+                      {!currentQuestion.multiSelect && isSelected && (
                         <ArrowRight className="h-4 w-4 text-foreground/60 shrink-0" />
                       )}
                     </button>
@@ -400,26 +344,51 @@ export function UserQuestionPrompt({ conversationId }: UserQuestionPromptProps) 
 
               {/* "Something else" row — renders as <button> when collapsed,
                   <div> when expanded to avoid invalid HTML (interactive <input>
-                  nested inside <button>). */}
+                  nested inside <button>).
+                  The expanded row uses brand-tinted bg + filled checkbox only
+                  once there's actual text, matching the footer count and
+                  serialization gates (empty Other isn't counted/submitted). */}
               {otherSelected ? (
                 <div
-                  className="w-full flex items-center gap-3 px-3 py-3 text-left rounded-lg transition-all duration-150 bg-brand/10 cursor-pointer"
+                  className={cn(
+                    'w-full flex items-center gap-3 px-3 py-3 text-left rounded-lg transition-all duration-150 cursor-pointer',
+                    // Subtle highlight while typing; full brand tint once there's content.
+                    isOtherTextActive ? 'bg-brand/10' : 'bg-muted/30',
+                    // Visible focus indicator on the wrapper so keyboard users see where focus lives.
+                    'focus-within:ring-1 focus-within:ring-brand/60'
+                  )}
                   data-testid="other-option"
                   onClick={(e) => {
-                    // Toggle off when clicking anywhere except the text input
-                    if ((e.target as HTMLElement).tagName !== 'INPUT') {
-                      handleOptionToggle(OTHER_OPTION_LABEL);
+                    // Toggle off when clicking anywhere except an interactive
+                    // input (covers nested wrappers around the <input> too).
+                    if (!(e.target as HTMLElement).closest('input, textarea, button')) {
+                      handleOtherToggle();
                     }
                   }}
                 >
-                  {/* Left icon */}
+                  {/* Left icon — single-select uses a number badge (matches
+                      keyboard shortcut); multi-select uses a checkbox. The
+                      checkbox is only filled once Other has text, mirroring
+                      the count/submit gate. */}
                   {currentQuestion.multiSelect ? (
-                    <div className="flex items-center justify-center h-5 w-5 rounded border-2 border-brand bg-brand shrink-0 transition-colors">
-                      <Check className="h-3 w-3 text-primary-foreground" />
+                    <div className={cn(
+                      'flex items-center justify-center h-5 w-5 rounded border-2 shrink-0 transition-colors relative',
+                      isOtherTextActive
+                        ? 'border-brand bg-brand'
+                        : 'border-muted-foreground/30'
+                    )}>
+                      {isOtherTextActive ? (
+                        <Check className="h-3 w-3 text-primary-foreground" />
+                      ) : (
+                        <Pencil className="h-2.5 w-2.5 text-muted-foreground" />
+                      )}
                     </div>
                   ) : (
-                    <span className="flex items-center justify-center h-7 w-7 rounded-full bg-muted/50 shrink-0">
-                      <Pencil className="h-3.5 w-3.5 text-muted-foreground" />
+                    <span
+                      className="flex items-center justify-center h-7 w-7 rounded-full bg-muted/50 text-xs font-medium text-muted-foreground shrink-0"
+                      aria-hidden="true"
+                    >
+                      {otherNumber}
                     </span>
                   )}
                   <div className="flex-1 min-w-0">
@@ -427,23 +396,10 @@ export function UserQuestionPrompt({ conversationId }: UserQuestionPromptProps) 
                       type="text"
                       className="w-full bg-transparent text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none"
                       placeholder="Something else"
-                      value={otherTextValue}
-                      onChange={(e) => {
-                        setOtherTextValue(e.target.value);
-                        if (!currentQuestion.multiSelect) {
-                          updateUserQuestionAnswer(conversationId, currentQuestion.header, e.target.value);
-                        } else {
-                          const currentAnswer = useAppStore.getState().pendingUserQuestion[conversationId]?.answers[currentQuestion.header] || '';
-                          const optionLabels = new Set(currentQuestion.options.map(o => o.label));
-                          const regularSelections = currentAnswer.split(',').filter(v => v && optionLabels.has(v));
-                          if (e.target.value) {
-                            regularSelections.push(e.target.value);
-                          }
-                          updateUserQuestionAnswer(conversationId, currentQuestion.header, regularSelections.join(','));
-                        }
-                      }}
+                      value={otherText}
+                      onChange={(e) => handleOtherTextChange(e.target.value)}
                       onKeyDown={(e) => {
-                        if (e.key === 'Enter' && otherTextValue.trim() && !isSubmitting) {
+                        if (e.key === 'Enter' && otherText.trim() && !isSubmitting) {
                           e.preventDefault();
                           handleSubmit();
                         }
@@ -456,15 +412,23 @@ export function UserQuestionPrompt({ conversationId }: UserQuestionPromptProps) 
               ) : (
                 <button
                   type="button"
-                  onClick={() => handleOptionToggle(OTHER_OPTION_LABEL)}
+                  onClick={handleOtherToggle}
                   className="w-full flex items-center gap-3 px-3 py-3 text-left rounded-lg transition-all duration-150 hover:bg-muted/30"
                   data-testid="other-option"
                 >
                   {currentQuestion.multiSelect ? (
-                    <div className="flex items-center justify-center h-5 w-5 rounded border-2 shrink-0 transition-colors border-muted-foreground/30" />
+                    // Empty checkbox + small Pencil glyph so multi-select carries
+                    // the "free-text option" signal that single-select gets from
+                    // its number-vs-pencil styling.
+                    <div className="flex items-center justify-center h-5 w-5 rounded border-2 shrink-0 transition-colors border-muted-foreground/30">
+                      <Pencil className="h-2.5 w-2.5 text-muted-foreground" />
+                    </div>
                   ) : (
-                    <span className="flex items-center justify-center h-7 w-7 rounded-full bg-muted/50 shrink-0">
-                      <Pencil className="h-3.5 w-3.5 text-muted-foreground" />
+                    <span
+                      className="flex items-center justify-center h-7 w-7 rounded-full bg-muted/50 text-xs font-medium text-muted-foreground shrink-0"
+                      aria-hidden="true"
+                    >
+                      {otherNumber}
                     </span>
                   )}
                   <span className="text-sm text-muted-foreground/50">Something else</span>
@@ -475,13 +439,10 @@ export function UserQuestionPrompt({ conversationId }: UserQuestionPromptProps) 
             <div className="px-3 py-1">
               <input
                 type="text"
-                className="w-full px-3 py-2 rounded-md border border-border bg-background text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                className="w-full px-3 py-2 rounded-md border border-border bg-background text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-brand/60"
                 placeholder="Type your answer..."
                 value={freeTextValue}
-                onChange={(e) => {
-                  setFreeTextValue(e.target.value);
-                  updateUserQuestionAnswer(conversationId, currentQuestion.header, e.target.value);
-                }}
+                onChange={(e) => handleFreeTextChange(e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && canSubmit && !isSubmitting) {
                     e.preventDefault();

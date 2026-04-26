@@ -24,7 +24,10 @@ function makePending(overrides: Partial<PendingUserQuestion> = {}): PendingUserQ
     requestId: 'req-1',
     questions: [makeQuestion()],
     currentIndex: 0,
-    answers: {},
+    selectedIndices: {},
+    otherSelected: {},
+    otherText: {},
+    freeTextAnswer: {},
     ...overrides,
   };
 }
@@ -77,58 +80,212 @@ describe('appStore — user question actions', () => {
   });
 
   // ==========================================================================
-  // updateUserQuestionAnswer
+  // toggleUserQuestionOption
   // ==========================================================================
 
-  describe('updateUserQuestionAnswer', () => {
-    it('sets an answer for a question header', () => {
+  describe('toggleUserQuestionOption', () => {
+    it('selects an option index in single-select mode', () => {
       useAppStore.getState().setPendingUserQuestion(CONV_ID, makePending());
-      useAppStore.getState().updateUserQuestionAnswer(CONV_ID, 'Language', 'TypeScript');
+      useAppStore.getState().toggleUserQuestionOption(CONV_ID, 'Language', 0, false);
 
       const state = useAppStore.getState();
-      expect(state.pendingUserQuestion[CONV_ID]?.answers['Language']).toBe('TypeScript');
+      expect(state.pendingUserQuestion[CONV_ID]?.selectedIndices['Language']).toEqual([0]);
     });
 
-    it('overwrites an existing answer', () => {
+    it('replaces selection in single-select mode (not toggling off)', () => {
       useAppStore.getState().setPendingUserQuestion(CONV_ID, makePending());
-      useAppStore.getState().updateUserQuestionAnswer(CONV_ID, 'Language', 'TypeScript');
-      useAppStore.getState().updateUserQuestionAnswer(CONV_ID, 'Language', 'Python');
+      useAppStore.getState().toggleUserQuestionOption(CONV_ID, 'Language', 0, false);
+      useAppStore.getState().toggleUserQuestionOption(CONV_ID, 'Language', 2, false);
 
       const state = useAppStore.getState();
-      expect(state.pendingUserQuestion[CONV_ID]?.answers['Language']).toBe('Python');
+      expect(state.pendingUserQuestion[CONV_ID]?.selectedIndices['Language']).toEqual([2]);
     });
 
-    it('preserves other answers when updating one', () => {
+    it('toggles indices on/off in multi-select mode', () => {
+      useAppStore.getState().setPendingUserQuestion(CONV_ID, makePending({
+        questions: [makeQuestion({ multiSelect: true })],
+      }));
+      useAppStore.getState().toggleUserQuestionOption(CONV_ID, 'Language', 0, true);
+      useAppStore.getState().toggleUserQuestionOption(CONV_ID, 'Language', 2, true);
+      useAppStore.getState().toggleUserQuestionOption(CONV_ID, 'Language', 0, true);
+
+      const state = useAppStore.getState();
+      expect(state.pendingUserQuestion[CONV_ID]?.selectedIndices['Language']).toEqual([2]);
+    });
+
+    it('preserves indices for other questions when toggling one', () => {
       useAppStore.getState().setPendingUserQuestion(CONV_ID, makePending({
         questions: [
           makeQuestion({ header: 'Language' }),
           makeQuestion({ header: 'Database', question: 'Pick a DB' }),
         ],
       }));
-      useAppStore.getState().updateUserQuestionAnswer(CONV_ID, 'Language', 'Go');
-      useAppStore.getState().updateUserQuestionAnswer(CONV_ID, 'Database', 'Postgres');
+      useAppStore.getState().toggleUserQuestionOption(CONV_ID, 'Language', 1, false);
+      useAppStore.getState().toggleUserQuestionOption(CONV_ID, 'Database', 0, false);
 
       const state = useAppStore.getState();
-      const answers = state.pendingUserQuestion[CONV_ID]?.answers;
-      expect(answers?.['Language']).toBe('Go');
-      expect(answers?.['Database']).toBe('Postgres');
+      const indices = state.pendingUserQuestion[CONV_ID]?.selectedIndices;
+      expect(indices?.['Language']).toEqual([1]);
+      expect(indices?.['Database']).toEqual([0]);
+    });
+
+    it('clears Other selection AND text in single-select when a regular option is picked', () => {
+      const store = useAppStore.getState();
+      store.setPendingUserQuestion(CONV_ID, makePending());
+      store.selectUserQuestionOther(CONV_ID, 'Language', false);
+      store.setUserQuestionOtherText(CONV_ID, 'Language', 'Rust');
+      store.toggleUserQuestionOption(CONV_ID, 'Language', 0, false);
+
+      const state = useAppStore.getState();
+      expect(state.pendingUserQuestion[CONV_ID]?.otherSelected['Language']).toBeUndefined();
+      expect(state.pendingUserQuestion[CONV_ID]?.otherText['Language']).toBeUndefined();
+      expect(state.pendingUserQuestion[CONV_ID]?.selectedIndices['Language']).toEqual([0]);
+    });
+
+    it('keeps Other selection AND text in multi-select when a regular option is picked', () => {
+      const store = useAppStore.getState();
+      store.setPendingUserQuestion(CONV_ID, makePending({
+        questions: [makeQuestion({ multiSelect: true })],
+      }));
+      store.selectUserQuestionOther(CONV_ID, 'Language', true);
+      store.setUserQuestionOtherText(CONV_ID, 'Language', 'Rust');
+      store.toggleUserQuestionOption(CONV_ID, 'Language', 0, true);
+
+      const state = useAppStore.getState();
+      expect(state.pendingUserQuestion[CONV_ID]?.otherSelected['Language']).toBe(true);
+      expect(state.pendingUserQuestion[CONV_ID]?.otherText['Language']).toBe('Rust');
+      expect(state.pendingUserQuestion[CONV_ID]?.selectedIndices['Language']).toEqual([0]);
     });
 
     it('is a no-op when no pending question exists', () => {
-      useAppStore.getState().updateUserQuestionAnswer(CONV_ID, 'Language', 'Go');
+      useAppStore.getState().toggleUserQuestionOption(CONV_ID, 'Language', 0, false);
 
       const state = useAppStore.getState();
       expect(state.pendingUserQuestion[CONV_ID]).toBeUndefined();
     });
+  });
 
-    it('stores comma-separated values for multi-select', () => {
-      useAppStore.getState().setPendingUserQuestion(CONV_ID, makePending({
-        questions: [makeQuestion({ multiSelect: true })],
-      }));
-      useAppStore.getState().updateUserQuestionAnswer(CONV_ID, 'Language', 'TypeScript,Go');
+  // ==========================================================================
+  // selectUserQuestionOther / deselectUserQuestionOther
+  // ==========================================================================
+
+  describe('selectUserQuestionOther', () => {
+    it('marks Other as selected without touching otherText', () => {
+      useAppStore.getState().setPendingUserQuestion(CONV_ID, makePending());
+      useAppStore.getState().selectUserQuestionOther(CONV_ID, 'Language', false);
 
       const state = useAppStore.getState();
-      expect(state.pendingUserQuestion[CONV_ID]?.answers['Language']).toBe('TypeScript,Go');
+      expect(state.pendingUserQuestion[CONV_ID]?.otherSelected['Language']).toBe(true);
+      expect(state.pendingUserQuestion[CONV_ID]?.otherText['Language']).toBeUndefined();
+    });
+
+    it('does not touch existing otherText (callers reset via deselect first)', () => {
+      const store = useAppStore.getState();
+      store.setPendingUserQuestion(CONV_ID, makePending({
+        questions: [makeQuestion({ multiSelect: true })],
+      }));
+      store.selectUserQuestionOther(CONV_ID, 'Language', true);
+      store.setUserQuestionOtherText(CONV_ID, 'Language', 'Rust');
+      // Toggle off (deselect clears text) then re-select — text stays cleared.
+      store.deselectUserQuestionOther(CONV_ID, 'Language');
+      store.selectUserQuestionOther(CONV_ID, 'Language', true);
+
+      const state = useAppStore.getState();
+      expect(state.pendingUserQuestion[CONV_ID]?.otherSelected['Language']).toBe(true);
+      expect(state.pendingUserQuestion[CONV_ID]?.otherText['Language']).toBeUndefined();
+    });
+
+    it('clears selected indices in single-select mode', () => {
+      const store = useAppStore.getState();
+      store.setPendingUserQuestion(CONV_ID, makePending());
+      store.toggleUserQuestionOption(CONV_ID, 'Language', 1, false);
+      store.selectUserQuestionOther(CONV_ID, 'Language', false);
+
+      const state = useAppStore.getState();
+      expect(state.pendingUserQuestion[CONV_ID]?.otherSelected['Language']).toBe(true);
+      expect(state.pendingUserQuestion[CONV_ID]?.selectedIndices['Language']).toBeUndefined();
+    });
+
+    it('keeps selected indices in multi-select mode', () => {
+      const store = useAppStore.getState();
+      store.setPendingUserQuestion(CONV_ID, makePending({
+        questions: [makeQuestion({ multiSelect: true })],
+      }));
+      store.toggleUserQuestionOption(CONV_ID, 'Language', 1, true);
+      store.selectUserQuestionOther(CONV_ID, 'Language', true);
+
+      const state = useAppStore.getState();
+      expect(state.pendingUserQuestion[CONV_ID]?.otherSelected['Language']).toBe(true);
+      expect(state.pendingUserQuestion[CONV_ID]?.selectedIndices['Language']).toEqual([1]);
+    });
+
+    it('is idempotent when Other is already selected', () => {
+      const store = useAppStore.getState();
+      store.setPendingUserQuestion(CONV_ID, makePending());
+      store.selectUserQuestionOther(CONV_ID, 'Language', false);
+      const before = useAppStore.getState().pendingUserQuestion[CONV_ID];
+      store.selectUserQuestionOther(CONV_ID, 'Language', false);
+      const after = useAppStore.getState().pendingUserQuestion[CONV_ID];
+      expect(after).toBe(before); // same reference, no re-render
+    });
+  });
+
+  describe('deselectUserQuestionOther', () => {
+    it('removes Other selection AND its text', () => {
+      const store = useAppStore.getState();
+      store.setPendingUserQuestion(CONV_ID, makePending());
+      store.selectUserQuestionOther(CONV_ID, 'Language', false);
+      store.setUserQuestionOtherText(CONV_ID, 'Language', 'Rust');
+      store.deselectUserQuestionOther(CONV_ID, 'Language');
+
+      const state = useAppStore.getState();
+      expect(state.pendingUserQuestion[CONV_ID]?.otherSelected['Language']).toBeUndefined();
+      expect(state.pendingUserQuestion[CONV_ID]?.otherText['Language']).toBeUndefined();
+    });
+  });
+
+  // ==========================================================================
+  // setUserQuestionOtherText
+  // ==========================================================================
+
+  describe('setUserQuestionOtherText', () => {
+    it('stores text without changing selection state', () => {
+      const store = useAppStore.getState();
+      store.setPendingUserQuestion(CONV_ID, makePending());
+      store.setUserQuestionOtherText(CONV_ID, 'Language', 'Rust');
+
+      const state = useAppStore.getState();
+      expect(state.pendingUserQuestion[CONV_ID]?.otherText['Language']).toBe('Rust');
+      // Note: text is independent of selection — caller must select Other separately.
+      expect(state.pendingUserQuestion[CONV_ID]?.otherSelected['Language']).toBeUndefined();
+    });
+
+    it('updates the existing text', () => {
+      const store = useAppStore.getState();
+      store.setPendingUserQuestion(CONV_ID, makePending());
+      store.setUserQuestionOtherText(CONV_ID, 'Language', 'Rust');
+      store.setUserQuestionOtherText(CONV_ID, 'Language', 'Zig');
+
+      const state = useAppStore.getState();
+      expect(state.pendingUserQuestion[CONV_ID]?.otherText['Language']).toBe('Zig');
+    });
+  });
+
+  // ==========================================================================
+  // setUserQuestionFreeText
+  // ==========================================================================
+
+  describe('setUserQuestionFreeText', () => {
+    it('stores free-text answer separately from otherText', () => {
+      const store = useAppStore.getState();
+      store.setPendingUserQuestion(CONV_ID, makePending({
+        questions: [makeQuestion({ options: [], header: 'Why' })],
+      }));
+      store.setUserQuestionFreeText(CONV_ID, 'Why', 'because');
+
+      const state = useAppStore.getState();
+      expect(state.pendingUserQuestion[CONV_ID]?.freeTextAnswer['Why']).toBe('because');
+      expect(state.pendingUserQuestion[CONV_ID]?.otherText['Why']).toBeUndefined();
     });
   });
 
@@ -241,34 +398,34 @@ describe('appStore — user question actions', () => {
       }));
 
       // Answer Q1, navigate to Q2
-      store.updateUserQuestionAnswer(CONV_ID, 'Language', 'TypeScript');
+      store.toggleUserQuestionOption(CONV_ID, 'Language', 0, false);
       store.nextUserQuestion(CONV_ID);
       expect(useAppStore.getState().pendingUserQuestion[CONV_ID]?.currentIndex).toBe(1);
 
       // Answer Q2, navigate to Q3
-      store.updateUserQuestionAnswer(CONV_ID, 'Framework', 'React');
+      store.toggleUserQuestionOption(CONV_ID, 'Framework', 1, false);
       store.nextUserQuestion(CONV_ID);
       expect(useAppStore.getState().pendingUserQuestion[CONV_ID]?.currentIndex).toBe(2);
 
       // Answer Q3
-      store.updateUserQuestionAnswer(CONV_ID, 'Database', 'PostgreSQL');
+      store.toggleUserQuestionOption(CONV_ID, 'Database', 2, false);
 
-      // Verify all answers preserved
+      // Verify all selections preserved
       const pending = useAppStore.getState().pendingUserQuestion[CONV_ID];
-      expect(pending?.answers).toEqual({
-        Language: 'TypeScript',
-        Framework: 'React',
-        Database: 'PostgreSQL',
+      expect(pending?.selectedIndices).toEqual({
+        Language: [0],
+        Framework: [1],
+        Database: [2],
       });
 
-      // Navigate back — answers still preserved
+      // Navigate back — selections still preserved
       store.prevUserQuestion(CONV_ID);
       store.prevUserQuestion(CONV_ID);
       expect(useAppStore.getState().pendingUserQuestion[CONV_ID]?.currentIndex).toBe(0);
-      expect(useAppStore.getState().pendingUserQuestion[CONV_ID]?.answers).toEqual({
-        Language: 'TypeScript',
-        Framework: 'React',
-        Database: 'PostgreSQL',
+      expect(useAppStore.getState().pendingUserQuestion[CONV_ID]?.selectedIndices).toEqual({
+        Language: [0],
+        Framework: [1],
+        Database: [2],
       });
 
       // Clear
