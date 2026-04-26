@@ -11,7 +11,7 @@ import { useAppStore } from '@/stores/appStore';
 import { useSettingsStore, type ContentView } from '@/stores/settingsStore';
 import { useNavigationStore, type NavigationEntry } from '@/stores/navigationStore';
 import { useTabStore } from '@/stores/tabStore';
-import { ENABLE_BROWSER_TABS } from '@/lib/constants';
+import { ENABLE_BROWSER_TABS, SHOW_UNRELEASED } from '@/lib/constants';
 import { expandGroupsForSession } from '@/hooks/useSidebarSessions';
 import { useScheduledTaskStore } from '@/stores/scheduledTaskStore';
 
@@ -181,12 +181,14 @@ function isEntryValid(entry: NavigationEntry): boolean {
       }
       return true;
     case 'dashboard':
+    case 'scheduled-tasks':
+      return SHOW_UNRELEASED;
     case 'repositories':
     case 'history':
     case 'skills-store':
-    case 'scheduled-tasks':
       return true;
     case 'scheduled-task-detail':
+      if (!SHOW_UNRELEASED) return false;
       return useScheduledTaskStore.getState().tasks.some((t) => t.id === cv.taskId);
     case 'conversation':
     default:
@@ -477,10 +479,20 @@ export function goForward(tabId?: string): void {
 /** Jump to a specific entry in the back stack (index 0 = most recent) */
 export function goToBackEntry(index: number, tabId?: string): void {
   const navStore = useNavigationStore.getState();
+  const id = tabId ?? navStore.activeTabId;
+  const tab = navStore.tabs[id];
+  if (!tab) return;
+
+  // Peek the target entry without mutating stacks. If it's invalid, bail out
+  // before any state changes — otherwise the click would shuffle history yet
+  // not navigate, leaving the popover in a confusing state.
+  const actualIndex = tab.backStack.length - 1 - index;
+  const candidate = tab.backStack[actualIndex];
+  if (!candidate || !isEntryValid(candidate)) return;
+
   const currentEntry = snapshotCurrent();
   const entry = navStore.goToBackIndex(index, currentEntry, tabId);
-
-  if (!entry || !isEntryValid(entry)) return;
+  if (!entry) return;
 
   navStore.setRestoring(true);
   try {
@@ -493,10 +505,18 @@ export function goToBackEntry(index: number, tabId?: string): void {
 /** Jump to a specific entry in the forward stack (index 0 = most recent) */
 export function goToForwardEntry(index: number, tabId?: string): void {
   const navStore = useNavigationStore.getState();
+  const id = tabId ?? navStore.activeTabId;
+  const tab = navStore.tabs[id];
+  if (!tab) return;
+
+  // Peek before mutating — see goToBackEntry for rationale.
+  const actualIndex = tab.forwardStack.length - 1 - index;
+  const candidate = tab.forwardStack[actualIndex];
+  if (!candidate || !isEntryValid(candidate)) return;
+
   const currentEntry = snapshotCurrent();
   const entry = navStore.goToForwardIndex(index, currentEntry, tabId);
-
-  if (!entry || !isEntryValid(entry)) return;
+  if (!entry) return;
 
   navStore.setRestoring(true);
   try {

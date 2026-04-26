@@ -3,6 +3,7 @@
 import { useAppStore } from '@/stores/appStore';
 import { Download, HardDrive } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { SHOW_UNRELEASED } from '@/lib/constants';
 
 function formatBytes(bytes: number): string {
   if (bytes <= 0) return '0 B';
@@ -18,6 +19,7 @@ function formatBytes(bytes: number): string {
  */
 export function OllamaProgressBlock() {
   const progress = useAppStore((s) => s.ollamaProgress);
+  if (!SHOW_UNRELEASED) return null;
   if (!progress) return null;
 
   const isDownload = progress.type === 'ollama_download';

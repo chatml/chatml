@@ -9,6 +9,7 @@ import {
   WEBSOCKET_RECONNECT_BASE_DELAY_MS,
   WEBSOCKET_RECONNECT_MAX_DELAY_MS,
   WEBSOCKET_RECONNECT_MAX_ATTEMPTS,
+  SHOW_UNRELEASED,
 } from '@/lib/constants';
 import { getAuthToken } from '@/lib/auth-token';
 import { getBackendPort } from '@/lib/backend-port';
@@ -1358,7 +1359,9 @@ export function useWebSocket(enabled: boolean = true) {
           console.warn('Failed to re-sync sessions on reconnect:', err);
         });
         // Refresh scheduled task state (next_run_at, last_run_at may have changed)
-        useScheduledTaskStore.getState().fetchTasks();
+        if (SHOW_UNRELEASED) {
+          useScheduledTaskStore.getState().fetchTasks();
+        }
       } else {
         reconcileInitialStreamingState();
       }
@@ -1388,6 +1391,7 @@ export function useWebSocket(enabled: boolean = true) {
 
         // Handle Ollama progress events (binary download or model pull)
         if (data.type === 'ollama_download' || data.type === 'ollama_pull') {
+          if (!SHOW_UNRELEASED) return;
           const payload = data.payload as Record<string, unknown> | undefined;
           if (payload) {
             // Cancel any pending clear timer so a new operation isn't clobbered
@@ -1492,7 +1496,9 @@ export function useWebSocket(enabled: boolean = true) {
               }
             }).catch(() => {});
             // Refresh scheduled task store
-            useScheduledTaskStore.getState().fetchTasks();
+            if (SHOW_UNRELEASED) {
+              useScheduledTaskStore.getState().fetchTasks();
+            }
           }
           return;
         }
