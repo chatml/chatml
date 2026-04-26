@@ -703,7 +703,10 @@ export function useWebSocket(enabled: boolean = true) {
             requestId: event.requestId as string,
             questions: event.questions,
             currentIndex: 0,
-            answers: {},
+            selectedIndices: {},
+            otherSelected: {},
+            otherText: {},
+            freeTextAnswer: {},
           });
           notifyBackgroundSession(conversationId);
           notifyDesktop(conversationId, 'Question from AI', 'The AI needs your input');

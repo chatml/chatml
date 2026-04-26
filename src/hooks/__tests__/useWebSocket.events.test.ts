@@ -331,7 +331,10 @@ describe('useWebSocket — missing event handling', () => {
             requestId: 'req-1',
             questions: [{ question: 'What?', header: '', options: [], multiSelect: false }],
             currentIndex: 0,
-            answers: {},
+            selectedIndices: {},
+            otherSelected: {},
+            otherText: {},
+            freeTextAnswer: {},
           },
         },
       });

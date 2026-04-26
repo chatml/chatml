@@ -42,7 +42,10 @@ function makePending(overrides: Partial<PendingUserQuestion> = {}): PendingUserQ
     requestId: 'req-1',
     questions: [makeQuestion()],
     currentIndex: 0,
-    answers: {},
+    selectedIndices: {},
+    otherSelected: {},
+    otherText: {},
+    freeTextAnswer: {},
     ...overrides,
   };
 }
@@ -182,8 +185,8 @@ describe('UserQuestionPrompt', () => {
 
       await user.click(screen.getByText('Vue'));
 
-      // Answer should be in store immediately
-      expect(useAppStore.getState().pendingUserQuestion[CONV_ID]?.answers['Framework']).toBe('Vue');
+      // Selection lands in store immediately by index
+      expect(useAppStore.getState().pendingUserQuestion[CONV_ID]?.selectedIndices['Framework']).toEqual([1]);
 
       // Auto-submit fires after the 200ms delay
       await waitFor(() => {
@@ -218,7 +221,7 @@ describe('UserQuestionPrompt', () => {
         expect(useAppStore.getState().pendingUserQuestion[CONV_ID]?.currentIndex).toBe(1);
       });
       expect(answerConversationQuestion).not.toHaveBeenCalled();
-      expect(useAppStore.getState().pendingUserQuestion[CONV_ID]?.answers['Framework']).toBe('React');
+      expect(useAppStore.getState().pendingUserQuestion[CONV_ID]?.selectedIndices['Framework']).toEqual([0]);
     });
   });
 
@@ -237,11 +240,9 @@ describe('UserQuestionPrompt', () => {
       await user.click(screen.getByText('React'));
       await user.click(screen.getByText('Svelte'));
 
-      const state = useAppStore.getState();
-      const pending = state.pendingUserQuestion[CONV_ID];
-      const answer = pending?.answers['Framework'] ?? '';
-      expect(answer.split(',')).toContain('React');
-      expect(answer.split(',')).toContain('Svelte');
+      const indices = useAppStore.getState().pendingUserQuestion[CONV_ID]?.selectedIndices['Framework'] ?? [];
+      expect(indices).toContain(0); // React
+      expect(indices).toContain(2); // Svelte
     });
 
     it('toggles off a selected option on re-click', async () => {
@@ -255,9 +256,8 @@ describe('UserQuestionPrompt', () => {
       await user.click(screen.getByText('Svelte'));
       await user.click(screen.getByText('React'));
 
-      const state = useAppStore.getState();
-      const pending = state.pendingUserQuestion[CONV_ID];
-      expect(pending?.answers['Framework']).toBe('Svelte');
+      const indices = useAppStore.getState().pendingUserQuestion[CONV_ID]?.selectedIndices['Framework'] ?? [];
+      expect(indices).toEqual([2]);
     });
   });
 
@@ -414,21 +414,21 @@ describe('UserQuestionPrompt', () => {
     it('preserves answers when navigating back', async () => {
       setPending(makeMultiPending());
       const store = useAppStore.getState();
-      store.updateUserQuestionAnswer(CONV_ID, 'Framework', 'React');
+      store.toggleUserQuestionOption(CONV_ID, 'Framework', 0, false); // React
       store.nextUserQuestion(CONV_ID);
-      store.updateUserQuestionAnswer(CONV_ID, 'Database', 'PostgreSQL');
+      store.toggleUserQuestionOption(CONV_ID, 'Database', 0, false); // PostgreSQL
       store.prevUserQuestion(CONV_ID);
 
       const state = useAppStore.getState();
       const pending = state.pendingUserQuestion[CONV_ID];
       expect(pending?.currentIndex).toBe(0);
-      expect(pending?.answers['Framework']).toBe('React');
-      expect(pending?.answers['Database']).toBe('PostgreSQL');
+      expect(pending?.selectedIndices['Framework']).toEqual([0]);
+      expect(pending?.selectedIndices['Database']).toEqual([0]);
     });
 
     it('footer button acts as next when current question answered but not all', () => {
       setPending(makeMultiPending());
-      useAppStore.getState().updateUserQuestionAnswer(CONV_ID, 'Framework', 'React');
+      useAppStore.getState().toggleUserQuestionOption(CONV_ID, 'Framework', 0, false);
 
       render(<UserQuestionPrompt conversationId={CONV_ID} />);
 
@@ -453,9 +453,9 @@ describe('UserQuestionPrompt', () => {
     it('submit is enabled when all questions are answered', () => {
       setPending(makeMultiPending());
       const store = useAppStore.getState();
-      store.updateUserQuestionAnswer(CONV_ID, 'Framework', 'React');
-      store.updateUserQuestionAnswer(CONV_ID, 'Database', 'PostgreSQL');
-      store.updateUserQuestionAnswer(CONV_ID, 'Hosting', 'Vercel');
+      store.toggleUserQuestionOption(CONV_ID, 'Framework', 0, false);
+      store.toggleUserQuestionOption(CONV_ID, 'Database', 0, false);
+      store.toggleUserQuestionOption(CONV_ID, 'Hosting', 0, false);
 
       render(<UserQuestionPrompt conversationId={CONV_ID} />);
 
@@ -476,10 +476,9 @@ describe('UserQuestionPrompt', () => {
       await user.click(screen.getByText('PostgreSQL'));
 
       await waitFor(() => {
-        const state = useAppStore.getState();
-        const pending = state.pendingUserQuestion[CONV_ID];
-        expect(pending?.answers['Database']).toBe('PostgreSQL');
-        expect(pending?.answers['Framework']).toBe('React');
+        const pending = useAppStore.getState().pendingUserQuestion[CONV_ID];
+        expect(pending?.selectedIndices['Database']).toEqual([0]);
+        expect(pending?.selectedIndices['Framework']).toEqual([0]);
       });
     });
 
@@ -487,9 +486,9 @@ describe('UserQuestionPrompt', () => {
       const user = userEvent.setup();
       setPending(makeMultiPending());
       const store = useAppStore.getState();
-      store.updateUserQuestionAnswer(CONV_ID, 'Framework', 'React');
-      store.updateUserQuestionAnswer(CONV_ID, 'Database', 'PostgreSQL');
-      store.updateUserQuestionAnswer(CONV_ID, 'Hosting', 'Vercel');
+      store.toggleUserQuestionOption(CONV_ID, 'Framework', 0, false); // React
+      store.toggleUserQuestionOption(CONV_ID, 'Database', 0, false); // PostgreSQL
+      store.toggleUserQuestionOption(CONV_ID, 'Hosting', 0, false); // Vercel
 
       render(<UserQuestionPrompt conversationId={CONV_ID} />);
 
@@ -571,11 +570,31 @@ describe('UserQuestionPrompt', () => {
       render(<UserQuestionPrompt conversationId={CONV_ID} />);
 
       await user.click(screen.getByTestId('other-option'));
-      expect(screen.getByTestId('other-text-input')).toBeInTheDocument();
+      await user.type(screen.getByTestId('other-text-input'), 'Solid.js');
 
+      // Regular options stay clickable while Other has text — clicking one is the
+      // explicit signal to switch off Other in a single click. The store action
+      // clears otherText on regular-option toggle in single-select mode.
       await user.click(screen.getByText('React'));
 
       expect(screen.queryByTestId('other-text-input')).not.toBeInTheDocument();
+      const pending = useAppStore.getState().pendingUserQuestion[CONV_ID];
+      expect(pending?.selectedIndices['Framework']).toEqual([0]);
+      expect(pending?.otherText['Framework']).toBeUndefined();
+    });
+
+    it('keeps regular options clickable while Other has text (visually de-emphasized)', async () => {
+      const user = userEvent.setup();
+      setPending(makePending());
+      render(<UserQuestionPrompt conversationId={CONV_ID} />);
+
+      await user.click(screen.getByTestId('other-option'));
+      await user.type(screen.getByTestId('other-text-input'), 'Solid.js');
+
+      // Buttons should stay enabled — "dim but clickable" so the user can switch
+      // back to a regular option in one click without losing visual access.
+      expect(screen.getByTestId('option-0')).not.toBeDisabled();
+      expect(screen.getByTestId('option-1')).not.toBeDisabled();
     });
 
     it('submit is disabled when "Other" is selected but no text typed', async () => {
@@ -621,7 +640,8 @@ describe('UserQuestionPrompt', () => {
       expect(screen.queryByTestId('other-text-input')).not.toBeInTheDocument();
 
       const state = useAppStore.getState();
-      expect(state.pendingUserQuestion[CONV_ID]?.answers['Framework']).toBe('React');
+      expect(state.pendingUserQuestion[CONV_ID]?.selectedIndices['Framework']).toEqual([0]);
+      expect(state.pendingUserQuestion[CONV_ID]?.otherText['Framework']).toBeUndefined();
     });
 
     it('cancels pending auto-submit when "Other" is clicked after a regular option', async () => {
@@ -658,7 +678,7 @@ describe('UserQuestionPrompt', () => {
       fireEvent.keyDown(document, { key: '2' });
 
       // Should select "Vue" (option 2)
-      expect(useAppStore.getState().pendingUserQuestion[CONV_ID]?.answers['Framework']).toBe('Vue');
+      expect(useAppStore.getState().pendingUserQuestion[CONV_ID]?.selectedIndices['Framework']).toEqual([1]);
     });
 
     it('pressing the "Other" number key activates Other mode', async () => {
@@ -683,9 +703,10 @@ describe('UserQuestionPrompt', () => {
       await user.type(input, '123');
 
       expect(input).toHaveValue('123');
-      // Should NOT have selected options 1, 2, 3
+      // Should NOT have selected option indices — "123" goes into Other text
       const store = useAppStore.getState();
-      expect(store.pendingUserQuestion[CONV_ID]?.answers['Framework']).toBe('123');
+      expect(store.pendingUserQuestion[CONV_ID]?.otherText['Framework']).toBe('123');
+      expect(store.pendingUserQuestion[CONV_ID]?.selectedIndices['Framework']).toBeUndefined();
     });
 
     it('ignores number keys out of range', () => {
@@ -694,8 +715,8 @@ describe('UserQuestionPrompt', () => {
 
       fireEvent.keyDown(document, { key: '9' });
 
-      // No answer should be set
-      expect(useAppStore.getState().pendingUserQuestion[CONV_ID]?.answers['Framework']).toBeUndefined();
+      // No selection should be set
+      expect(useAppStore.getState().pendingUserQuestion[CONV_ID]?.selectedIndices['Framework']).toBeUndefined();
     });
 
     it('selects option via number key in multi-select mode', () => {
@@ -707,9 +728,9 @@ describe('UserQuestionPrompt', () => {
       fireEvent.keyDown(document, { key: '1' });
       fireEvent.keyDown(document, { key: '3' });
 
-      const answer = useAppStore.getState().pendingUserQuestion[CONV_ID]?.answers['Framework'] ?? '';
-      expect(answer.split(',')).toContain('React');
-      expect(answer.split(',')).toContain('Svelte');
+      const indices = useAppStore.getState().pendingUserQuestion[CONV_ID]?.selectedIndices['Framework'] ?? [];
+      expect(indices).toContain(0); // React
+      expect(indices).toContain(2); // Svelte
     });
   });
 
@@ -720,7 +741,7 @@ describe('UserQuestionPrompt', () => {
   describe('concurrent questions', () => {
     it('replacing pending question overwrites the previous one', () => {
       setPending(makePending({ requestId: 'req-1' }));
-      useAppStore.getState().updateUserQuestionAnswer(CONV_ID, 'Framework', 'React');
+      useAppStore.getState().toggleUserQuestionOption(CONV_ID, 'Framework', 0, false);
 
       setPending(makePending({
         requestId: 'req-2',
@@ -730,7 +751,69 @@ describe('UserQuestionPrompt', () => {
       const state = useAppStore.getState();
       const pending = state.pendingUserQuestion[CONV_ID];
       expect(pending?.requestId).toBe('req-2');
-      expect(pending?.answers).toEqual({});
+      expect(pending?.selectedIndices).toEqual({});
+      expect(pending?.otherText).toEqual({});
+    });
+  });
+
+  // ==========================================================================
+  // Duplicate / Awkward Labels (regression coverage for the bug this fix targets)
+  // ==========================================================================
+
+  describe('duplicate and awkward labels', () => {
+    it('treats duplicate option labels as independently selectable (multi-select)', async () => {
+      const user = userEvent.setup();
+      setPending(makePending({
+        questions: [makeQuestion({
+          multiSelect: true,
+          options: [
+            { label: 'foo.txt', description: 'in /a' },
+            { label: 'foo.txt', description: 'in /b' },
+            { label: 'bar.txt', description: 'in /c' },
+          ],
+        })],
+      }));
+      render(<UserQuestionPrompt conversationId={CONV_ID} />);
+
+      // Click the first foo.txt row (option-0) only
+      await user.click(screen.getByTestId('option-0'));
+
+      const indices = useAppStore.getState().pendingUserQuestion[CONV_ID]?.selectedIndices['Framework'] ?? [];
+      expect(indices).toEqual([0]);
+      // The second foo.txt row must NOT also become selected
+      expect(indices).not.toContain(1);
+
+      // Now click the second foo.txt row independently
+      await user.click(screen.getByTestId('option-1'));
+      const indices2 = useAppStore.getState().pendingUserQuestion[CONV_ID]?.selectedIndices['Framework'] ?? [];
+      expect(indices2).toContain(0);
+      expect(indices2).toContain(1);
+    });
+
+    it('preserves a comma-containing label through submission round-trip', async () => {
+      const user = userEvent.setup();
+      setPending(makePending({
+        questions: [makeQuestion({
+          multiSelect: true,
+          options: [
+            { label: 'Hello, world', description: '' },
+            { label: 'Other label', description: '' },
+          ],
+        })],
+      }));
+      render(<UserQuestionPrompt conversationId={CONV_ID} />);
+
+      await user.click(screen.getByText('Hello, world'));
+      await user.click(screen.getByTestId('submit-question'));
+
+      // The comma-containing label must survive serialization. The wire format
+      // joins on plain ',' (no space), but a single-label submission carries
+      // the original label untouched regardless of separator.
+      expect(answerConversationQuestion).toHaveBeenCalledWith(
+        CONV_ID,
+        'req-1',
+        { Framework: 'Hello, world' },
+      );
     });
   });
 });

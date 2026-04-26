@@ -787,7 +787,11 @@ export const usePageActions = () =>
 export const useUserQuestionActions = () =>
   useAppStore(
     useShallow((s) => ({
-      updateUserQuestionAnswer: s.updateUserQuestionAnswer,
+      toggleUserQuestionOption: s.toggleUserQuestionOption,
+      selectUserQuestionOther: s.selectUserQuestionOther,
+      deselectUserQuestionOther: s.deselectUserQuestionOther,
+      setUserQuestionOtherText: s.setUserQuestionOtherText,
+      setUserQuestionFreeText: s.setUserQuestionFreeText,
       nextUserQuestion: s.nextUserQuestion,
       prevUserQuestion: s.prevUserQuestion,
       clearPendingUserQuestion: s.clearPendingUserQuestion,

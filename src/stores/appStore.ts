@@ -35,6 +35,7 @@ import type { StreamingSnapshotDTO, SnapshotSubAgent } from '@/lib/api';
 import { useSettingsStore } from './settingsStore';
 import { refreshPRStatus } from '@/lib/api';
 import { buildTurnConfigLabel, supportsExtendedContext } from '@/lib/models';
+import { omitKey } from '@/lib/utils';
 import { cleanupConversationState } from '@/hooks/useWebSocket';
 
 // Throttle on-select PR refresh to avoid excessive API calls.
@@ -623,9 +624,17 @@ interface AppState {
   setLastTurnCompletedAt: (sessionId: string, timestamp: number) => void;
   clearBranchSyncStatus: (sessionId: string) => void;
 
-  // User question actions (AskUserQuestion tool)
+  // User question actions (AskUserQuestion tool).
+  // Mutex rule for single-select: picking a regular option deselects Other AND
+  // clears its text; selecting Other clears any picked indices. The rule lives
+  // entirely in toggleUserQuestionOption / selectUserQuestionOther — no other
+  // action mirrors it.
   setPendingUserQuestion: (conversationId: string, question: PendingUserQuestion | null) => void;
-  updateUserQuestionAnswer: (conversationId: string, header: string, answer: string) => void;
+  toggleUserQuestionOption: (conversationId: string, header: string, optionIndex: number, multiSelect: boolean) => void;
+  selectUserQuestionOther: (conversationId: string, header: string, multiSelect: boolean) => void;
+  deselectUserQuestionOther: (conversationId: string, header: string) => void;
+  setUserQuestionOtherText: (conversationId: string, header: string, text: string) => void;
+  setUserQuestionFreeText: (conversationId: string, header: string, text: string) => void;
   nextUserQuestion: (conversationId: string) => void;
   prevUserQuestion: (conversationId: string) => void;
   clearPendingUserQuestion: (conversationId: string) => void;
@@ -2209,7 +2218,10 @@ updateFileTabContent: (id, content) => set((state) => ({
             requestId: snapshot.pendingUserQuestion.requestId,
             questions: snapshot.pendingUserQuestion.questions,
             currentIndex: 0,
-            answers: {},
+            selectedIndices: {},
+            otherSelected: {},
+            otherText: {},
+            freeTextAnswer: {},
           },
         },
       } : {}),
@@ -2868,7 +2880,99 @@ updateFileTabContent: (id, content) => set((state) => ({
     },
   })),
 
-  updateUserQuestionAnswer: (conversationId, header, answer) => set((state) => {
+  toggleUserQuestionOption: (conversationId, header, optionIndex, multiSelect) => set((state) => {
+    const pending = state.pendingUserQuestion[conversationId];
+    if (!pending) return state;
+    const current = pending.selectedIndices[header] ?? [];
+    let next: number[];
+    if (multiSelect) {
+      next = current.includes(optionIndex)
+        ? current.filter((i) => i !== optionIndex)
+        : [...current, optionIndex];
+    } else {
+      // Idempotent: re-clicking the already-selected option (with Other not
+      // selected) is a no-op — avoids producing a fresh array reference that
+      // would force memoized consumers to recompute.
+      if (
+        current.length === 1 &&
+        current[0] === optionIndex &&
+        !pending.otherSelected[header]
+      ) {
+        return state;
+      }
+      next = [optionIndex];
+    }
+    // Single-select mutex: picking a regular option deselects Other AND
+    // clears its in-progress text. Multi-select leaves Other state alone.
+    const nextOtherSelected = multiSelect ? pending.otherSelected : omitKey(pending.otherSelected, header);
+    const nextOtherText = multiSelect ? pending.otherText : omitKey(pending.otherText, header);
+    return {
+      pendingUserQuestion: {
+        ...state.pendingUserQuestion,
+        [conversationId]: {
+          ...pending,
+          selectedIndices: { ...pending.selectedIndices, [header]: next },
+          otherSelected: nextOtherSelected,
+          otherText: nextOtherText,
+        },
+      },
+    };
+  }),
+
+  selectUserQuestionOther: (conversationId, header, multiSelect) => set((state) => {
+    const pending = state.pendingUserQuestion[conversationId];
+    if (!pending) return state;
+    if (pending.otherSelected[header]) return state; // already selected — idempotent no-op
+    // Single-select mutex: selecting Other clears any picked indices. otherText
+    // is left as-is — callers wanting to reset typing should call deselect first.
+    const nextSelectedIndices = multiSelect
+      ? pending.selectedIndices
+      : omitKey(pending.selectedIndices, header);
+    return {
+      pendingUserQuestion: {
+        ...state.pendingUserQuestion,
+        [conversationId]: {
+          ...pending,
+          selectedIndices: nextSelectedIndices,
+          otherSelected: { ...pending.otherSelected, [header]: true },
+        },
+      },
+    };
+  }),
+
+  deselectUserQuestionOther: (conversationId, header) => set((state) => {
+    const pending = state.pendingUserQuestion[conversationId];
+    if (!pending) return state;
+    if (!pending.otherSelected[header] && pending.otherText[header] === undefined) return state;
+    return {
+      pendingUserQuestion: {
+        ...state.pendingUserQuestion,
+        [conversationId]: {
+          ...pending,
+          otherSelected: omitKey(pending.otherSelected, header),
+          otherText: omitKey(pending.otherText, header),
+        },
+      },
+    };
+  }),
+
+  setUserQuestionOtherText: (conversationId, header, text) => set((state) => {
+    const pending = state.pendingUserQuestion[conversationId];
+    if (!pending) return state;
+    // Pure text update — does NOT change selection state. Callers should
+    // selectUserQuestionOther first if they want to flip the selection flag.
+    return {
+      pendingUserQuestion: {
+        ...state.pendingUserQuestion,
+        [conversationId]: {
+          ...pending,
+          otherText: { ...pending.otherText, [header]: text },
+        },
+      },
+    };
+  }),
+
+  setUserQuestionFreeText: (conversationId, header, text) => set((state) => {
     const pending = state.pendingUserQuestion[conversationId];
     if (!pending) return state;
     return {
@@ -2876,10 +2980,7 @@ updateFileTabContent: (id, content) => set((state) => ({
         ...state.pendingUserQuestion,
         [conversationId]: {
           ...pending,
-          answers: {
-            ...pending.answers,
-            [header]: answer,
-          },
+          freeTextAnswer: { ...pending.freeTextAnswer, [header]: text },
         },
       },
     };
