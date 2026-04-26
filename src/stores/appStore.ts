@@ -8,7 +8,6 @@ import type {
   FileTab,
   TerminalSession,
   TerminalInstance,
-  ClaudeTerminalInstance,
   AgentTodoItem,
   CustomTodoItem,
   McpServerStatus,
@@ -286,10 +285,6 @@ interface AppState {
   terminalInstances: Record<string, TerminalInstance[]>; // keyed by sessionId
   activeTerminalId: Record<string, string | null>;       // keyed by sessionId
   terminalPanelVisible: Record<string, boolean>;         // keyed by sessionId
-
-  // Claude Code terminal tabs (embedded CLI sessions per session)
-  claudeTerminals: Record<string, ClaudeTerminalInstance[]>; // keyed by sessionId
-  activeClaudeTerminalId: Record<string, string | null>;     // keyed by sessionId
 
   // MCP servers state
   mcpServers: McpServerStatus[];
@@ -569,12 +564,6 @@ interface AppState {
   setActiveTerminal: (sessionId: string, terminalId: string) => void;
   markTerminalExited: (terminalId: string) => void;
 
-  // Claude Code terminal tab actions
-  createClaudeTerminal: (sessionId: string, workspacePath: string) => ClaudeTerminalInstance | null;
-  closeClaudeTerminal: (sessionId: string, terminalId: string) => void;
-  setActiveClaudeTerminal: (sessionId: string, terminalId: string) => void;
-  markClaudeTerminalExited: (terminalId: string) => void;
-
   // MCP servers actions
   setMcpServers: (servers: McpServerStatus[]) => void;
   updateMcpServerStatus: (serverName: string, status: McpServerStatus['status']) => void;
@@ -684,8 +673,6 @@ export const useAppStore = create<AppState>((set, get) => ({
   terminalInstances: {},
   activeTerminalId: {},
   terminalPanelVisible: {},
-  claudeTerminals: {},
-  activeClaudeTerminalId: {},
   mcpServers: [],
   mcpServerConfigs: [],
   mcpConfigLoading: false,
@@ -826,8 +813,6 @@ export const useAppStore = create<AppState>((set, get) => ({
     const cleanedTerminalPanelVisible = { ...state.terminalPanelVisible };
     const cleanedTerminalSessions = { ...state.terminalSessions };
     const cleanedLastActive = { ...state.lastActiveConversationPerSession };
-    const cleanedClaudeTerminals = { ...state.claudeTerminals };
-    const cleanedActiveClaudeTerminalId = { ...state.activeClaudeTerminalId };
     for (const sessionId of workspaceSessionIds) {
       delete cleanedCustomTodos[sessionId];
       delete cleanedSessionOutputs[sessionId];
@@ -836,8 +821,6 @@ export const useAppStore = create<AppState>((set, get) => ({
       delete cleanedTerminalPanelVisible[sessionId];
       delete cleanedTerminalSessions[sessionId];
       delete cleanedLastActive[sessionId];
-      delete cleanedClaudeTerminals[sessionId];
-      delete cleanedActiveClaudeTerminalId[sessionId];
     }
 
     return {
@@ -869,8 +852,6 @@ export const useAppStore = create<AppState>((set, get) => ({
       terminalPanelVisible: cleanedTerminalPanelVisible,
       terminalSessions: cleanedTerminalSessions,
       lastActiveConversationPerSession: cleanedLastActive,
-      claudeTerminals: cleanedClaudeTerminals,
-      activeClaudeTerminalId: cleanedActiveClaudeTerminalId,
       selectedFileTabId: null,
       fileTabs: [],
     };
@@ -956,10 +937,6 @@ export const useAppStore = create<AppState>((set, get) => ({
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
       const { [id]: _panelVisible, ...remainingTerminalPanelVisible } = state.terminalPanelVisible;
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
-      const { [id]: _claudeTerminals, ...remainingClaudeTerminals } = state.claudeTerminals;
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
-      const { [id]: _activeClaudeTerminal, ...remainingActiveClaudeTerminalId } = state.activeClaudeTerminalId;
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
       const { [id]: _convsBySession, ...remainingConversationsBySession } = state.conversationsBySession;
       const cleanedScriptOutputVersions = Object.fromEntries(
         Object.entries(state.scriptOutputVersions).filter(([k]) => !k.startsWith(`${id}:`))
@@ -992,8 +969,6 @@ export const useAppStore = create<AppState>((set, get) => ({
         terminalInstances: remainingTerminalInstances,
         activeTerminalId: remainingActiveTerminalId,
         terminalPanelVisible: remainingTerminalPanelVisible,
-        claudeTerminals: remainingClaudeTerminals,
-        activeClaudeTerminalId: remainingActiveClaudeTerminalId,
         scriptOutputVersions: cleanedScriptOutputVersions,
         selectedFileTabId: null,
         fileTabs: [],
@@ -1116,10 +1091,6 @@ export const useAppStore = create<AppState>((set, get) => ({
     const { [id]: _activeTerminal, ...remainingActiveTerminalId } = state.activeTerminalId;
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { [id]: _panelVisible, ...remainingTerminalPanelVisible } = state.terminalPanelVisible;
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { [id]: _claudeTerminals, ...remainingClaudeTerminals } = state.claudeTerminals;
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { [id]: _activeClaudeTerminal, ...remainingActiveClaudeTerminalId } = state.activeClaudeTerminalId;
 
     return {
       sessions: updatedSessions,
@@ -1128,8 +1099,6 @@ export const useAppStore = create<AppState>((set, get) => ({
       terminalInstances: remainingTerminalInstances,
       activeTerminalId: remainingActiveTerminalId,
       terminalPanelVisible: remainingTerminalPanelVisible,
-      claudeTerminals: remainingClaudeTerminals,
-      activeClaudeTerminalId: remainingActiveClaudeTerminalId,
     };
   }),
   unarchiveSession: (id) => set((state) => {
@@ -2601,97 +2570,6 @@ updateFileTabContent: (id, content) => set((state) => ({
       );
     }
     set({ terminalInstances: updated });
-  },
-
-  // Claude Code terminal tab actions
-  createClaudeTerminal: (sessionId, workspacePath) => {
-    const state = get();
-    const existing = state.claudeTerminals[sessionId] || [];
-
-    // Max 3 Claude Code terminals per session
-    if (existing.length >= 3) return null;
-
-    // Find lowest available slot (1-3)
-    const usedSlots = new Set(existing.map(t => t.slotNumber));
-    let slot = 1;
-    while (usedSlots.has(slot) && slot <= 3) slot++;
-
-    const terminal: ClaudeTerminalInstance = {
-      id: `claude-term-${sessionId}-${slot}-${Date.now()}`,
-      sessionId,
-      slotNumber: slot,
-      status: 'active',
-      workspacePath,
-      name: `Claude Code ${slot}`,
-    };
-
-    set({
-      claudeTerminals: {
-        ...state.claudeTerminals,
-        [sessionId]: [...existing, terminal],
-      },
-      activeClaudeTerminalId: {
-        ...state.activeClaudeTerminalId,
-        [sessionId]: terminal.id,
-      },
-    });
-
-    return terminal;
-  },
-
-  closeClaudeTerminal: (sessionId, terminalId) => {
-    const state = get();
-    const existing = state.claudeTerminals[sessionId] || [];
-    const filtered = existing.filter(t => t.id !== terminalId);
-    const wasActive = state.activeClaudeTerminalId[sessionId] === terminalId;
-
-    let newActiveId = state.activeClaudeTerminalId[sessionId];
-    if (wasActive && filtered.length > 0) {
-      const closedIndex = existing.findIndex(t => t.id === terminalId);
-      const nextIndex = Math.min(closedIndex, filtered.length - 1);
-      newActiveId = filtered[nextIndex]?.id || null;
-    } else if (filtered.length === 0) {
-      newActiveId = null;
-    }
-
-    set({
-      claudeTerminals: {
-        ...state.claudeTerminals,
-        [sessionId]: filtered,
-      },
-      activeClaudeTerminalId: {
-        ...state.activeClaudeTerminalId,
-        [sessionId]: newActiveId,
-      },
-    });
-  },
-
-  setActiveClaudeTerminal: (sessionId, terminalId) => {
-    set({
-      activeClaudeTerminalId: {
-        ...get().activeClaudeTerminalId,
-        [sessionId]: terminalId,
-      },
-    });
-  },
-
-  markClaudeTerminalExited: (terminalId) => {
-    const state = get();
-    // Find the session that owns this terminal and only update that session's array
-    for (const [sid, terminals] of Object.entries(state.claudeTerminals)) {
-      const idx = terminals.findIndex(t => t.id === terminalId);
-      if (idx !== -1) {
-        set({
-          claudeTerminals: {
-            ...state.claudeTerminals,
-            [sid]: terminals.map(t =>
-              t.id === terminalId ? { ...t, status: 'exited' as const } : t
-            ),
-          },
-        });
-        return;
-      }
-    }
   },
 
   // MCP servers actions

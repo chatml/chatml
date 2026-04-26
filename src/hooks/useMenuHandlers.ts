@@ -410,22 +410,6 @@ export function useMenuHandlers(options: MenuHandlersOptions) {
     const handleToggleRightPanel = () => options.toggleRightSidebar();
     const handleToggleBottomPanel = () => toggleBottomTerminalRef.current();
     const handleShowBottomPanel = () => options.onShowBottomTerminal();
-    const handleNewClaudeTerminal = () => {
-      const state = useAppStore.getState();
-      const sessionId = state.selectedSessionId;
-      if (!sessionId) return;
-      const session = state.sessions.find(s => s.id === sessionId);
-      if (!session) return;
-      const instance = state.createClaudeTerminal(sessionId, session.worktreePath);
-      if (instance) {
-        // Deselect conversation and file tab to show the terminal
-        useAppStore.getState().selectConversation(null);
-        useAppStore.getState().selectFileTab(null);
-      } else {
-        // Notify UI of failure (e.g. max 3 terminals reached)
-        window.dispatchEvent(new CustomEvent('claude-terminal-limit-reached'));
-      }
-    };
     const handleOpenInVSCode = () => {
       const { selectedSessionId, sessions } = useAppStore.getState();
       const session = sessions.find((s) => s.id === selectedSessionId);
@@ -446,7 +430,6 @@ export function useMenuHandlers(options: MenuHandlersOptions) {
     window.addEventListener('toggle-bottom-panel', handleToggleBottomPanel);
     window.addEventListener('show-bottom-panel', handleShowBottomPanel);
     window.addEventListener('open-in-vscode', handleOpenInVSCode);
-    window.addEventListener('new-claude-terminal', handleNewClaudeTerminal);
 
     return () => {
       window.removeEventListener('open-settings', handleOpenSettings);
@@ -461,7 +444,6 @@ export function useMenuHandlers(options: MenuHandlersOptions) {
       window.removeEventListener('toggle-bottom-panel', handleToggleBottomPanel);
       window.removeEventListener('show-bottom-panel', handleShowBottomPanel);
       window.removeEventListener('open-in-vscode', handleOpenInVSCode);
-      window.removeEventListener('new-claude-terminal', handleNewClaudeTerminal);
     };
   }, [options, resolvedTheme, setTheme]);
 }
