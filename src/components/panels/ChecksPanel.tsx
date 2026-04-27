@@ -6,6 +6,7 @@ import { useAppStore } from '@/stores/appStore';
 import { usePRStatus } from '@/hooks/usePRStatus';
 import { useCIRuns } from '@/hooks/useCIRuns';
 import { useGitStatus } from '@/hooks/useGitStatus';
+import { useMinSpinDuration } from '@/hooks/useMinSpinDuration';
 import { getCheckStatusInfo, formatDuration, computeJobDuration } from '@/lib/check-utils';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Button } from '@/components/ui/button';
@@ -209,6 +210,7 @@ export const ChecksPanel = forwardRef<ChecksPanelHandle, ChecksPanelProps>(funct
   );
 
   const isLoading = prLoading || ciLoading || gitLoading;
+  const gitSpinning = useMinSpinDuration(gitLoading);
 
   const handleRefreshAll = useCallback(() => {
     refetchPR();
@@ -307,9 +309,9 @@ export const ChecksPanel = forwardRef<ChecksPanelHandle, ChecksPanelProps>(funct
               size="icon"
               className="h-5 w-5 shrink-0"
               onClick={refetchGit}
-              disabled={gitLoading}
+              disabled={gitSpinning}
             >
-              <RefreshCw className={cn('h-3 w-3', gitLoading && 'animate-spin')} />
+              <RefreshCw className={cn('h-3 w-3', gitSpinning && 'animate-spin')} />
             </Button>
           </div>
           <div className="px-1.5 pb-2">
@@ -381,6 +383,7 @@ function MergeReadinessBanner({
   onRefresh: () => void;
 }) {
   const { ready, blockers, pendingCount } = readiness;
+  const spinning = useMinSpinDuration(isLoading);
 
   let bgClass: string;
   let borderClass: string;
@@ -436,9 +439,9 @@ function MergeReadinessBanner({
           size="icon"
           className="h-5 w-5 shrink-0"
           onClick={onRefresh}
-          disabled={isLoading}
+          disabled={spinning}
         >
-          <RefreshCw className={cn('h-3 w-3', isLoading && 'animate-spin')} />
+          <RefreshCw className={cn('h-3 w-3', spinning && 'animate-spin')} />
         </Button>
       </div>
       {blockers.length > 0 && (

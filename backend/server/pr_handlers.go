@@ -495,7 +495,7 @@ func (h *Handlers) ListPRs(w http.ResponseWriter, r *http.Request) {
 				prNumbers[i] = pr.Number
 			}
 			var failedPRs []int
-			prDetailsMap, failedPRs = h.ghClient.GetPRDetailsBatch(ctx, owner, repoName, prNumbers, 5)
+			prDetailsMap, failedPRs = h.ghClient.GetPRDetailsBatch(ctx, owner, repoName, prNumbers, 3)
 			if len(failedPRs) > 0 {
 				logger.Handlers.Warnf("Failed to fetch details for PRs %v in %s/%s", failedPRs, owner, repoName)
 			}
@@ -612,7 +612,7 @@ func (h *Handlers) refreshPRCache(owner, repoName string) {
 			for i, pr := range entry.PRs {
 				prNumbers[i] = pr.Number
 			}
-			detailsMap, failedPRs := h.ghClient.GetPRDetailsBatch(ctx, owner, repoName, prNumbers, 5)
+			detailsMap, failedPRs := h.ghClient.GetPRDetailsBatch(ctx, owner, repoName, prNumbers, 3)
 			if len(failedPRs) > 0 {
 				logger.Handlers.Warnf("Background PR detail fetch: failed for PRs %v in %s/%s", failedPRs, owner, repoName)
 			}
@@ -634,7 +634,7 @@ func (h *Handlers) refreshPRCache(owner, repoName string) {
 	for i, pr := range result.PRs {
 		prNumbers[i] = pr.Number
 	}
-	prDetailsMap, failedPRs := h.ghClient.GetPRDetailsBatch(ctx, owner, repoName, prNumbers, 5)
+	prDetailsMap, failedPRs := h.ghClient.GetPRDetailsBatch(ctx, owner, repoName, prNumbers, 3)
 	if len(failedPRs) > 0 {
 		logger.Handlers.Warnf("Background PR refresh for %s/%s: failed to fetch details for PRs %v", owner, repoName, failedPRs)
 	}

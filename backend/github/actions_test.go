@@ -15,7 +15,8 @@ func TestListWorkflowRuns_Success(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		require.Equal(t, "/repos/owner/repo/actions/runs", r.URL.Path)
 		require.Equal(t, "Bearer test_token", r.Header.Get("Authorization"))
-		require.Contains(t, r.URL.RawQuery, "per_page=20")
+		require.Contains(t, r.URL.RawQuery, "per_page=100")
+		require.Contains(t, r.URL.RawQuery, "page=1")
 
 		json.NewEncoder(w).Encode(map[string]interface{}{
 			"total_count": 2,

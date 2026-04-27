@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/chatml/chatml-backend/github"
 	"github.com/chatml/chatml-backend/models"
 	"github.com/go-chi/chi/v5"
 )
@@ -368,33 +369,54 @@ func (h *Handlers) GetCIFailureContext(w http.ResponseWriter, r *http.Request) {
 	// Include both fully-completed failed runs and in-progress runs (their
 	// individual jobs may already be completed with a failure conclusion).
 	// Skip runs that are still queued/waiting and have no jobs to inspect yet.
+	var eligibleRuns []github.WorkflowRun
+	for _, run := range runs {
+		if run.HeadSHA != latestSHA {
+			continue
+		}
+		if run.Status == "queued" || run.Status == "waiting" || run.Status == "pending" || run.Status == "requested" {
+			continue
+		}
+		if run.Status == "completed" && run.Conclusion != "failure" && run.Conclusion != "timed_out" {
+			continue
+		}
+		eligibleRuns = append(eligibleRuns, run)
+	}
+
+	// Fetch jobs for all eligible runs concurrently. Each ListWorkflowJobs call
+	// can paginate up to 5 pages, so serializing them across runs would
+	// linearly inflate p99 latency.
+	type runJobsResult struct {
+		jobs []github.WorkflowJob
+		err  error
+	}
+	jobResults := make([]runJobsResult, len(eligibleRuns))
+	var fetchWg sync.WaitGroup
+	for i, run := range eligibleRuns {
+		fetchWg.Add(1)
+		go func(idx int, runID int64) {
+			defer fetchWg.Done()
+			jobs, err := h.ghClient.ListWorkflowJobs(ctx, ghCtx.owner, ghCtx.repo, runID)
+			jobResults[idx] = runJobsResult{jobs: jobs, err: err}
+		}(i, run.ID)
+	}
+	fetchWg.Wait()
+
+	// Process results serially so jobCount cap and truncation flag are
+	// applied deterministically (matches GitHub's newest-first ordering).
 	var failedRuns []FailedRunContext
 	totalFailed := 0
 	truncatedOverall := false
 	jobCount := 0
 
-	for _, run := range runs {
-		if run.HeadSHA != latestSHA {
-			continue
-		}
-		// Skip runs that haven't started — no jobs to inspect yet
-		if run.Status == "queued" || run.Status == "waiting" || run.Status == "pending" || run.Status == "requested" {
-			continue
-		}
-		// Skip completed runs that succeeded or were otherwise non-failing
-		if run.Status == "completed" && run.Conclusion != "failure" && run.Conclusion != "timed_out" {
-			continue
-		}
-
-		// Fetch jobs for this failed run
-		jobs, err := h.ghClient.ListWorkflowJobs(ctx, ghCtx.owner, ghCtx.repo, run.ID)
-		if err != nil {
-			log.Printf("Failed to fetch jobs for run %d: %v", run.ID, err)
+	for i, run := range eligibleRuns {
+		if jobResults[i].err != nil {
+			log.Printf("Failed to fetch jobs for run %d: %v", run.ID, jobResults[i].err)
 			continue
 		}
 
 		var failedJobs []FailedJobContext
-		for _, job := range jobs {
+		for _, job := range jobResults[i].jobs {
 			if job.Conclusion != "failure" && job.Conclusion != "timed_out" {
 				continue
 			}

@@ -187,73 +187,146 @@ func (c *Client) GetPRDetails(ctx context.Context, owner, repo string, prNumber 
 		RequestedReviewers: len(pr.RequestedReviewers),
 	}
 
-	// Fetch check runs for the PR's head commit
-	checksURL := fmt.Sprintf("%s/repos/%s/%s/commits/%s/check-runs", c.apiURL, owner, repo, pr.Head.SHA)
-	checksReq, err := http.NewRequestWithContext(ctx, "GET", checksURL, nil)
-	if err != nil {
-		// Don't fail completely if we can't get checks
-		return details, nil
+	// Fetch combined Statuses (legacy API) concurrently with check-runs so
+	// total latency is max(checks, status) instead of checks + status.
+	// Always drained below to avoid leaking the goroutine.
+	type combinedResult struct {
+		combined *CombinedStatus
+		err      error
 	}
+	combinedCh := make(chan combinedResult, 1)
+	go func() {
+		defer func() {
+			if rec := recover(); rec != nil {
+				logger.GitHub.Errorf("panic in GetCombinedStatus for %s/%s@%s: %v", owner, repo, pr.Head.SHA, rec)
+				combinedCh <- combinedResult{nil, fmt.Errorf("panic: %v", rec)}
+			}
+		}()
+		combined, statusErr := c.GetCombinedStatus(ctx, owner, repo, pr.Head.SHA)
+		combinedCh <- combinedResult{combined, statusErr}
+	}()
 
-	checksReq.Header.Set("Authorization", "Bearer "+token)
-	checksReq.Header.Set("Accept", "application/vnd.github+json")
+	// Fetch check runs for the PR's head commit. Paginates so PRs with many
+	// checks (>30 — GitHub's default page size) aren't silently truncated.
+	hasFailure := false
+	hasPending := false
 
-	checksResp, err := c.httpClient.Do(checksReq)
-	if err != nil {
-		return details, nil
-	}
-	defer checksResp.Body.Close()
+	for page := 1; page <= maxCheckRunPages; page++ {
+		checksURL := fmt.Sprintf("%s/repos/%s/%s/commits/%s/check-runs?per_page=%d&page=%d", c.apiURL, owner, repo, pr.Head.SHA, pagePerPage, page)
+		checksReq, reqErr := http.NewRequestWithContext(ctx, "GET", checksURL, nil)
+		if reqErr != nil {
+			logger.GitHub.Warnf("check-runs request build failed (page %d) for %s/%s@%s: %v", page, owner, repo, pr.Head.SHA, reqErr)
+			break
+		}
+		checksReq.Header.Set("Authorization", "Bearer "+token)
+		checksReq.Header.Set("Accept", "application/vnd.github+json")
 
-	if checksResp.StatusCode == http.StatusOK {
+		checksResp, doErr := c.httpClient.Do(checksReq)
+		if doErr != nil {
+			logger.GitHub.Warnf("check-runs fetch failed (page %d) for %s/%s@%s: %v", page, owner, repo, pr.Head.SHA, doErr)
+			break
+		}
+
+		if checksResp.StatusCode != http.StatusOK {
+			body, _ := io.ReadAll(checksResp.Body)
+			checksResp.Body.Close()
+			logger.GitHub.Warnf("check-runs returned %d (page %d) for %s/%s@%s: %s", checksResp.StatusCode, page, owner, repo, pr.Head.SHA, body)
+			break
+		}
+
 		var checkRuns githubCheckRuns
-		if err := json.NewDecoder(checksResp.Body).Decode(&checkRuns); err == nil {
-			details.CheckDetails = make([]CheckDetail, 0, len(checkRuns.CheckRuns))
-			hasFailure := false
-			hasPending := false
+		if decodeErr := json.NewDecoder(checksResp.Body).Decode(&checkRuns); decodeErr != nil {
+			checksResp.Body.Close()
+			logger.GitHub.Warnf("check-runs decode failed (page %d) for %s/%s@%s: %v", page, owner, repo, pr.Head.SHA, decodeErr)
+			break
+		}
+		checksResp.Body.Close()
 
-			for _, run := range checkRuns.CheckRuns {
-				conclusion := ""
-				if run.Conclusion != nil {
-					conclusion = *run.Conclusion
-				}
+		for _, run := range checkRuns.CheckRuns {
+			conclusion := ""
+			if run.Conclusion != nil {
+				conclusion = *run.Conclusion
+			}
 
-				// Calculate duration for completed checks
-				var durationSeconds *int
-				if run.Status == "completed" && run.StartedAt != nil && run.CompletedAt != nil {
-					startTime, err1 := time.Parse(time.RFC3339, *run.StartedAt)
-					endTime, err2 := time.Parse(time.RFC3339, *run.CompletedAt)
-					if err1 == nil && err2 == nil {
-						duration := int(endTime.Sub(startTime).Seconds())
-						durationSeconds = &duration
-					}
-				}
-
-				details.CheckDetails = append(details.CheckDetails, CheckDetail{
-					Name:            run.Name,
-					Status:          run.Status,
-					Conclusion:      conclusion,
-					DurationSeconds: durationSeconds,
-				})
-
-				// Determine overall check status
-				if run.Status != "completed" {
-					hasPending = true
-				} else if conclusion == "failure" || conclusion == "timed_out" || conclusion == "action_required" {
-					hasFailure = true
+			// Calculate duration for completed checks
+			var durationSeconds *int
+			if run.Status == "completed" && run.StartedAt != nil && run.CompletedAt != nil {
+				startTime, err1 := time.Parse(time.RFC3339, *run.StartedAt)
+				endTime, err2 := time.Parse(time.RFC3339, *run.CompletedAt)
+				if err1 == nil && err2 == nil {
+					duration := int(endTime.Sub(startTime).Seconds())
+					durationSeconds = &duration
 				}
 			}
 
-			// Set aggregated status
-			if len(checkRuns.CheckRuns) == 0 {
-				details.CheckStatus = CheckStatusNone
-			} else if hasFailure {
-				details.CheckStatus = CheckStatusFailure
-			} else if hasPending {
-				details.CheckStatus = CheckStatusPending
-			} else {
-				details.CheckStatus = CheckStatusSuccess
+			details.CheckDetails = append(details.CheckDetails, CheckDetail{
+				Name:            run.Name,
+				Status:          run.Status,
+				Conclusion:      conclusion,
+				DurationSeconds: durationSeconds,
+			})
+
+			if run.Status != "completed" {
+				hasPending = true
+			} else if conclusion == "failure" || conclusion == "timed_out" || conclusion == "action_required" {
+				hasFailure = true
 			}
 		}
+
+		if len(checkRuns.CheckRuns) < pagePerPage || len(details.CheckDetails) >= checkRuns.TotalCount {
+			break
+		}
+	}
+
+	// Always drain the combined-status goroutine, even if check-runs failed,
+	// so we don't leak it.
+	combinedRes := <-combinedCh
+
+	// Merge legacy Combined Status API (e.g. Vercel previews, custom webhooks,
+	// older CIs that post via /statuses). check-runs is the modern API but
+	// many tools still use the legacy Statuses API; without merging, those
+	// checks are invisible in the panel. Always merge — even if check-runs
+	// failed entirely, legacy statuses may be the only signal we have.
+	if combinedRes.err == nil && combinedRes.combined != nil {
+		existing := make(map[string]bool, len(details.CheckDetails))
+		for _, cd := range details.CheckDetails {
+			existing[cd.Name] = true
+		}
+		for _, st := range combinedRes.combined.Statuses {
+			if existing[st.Context] {
+				continue // check-runs entry wins on name collision (richer data)
+			}
+			var status, conclusion string
+			switch st.State {
+			case "success":
+				status, conclusion = "completed", "success"
+			case "failure", "error":
+				status, conclusion = "completed", "failure"
+				hasFailure = true
+			case "pending":
+				status, conclusion = "in_progress", ""
+				hasPending = true
+			default:
+				status, conclusion = st.State, ""
+			}
+			details.CheckDetails = append(details.CheckDetails, CheckDetail{
+				Name:       st.Context,
+				Status:     status,
+				Conclusion: conclusion,
+			})
+		}
+	}
+
+	// Set aggregated status — empty -> None, otherwise based on flags.
+	switch {
+	case len(details.CheckDetails) == 0:
+		details.CheckStatus = CheckStatusNone
+	case hasFailure:
+		details.CheckStatus = CheckStatusFailure
+	case hasPending:
+		details.CheckStatus = CheckStatusPending
+	default:
+		details.CheckStatus = CheckStatusSuccess
 	}
 
 	// Fetch PR reviews to determine review decision
@@ -397,7 +470,7 @@ func (c *Client) GetPRFullDetails(ctx context.Context, owner, repo string, prNum
 // Uses goroutines with a semaphore to avoid overwhelming the GitHub API (default maxConcurrent is 5).
 func (c *Client) GetPRDetailsBatch(ctx context.Context, owner, repo string, prNumbers []int, maxConcurrent int) (map[int]*PRDetails, []int) {
 	if maxConcurrent <= 0 {
-		maxConcurrent = 5 // default concurrent limit
+		maxConcurrent = 3 // default concurrent limit
 	}
 
 	results := make(map[int]*PRDetails)
