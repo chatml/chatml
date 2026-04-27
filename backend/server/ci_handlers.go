@@ -1,17 +1,26 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/chatml/chatml-backend/github"
 	"github.com/chatml/chatml-backend/models"
 	"github.com/go-chi/chi/v5"
 )
+
+// ghFetchTimeout bounds GitHub fetches that run inside SFCache singleflights.
+// The closure is detached from any individual r.Context() so a client
+// disconnect can't poison the shared call; this timeout keeps the work
+// itself bounded.
+const ghFetchTimeout = 30 * time.Second
 
 // githubContext holds the resolved GitHub owner/repo and session for CI/status handlers.
 type githubContext struct {
@@ -65,14 +74,28 @@ func (h *Handlers) resolveGitHubContext(w http.ResponseWriter, r *http.Request) 
 	return &githubContext{owner: owner, repo: repoName, session: session}, true
 }
 
-// ListCIRuns returns workflow runs for a session's branch
+// ListCIRuns returns workflow runs for a session's branch.
+//
+// Wrapped in a singleflight + 30s TTL cache: the active session typically has
+// 3 panels subscribing on session switch and a 30s polling loop on top, so
+// without coalescing every cycle issued 3 parallel ~2s GitHub calls.
+//
+// The shared GitHub call uses a context derived from h.serverCtx (bounded by
+// ghFetchTimeout), not r.Context(), so one panel disconnecting can't cancel
+// the upstream call that the other coalesced waiters depend on. Each caller
+// can still bail on its own r.Context() via DoContext.
 func (h *Handlers) ListCIRuns(w http.ResponseWriter, r *http.Request) {
 	ghCtx, ok := h.resolveGitHubContext(w, r)
 	if !ok {
 		return
 	}
 
-	runs, err := h.ghClient.ListWorkflowRuns(r.Context(), ghCtx.owner, ghCtx.repo, ghCtx.session.Branch)
+	cacheKey := fmt.Sprintf("%s/%s@%s", ghCtx.owner, ghCtx.repo, ghCtx.session.Branch)
+	runs, err := h.ciRunsCache.DoContext(r.Context(), cacheKey, func() ([]github.WorkflowRun, error) {
+		fetchCtx, cancel := context.WithTimeout(h.serverCtx, ghFetchTimeout)
+		defer cancel()
+		return h.ghClient.ListWorkflowRuns(fetchCtx, ghCtx.owner, ghCtx.repo, ghCtx.session.Branch)
+	})
 	if err != nil {
 		writeBadGateway(w, "failed to list workflow runs", err)
 		return
@@ -183,6 +206,10 @@ func (h *Handlers) RerunCIWorkflow(w http.ResponseWriter, r *http.Request) {
 		writeBadGateway(w, "failed to rerun workflow", err)
 		return
 	}
+
+	// A re-run produces a new workflow run that the user expects to see
+	// immediately; drop the cached list so the next GET fetches fresh.
+	h.ciRunsCache.Invalidate(fmt.Sprintf("%s/%s@%s", ghCtx.owner, ghCtx.repo, ghCtx.session.Branch))
 
 	w.WriteHeader(http.StatusAccepted)
 	writeJSON(w, map[string]string{"status": "rerun triggered"})

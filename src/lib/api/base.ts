@@ -53,10 +53,52 @@ export const ErrorCode = {
 const FETCH_RETRY_COUNT = 2; // 2 retries = 3 total attempts
 const FETCH_RETRY_BASE_DELAY_MS = 300;
 
-// Fetch helper that adds authentication token for Tauri builds.
-// Automatically retries on network-level TypeErrors (e.g. server momentarily unreachable)
-// with exponential backoff. Only throws ApiError after all retries are exhausted.
-export async function fetchWithAuth(url: string, options: RequestInit = {}): Promise<Response> {
+// In-flight GET dedup. When a session switch causes 3-5 panels to each fetch
+// the same endpoint within a few microtasks, those callers all share a single
+// underlying request instead of fanning out across the wire. Cleared as soon
+// as the shared promise settles so subsequent calls re-issue freshly.
+//
+// Each entry carries its own AbortController so the underlying fetch can be
+// cancelled imperatively (today only used by the test reset hook below; in
+// the future this is also where waiter-refcount cancellation would plug in).
+//
+// Constraint — the dedup key is the URL alone:
+//   - Concurrent GETs to the same URL with **different headers**
+//     (e.g. custom Accept, If-None-Match, per-call auth overrides) silently
+//     share the FIRST caller's response. Today this is fine because every
+//     callsite relies on the global auth header injected by rawFetchWithAuth.
+//     If a callsite needs request-shape-specific behavior, opt out with
+//     `cache: 'no-store'`.
+//   - getAuthToken() is read inside the first caller's rawFetchWithAuth, so a
+//     token that rotates between two near-simultaneous calls is captured
+//     once. Effectively a no-op in this app since token rotation is rare and
+//     the dedup window is sub-second.
+type InFlightEntry = {
+  promise: Promise<Response>;
+  controller: AbortController;
+};
+const inFlightGets = new Map<string, InFlightEntry>();
+
+/**
+ * Test-only escape hatch: aborts and drops all in-flight dedup entries.
+ *
+ * Vitest setup runs MSW with `onUnhandledRequest: 'error'`. Without this hook,
+ * a component fetch left in flight at test teardown would land after MSW
+ * handlers have been reset and fail the run with an unhandled-rejection. We
+ * replicate the previous (pre-dedup) behavior — where component AbortSignals
+ * cancelled their own fetches on unmount — by aborting each entry's master
+ * controller. Production code does not call this.
+ */
+export function __resetInFlightGetsForTests() {
+  for (const entry of inFlightGets.values()) {
+    entry.controller.abort();
+  }
+  inFlightGets.clear();
+}
+
+// rawFetchWithAuth performs the actual fetch with auth header injection and
+// network-error retry. Caller-supplied AbortSignal is honored.
+async function rawFetchWithAuth(url: string, options: RequestInit): Promise<Response> {
   const token = await getAuthToken();
   const headers = new Headers(options.headers);
   if (token) {
@@ -88,6 +130,84 @@ export async function fetchWithAuth(url: string, options: RequestInit = {}): Pro
     throw new ApiError('Cannot connect to backend. Is the server running?', 0);
   }
   throw lastError;
+}
+
+// Fetch helper that adds authentication token for Tauri builds.
+//
+// For idempotent GETs, concurrent identical calls share a single underlying
+// fetch (each waiter gets its own clone of the Response). Non-GET methods and
+// any explicit `cache: "no-store"` always go through directly.
+//
+// AbortSignals are honored per-caller: aborting one caller never cancels the
+// shared underlying fetch that other waiters depend on; the aborting caller
+// just rejects with AbortError while the shared work continues.
+export async function fetchWithAuth(url: string, options: RequestInit = {}): Promise<Response> {
+  const method = (options.method ?? 'GET').toUpperCase();
+  const dedupable = method === 'GET' && options.cache !== 'no-store';
+  if (!dedupable) {
+    return rawFetchWithAuth(url, options);
+  }
+
+  let entry = inFlightGets.get(url);
+  if (!entry) {
+    // Issue the underlying request with our own master AbortController, NOT
+    // the caller's AbortSignal — one caller's abort cannot cancel work other
+    // waiters are sharing.
+    //
+    // Trade-off: even if every waiter aborts, the shared fetch runs to
+    // completion. For a typical 3-5 panel session-switch fan-out this is
+    // negligible. If profiling ever shows abandoned fetches dominating, we
+    // can refcount waiters and abort the master controller when the count
+    // drops to zero. The master also lets the test reset hook abort
+    // mid-flight fetches at teardown so they don't outlive their MSW handlers.
+    const { signal: _ignored, ...rest } = options;
+    void _ignored;
+    const controller = new AbortController();
+    const promise = rawFetchWithAuth(url, { ...rest, signal: controller.signal }).finally(() => {
+      inFlightGets.delete(url);
+    });
+    // Silence unhandled-rejection if every waiter has gone away by the time
+    // the shared promise settles (e.g. component unmounted and the test
+    // reset hook aborted the master controller). Per-caller derivative
+    // promises still see the rejection through their own .then chains.
+    promise.catch(() => {});
+    entry = { promise, controller };
+    inFlightGets.set(url, entry);
+  }
+  const shared = entry.promise;
+
+  // Invariant: never read the shared Response's body directly — only clone.
+  // The shared Response is observed by every concurrent waiter; Response.clone()
+  // throws TypeError if the body is locked or disturbed, which would break
+  // every other waiter for this URL. Any future change that does
+  // `const data = await r.json()` on the shared `r` (instead of cloning first)
+  // is a bug.
+  const signal = options.signal;
+  if (!signal) {
+    const r = await shared;
+    return r.clone();
+  }
+  if (signal.aborted) {
+    throw new DOMException('Aborted', 'AbortError');
+  }
+
+  return new Promise<Response>((resolve, reject) => {
+    const onAbort = () => {
+      reject(signal.reason ?? new DOMException('Aborted', 'AbortError'));
+    };
+    signal.addEventListener('abort', onAbort, { once: true });
+    shared.then(
+      (r) => {
+        signal.removeEventListener('abort', onAbort);
+        // Same invariant — clone, never consume.
+        resolve(r.clone());
+      },
+      (err) => {
+        signal.removeEventListener('abort', onAbort);
+        reject(err);
+      }
+    );
+  });
 }
 
 // Helper to handle API responses consistently

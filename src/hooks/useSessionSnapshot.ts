@@ -67,6 +67,7 @@ export function useSessionSnapshot(
   const isMountedRef = useRef(false);
   const permanentErrorRef = useRef(false);
   const abortControllerRef = useRef<AbortController | null>(null);
+  const lastFetchAtRef = useRef<number>(0);
 
   const applySnapshot = useCallback((snap: SessionSnapshotDTO) => {
     setGitStatus(snap.gitStatus);
@@ -96,6 +97,7 @@ export function useSessionSnapshot(
     abortControllerRef.current?.abort();
     const controller = new AbortController();
     abortControllerRef.current = controller;
+    lastFetchAtRef.current = Date.now();
 
     try {
       const snap = await getSessionSnapshot(workspaceId, sessionId, controller.signal);
@@ -215,17 +217,42 @@ export function useSessionSnapshot(
     };
   }, [fetchSnapshot, active]);
 
-  // Periodic polling
+  // Periodic polling. Skipped when the document is hidden so backgrounded
+  // windows don't keep re-fetching the 200KB+ snapshot every 30s. Also
+  // throttled against `lastFetchAtRef` so a poll tick that fires within
+  // half a poll-interval of the visibility-change refetch (below) collapses
+  // into a single fetch instead of double-rendering on tab focus.
   useEffect(() => {
     if (!active || !workspaceId || !sessionId) return;
 
     const interval = setInterval(() => {
-      if (!permanentErrorRef.current) {
-        fetchSnapshot();
+      if (typeof document !== 'undefined' && document.hidden) return;
+      if (permanentErrorRef.current) return;
+      if (Date.now() - lastFetchAtRef.current < GIT_STATUS_POLL_INTERVAL_MS / 2) {
+        return;
       }
+      fetchSnapshot();
     }, GIT_STATUS_POLL_INTERVAL_MS);
 
     return () => clearInterval(interval);
+  }, [active, workspaceId, sessionId, fetchSnapshot]);
+
+  // Refetch immediately when the tab becomes visible again. Without this,
+  // returning users would see snapshot data up to one full poll interval
+  // stale before the next setInterval tick fires. The poll tick above checks
+  // `lastFetchAtRef` and skips if this fires close to a poll boundary, so
+  // tab focus produces exactly one fetch even when the poll tick is imminent.
+  useEffect(() => {
+    if (!active || !workspaceId || !sessionId) return;
+    if (typeof document === 'undefined') return;
+
+    const onVisibilityChange = () => {
+      if (!document.hidden && !permanentErrorRef.current) {
+        fetchSnapshot();
+      }
+    };
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', onVisibilityChange);
   }, [active, workspaceId, sessionId, fetchSnapshot]);
 
   // React to file change events
