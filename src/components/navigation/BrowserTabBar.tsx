@@ -32,8 +32,35 @@ import { useNavigationStore } from '@/stores/navigationStore';
 import { useAppStore } from '@/stores/appStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { buildNavigationLabel } from '@/lib/navigation';
+import { isSelectableSession } from '@/lib/sessionFilters';
 import { expandGroupsForSession } from '@/hooks/useSidebarSessions';
 import { cn } from '@/lib/utils';
+
+/**
+ * Apply a tab's persisted state to the global stores. Skips stale or hidden
+ * (e.g. base when disabled) session ids so persisted tabs can't sneak a base
+ * session back in after the setting was turned off.
+ */
+function applyTabState(tab: BrowserTab) {
+  const appStore = useAppStore.getState();
+  const settingsStore = useSettingsStore.getState();
+  appStore.selectWorkspace(tab.selectedWorkspaceId);
+  const candidate = tab.selectedSessionId
+    ? appStore.sessions.find((s) => s.id === tab.selectedSessionId)
+    : undefined;
+  const sessionToSelect =
+    candidate && isSelectableSession(candidate, settingsStore.showBaseBranchSessions)
+      ? candidate.id
+      : null;
+  appStore.selectSession(sessionToSelect);
+  if (sessionToSelect && tab.selectedConversationId) {
+    appStore.selectConversation(tab.selectedConversationId);
+  }
+  settingsStore.setContentView(tab.contentView);
+  if (sessionToSelect && candidate) {
+    expandGroupsForSession(candidate);
+  }
+}
 
 /**
  * Save current global state into the specified tab, then activate a new tab
@@ -61,21 +88,7 @@ export function switchToTab(tabId: string) {
   // Restore the new tab's state to globals
   const newTab = tabStore.tabs[tabId];
   if (newTab) {
-    startTransition(() => {
-      const appStore = useAppStore.getState();
-      const settingsStore = useSettingsStore.getState();
-      appStore.selectWorkspace(newTab.selectedWorkspaceId);
-      appStore.selectSession(newTab.selectedSessionId);
-      if (newTab.selectedConversationId) {
-        appStore.selectConversation(newTab.selectedConversationId);
-      }
-      settingsStore.setContentView(newTab.contentView);
-      // Auto-expand collapsed sidebar groups so the selected session is visible
-      if (newTab.selectedSessionId) {
-        const session = appStore.sessions.find(s => s.id === newTab.selectedSessionId && !s.archived);
-        if (session) expandGroupsForSession(session);
-      }
-    });
+    startTransition(() => applyTabState(newTab));
     useNavigationStore.getState().setActiveTabId(tabId);
   }
 }
@@ -276,16 +289,7 @@ export const BrowserTabStrip = memo(function BrowserTabStrip() {
       const tabStore = useTabStore.getState();
       const newTab = tabStore.tabs[tabStore.activeTabId];
       if (newTab) {
-        startTransition(() => {
-          const appStore = useAppStore.getState();
-          const settingsStore = useSettingsStore.getState();
-          appStore.selectWorkspace(newTab.selectedWorkspaceId);
-          appStore.selectSession(newTab.selectedSessionId);
-          if (newTab.selectedConversationId) {
-            appStore.selectConversation(newTab.selectedConversationId);
-          }
-          settingsStore.setContentView(newTab.contentView);
-        });
+        startTransition(() => applyTabState(newTab));
         useNavigationStore.getState().setActiveTabId(tabStore.activeTabId);
       }
     }

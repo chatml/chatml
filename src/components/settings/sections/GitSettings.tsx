@@ -3,9 +3,11 @@
 import { Switch } from '@/components/ui/switch';
 import { useSettingsStore, SETTINGS_DEFAULTS } from '@/stores/settingsStore';
 import { useAuthStore } from '@/stores/authStore';
+import { useAppStore } from '@/stores/appStore';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { SettingsRow } from '../shared/SettingsRow';
 import { SettingsGroup } from '../shared/SettingsGroup';
+import { findSelectableSession, isSelectableSession } from '@/lib/sessionFilters';
 
 function OverridableBadge() {
   return (
@@ -32,6 +34,21 @@ export function GitSettings() {
   const user = useAuthStore((s) => s.user);
   const githubUsername = user?.login || 'username';
 
+  // Toggle the setting and, when turning visibility off, replace any
+  // currently-selected base session so the conversation pane doesn't keep
+  // rendering a session the sidebar just hid.
+  const handleToggleBaseBranchSessions = (value: boolean) => {
+    setShowBaseBranchSessions(value);
+    if (!value) {
+      const app = useAppStore.getState();
+      const selected = app.sessions.find((s) => s.id === app.selectedSessionId);
+      if (selected && !isSelectableSession(selected, false)) {
+        const fallback = findSelectableSession(app.sessions, selected.workspaceId, false);
+        app.selectSession(fallback?.id ?? null);
+      }
+    }
+  };
+
   return (
     <div>
       <h2 className="text-xl font-semibold mb-5">Git</h2>
@@ -42,11 +59,11 @@ export function GitSettings() {
           title="Base branch sessions"
           description="Show a session for the base branch in the sidebar, allowing you to work directly on the main repo without a worktree"
           isModified={showBaseBranchSessions !== SETTINGS_DEFAULTS.showBaseBranchSessions}
-          onReset={() => setShowBaseBranchSessions(SETTINGS_DEFAULTS.showBaseBranchSessions)}
+          onReset={() => handleToggleBaseBranchSessions(SETTINGS_DEFAULTS.showBaseBranchSessions)}
         >
           <Switch
             checked={showBaseBranchSessions}
-            onCheckedChange={setShowBaseBranchSessions}
+            onCheckedChange={handleToggleBaseBranchSessions}
             aria-label="Base branch sessions"
           />
         </SettingsRow>

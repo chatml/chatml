@@ -362,6 +362,48 @@ describe('appStore — session actions', () => {
       expect(useAppStore.getState().selectedSessionId).toBeNull();
     });
 
+    it('skips base sessions when picking next selection if showBaseBranchSessions is false', () => {
+      const baseSess = createMockSession({
+        id: 'base-1',
+        workspaceId: 'ws-1',
+        sessionType: 'base',
+      }) as WorktreeSession;
+      const worktree = { ...s1, sessionType: 'worktree' } as WorktreeSession;
+      useAppStore.setState({
+        sessions: [baseSess, worktree],
+        selectedSessionId: 's1',
+        selectedConversationId: 'c1',
+      });
+      useSettingsStore.setState({ showBaseBranchSessions: false } as never);
+
+      useAppStore.getState().archiveSession('s1');
+
+      expect(useAppStore.getState().selectedSessionId).toBeNull();
+      expect(useAppStore.getState().selectedConversationId).toBeNull();
+    });
+
+    it('selects the base session when showBaseBranchSessions is true and only base remains', () => {
+      const baseSess = createMockSession({
+        id: 'base-1',
+        workspaceId: 'ws-1',
+        sessionType: 'base',
+      }) as WorktreeSession;
+      const worktree = { ...s1, sessionType: 'worktree' } as WorktreeSession;
+      useAppStore.setState({
+        sessions: [baseSess, worktree],
+        selectedSessionId: 's1',
+      });
+      useSettingsStore.setState({ showBaseBranchSessions: true } as never);
+
+      try {
+        useAppStore.getState().archiveSession('s1');
+        expect(useAppStore.getState().selectedSessionId).toBe('base-1');
+      } finally {
+        // Reset locally so the suite isn't load-bearing on beforeEach for this flag.
+        useSettingsStore.setState({ showBaseBranchSessions: false } as never);
+      }
+    });
+
     it('cleans up terminal slices for the archived session', () => {
       useAppStore.setState({
         sessions: [s1, s2],
