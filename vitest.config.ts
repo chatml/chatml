@@ -23,11 +23,29 @@ export default defineConfig({
         'src/app/**/loading.tsx',
         'src/app/**/error.tsx',
       ],
+      // Coverage gate, calibrated to current measured values minus ~2 pts of headroom.
+      // Per-glob thresholds lock in the well-tested directories (lib/api/, lib/, stores/)
+      // so future PRs cannot silently regress them while the global average stays acceptable.
+      // Ratchet upward as new tests land.
       thresholds: {
-        statements: 20,
-        branches: 20,
-        functions: 20,
-        lines: 20,
+        // Global gate (catches regressions outside the explicitly-cared-for directories)
+        statements: 22,
+        branches: 19,
+        functions: 22,
+        lines: 22,
+        // High-coverage directories: hold them near current values
+        'src/lib/api/**': {
+          statements: 85,
+          branches: 68,
+          functions: 85,
+          lines: 85,
+        },
+        'src/stores/**': {
+          statements: 60,
+          branches: 51,
+          functions: 53,
+          lines: 61,
+        },
       },
     },
     alias: {

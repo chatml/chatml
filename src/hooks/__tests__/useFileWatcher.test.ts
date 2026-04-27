@@ -1,9 +1,17 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { renderHook, act } from '@testing-library/react';
+import { renderHook, act, waitFor } from '@testing-library/react';
 import { useFileWatcher } from '../useFileWatcher';
 import { useAppStore } from '@/stores/appStore';
 import type { FileChangedEvent } from '@/lib/tauri';
 import type { FileTab } from '@/lib/types';
+
+// Flush pending microtasks (replaces the audit F-3 `setTimeout(r, 0)` macrotask
+// pattern that races against MSW responses on fast machines).
+async function flushAsync() {
+  await Promise.resolve();
+  await Promise.resolve();
+  await Promise.resolve();
+}
 
 // ---- Mocks ----
 
@@ -100,7 +108,7 @@ describe('useFileWatcher', () => {
 
     // Let async initWatcher resolve
     await act(async () => {
-      await (vi.dynamicImportSettled?.() ?? new Promise((r) => setTimeout(r, 0)));
+      await flushAsync();
     });
 
     expect(mockedGetWorkspacesBasePath).toHaveBeenCalled();
@@ -113,7 +121,7 @@ describe('useFileWatcher', () => {
     const { unmount } = renderHook(() => useFileWatcher());
 
     await act(async () => {
-      await new Promise((r) => setTimeout(r, 0));
+      await flushAsync();
     });
 
     unmount();
@@ -125,13 +133,13 @@ describe('useFileWatcher', () => {
     const { rerender, unmount } = renderHook(() => useFileWatcher());
 
     await act(async () => {
-      await new Promise((r) => setTimeout(r, 0));
+      await flushAsync();
     });
 
     rerender();
 
     await act(async () => {
-      await new Promise((r) => setTimeout(r, 0));
+      await flushAsync();
     });
 
     // The mount effect only runs once (empty deps), so startFileWatcher should be called once
@@ -146,7 +154,7 @@ describe('useFileWatcher', () => {
     const { unmount } = renderHook(() => useFileWatcher());
 
     await act(async () => {
-      await new Promise((r) => setTimeout(r, 0));
+      await flushAsync();
     });
 
     expect(mockedStartFileWatcher).not.toHaveBeenCalled();
@@ -160,7 +168,7 @@ describe('useFileWatcher', () => {
     const { unmount } = renderHook(() => useFileWatcher());
 
     await act(async () => {
-      await new Promise((r) => setTimeout(r, 0));
+      await flushAsync();
     });
 
     // Should not crash
@@ -173,7 +181,7 @@ describe('useFileWatcher', () => {
     const { unmount } = renderHook(() => useFileWatcher());
 
     await act(async () => {
-      await new Promise((r) => setTimeout(r, 0));
+      await flushAsync();
     });
 
     expect(mockedListenForFileChanges).toHaveBeenCalledWith(expect.any(Function));
@@ -185,7 +193,7 @@ describe('useFileWatcher', () => {
     renderHook(() => useFileWatcher());
 
     await act(async () => {
-      await new Promise((r) => setTimeout(r, 0));
+      await flushAsync();
     });
 
     expect(capturedFileChangeHandler).toBeTruthy();
@@ -212,7 +220,7 @@ describe('useFileWatcher', () => {
     renderHook(() => useFileWatcher());
 
     await act(async () => {
-      await new Promise((r) => setTimeout(r, 0));
+      await flushAsync();
     });
 
     // Trigger file change for the open tab's file
@@ -222,7 +230,7 @@ describe('useFileWatcher', () => {
         path: 'src/file.ts',
         fullPath: '/workspaces/ws-1/src/file.ts',
       });
-      await new Promise((r) => setTimeout(r, 0));
+      await flushAsync();
     });
 
     expect(mockedGetRepoFileContent).toHaveBeenCalledWith('ws-1', 'src/file.ts');
@@ -235,7 +243,7 @@ describe('useFileWatcher', () => {
     renderHook(() => useFileWatcher());
 
     await act(async () => {
-      await new Promise((r) => setTimeout(r, 0));
+      await flushAsync();
     });
 
     // Trigger file change for the dirty tab's file
@@ -245,7 +253,7 @@ describe('useFileWatcher', () => {
         path: 'src/file.ts',
         fullPath: '/workspaces/ws-1/src/file.ts',
       });
-      await new Promise((r) => setTimeout(r, 0));
+      await flushAsync();
     });
 
     // Should NOT reload
@@ -264,7 +272,7 @@ describe('useFileWatcher', () => {
     renderHook(() => useFileWatcher());
 
     await act(async () => {
-      await new Promise((r) => setTimeout(r, 0));
+      await flushAsync();
     });
 
     // Trigger file change for a file not open in any tab
@@ -274,7 +282,7 @@ describe('useFileWatcher', () => {
         path: 'src/other-file.ts',
         fullPath: '/workspaces/ws-1/src/other-file.ts',
       });
-      await new Promise((r) => setTimeout(r, 0));
+      await flushAsync();
     });
 
     expect(mockedGetRepoFileContent).not.toHaveBeenCalled();
@@ -285,16 +293,13 @@ describe('useFileWatcher', () => {
     const { unmount } = renderHook(() => useFileWatcher());
 
     await act(async () => {
-      await new Promise((r) => setTimeout(r, 0));
+      await flushAsync();
     });
 
     unmount();
 
-    // Give the setTimeout(10) cleanup time to fire
-    await act(async () => {
-      await new Promise((r) => setTimeout(r, 50));
-    });
-
-    expect(mockUnlisten).toHaveBeenCalled();
+    // Hook's cleanup uses an internal setTimeout(10) before calling unlisten.
+    // Poll deterministically rather than waiting a fixed wall-clock interval.
+    await waitFor(() => expect(mockUnlisten).toHaveBeenCalled());
   });
 });

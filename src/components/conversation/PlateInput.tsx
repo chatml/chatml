@@ -10,6 +10,7 @@ import { SlashPlugin, SlashInputPlugin } from '@platejs/slash-command/react';
 import { Plate, usePlateEditor } from 'platejs/react';
 
 import { cn } from '@/lib/utils';
+import { extractContent } from '@/lib/plate-content';
 import { Editor, EditorContainer } from '@/components/ui/editor';
 import {
   MentionElement,
@@ -43,38 +44,6 @@ interface PlateInputProps {
   onPaste?: (e: React.ClipboardEvent) => void;
   onFocus?: () => void;
   onBlur?: () => void;
-}
-
-// Extract text and mentioned files from Plate value in a single pass.
-// Uses array-join instead of string concatenation for better performance
-// on large pastes where the node tree can be deep.
-function extractContent(value: Value): { text: string; mentionedFiles: string[] } {
-  const parts: string[] = [];
-  const mentionedFiles: string[] = [];
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Plate nodes have dynamic structure
-  const processNode = (node: any) => {
-    if (node.text !== undefined) {
-      parts.push(node.text);
-    } else if (node.type === 'mention') {
-      parts.push(`@${node.value}`);
-      if (node.value) {
-        mentionedFiles.push(node.value);
-      }
-    } else if (node.children) {
-      node.children.forEach(processNode);
-    }
-  };
-
-  value.forEach((node, index) => {
-    processNode(node);
-    // Add newline between paragraphs (except after last one)
-    if (index < value.length - 1) {
-      parts.push('\n');
-    }
-  });
-
-  return { text: parts.join('').trim(), mentionedFiles };
 }
 
 const emptyValue: Value = [{ type: 'p', children: [{ text: '' }] }];

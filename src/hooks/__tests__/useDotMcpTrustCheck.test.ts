@@ -2,6 +2,14 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, waitFor } from '@testing-library/react';
 import { useSettingsStore } from '@/stores/settingsStore';
 
+// Flush pending microtasks deterministically (replaces audit F-3 negative-wait
+// `setTimeout(r, 50)` patterns that race against the hook's async callbacks).
+async function flushAsync() {
+  await Promise.resolve();
+  await Promise.resolve();
+  await Promise.resolve();
+}
+
 // ---- Mocks ----
 
 const mockGetDotMcpInfo = vi.fn();
@@ -128,7 +136,7 @@ describe('useDotMcpTrustCheck', () => {
     );
 
     // Give time for any async operations
-    await new Promise((r) => setTimeout(r, 50));
+    await flushAsync();
 
     expect(mockGetDotMcpInfo).not.toHaveBeenCalled();
     expect(mockShowDotMcpTrust).not.toHaveBeenCalled();
@@ -139,7 +147,7 @@ describe('useDotMcpTrustCheck', () => {
       useDotMcpTrustCheck(mockWorkspaces, null, mockDialogRef)
     );
 
-    await new Promise((r) => setTimeout(r, 50));
+    await flushAsync();
 
     expect(mockGetDotMcpInfo).not.toHaveBeenCalled();
   });
@@ -158,7 +166,7 @@ describe('useDotMcpTrustCheck', () => {
 
     // Re-render with same workspace — should not check again
     rerender({ wsId: 'ws-1' });
-    await new Promise((r) => setTimeout(r, 50));
+    await flushAsync();
 
     expect(mockGetDotMcpInfo).toHaveBeenCalledTimes(1);
   });
@@ -186,7 +194,7 @@ describe('useDotMcpTrustCheck', () => {
     );
 
     // Should not throw or show dialog
-    await new Promise((r) => setTimeout(r, 50));
+    await flushAsync();
 
     expect(mockShowDotMcpTrust).not.toHaveBeenCalled();
   });

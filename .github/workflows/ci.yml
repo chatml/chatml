@@ -71,8 +71,16 @@ jobs:
         run: |
           pnpm run lint > lint.log 2>&1 &
           LINT_PID=$!
-          pnpm run test:run
+          pnpm run test:coverage
           wait $LINT_PID || (cat lint.log && exit 1)
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-coverage
+          path: coverage/
+          retention-days: 14
 
       - name: Cache Next.js build
         uses: actions/cache@v4

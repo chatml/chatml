@@ -40,92 +40,14 @@ import { ToolApprovalPrompt, BatchToolApprovalPrompt } from './ToolApprovalPromp
 import { ChatInputToolbar, type PermissionMode } from './ChatInputToolbar';
 import { DictationWaveform } from './DictationWaveform';
 import { useDictation } from '@/hooks/useDictation';
+import {
+  parseDictationShortcut,
+  formatShortcutHint,
+  flattenFileTree,
+  resolveBackend,
+  getAvailableThinkingLevels,
+} from './chatInputUtils';
 
-import type { Shortcut, ModifierKey } from '@/lib/shortcuts';
-import type { DictationShortcutPreset } from '@/stores/settingsStore';
-
-/** Convert a dictation shortcut preset + custom string into a Shortcut definition. */
-function parseDictationShortcut(preset: DictationShortcutPreset, custom: string): Shortcut {
-  const base = { id: 'toggleDictation', label: 'Toggle dictation', category: 'Chat' as const };
-  switch (preset) {
-    case 'capslock':
-      return { ...base, key: 'CapsLock', modifiers: [] };
-    case 'cmd-shift-d':
-      return { ...base, key: 'd', modifiers: ['meta', 'shift'] };
-    case 'custom': {
-      if (!custom) return { ...base, key: 'd', modifiers: ['meta', 'shift'] };
-      const parts = custom.split('+');
-      const key = parts[parts.length - 1];
-      const modifiers = parts.slice(0, -1) as ModifierKey[];
-      return { ...base, key, modifiers };
-    }
-  }
-}
-
-/** Format a Shortcut into a human-readable hint string (e.g. "⌘⇧D"). */
-function formatShortcutHint(shortcut: Shortcut): string {
-  const parts: string[] = [];
-  for (const mod of shortcut.modifiers) {
-    switch (mod) {
-      case 'meta': parts.push('\u2318'); break;
-      case 'ctrl': parts.push('Ctrl'); break;
-      case 'alt': parts.push('\u2325'); break;
-      case 'shift': parts.push('\u21E7'); break;
-    }
-  }
-  const key = shortcut.key.length === 1 ? shortcut.key.toUpperCase() : shortcut.key;
-  parts.push(key);
-  return parts.join('');
-}
-
-// Flat file type for mention items
-interface FlatFile {
-  path: string;
-  name: string;
-  directory: string;
-}
-
-// Helper to flatten file tree for mentions (excludes hidden directories)
-function flattenFileTree(nodes: FileNodeDTO[], parentPath: string = '', depth: number = 0): FlatFile[] {
-  if (depth >= 15) return [];
-  const result: FlatFile[] = [];
-  for (const node of nodes) {
-    // Skip hidden files and directories (starting with .)
-    if (node.name.startsWith('.')) continue;
-
-    if (node.isDir) {
-      if (node.children) {
-        result.push(...flattenFileTree(node.children, node.path, depth + 1));
-      }
-    } else {
-      const directory = parentPath || node.path.split('/').slice(0, -1).join('/');
-      result.push({ path: node.path, name: node.name, directory });
-    }
-  }
-  return result;
-}
-
-
-/** Resolve the backend type. Called from event handlers (not render), so getState() is correct. */
-function resolveBackend(modelId: string): 'native' | undefined {
-  if (isLocalModel(modelId)) return 'native';
-  return useSettingsStore.getState().defaultBackend === 'native' ? 'native' : undefined;
-}
-
-
-
-/** Get available thinking level IDs for a model, respecting SDK-reported supported levels. */
-function getAvailableThinkingLevels(model: ModelEntry): ThinkingLevel[] {
-  const allLevels = THINKING_LEVELS.map(l => l.id);
-  const allowOff = canDisableThinking(model);
-  let available = allowOff ? allLevels : allLevels.filter(l => l !== 'off');
-  // Filter by SDK-reported supported effort levels when available
-  if (model.supportsEffort && model.supportedEffortLevels) {
-    const supported = new Set(model.supportedEffortLevels);
-    available = available.filter(l => l === 'off' || supported.has(l as 'low' | 'medium' | 'high' | 'max'));
-  }
-  return available;
-}
 
 interface ChatInputProps {
   onMessageSubmit?: () => void;
