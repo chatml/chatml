@@ -32,8 +32,6 @@ describe('appStore — workspace actions', () => {
       terminalPanelVisible: {},
       terminalSessions: {},
       lastActiveConversationPerSession: {},
-      claudeTerminals: {},
-      activeClaudeTerminalId: {},
       selectedWorkspaceId: null,
       selectedSessionId: null,
       selectedConversationId: null,

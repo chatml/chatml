@@ -45,8 +45,6 @@ describe('appStore — session actions', () => {
       terminalInstances: {},
       activeTerminalId: {},
       terminalPanelVisible: {},
-      claudeTerminals: {},
-      activeClaudeTerminalId: {},
       scriptOutputVersions: {},
       selectedSessionId: null,
       selectedConversationId: null,
@@ -157,8 +155,6 @@ describe('appStore — session actions', () => {
         terminalInstances: { s1: {} as never },
         activeTerminalId: { s1: 't1' },
         terminalPanelVisible: { s1: true },
-        claudeTerminals: { s1: {} as never },
-        activeClaudeTerminalId: { s1: 'ct1' },
       });
 
       useAppStore.getState().removeSession('s1');
@@ -173,8 +169,6 @@ describe('appStore — session actions', () => {
       expect(state.terminalInstances['s1']).toBeUndefined();
       expect(state.activeTerminalId['s1']).toBeUndefined();
       expect(state.terminalPanelVisible['s1']).toBeUndefined();
-      expect(state.claudeTerminals['s1']).toBeUndefined();
-      expect(state.activeClaudeTerminalId['s1']).toBeUndefined();
     });
 
     it('clears selectedSessionId / selectedConversationId when removing the selected session', () => {
@@ -374,8 +368,6 @@ describe('appStore — session actions', () => {
         terminalInstances: { s1: {} as never, s2: {} as never },
         activeTerminalId: { s1: 't1', s2: 't2' },
         terminalPanelVisible: { s1: true, s2: false },
-        claudeTerminals: { s1: {} as never, s2: {} as never },
-        activeClaudeTerminalId: { s1: 'c1', s2: 'c2' },
       });
 
       useAppStore.getState().archiveSession('s1');
@@ -385,8 +377,6 @@ describe('appStore — session actions', () => {
       expect(state.terminalInstances['s2']).toBeDefined();
       expect(state.activeTerminalId['s1']).toBeUndefined();
       expect(state.terminalPanelVisible['s1']).toBeUndefined();
-      expect(state.claudeTerminals['s1']).toBeUndefined();
-      expect(state.activeClaudeTerminalId['s1']).toBeUndefined();
     });
   });
 

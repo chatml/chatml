@@ -216,61 +216,6 @@ describe('useMenuHandlers — custom event surface', () => {
     });
   });
 
-  describe('new-claude-terminal', () => {
-    it('creates a Claude terminal and deselects conversation + file tab on success', () => {
-      const createClaudeTerminal = vi.fn().mockReturnValue({ id: 'ct-1' });
-      const selectConversation = vi.fn();
-      const selectFileTab = vi.fn();
-      useAppStore.setState({
-        sessions: [{ id: 's1', worktreePath: '/work' } as never],
-        selectedSessionId: 's1',
-        createClaudeTerminal,
-        selectConversation,
-        selectFileTab,
-      } as never);
-
-      renderWithOptions();
-      fire('new-claude-terminal');
-
-      expect(createClaudeTerminal).toHaveBeenCalledWith('s1', '/work');
-      expect(selectConversation).toHaveBeenCalledWith(null);
-      expect(selectFileTab).toHaveBeenCalledWith(null);
-    });
-
-    it('dispatches claude-terminal-limit-reached when terminal creation fails', () => {
-      const createClaudeTerminal = vi.fn().mockReturnValue(null);
-      const limitHandler = vi.fn();
-      window.addEventListener('claude-terminal-limit-reached', limitHandler);
-
-      useAppStore.setState({
-        sessions: [{ id: 's1', worktreePath: '/work' } as never],
-        selectedSessionId: 's1',
-        createClaudeTerminal,
-        selectConversation: vi.fn(),
-        selectFileTab: vi.fn(),
-      } as never);
-
-      renderWithOptions();
-      fire('new-claude-terminal');
-
-      expect(limitHandler).toHaveBeenCalledTimes(1);
-      window.removeEventListener('claude-terminal-limit-reached', limitHandler);
-    });
-
-    it('is a no-op when no session is selected', () => {
-      const createClaudeTerminal = vi.fn();
-      useAppStore.setState({
-        selectedSessionId: null,
-        createClaudeTerminal,
-      } as never);
-
-      renderWithOptions();
-      fire('new-claude-terminal');
-
-      expect(createClaudeTerminal).not.toHaveBeenCalled();
-    });
-  });
-
   describe('listener cleanup', () => {
     it('removes window listeners on unmount', () => {
       const { options, unmount } = renderWithOptions();
