@@ -1603,6 +1603,11 @@ export function useWebSocket(enabled: boolean = true) {
             )?.prStatus;
             getStore().updateSession(data.sessionId, updates);
 
+            // Signal to ChecksPanel hooks (usePRStatus, useCIRuns) that they
+            // should refetch detailed data — sidebar badges are already in sync,
+            // but the panel's checkDetails / runs need a fresh GET to update.
+            getStore().setLastPRRefresh(data.sessionId);
+
             if (updates.prStatus === 'open' && prevPrStatus !== 'open') {
               trackEvent('pr_created');
             } else if (updates.prStatus === 'merged' && prevPrStatus !== 'merged') {

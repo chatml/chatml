@@ -628,7 +628,10 @@ func (c *Client) GetCombinedStatus(ctx context.Context, owner, repo, ref string)
 		return nil, err
 	}
 
-	statusURL := fmt.Sprintf("%s/repos/%s/%s/commits/%s/status", c.apiURL, owner, repo, ref)
+	// Request per_page=100 (max). GitHub defaults to 30, which silently
+	// truncates legacy /statuses contexts on PRs with many environments
+	// (e.g. multi-region Vercel previews).
+	statusURL := fmt.Sprintf("%s/repos/%s/%s/commits/%s/status?per_page=100", c.apiURL, owner, repo, ref)
 
 	req, err := http.NewRequestWithContext(ctx, "GET", statusURL, nil)
 	if err != nil {

@@ -2,6 +2,8 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { getPRStatus, refreshPRStatus, ApiError, type PRDetails } from '@/lib/api';
+import { getChecksData, setChecksData } from '@/lib/checksDataCache';
+import { useAppStore } from '@/stores/appStore';
 
 const PR_STATUS_FALLBACK_POLL_MS = 90_000; // 90 seconds (fallback, WebSocket is primary)
 
@@ -53,6 +55,7 @@ export function usePRStatus(
       if (isMountedRef.current) {
         setPRDetails(data);
         setError(null);
+        setChecksData(workspaceId, sessionId, { prDetails: data });
       }
     } catch (err) {
       if (isMountedRef.current) {
@@ -76,25 +79,39 @@ export function usePRStatus(
     }
   }, [workspaceId, sessionId, prStatus]);
 
-  // Exposed refetch function
+  // Fire POST force-check alongside GET; without it, the backend serves cached/eventual
+  // data and the refresh button appears to do nothing. Mirrors the session-change effect.
   const refetch = useCallback(async () => {
     setLoading(true);
+    if (workspaceId && sessionId) {
+      refreshPRStatus(workspaceId, sessionId).catch(() => {});
+    }
     await fetchStatus();
-  }, [fetchStatus]);
+  }, [fetchStatus, workspaceId, sessionId]);
 
-  // Clear stale data immediately when session identity changes.
-  // Without this, the previous session's PR details linger in state
-  // while the new fetch is in-flight, causing downstream consumers
-  // (e.g. PrimaryActionButton) to briefly render stale actions.
-  // Uses setTimeout to satisfy react-hooks/set-state-in-effect.
+  // Stale-while-revalidate on session change: restore cached details for the
+  // new session immediately so downstream consumers (e.g. PrimaryActionButton)
+  // never see another session's stale data, and the panel doesn't blank-flicker.
+  // Also decides whether to flip loading=true (cold start) or revalidate silently.
+  // Apply synchronously — cache restore is itself the urgent update.
   useEffect(() => {
-    const id = setTimeout(() => {
+    if (!workspaceId || !sessionId) {
       setPRDetails(null);
-      setLoading(true);
+      setLoading(false);
       setError(null);
-    }, 0);
-    return () => clearTimeout(id);
-  }, [workspaceId, sessionId]);
+      return;
+    }
+    const cached = getChecksData(workspaceId, sessionId);
+    if (cached?.prDetails !== undefined) {
+      setPRDetails(cached.prDetails ?? null);
+      setLoading(false);
+      setError(null);
+    } else {
+      setPRDetails(null);
+      setLoading(prStatus !== undefined && prStatus !== 'none');
+      setError(null);
+    }
+  }, [workspaceId, sessionId, prStatus]);
 
   // Initial fetch and fetch on session change.
   // Deferred: skip fetch until the caller has been active at least once.
@@ -106,16 +123,11 @@ export function usePRStatus(
     }
 
     if (prStatus && prStatus !== 'none') {
-      setLoading(true);
       fetchStatus();
-
-      // Trigger a backend force-check so we get fresh data from GitHub
-      if (workspaceId && sessionId) {
-        refreshPRStatus(workspaceId, sessionId).catch(() => {
-          // Silently ignore — the force-check is best-effort;
-          // the GET above already returns cached data for immediate display
-        });
-      }
+      // No POST force-check here. The backend prWatcher already pushes
+      // updates over WebSocket (see useWebSocket setLastPRRefresh), and the
+      // manual refetch path explicitly POSTs. Firing it on every session
+      // switch would burn ~5 GitHub calls per click for stale-by-seconds data.
     } else {
       setPRDetails(null);
       setLoading(false);
@@ -126,16 +138,39 @@ export function usePRStatus(
     };
   }, [fetchStatus, prStatus, workspaceId, sessionId, active]);
 
-  // Slow fallback poll when PR is open (WebSocket is the primary update mechanism)
+  // Slow fallback poll when PR is open (WebSocket is the primary update mechanism).
+  // Skips when the document is hidden so backgrounded windows don't keep hitting GitHub.
   useEffect(() => {
     if (!active || !workspaceId || !sessionId || prStatus !== 'open') return;
 
     const interval = setInterval(() => {
+      if (typeof document !== 'undefined' && document.hidden) return;
       fetchStatus();
     }, PR_STATUS_FALLBACK_POLL_MS);
 
     return () => clearInterval(interval);
   }, [active, workspaceId, sessionId, prStatus, fetchStatus]);
+
+  // Refetch immediately when the document becomes visible (covers long sleep / tab return)
+  useEffect(() => {
+    if (!active || !workspaceId || !sessionId || prStatus !== 'open') return;
+    const onVisible = () => {
+      if (!document.hidden) fetchStatus();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
+  }, [active, workspaceId, sessionId, prStatus, fetchStatus]);
+
+  // Refetch when the backend prWatcher signals a PR change for this session.
+  // Eliminates the 30–90s gap between a check transition and the panel reflecting it.
+  // Debounced so a burst of WS messages collapses into one fetch.
+  const lastPRRefresh = useAppStore((s) => s.lastPRRefresh);
+  useEffect(() => {
+    if (!active || !workspaceId || !sessionId) return;
+    if (!lastPRRefresh || lastPRRefresh.sessionId !== sessionId) return;
+    const timer = setTimeout(() => fetchStatus(), 400);
+    return () => clearTimeout(timer);
+  }, [active, workspaceId, sessionId, lastPRRefresh, fetchStatus]);
 
   return { prDetails, loading, error, refetch };
 }

@@ -12,8 +12,10 @@ import {
   type WorkflowJobDTO,
   type CIAnalysisResult,
 } from '@/lib/api';
+import { getChecksData, setChecksData } from '@/lib/checksDataCache';
+import { useAppStore } from '@/stores/appStore';
 
-const CI_POLL_INTERVAL_MS = 30000; // 30 seconds
+const CI_POLL_INTERVAL_MS = 30000; // Polled while runs are in-progress
 const AUTH_RETRY_DELAY_MS = 3000; // Retry delay when GitHub auth is pending
 
 interface UseCIRunsResult {
@@ -64,7 +66,7 @@ export function useCIRuns(
     (run) => run.status === 'in_progress' || run.status === 'queued'
   );
 
-  // Fetch workflow runs (stable — reads from refs)
+  // Fetch workflow runs (stable — reads from refs).
   const fetchRuns = useCallback(async (signal?: AbortSignal) => {
     const wsId = workspaceIdRef.current;
     const sessId = sessionIdRef.current;
@@ -80,6 +82,7 @@ export function useCIRuns(
       if (!signal?.aborted) {
         setRuns(data);
         setError(null);
+        setChecksData(wsId, sessId, { runs: data });
       }
     } catch (err) {
       if (signal?.aborted) return;
@@ -154,35 +157,75 @@ export function useCIRuns(
     [workspaceId, sessionId]
   );
 
+  // Stale-while-revalidate on session change: restore cached runs immediately
+  // so switching sessions doesn't blank-flicker, and decide whether to flip
+  // loading=true here (cold start) or skip it (cache hit, revalidate silently).
+  // Apply synchronously — cache restore is itself the urgent update.
+  useEffect(() => {
+    if (!workspaceId || !sessionId) {
+      setRuns([]);
+      setLoading(false);
+      return;
+    }
+    const cached = getChecksData(workspaceId, sessionId);
+    if (cached?.runs) {
+      setRuns(cached.runs);
+      setLoading(false);
+      setError(null);
+    } else {
+      setLoading(true);
+    }
+  }, [workspaceId, sessionId]);
+
   // Initial fetch and fetch on session change.
   // Deferred: skip fetch until the Checks tab has been opened at least once.
   useEffect(() => {
     if (!hasBeenActiveRef.current) return;
+    if (!workspaceId || !sessionId) return;
 
     const abortController = new AbortController();
-
-    if (workspaceId && sessionId) {
-      setLoading(true);
-      fetchRuns(abortController.signal);
-    } else {
-      setRuns([]);
-    }
+    fetchRuns(abortController.signal);
 
     return () => {
       abortController.abort();
     };
   }, [fetchRuns, workspaceId, sessionId, active]);
 
-  // Periodic polling when there are in-progress runs
+  // Periodic polling — only while runs are in-progress.
+  // New-run detection is handled by the prWatcher signal (below) and the
+  // visibility-change refetch, so an idle baseline poll would just burn rate.
+  // Skips the fetch when the document is hidden.
   useEffect(() => {
     if (!active || !workspaceId || !sessionId || !hasInProgressRuns) return;
 
     const interval = setInterval(() => {
+      if (typeof document !== 'undefined' && document.hidden) return;
       fetchRuns();
     }, CI_POLL_INTERVAL_MS);
 
     return () => clearInterval(interval);
   }, [active, workspaceId, sessionId, hasInProgressRuns, fetchRuns]);
+
+  // Refetch immediately when the document becomes visible (handles long sleep / tab switch)
+  useEffect(() => {
+    if (!active || !workspaceId || !sessionId) return;
+    const onVisible = () => {
+      if (!document.hidden) fetchRuns();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
+  }, [active, workspaceId, sessionId, fetchRuns]);
+
+  // Refetch when the backend prWatcher signals a PR change for this session.
+  // Closes the 30–90s gap between a check transition on GitHub and the panel
+  // reflecting it. Debounced so a burst of WS messages collapses into one fetch.
+  const lastPRRefresh = useAppStore((s) => s.lastPRRefresh);
+  useEffect(() => {
+    if (!active || !workspaceId || !sessionId) return;
+    if (!lastPRRefresh || lastPRRefresh.sessionId !== sessionId) return;
+    const timer = setTimeout(() => fetchRuns(), 400);
+    return () => clearTimeout(timer);
+  }, [active, workspaceId, sessionId, lastPRRefresh, fetchRuns]);
 
   return {
     runs,

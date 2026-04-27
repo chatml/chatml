@@ -7,11 +7,23 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 	"time"
 )
 
 // maxLogSize is the maximum size of job logs to download (50MB)
 const maxLogSize = 50 * 1024 * 1024
+
+// Pagination caps. Each page is up to 100 items, so 5 pages = 500 items.
+// Beyond this, the panel UX would be unwieldy and we'd risk runaway responses.
+// The cap is a hard safety net: the loop normally terminates earlier on
+// `len(page) < pagePerPage` or once we've accumulated `total_count` items.
+const (
+	maxWorkflowRunPages = 5
+	maxWorkflowJobPages = 5
+	maxCheckRunPages    = 5
+	pagePerPage         = 100
+)
 
 // WorkflowRun represents a GitHub Actions workflow run
 type WorkflowRun struct {
@@ -97,60 +109,73 @@ type githubStep struct {
 	CompletedAt *time.Time `json:"completed_at"`
 }
 
-// ListWorkflowRuns lists workflow runs for a repository, optionally filtered by branch
+// ListWorkflowRuns lists workflow runs for a repository, optionally filtered by branch.
+// Paginates until total_count is reached or maxWorkflowRunPages is hit, so repos with
+// many recent runs don't silently truncate at the first page.
 func (c *Client) ListWorkflowRuns(ctx context.Context, owner, repo, branch string) ([]WorkflowRun, error) {
 	token, err := c.getValidToken(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	reqURL := fmt.Sprintf("%s/repos/%s/%s/actions/runs?per_page=20", c.apiURL, owner, repo)
-	if branch != "" {
-		reqURL = fmt.Sprintf("%s&branch=%s", reqURL, url.QueryEscape(branch))
-	}
-
-	req, err := http.NewRequestWithContext(ctx, "GET", reqURL, nil)
-	if err != nil {
-		return nil, fmt.Errorf("creating request: %w", err)
-	}
-
-	req.Header.Set("Authorization", "Bearer "+token)
-	req.Header.Set("Accept", "application/vnd.github+json")
-
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("fetching workflow runs: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("GitHub returned %d: %s", resp.StatusCode, body)
-	}
-
-	var ghResp githubWorkflowRunsResponse
-	if err := json.NewDecoder(resp.Body).Decode(&ghResp); err != nil {
-		return nil, fmt.Errorf("decoding response: %w", err)
-	}
-
-	runs := make([]WorkflowRun, len(ghResp.WorkflowRuns))
-	for i, run := range ghResp.WorkflowRuns {
-		conclusion := ""
-		if run.Conclusion != nil {
-			conclusion = *run.Conclusion
+	var runs []WorkflowRun
+	for page := 1; page <= maxWorkflowRunPages; page++ {
+		q := url.Values{}
+		q.Set("per_page", strconv.Itoa(pagePerPage))
+		q.Set("page", strconv.Itoa(page))
+		if branch != "" {
+			q.Set("branch", branch)
 		}
-		runs[i] = WorkflowRun{
-			ID:         run.ID,
-			Name:       run.Name,
-			Status:     run.Status,
-			Conclusion: conclusion,
-			HeadSHA:    run.HeadSHA,
-			HeadBranch: run.HeadBranch,
-			HTMLURL:    run.HTMLURL,
-			JobsURL:    run.JobsURL,
-			LogsURL:    run.LogsURL,
-			CreatedAt:  run.CreatedAt,
-			UpdatedAt:  run.UpdatedAt,
+		reqURL := fmt.Sprintf("%s/repos/%s/%s/actions/runs?%s", c.apiURL, owner, repo, q.Encode())
+
+		req, err := http.NewRequestWithContext(ctx, "GET", reqURL, nil)
+		if err != nil {
+			return nil, fmt.Errorf("creating request: %w", err)
+		}
+		req.Header.Set("Authorization", "Bearer "+token)
+		req.Header.Set("Accept", "application/vnd.github+json")
+
+		resp, err := c.httpClient.Do(req)
+		if err != nil {
+			return nil, fmt.Errorf("fetching workflow runs: %w", err)
+		}
+
+		if resp.StatusCode != http.StatusOK {
+			body, _ := io.ReadAll(resp.Body)
+			resp.Body.Close()
+			return nil, fmt.Errorf("GitHub returned %d: %s", resp.StatusCode, body)
+		}
+
+		var ghResp githubWorkflowRunsResponse
+		if err := json.NewDecoder(resp.Body).Decode(&ghResp); err != nil {
+			resp.Body.Close()
+			return nil, fmt.Errorf("decoding response: %w", err)
+		}
+		resp.Body.Close()
+
+		for _, run := range ghResp.WorkflowRuns {
+			conclusion := ""
+			if run.Conclusion != nil {
+				conclusion = *run.Conclusion
+			}
+			runs = append(runs, WorkflowRun{
+				ID:         run.ID,
+				Name:       run.Name,
+				Status:     run.Status,
+				Conclusion: conclusion,
+				HeadSHA:    run.HeadSHA,
+				HeadBranch: run.HeadBranch,
+				HTMLURL:    run.HTMLURL,
+				JobsURL:    run.JobsURL,
+				LogsURL:    run.LogsURL,
+				CreatedAt:  run.CreatedAt,
+				UpdatedAt:  run.UpdatedAt,
+			})
+		}
+
+		// Stop when this page returned fewer than per_page items, or we've reached total_count.
+		if len(ghResp.WorkflowRuns) < pagePerPage || len(runs) >= ghResp.TotalCount {
+			break
 		}
 	}
 
@@ -214,85 +239,96 @@ func (c *Client) GetWorkflowRun(ctx context.Context, owner, repo string, runID i
 	}, nil
 }
 
-// ListWorkflowJobs lists jobs for a workflow run
+// ListWorkflowJobs lists jobs for a workflow run.
+// Paginates so large matrix builds (>100 jobs) aren't silently truncated.
 func (c *Client) ListWorkflowJobs(ctx context.Context, owner, repo string, runID int64) ([]WorkflowJob, error) {
 	token, err := c.getValidToken(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	url := fmt.Sprintf("%s/repos/%s/%s/actions/runs/%d/jobs?per_page=100", c.apiURL, owner, repo, runID)
+	var jobs []WorkflowJob
+	for page := 1; page <= maxWorkflowJobPages; page++ {
+		q := url.Values{}
+		q.Set("per_page", strconv.Itoa(pagePerPage))
+		q.Set("page", strconv.Itoa(page))
+		reqURL := fmt.Sprintf("%s/repos/%s/%s/actions/runs/%d/jobs?%s", c.apiURL, owner, repo, runID, q.Encode())
 
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
-	if err != nil {
-		return nil, fmt.Errorf("creating request: %w", err)
-	}
+		req, err := http.NewRequestWithContext(ctx, "GET", reqURL, nil)
+		if err != nil {
+			return nil, fmt.Errorf("creating request: %w", err)
+		}
+		req.Header.Set("Authorization", "Bearer "+token)
+		req.Header.Set("Accept", "application/vnd.github+json")
 
-	req.Header.Set("Authorization", "Bearer "+token)
-	req.Header.Set("Accept", "application/vnd.github+json")
-
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("fetching jobs: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("GitHub returned %d: %s", resp.StatusCode, body)
-	}
-
-	var ghResp githubJobsResponse
-	if err := json.NewDecoder(resp.Body).Decode(&ghResp); err != nil {
-		return nil, fmt.Errorf("decoding response: %w", err)
-	}
-
-	jobs := make([]WorkflowJob, len(ghResp.Jobs))
-	for i, job := range ghResp.Jobs {
-		conclusion := ""
-		if job.Conclusion != nil {
-			conclusion = *job.Conclusion
+		resp, err := c.httpClient.Do(req)
+		if err != nil {
+			return nil, fmt.Errorf("fetching jobs: %w", err)
 		}
 
-		completedAt := time.Time{}
-		if job.CompletedAt != nil {
-			completedAt = *job.CompletedAt
+		if resp.StatusCode != http.StatusOK {
+			body, _ := io.ReadAll(resp.Body)
+			resp.Body.Close()
+			return nil, fmt.Errorf("GitHub returned %d: %s", resp.StatusCode, body)
 		}
 
-		steps := make([]JobStep, len(job.Steps))
-		for j, step := range job.Steps {
-			stepConclusion := ""
-			if step.Conclusion != nil {
-				stepConclusion = *step.Conclusion
+		var ghResp githubJobsResponse
+		if err := json.NewDecoder(resp.Body).Decode(&ghResp); err != nil {
+			resp.Body.Close()
+			return nil, fmt.Errorf("decoding response: %w", err)
+		}
+		resp.Body.Close()
+
+		for _, job := range ghResp.Jobs {
+			conclusion := ""
+			if job.Conclusion != nil {
+				conclusion = *job.Conclusion
 			}
-			startedAt := time.Time{}
-			if step.StartedAt != nil {
-				startedAt = *step.StartedAt
+
+			completedAt := time.Time{}
+			if job.CompletedAt != nil {
+				completedAt = *job.CompletedAt
 			}
-			stepCompletedAt := time.Time{}
-			if step.CompletedAt != nil {
-				stepCompletedAt = *step.CompletedAt
+
+			steps := make([]JobStep, len(job.Steps))
+			for j, step := range job.Steps {
+				stepConclusion := ""
+				if step.Conclusion != nil {
+					stepConclusion = *step.Conclusion
+				}
+				startedAt := time.Time{}
+				if step.StartedAt != nil {
+					startedAt = *step.StartedAt
+				}
+				stepCompletedAt := time.Time{}
+				if step.CompletedAt != nil {
+					stepCompletedAt = *step.CompletedAt
+				}
+				steps[j] = JobStep{
+					Name:        step.Name,
+					Status:      step.Status,
+					Conclusion:  stepConclusion,
+					Number:      step.Number,
+					StartedAt:   startedAt,
+					CompletedAt: stepCompletedAt,
+				}
 			}
-			steps[j] = JobStep{
-				Name:        step.Name,
-				Status:      step.Status,
-				Conclusion:  stepConclusion,
-				Number:      step.Number,
-				StartedAt:   startedAt,
-				CompletedAt: stepCompletedAt,
-			}
+
+			jobs = append(jobs, WorkflowJob{
+				ID:          job.ID,
+				RunID:       job.RunID,
+				Name:        job.Name,
+				Status:      job.Status,
+				Conclusion:  conclusion,
+				StartedAt:   job.StartedAt,
+				CompletedAt: completedAt,
+				HTMLURL:     job.HTMLURL,
+				Steps:       steps,
+			})
 		}
 
-		jobs[i] = WorkflowJob{
-			ID:          job.ID,
-			RunID:       job.RunID,
-			Name:        job.Name,
-			Status:      job.Status,
-			Conclusion:  conclusion,
-			StartedAt:   job.StartedAt,
-			CompletedAt: completedAt,
-			HTMLURL:     job.HTMLURL,
-			Steps:       steps,
+		if len(ghResp.Jobs) < pagePerPage || len(jobs) >= ghResp.TotalCount {
+			break
 		}
 	}
 

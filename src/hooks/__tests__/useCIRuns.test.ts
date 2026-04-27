@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { useCIRuns } from '../useCIRuns';
+import { clearChecksDataCache } from '@/lib/checksDataCache';
 
 // vi.mock is hoisted above imports by Vitest's transform, so the import
 // below always receives the mocked module regardless of source order.
@@ -101,6 +102,7 @@ describe('useCIRuns', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     vi.clearAllMocks();
+    clearChecksDataCache();
     mockedGetCIRuns.mockResolvedValue([makeRun()]);
   });
 
@@ -259,28 +261,32 @@ describe('useCIRuns', () => {
 
       expect(mockedGetCIRuns).toHaveBeenCalledTimes(1);
 
-      // Advance past two poll intervals — no additional calls expected
+      // No in-progress runs → no polling. New-run detection comes from the
+      // prWatcher signal and visibility-change refetch instead.
+      await flushAndAdvance(30_000);
+      expect(mockedGetCIRuns).toHaveBeenCalledTimes(1);
+
       await flushAndAdvance(60_000);
       expect(mockedGetCIRuns).toHaveBeenCalledTimes(1);
     });
 
-    it('stops polling when in-progress runs complete', async () => {
+    it('stops polling once in-progress runs complete', async () => {
       // First fetch returns in-progress, second returns completed
       mockedGetCIRuns
         .mockResolvedValueOnce([makeRun({ status: 'in_progress', conclusion: '' })])
-        .mockResolvedValueOnce([makeRun({ status: 'completed', conclusion: 'success' })]);
+        .mockResolvedValue([makeRun({ status: 'completed', conclusion: 'success' })]);
 
       renderHook(() => useCIRuns('ws-1', 'session-1'));
       await flushAndAdvance();
 
       expect(mockedGetCIRuns).toHaveBeenCalledTimes(1);
 
-      // First poll fires — returns completed
+      // First fast poll fires at 30s — returns completed
       await flushAndAdvance(30_000);
       expect(mockedGetCIRuns).toHaveBeenCalledTimes(2);
 
-      // Next interval — polling should have stopped
-      await flushAndAdvance(30_000);
+      // No more in-progress runs → polling stops.
+      await flushAndAdvance(60_000);
       expect(mockedGetCIRuns).toHaveBeenCalledTimes(2);
     });
 

@@ -346,6 +346,11 @@ interface AppState {
   // Git index change signal from branch watcher (via WebSocket session_stats_update)
   lastStatsInvalidation: { sessionId: string; timestamp: number } | null;
 
+  // PR/check change signal from backend prWatcher (via WebSocket session_pr_update).
+  // Used by usePRStatus / useCIRuns to refetch detailed data without waiting for
+  // the next poll cycle.
+  lastPRRefresh: { sessionId: string; timestamp: number } | null;
+
   // Query responses from agent (dynamic model info from SDK)
   supportedModels: Array<{
     value: string;
@@ -640,6 +645,7 @@ interface AppState {
   // File watcher actions
   setLastFileChange: (event: { workspaceId: string; path: string; fullPath: string }) => void;
   setLastStatsInvalidation: (sessionId: string) => void;
+  setLastPRRefresh: (sessionId: string) => void;
 }
 
 /** Build a sessionId → Conversation[] lookup from a flat conversations array. */
@@ -706,6 +712,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   summaries: {},
   lastFileChange: null,
   lastStatsInvalidation: null,
+  lastPRRefresh: null,
   messagePagination: {},
 
   // Query responses
@@ -2975,6 +2982,9 @@ updateFileTabContent: (id, content) => set((state) => ({
   }),
   setLastStatsInvalidation: (sessionId) => set({
     lastStatsInvalidation: { sessionId, timestamp: Date.now() },
+  }),
+  setLastPRRefresh: (sessionId) => set({
+    lastPRRefresh: { sessionId, timestamp: Date.now() },
   }),
 
 }));
