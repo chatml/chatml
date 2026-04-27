@@ -63,17 +63,13 @@ describe('lib/api/skills', () => {
     });
 
     it('forwards AbortSignal', async () => {
+      // Abort BEFORE invoking so the implementation sees an already-aborted
+      // signal — no real-time race against MSW.
       const controller = new AbortController();
-      server.use(
-        http.get(`${API_BASE}/api/skills`, async () => {
-          await new Promise((resolve) => setTimeout(resolve, 100));
-          return HttpResponse.json([]);
-        })
-      );
-
-      const promise = listSkills(undefined, controller.signal);
       controller.abort();
-      await expect(promise).rejects.toThrow();
+      await expect(
+        listSkills(undefined, controller.signal)
+      ).rejects.toThrow();
     });
   });
 

@@ -14,9 +14,20 @@ vi.mock('@/lib/navigation', () => ({
   navigate: vi.fn(),
 }));
 
+// Mutable accessor so individual tests can flip the flag without re-importing
+// the module under test. The hook reads ENABLE_BROWSER_TABS via a normal
+// import binding, so changing this flag must happen *before* the hook reads
+// it for the current render cycle — set it in `beforeEach` (or directly in
+// the test) before `renderShortcuts()`.
+let ENABLE_BROWSER_TABS_VALUE = true;
 vi.mock('@/lib/constants', async () => {
   const actual = await vi.importActual<typeof import('@/lib/constants')>('@/lib/constants');
-  return { ...actual, ENABLE_BROWSER_TABS: true };
+  return {
+    ...actual,
+    get ENABLE_BROWSER_TABS() {
+      return ENABLE_BROWSER_TABS_VALUE;
+    },
+  };
 });
 
 import { switchToTab, createAndSwitchToNewTab } from '@/components/navigation/BrowserTabBar';
@@ -78,6 +89,7 @@ function dispatch(event: KeyboardEvent) {
 
 describe('useGlobalShortcuts', () => {
   beforeEach(() => {
+    ENABLE_BROWSER_TABS_VALUE = true;
     useTabStore.setState({ tabOrder: [], activeTabId: '' } as never);
   });
 
@@ -276,6 +288,34 @@ describe('useGlobalShortcuts', () => {
       renderShortcuts({ setZenMode, zenMode: false });
       dispatch(key({ key: 'Escape' }));
       expect(setZenMode).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('Browser tab management — flag disabled', () => {
+    beforeEach(() => {
+      // Flip the feature flag *before* renderShortcuts so the hook captures
+      // the disabled value at mount.
+      ENABLE_BROWSER_TABS_VALUE = false;
+    });
+
+    it('Cmd+T does not create a tab when ENABLE_BROWSER_TABS is false', () => {
+      renderShortcuts();
+      dispatch(key({ key: 't', metaKey: true }));
+      expect(createAndSwitchToNewTab).not.toHaveBeenCalled();
+    });
+
+    it('Cmd+1..9 does not switch tabs when ENABLE_BROWSER_TABS is false', () => {
+      useTabStore.setState({ tabOrder: ['ta', 'tb', 'tc'], activeTabId: 'ta' } as never);
+      renderShortcuts();
+      dispatch(key({ key: '1', metaKey: true }));
+      expect(switchToTab).not.toHaveBeenCalled();
+    });
+
+    it('Cmd+Shift+] does not cycle tabs when ENABLE_BROWSER_TABS is false', () => {
+      useTabStore.setState({ tabOrder: ['ta', 'tb'], activeTabId: 'ta' } as never);
+      renderShortcuts();
+      dispatch(key({ key: ']', metaKey: true, shiftKey: true }));
+      expect(switchToTab).not.toHaveBeenCalled();
     });
   });
 

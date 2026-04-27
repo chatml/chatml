@@ -98,6 +98,14 @@ describe('useApprovalTimer', () => {
 });
 
 describe('useApprovalKeyboard', () => {
+  // CAVEAT: when `opts.target` is supplied we override `event.target` via
+  // `Object.defineProperty`, but the event is still dispatched on `window`,
+  // so it does NOT bubble through the supplied target's DOM ancestry. This
+  // works for the production hook because it only inspects `e.target.tagName`
+  // (cheap shallow read). If the hook is ever changed to walk ancestors —
+  // e.g. `e.target.closest('textarea, input, [contenteditable]')` — this
+  // helper will silently stop matching reality. Append a real DOM dispatch
+  // path here if that day comes.
   function dispatchKey(opts: KeyboardEventInit & { target?: EventTarget }) {
     act(() => {
       const event = new KeyboardEvent('keydown', { ...opts, cancelable: true, bubbles: true });

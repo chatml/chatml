@@ -1,14 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, waitFor } from '@testing-library/react';
 import { useSettingsStore } from '@/stores/settingsStore';
-
-// Flush pending microtasks deterministically (replaces audit F-3 negative-wait
-// `setTimeout(r, 50)` patterns that race against the hook's async callbacks).
-async function flushAsync() {
-  await Promise.resolve();
-  await Promise.resolve();
-  await Promise.resolve();
-}
+import { flushAsync } from '@/test-utils/async';
 
 // ---- Mocks ----
 

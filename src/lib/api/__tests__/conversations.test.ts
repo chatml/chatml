@@ -38,7 +38,12 @@ const mockMessage: MessageDTO = {
   content: 'Hello',
   timestamp: '2026-04-26T00:00:00Z',
   attachments: [
-    { id: 'att-1', type: 'file', name: 'a.ts', mimeType: 'text/typescript', size: 100 },
+    // 'text/x-typescript' (or 'application/typescript') is closer to the
+    // unregistered-but-conventional MIME for .ts files. The field isn't
+    // parsed by the API client — the value is just round-tripped — but
+    // keeping the fixture conventional avoids it becoming a copy-paste
+    // template for less informed tests.
+    { id: 'att-1', type: 'file', name: 'a.ts', mimeType: 'text/x-typescript', size: 100 },
   ],
   toolUsage: [{ id: 't-1', tool: 'Read', success: true }],
   thinkingContent: 'Considering...',
@@ -187,17 +192,13 @@ describe('lib/api/conversations', () => {
     });
 
     it('forwards AbortSignal', async () => {
+      // Abort BEFORE invoking the API so the implementation sees an
+      // already-aborted signal — no real-time race against MSW.
       const controller = new AbortController();
-      server.use(
-        http.get(`${API_BASE}/api/conversations/:convId/messages`, async () => {
-          await new Promise((resolve) => setTimeout(resolve, 100));
-          return HttpResponse.json({ messages: [], hasMore: false, totalCount: 0 });
-        })
-      );
-
-      const promise = getConversationMessages('conv-1', { signal: controller.signal });
       controller.abort();
-      await expect(promise).rejects.toThrow();
+      await expect(
+        getConversationMessages('conv-1', { signal: controller.signal })
+      ).rejects.toThrow();
     });
   });
 
@@ -582,23 +583,27 @@ describe('lib/api/conversations', () => {
       });
     });
 
-    it('omits notes when undefined (still passes the key)', async () => {
-      let capturedBody: unknown;
+    it('omits the notes key from the wire body when not provided', async () => {
+      // JSON.stringify drops `undefined` values, so passing `notes: undefined`
+      // results in the key being absent from the encoded body. Pin the exact
+      // shape so a future refactor that swaps in a default (empty string,
+      // null, etc.) doesn't silently change the wire contract.
+      let capturedBody: Record<string, unknown> | undefined;
       server.use(
         http.post(
           `${API_BASE}/api/conversations/:convId/answer-qa-handoff`,
           async ({ request }) => {
-            capturedBody = await request.json();
+            capturedBody = (await request.json()) as Record<string, unknown>;
             return new HttpResponse(null, { status: 204 });
           }
         )
       );
 
       await answerQAHandoff('conv-1', 'req-1', false);
-      expect(capturedBody).toMatchObject({
-        requestId: 'req-1',
-        completed: false,
-      });
+      expect(capturedBody).toEqual({ requestId: 'req-1', completed: false });
+      expect(
+        Object.prototype.hasOwnProperty.call(capturedBody!, 'notes'),
+      ).toBe(false);
     });
 
     it('throws ApiError on failure', async () => {

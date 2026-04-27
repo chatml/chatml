@@ -241,19 +241,13 @@ describe('lib/api/git', () => {
     });
 
     it('forwards AbortSignal so callers can cancel', async () => {
+      // Abort BEFORE invoking so the implementation sees an already-aborted
+      // signal — no real-time race against MSW.
       const controller = new AbortController();
-      server.use(
-        http.get(`${API_BASE}/api/repos/:workspaceId/sessions/:sessionId/snapshot`, async () => {
-          // Hold the request open until aborted
-          await new Promise((resolve) => setTimeout(resolve, 100));
-          return HttpResponse.json(mockSnapshot);
-        })
-      );
-
-      const promise = getSessionSnapshot('ws-1', 'session-1', controller.signal);
       controller.abort();
-
-      await expect(promise).rejects.toThrow();
+      await expect(
+        getSessionSnapshot('ws-1', 'session-1', controller.signal)
+      ).rejects.toThrow();
     });
 
     it('omits signal cleanly when not provided', async () => {

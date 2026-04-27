@@ -21,9 +21,13 @@ describe('PlateInput', () => {
     expect(container.querySelector('[data-slate-editor]')).toBeInTheDocument();
   });
 
-  it('renders the placeholder text', () => {
+  it('renders when given a placeholder prop', () => {
+    // Plate.js renders the placeholder via internal slots / attributes that
+    // jsdom doesn't expose reliably across versions. We assert the editor
+    // mounts and accepts the prop without throwing; verifying that the
+    // placeholder text is actually visible to the user belongs in an e2e
+    // test rather than jsdom.
     const { container } = render(<PlateInput placeholder="Type a message..." />);
-    // Plate uses data attributes for placeholders
     const editor = container.querySelector('[data-slate-editor]');
     expect(editor).toBeInTheDocument();
   });

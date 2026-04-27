@@ -25,6 +25,7 @@ import {
 } from '../useWebSocket';
 import { useAppStore } from '@/stores/appStore';
 import { useConnectionStore } from '@/stores/connectionStore';
+import { flushAsync } from '@/test-utils/async';
 
 // --- Mocks for hook dependencies ----------------------------------------------------
 
@@ -216,7 +217,7 @@ describe('useWebSocket integration', () => {
     it('does not connect when enabled=false', async () => {
       renderHook(() => useWebSocket(false));
       // Give any pending promises a chance to resolve
-      await new Promise((r) => setTimeout(r, 0));
+      await flushAsync();
       expect(MockWebSocket.latest).toBeUndefined();
     });
 
@@ -329,9 +330,16 @@ describe('useWebSocket integration', () => {
       expect(state.mcpServerSources.github).toBe('workspace');
     });
 
+    // Use vi.spyOn rather than setState({ updateSession: vi.fn() }) so the spy
+    // patches the *existing* action reference on the live state object. This
+    // works regardless of whether the hook reads the action via getState() per
+    // dispatch (which useWebSocket does via `getStore = useAppStore.getState`)
+    // or captures it once on mount, and vi auto-restores after the test.
+
     it('dispatches session_name_update to updateSession', async () => {
-      const updateSession = vi.fn();
-      useAppStore.setState({ updateSession } as never);
+      const updateSpy = vi
+        .spyOn(useAppStore.getState(), 'updateSession')
+        .mockImplementation(() => {});
 
       const { ws } = await setupAndOpen();
       act(() => {
@@ -342,15 +350,17 @@ describe('useWebSocket integration', () => {
         });
       });
 
-      expect(updateSession).toHaveBeenCalledWith('session-1', {
+      expect(updateSpy).toHaveBeenCalledWith('session-1', {
         name: 'Renamed',
         branch: 'feat/new',
       });
+      updateSpy.mockRestore();
     });
 
     it('dispatches session_task_status_update', async () => {
-      const updateSession = vi.fn();
-      useAppStore.setState({ updateSession } as never);
+      const updateSpy = vi
+        .spyOn(useAppStore.getState(), 'updateSession')
+        .mockImplementation(() => {});
 
       const { ws } = await setupAndOpen();
       act(() => {
@@ -361,7 +371,8 @@ describe('useWebSocket integration', () => {
         });
       });
 
-      expect(updateSession).toHaveBeenCalledWith('session-1', { taskStatus: 'in_progress' });
+      expect(updateSpy).toHaveBeenCalledWith('session-1', { taskStatus: 'in_progress' });
+      updateSpy.mockRestore();
     });
 
     it('logs and continues when message JSON is malformed', async () => {
@@ -381,8 +392,9 @@ describe('useWebSocket integration', () => {
     });
 
     it('ignores session_name_update when payload missing name', async () => {
-      const updateSession = vi.fn();
-      useAppStore.setState({ updateSession } as never);
+      const updateSpy = vi
+        .spyOn(useAppStore.getState(), 'updateSession')
+        .mockImplementation(() => {});
 
       const { ws } = await setupAndOpen();
       act(() => {
@@ -393,7 +405,8 @@ describe('useWebSocket integration', () => {
         });
       });
 
-      expect(updateSession).not.toHaveBeenCalled();
+      expect(updateSpy).not.toHaveBeenCalled();
+      updateSpy.mockRestore();
     });
   });
 
@@ -415,7 +428,7 @@ describe('useWebSocket integration', () => {
       await act(async () => {
         result.current.reconnect();
         // give the async connect() a chance
-        await new Promise((r) => setTimeout(r, 0));
+        await flushAsync();
       });
 
       expect(MockWebSocket.instances.length).toBeGreaterThan(firstCount);

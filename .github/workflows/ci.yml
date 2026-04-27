@@ -71,8 +71,18 @@ jobs:
         run: |
           pnpm run lint > lint.log 2>&1 &
           LINT_PID=$!
+          set +e
           pnpm run test:coverage
-          wait $LINT_PID || (cat lint.log && exit 1)
+          TEST_RC=$?
+          wait $LINT_PID
+          LINT_RC=$?
+          set -e
+          # Always surface lint output so reviewers can see both checks
+          # regardless of which one failed first.
+          cat lint.log
+          if [ $TEST_RC -ne 0 ] || [ $LINT_RC -ne 0 ]; then
+            exit 1
+          fi
 
       - name: Upload coverage report
         if: always()

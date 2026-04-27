@@ -16,8 +16,14 @@ export function extractContent(value: Value): {
   const parts: string[] = [];
   const mentionedFiles: string[] = [];
 
+  // Defensive depth cap. Plate's own pipeline limits depth, but content can
+  // arrive from external clipboard / drag-drop sources, and an unbounded
+  // recursion would blow the stack on a pathological / cyclic Value.
+  const MAX_DEPTH = 200;
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Plate nodes have dynamic structure
-  const processNode = (node: any) => {
+  const processNode = (node: any, depth: number = 0) => {
+    if (depth > MAX_DEPTH) return;
     if (node.text !== undefined) {
       parts.push(node.text);
     } else if (node.type === 'mention') {
@@ -26,7 +32,8 @@ export function extractContent(value: Value): {
         mentionedFiles.push(node.value);
       }
     } else if (node.children) {
-      node.children.forEach(processNode);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Plate nodes have dynamic structure
+      node.children.forEach((child: any) => processNode(child, depth + 1));
     }
   };
 

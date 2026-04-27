@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, waitFor } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
 import { server } from '@/__mocks__/server';
+import { flushAsync } from '@/test-utils/async';
 import { useAvatars, getCachedAvatar, clearAvatarCache } from '../useAvatars';
 
 const API_BASE = 'http://localhost:9876';
@@ -83,9 +84,12 @@ describe('useAvatars', () => {
     await waitFor(() => expect(result.current['x@example.com']).toBeDefined());
     const initial = getCount;
 
-    // Re-render with the same email — should hit cache, not refetch
+    // Re-render with the same email — should hit cache, not refetch.
+    // The cache lookup is synchronous, so we don't wait "no fetch within N ms"
+    // (a flaky negative-timer pattern); we just flush queued microtasks and
+    // assert no additional GET fired.
     rerender({ emails: ['x@example.com'] });
-    await new Promise((r) => setTimeout(r, 100));
+    await flushAsync();
 
     expect(getCount).toBe(initial);
     expect(result.current['x@example.com']).toBe('https://avatars/x@example.com');

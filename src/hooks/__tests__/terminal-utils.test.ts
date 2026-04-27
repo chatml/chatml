@@ -134,7 +134,18 @@ describe('getShellFallbackChain', () => {
     });
   });
 
-  it("returns unix defaults when not in Tauri (invoke fails) on unix", async () => {
+  // The unix fallback chain probes both /bin/* and /usr/bin/* variants so
+  // distros (NixOS, Alpine, containers) without /bin/zsh still resolve.
+  const UNIX_DEFAULTS = [
+    '/bin/zsh',
+    '/usr/bin/zsh',
+    '/bin/bash',
+    '/usr/bin/bash',
+    '/bin/sh',
+    '/usr/bin/sh',
+  ];
+
+  it('returns unix defaults when not in Tauri (invoke fails) on unix', async () => {
     Object.defineProperty(navigator, 'platform', {
       value: 'MacIntel',
       configurable: true,
@@ -142,7 +153,7 @@ describe('getShellFallbackChain', () => {
     mockedInvoke.mockRejectedValueOnce(new Error('not in Tauri'));
 
     const chain = await getShellFallbackChain();
-    expect(chain).toEqual(['/bin/zsh', '/bin/bash', '/bin/sh']);
+    expect(chain).toEqual(UNIX_DEFAULTS);
   });
 
   it("returns windows defaults when not in Tauri on windows", async () => {
@@ -179,12 +190,7 @@ describe('getShellFallbackChain', () => {
     mockedInvoke.mockResolvedValueOnce('/usr/local/bin/fish');
 
     const chain = await getShellFallbackChain();
-    expect(chain).toEqual([
-      '/usr/local/bin/fish',
-      '/bin/zsh',
-      '/bin/bash',
-      '/bin/sh',
-    ]);
+    expect(chain).toEqual(['/usr/local/bin/fish', ...UNIX_DEFAULTS]);
   });
 
   it('falls back to defaults when invoke returns null', async () => {
@@ -195,7 +201,7 @@ describe('getShellFallbackChain', () => {
     mockedInvoke.mockResolvedValueOnce(null);
 
     const chain = await getShellFallbackChain();
-    expect(chain).toEqual(['/bin/zsh', '/bin/bash', '/bin/sh']);
+    expect(chain).toEqual(UNIX_DEFAULTS);
   });
 });
 

@@ -14,10 +14,21 @@ export function detectPlatform(): 'windows' | 'unix' {
  * Falls back to platform defaults if `invoke` fails (e.g. running outside Tauri).
  */
 export async function getShellFallbackChain(): Promise<string[]> {
+  // Distros differ on where shells live: NixOS, Alpine, and some containers
+  // don't ship /bin/zsh|bash. The list probes /usr/bin/* as well so a missing
+  // /bin/zsh doesn't strand the user with "shell not found" before /usr/bin/zsh
+  // is tried.
   const defaults =
     detectPlatform() === 'windows'
       ? ['powershell.exe', 'pwsh.exe', 'cmd.exe']
-      : ['/bin/zsh', '/bin/bash', '/bin/sh'];
+      : [
+          '/bin/zsh',
+          '/usr/bin/zsh',
+          '/bin/bash',
+          '/usr/bin/bash',
+          '/bin/sh',
+          '/usr/bin/sh',
+        ];
 
   try {
     const userShell = await invoke<string | null>('get_user_shell');

@@ -33,9 +33,14 @@ vi.mock('@/components/ui/toast', () => ({
   }),
 }));
 
-// useShortcut from @/hooks: stub so it doesn't try to wire keyboard handlers
+// useShortcut from @/hooks: capture the registered shortcut callbacks per
+// id so we can simulate keyboard-triggered behavior without wiring the real
+// keyboard surface (that's covered by useShortcut.test.ts directly).
+const shortcutHandlers: Record<string, () => void> = {};
 vi.mock('@/hooks/useShortcut', () => ({
-  useShortcut: vi.fn(),
+  useShortcut: vi.fn((id: string, cb: () => void) => {
+    shortcutHandlers[id] = cb;
+  }),
 }));
 
 vi.mock('@/lib/navigation', () => ({
@@ -76,6 +81,7 @@ describe('CommandPalette', () => {
   });
 
   afterEach(() => {
+    for (const key of Object.keys(shortcutHandlers)) delete shortcutHandlers[key];
     vi.clearAllMocks();
   });
 
@@ -87,6 +93,19 @@ describe('CommandPalette', () => {
   it('opens via the open-command-palette event', () => {
     render(<CommandPalette />);
     openPalette();
+    expect(screen.getByPlaceholderText(/Type a command or search/i)).toBeInTheDocument();
+  });
+
+  it("registers the 'commandPalette' shortcut and opening it shows the dialog", () => {
+    // Verifies the keyboard binding wiring without depending on the global
+    // shortcut module's internals: when useShortcut is invoked with id
+    // 'commandPalette', firing its captured callback opens the palette.
+    render(<CommandPalette />);
+    expect(typeof shortcutHandlers.commandPalette).toBe('function');
+
+    act(() => {
+      shortcutHandlers.commandPalette();
+    });
     expect(screen.getByPlaceholderText(/Type a command or search/i)).toBeInTheDocument();
   });
 

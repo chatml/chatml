@@ -2,16 +2,9 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act, waitFor } from '@testing-library/react';
 import { useFileWatcher } from '../useFileWatcher';
 import { useAppStore } from '@/stores/appStore';
+import { flushAsync } from '@/test-utils/async';
 import type { FileChangedEvent } from '@/lib/tauri';
 import type { FileTab } from '@/lib/types';
-
-// Flush pending microtasks (replaces the audit F-3 `setTimeout(r, 0)` macrotask
-// pattern that races against MSW responses on fast machines).
-async function flushAsync() {
-  await Promise.resolve();
-  await Promise.resolve();
-  await Promise.resolve();
-}
 
 // ---- Mocks ----
 

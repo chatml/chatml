@@ -242,18 +242,28 @@ describe('lib hooks/useWebSocketHelpers', () => {
 
   describe('getWsUrl', () => {
     afterEach(() => {
-      // Reset Tauri detection between tests
       Object.defineProperty(window, '__TAURI__', { value: undefined, writable: true });
+      vi.unstubAllEnvs();
     });
 
-    it('returns env-based URL when not in Tauri', () => {
-      const url = getWsUrl();
-      expect(url).toMatch(/^ws:\/\/localhost:\d+\/ws$/);
+    it('falls back to the hardcoded default when not in Tauri and no env override', () => {
+      vi.stubEnv('NEXT_PUBLIC_WS_URL', '');
+      // Pin the exact default so a typo in the constant fails the test.
+      expect(getWsUrl()).toBe('ws://localhost:9876/ws');
     });
 
-    it('returns localhost ws URL with backend port when in Tauri', () => {
+    it('uses NEXT_PUBLIC_WS_URL when set and not in Tauri', () => {
+      vi.stubEnv('NEXT_PUBLIC_WS_URL', 'wss://staging.example.com/ws');
+      expect(getWsUrl()).toBe('wss://staging.example.com/ws');
+    });
+
+    it('uses the dynamic backend port when running inside Tauri (env override is ignored)', () => {
+      // Tauri detection wins: the backend port is dynamic and only known in
+      // the Tauri runtime, so the env override is intentionally bypassed.
+      vi.stubEnv('NEXT_PUBLIC_WS_URL', 'wss://staging.example.com/ws');
       Object.defineProperty(window, '__TAURI__', { value: {}, writable: true });
       const url = getWsUrl();
+      expect(url).not.toBe('wss://staging.example.com/ws');
       expect(url).toMatch(/^ws:\/\/localhost:\d+\/ws$/);
     });
   });

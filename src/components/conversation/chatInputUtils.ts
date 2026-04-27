@@ -73,7 +73,14 @@ export function flattenFileTree(
   return result;
 }
 
-/** Resolve the backend type. Reads from settingsStore. */
+/**
+ * Resolve the backend type from the current settings.
+ *
+ * Must be called from event handlers / async callbacks, **not** from a render
+ * path: `useSettingsStore.getState()` reads a snapshot and won't subscribe the
+ * caller to subsequent setting changes. Inside components use the
+ * `useSettingsStore(...)` hook variant instead.
+ */
 export function resolveBackend(modelId: string): 'native' | undefined {
   if (isLocalModel(modelId)) return 'native';
   return useSettingsStore.getState().defaultBackend === 'native' ? 'native' : undefined;

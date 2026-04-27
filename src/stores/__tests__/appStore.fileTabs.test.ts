@@ -82,6 +82,21 @@ describe('appStore — file tab actions', () => {
       expect(tabs[0].id).toBe('t2');
     });
 
+    it('preview tabs from different sessions do not replace each other', () => {
+      // Cross-session scoping invariant: a preview belongs to a single
+      // session, and opening a preview in session B should not evict the
+      // preview that's still in session A.
+      const s1Preview = makeTab({ id: 't1', isPreview: true, sessionId: 's1', path: 'a.ts' });
+      useAppStore.setState({ fileTabs: [s1Preview] });
+
+      const s2Preview = makeTab({ id: 't2', isPreview: true, sessionId: 's2', path: 'b.ts' });
+      useAppStore.getState().openFileTab(s2Preview);
+
+      const tabs = useAppStore.getState().fileTabs;
+      expect(tabs).toHaveLength(2);
+      expect(tabs.map((t) => t.id).sort()).toEqual(['t1', 't2']);
+    });
+
     it('appends new persistent tab when no preview exists', () => {
       const t1 = makeTab({ id: 't1' });
       const t2 = makeTab({ id: 't2' });

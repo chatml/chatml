@@ -18,17 +18,17 @@ import { loadAllAttachmentContents } from '@/lib/attachments';
 import { UserQuestionPrompt } from './UserQuestionPrompt';
 import { usePendingUserQuestion, useStreamingChatInput, useSelectedIds, useConversationState, useChatInputActions, useConversationHasMessages } from '@/stores/selectors';
 import { useSettingsStore } from '@/stores/settingsStore';
-import { THINKING_LEVELS, type ThinkingLevel, resolveThinkingParams, clampThinkingLevel, canDisableThinking } from '@/lib/thinkingLevels';
+import { type ThinkingLevel, resolveThinkingParams, clampThinkingLevel } from '@/lib/thinkingLevels';
 import { useSlashCommandStore, type UnifiedSlashCommand } from '@/stores/slashCommandStore';
 import { LinearIssuePicker } from './LinearIssuePicker';
 import { WorkspacePicker } from './WorkspacePicker';
 import type { LinearIssueDTO } from '@/lib/api';
 import { PlateInput, type PlateInputHandle } from './PlateInput';
-import { type ModelEntry, buildStaticModelList, isLocalModel } from '@/lib/models';
+import { type ModelEntry, buildStaticModelList } from '@/lib/models';
 import type { MentionItem } from '@/components/ui/mention-node';
 import { trackEvent } from '@/lib/telemetry';
 import { playSound } from '@/lib/sounds';
-import { listSessionFiles, type FileNodeDTO } from '@/lib/api';
+import { listSessionFiles } from '@/lib/api';
 
 // Extracted modules
 import { useChatInputDrafts } from './useChatInputDrafts';

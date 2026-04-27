@@ -145,23 +145,30 @@ describe('flattenFileTree', () => {
   });
 
   it('caps recursion at depth 15 (defensive against pathological trees)', () => {
-    // Build a 20-deep nested directory
-    let nested: FileNodeDTO = {
-      name: 'leaf',
-      path: '/'.repeat(20) + 'leaf',
-      isDir: false,
-    };
+    // Build a 20-deep nested directory using realistic, monotonically growing
+    // paths (`d0`, `d0/d1`, `d0/d1/d2`, ...) — same structure a real backend
+    // would emit, just deeper than the cap allows.
+    const leafPath = Array.from({ length: 20 }, (_, j) => `d${j}`).join('/') + '/leaf';
+    let nested: FileNodeDTO = { name: 'leaf', path: leafPath, isDir: false };
     for (let i = 19; i >= 0; i--) {
-      nested = {
-        name: `d${i}`,
-        path: `d${i}`,
-        isDir: true,
-        children: [nested],
-      };
+      const dirPath = Array.from({ length: i + 1 }, (_, j) => `d${j}`).join('/');
+      nested = { name: `d${i}`, path: dirPath, isDir: true, children: [nested] };
     }
     const result = flattenFileTree([nested]);
     // Cap means the leaf at depth 20 is unreachable
     expect(result).toEqual([]);
+  });
+
+  it('handles top-level files with no parent directory', () => {
+    const nodes: FileNodeDTO[] = [
+      { name: 'README.md', path: 'README.md', isDir: false },
+    ];
+    // Pinned: a root-level file (path with no slash) yields directory=''.
+    // The mention-search ranker uses this as the "no parent" sentinel — keep
+    // an eye on this if the ranker ever distinguishes empty vs. undefined.
+    expect(flattenFileTree(nodes)).toEqual([
+      { path: 'README.md', name: 'README.md', directory: '' },
+    ]);
   });
 
   it('handles directories with no children gracefully', () => {

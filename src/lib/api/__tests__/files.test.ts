@@ -109,17 +109,13 @@ describe('lib/api/files', () => {
     });
 
     it('forwards AbortSignal', async () => {
+      // Abort BEFORE invoking so the implementation sees an already-aborted
+      // signal — no real-time race against MSW.
       const controller = new AbortController();
-      server.use(
-        http.get(`${API_BASE}/api/repos/:workspaceId/sessions/:sessionId/diff`, async () => {
-          await new Promise((resolve) => setTimeout(resolve, 100));
-          return HttpResponse.json(mockDiff);
-        })
-      );
-
-      const promise = getSessionFileDiff('ws-1', 'session-1', 'src/app.tsx', controller.signal);
       controller.abort();
-      await expect(promise).rejects.toThrow();
+      await expect(
+        getSessionFileDiff('ws-1', 'session-1', 'src/app.tsx', controller.signal)
+      ).rejects.toThrow();
     });
   });
 

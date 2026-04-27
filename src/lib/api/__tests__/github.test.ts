@@ -152,17 +152,13 @@ describe('lib/api/github', () => {
     });
 
     it('forwards AbortSignal', async () => {
+      // Abort BEFORE invoking so the implementation sees an already-aborted
+      // signal — no real-time race against MSW.
       const controller = new AbortController();
-      server.use(
-        http.get(`${API_BASE}/api/github/repos`, async () => {
-          await new Promise((resolve) => setTimeout(resolve, 100));
-          return HttpResponse.json({ repos: [], totalCount: 0, hasMore: false });
-        })
-      );
-
-      const promise = listGitHubRepos({ signal: controller.signal });
       controller.abort();
-      await expect(promise).rejects.toThrow();
+      await expect(
+        listGitHubRepos({ signal: controller.signal })
+      ).rejects.toThrow();
     });
   });
 

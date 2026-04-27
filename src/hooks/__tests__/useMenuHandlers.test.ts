@@ -274,15 +274,23 @@ describe('useMenuHandlers — custom event surface', () => {
   describe('listener cleanup', () => {
     it('removes window listeners on unmount', () => {
       const { options, unmount } = renderWithOptions();
+      const toggleLeftSidebar = options.toggleLeftSidebar as ReturnType<typeof vi.fn>;
+
+      // Sanity-check the listener is wired before unmount.
       fire('toggle-left-panel');
-      expect(options.toggleLeftSidebar).toHaveBeenCalledTimes(1);
+      expect(toggleLeftSidebar).toHaveBeenCalledTimes(1);
 
       unmount();
 
-      // After unmount, dispatching the event should not fire the handler
-      const before = (options.toggleLeftSidebar as ReturnType<typeof vi.fn>).mock.calls.length;
-      window.dispatchEvent(new CustomEvent('toggle-left-panel'));
-      expect((options.toggleLeftSidebar as ReturnType<typeof vi.fn>).mock.calls.length).toBe(before);
+      // After unmount, dispatching the event must not fire the handler.
+      // Capture the count *after* unmount so React's cleanup pass has run,
+      // then dispatch the second event inside `act` so any work the listener
+      // would have queued is also flushed before we read the count.
+      const before = toggleLeftSidebar.mock.calls.length;
+      act(() => {
+        window.dispatchEvent(new CustomEvent('toggle-left-panel'));
+      });
+      expect(toggleLeftSidebar.mock.calls.length).toBe(before);
     });
   });
 });

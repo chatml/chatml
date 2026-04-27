@@ -109,7 +109,7 @@ Directories sorted by `% Lines`:
 | Metric | Day 0 | Now | Δ |
 |---|---|---|---|
 | Test files | 100 | 132 | +32 |
-| Tests | 1760 | 2310 | +550 |
+| Tests | 1760 | 2510 | +750 |
 | Wall-clock | ~7s | ~7s | (no regression) |
 
 **Overall coverage**
@@ -134,4 +134,4 @@ All four metrics now exceed the 20% gate. The configured threshold has been rais
 
 - `pnpm run test:coverage` now runs in the `frontend` job (was `pnpm run test:run`), gated by the configured thresholds.
 - Coverage report uploaded as an artifact (`frontend-coverage`, 14-day retention).
-- Per-directory thresholds added in `vitest.config.ts` for `src/lib/api/**` (85/68/85/85) and `src/stores/**` (60/51/53/61) so well-tested directories cannot silently regress while the global average stays acceptable.
+- Per-directory thresholds added in `vitest.config.ts` for `src/lib/api/**` (85/68/85/85), `src/lib/**` (55/55/55/58), and `src/stores/**` (60/51/53/61) so well-tested directories cannot silently regress while the global average stays acceptable.
