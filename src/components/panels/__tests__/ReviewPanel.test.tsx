@@ -448,10 +448,10 @@ describe('ReviewPanel', () => {
     });
   });
 
-  // ── Send Feedback button ─────────────────────────────────────────────
+  // ── Fix all button ───────────────────────────────────────────────────
 
   describe('fix all button', () => {
-    it('does not render Fix all when onSendFeedback is not provided', async () => {
+    it('renders Fix all when unresolved comments exist', async () => {
       setupMswListComments(mockComments);
 
       render(<ReviewPanel workspaceId="ws-1" sessionId="session-1" />);
@@ -460,25 +460,7 @@ describe('ReviewPanel', () => {
         expect(screen.getByText('Potential null pointer')).toBeInTheDocument();
       });
 
-      expect(screen.queryByText('Fix all')).not.toBeInTheDocument();
-    });
-
-    it('renders Fix all button when onSendFeedback is provided', async () => {
-      setupMswListComments(mockComments);
-
-      render(
-        <ReviewPanel
-          workspaceId="ws-1"
-          sessionId="session-1"
-          onSendFeedback={vi.fn()}
-        />
-      );
-
-      await waitFor(() => {
-        expect(screen.getByText('Potential null pointer')).toBeInTheDocument();
-      });
-
-      expect(screen.getByText('Fix all')).toBeInTheDocument();
+      expect(screen.getByText(/^Fix all/)).toBeInTheDocument();
     });
 
     it('hides Fix all when no unresolved comments exist', async () => {
@@ -486,65 +468,115 @@ describe('ReviewPanel', () => {
         makeComment({ id: 'r-1', resolved: true }),
       ]);
 
-      render(
-        <ReviewPanel
-          workspaceId="ws-1"
-          sessionId="session-1"
-          onSendFeedback={vi.fn()}
-        />
-      );
+      render(<ReviewPanel workspaceId="ws-1" sessionId="session-1" />);
 
       await waitFor(() => {
         expect(screen.getByText('All comments resolved')).toBeInTheDocument();
       });
 
-      expect(screen.queryByText('Fix all')).not.toBeInTheDocument();
+      expect(screen.queryByText(/^Fix all/)).not.toBeInTheDocument();
     });
 
-    it('shows Fix all when unresolved comments exist', async () => {
+    it('always shows the count in the Fix all label, including for a single comment', async () => {
       setupMswListComments([
-        makeComment({ id: 'c-1', resolved: false, title: 'Active comment' }),
+        makeComment({ id: 'c-1', title: 'Only one' }),
       ]);
 
-      render(
-        <ReviewPanel
-          workspaceId="ws-1"
-          sessionId="session-1"
-          onSendFeedback={vi.fn()}
-        />
-      );
+      render(<ReviewPanel workspaceId="ws-1" sessionId="session-1" />);
 
       await waitFor(() => {
-        expect(screen.getByText('Active comment')).toBeInTheDocument();
+        expect(screen.getByText('Only one')).toBeInTheDocument();
       });
 
-      const fixAllButton = screen.getByText('Fix all').closest('button');
-      expect(fixAllButton).not.toBeDisabled();
+      expect(screen.getByText('Fix all (1)')).toBeInTheDocument();
     });
 
-    it('calls onSendFeedback when Fix all is clicked', async () => {
+    it('shows the unresolved count when more than one comment is fixable', async () => {
+      setupMswListComments([
+        makeComment({ id: 'c-1', title: 'First' }),
+        makeComment({ id: 'c-2', title: 'Second' }),
+        makeComment({ id: 'c-3', title: 'Resolved', resolved: true }),
+      ]);
+
+      render(<ReviewPanel workspaceId="ws-1" sessionId="session-1" />);
+
+      await waitFor(() => {
+        expect(screen.getByText('First')).toBeInTheDocument();
+      });
+
+      expect(screen.getByText('Fix all (2)')).toBeInTheDocument();
+    });
+
+    it('dispatches a single bulk attachment containing every unresolved comment when clicked', async () => {
       const user = userEvent.setup();
-      const onSendFeedback = vi.fn();
+      const listener = vi.fn();
+      window.addEventListener('compose-action', listener);
 
       setupMswListComments([
-        makeComment({ id: 'c-1', title: 'A comment' }),
+        makeComment({ id: 'c-1', title: 'First', filePath: 'src/a.ts', lineNumber: 5 }),
+        makeComment({ id: 'c-2', title: 'Second', filePath: 'src/a.ts', lineNumber: 1 }),
+        makeComment({ id: 'c-3', title: 'Resolved', resolved: true }),
       ]);
 
-      render(
-        <ReviewPanel
-          workspaceId="ws-1"
-          sessionId="session-1"
-          onSendFeedback={onSendFeedback}
-        />
-      );
+      render(<ReviewPanel workspaceId="ws-1" sessionId="session-1" />);
 
       await waitFor(() => {
-        expect(screen.getByText('A comment')).toBeInTheDocument();
+        expect(screen.getByText('First')).toBeInTheDocument();
       });
 
-      await user.click(screen.getByText('Fix all'));
+      await user.click(screen.getByText(/^Fix all/));
 
-      expect(onSendFeedback).toHaveBeenCalledOnce();
+      expect(listener).toHaveBeenCalledOnce();
+      const detail = (listener.mock.calls[0][0] as CustomEvent).detail;
+      expect(detail.text).toBe('Fix the attached review comments');
+      expect(detail.attachments).toHaveLength(1);
+
+      const attachment = detail.attachments[0];
+      expect(attachment.name).toBe('Review Feedback (2)');
+      expect(attachment.isInstruction).toBe(true);
+      // Decode UTF-8 base64 (toBase64 uses TextEncoder, so a plain atob would
+      // mangle multi-byte chars like the em-dash in "Line N — Title").
+      const bytes = Uint8Array.from(atob(attachment.base64Data), (ch) => ch.charCodeAt(0));
+      const decoded = new TextDecoder().decode(bytes);
+      // Both unresolved ids appear, sorted by line within the file
+      expect(decoded).toContain('c-1');
+      expect(decoded).toContain('c-2');
+      expect(decoded).not.toContain('c-3');
+      expect(decoded.indexOf('Line 1 — Second')).toBeLessThan(decoded.indexOf('Line 5 — First'));
+
+      window.removeEventListener('compose-action', listener);
+    });
+
+    it('flips to a confirmation label after clicking, then hides the footer', async () => {
+      const user = userEvent.setup();
+      const listener = vi.fn();
+      window.addEventListener('compose-action', listener);
+
+      setupMswListComments([
+        makeComment({ id: 'c-1', title: 'Only comment' }),
+      ]);
+
+      render(<ReviewPanel workspaceId="ws-1" sessionId="session-1" />);
+
+      await waitFor(() => {
+        expect(screen.getByText('Only comment')).toBeInTheDocument();
+      });
+
+      await user.click(screen.getByText(/^Fix all/));
+
+      expect(listener).toHaveBeenCalledOnce();
+      // The label flips to a confirmation; the original "Fix all" text is gone
+      expect(screen.getByText('Added to chat')).toBeInTheDocument();
+      expect(screen.queryByText(/^Fix all/)).not.toBeInTheDocument();
+
+      // Footer unmounts after the confirmation timeout (1500ms)
+      await waitFor(
+        () => expect(screen.queryByText('Added to chat')).not.toBeInTheDocument(),
+        { timeout: 3000 },
+      );
+      expect(screen.queryByText(/^Fix all/)).not.toBeInTheDocument();
+
+      window.removeEventListener('compose-action', listener);
     });
   });
 

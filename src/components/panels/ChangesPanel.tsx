@@ -7,9 +7,7 @@ import { listSessionFiles, getSessionFileContent, getSessionFileDiff, sendConver
 import { getDiffFromCache, setDiffInCache, invalidateDiffCache } from '@/lib/diffCache';
 import { getFileContentFromCache, setFileContentInCache, invalidateFileContentCache } from '@/lib/fileContentCache';
 import { getSessionData, setSessionData, invalidateSessionData } from '@/lib/sessionDataCache';
-import { formatReviewFeedback } from '@/lib/formatReviewFeedback';
 import { dispatchAppEvent } from '@/lib/custom-events';
-import type { Attachment } from '@/lib/types';
 import { FileTree, FileIcon, type FileNode, type FileTreeHandle } from '@/components/files/FileTree';
 import type { ContextAction } from '@/components/files/FileTreeContextMenu';
 import { useFileOperations } from '@/hooks/useFileOperations';
@@ -76,7 +74,7 @@ import {
   Eye,
   EyeOff,
 } from 'lucide-react';
-import { cn, toBase64 } from '@/lib/utils';
+import { cn } from '@/lib/utils';
 import { ErrorBoundary } from '@/components/shared/ErrorBoundary';
 import { InlineErrorFallback } from '@/components/shared/ErrorFallbacks';
 import type { FileTab } from '@/lib/types';
@@ -705,29 +703,6 @@ export function ChangesPanel() {
     sendConversationMessage(selectedConversationId, content).catch(console.error);
   }, [selectedConversationId]);
 
-  // Send unresolved review comments as feedback — opens in composer so user can add context
-  const handleSendFeedback = useCallback(() => {
-    const feedbackText = formatReviewFeedback(reviewComments);
-    if (!feedbackText) return;
-
-    const attachment: Attachment = {
-      id: `review-feedback-${Date.now()}`,
-      type: 'file',
-      name: 'Review Feedback',
-      mimeType: 'text/markdown',
-      size: new Blob([feedbackText]).size,
-      lineCount: feedbackText.split('\n').length,
-      base64Data: toBase64(feedbackText),
-      preview: feedbackText.slice(0, 200),
-      isInstruction: true,
-    };
-
-    dispatchAppEvent('compose-action', {
-      text: 'Fix the following review feedback',
-      attachments: [attachment],
-    });
-  }, [reviewComments]);
-
   // Resolve all unresolved review comments
   const updateReviewComment = useAppStore((s) => s.updateReviewComment);
   const handleResolveAll = useCallback(async () => {
@@ -1026,7 +1001,7 @@ export function ChangesPanel() {
           </div>
           <div className={cn("h-full", selectedTab !== 'review' && 'hidden')}>
             <ErrorBoundary section="ReviewPanel" fallback={<InlineErrorFallback message="Unable to display review" />}>
-              <ReviewPanel workspaceId={selectedWorkspaceId} sessionId={selectedSessionId} onFileSelect={handleReviewFileSelect} onSendFeedback={handleSendFeedback} showResolved={showResolved} />
+              <ReviewPanel workspaceId={selectedWorkspaceId} sessionId={selectedSessionId} onFileSelect={handleReviewFileSelect} showResolved={showResolved} />
             </ErrorBoundary>
           </div>
           <div className={cn("h-full", selectedTab !== 'checks' && 'hidden')}>
