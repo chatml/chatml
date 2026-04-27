@@ -14,6 +14,7 @@ import { useTabStore } from '@/stores/tabStore';
 import { ENABLE_BROWSER_TABS, SHOW_UNRELEASED } from '@/lib/constants';
 import { expandGroupsForSession } from '@/hooks/useSidebarSessions';
 import { useScheduledTaskStore } from '@/stores/scheduledTaskStore';
+import { isSelectableSession } from '@/lib/sessionFilters';
 
 /**
  * Check if a session's target conversation has messages cached in the store.
@@ -195,9 +196,13 @@ function isEntryValid(entry: NavigationEntry): boolean {
       break;
   }
 
-  // For conversation views, check referenced entities still exist
-  if (entry.sessionId && !sessions.some((s) => s.id === entry.sessionId)) {
-    return false;
+  // For conversation views, check referenced entities still exist and are selectable
+  // (a hidden base session counts as invalid so back/forward can't sneak it back in).
+  if (entry.sessionId) {
+    const session = sessions.find((s) => s.id === entry.sessionId);
+    if (!session) return false;
+    const { showBaseBranchSessions } = useSettingsStore.getState();
+    if (!isSelectableSession(session, showBaseBranchSessions)) return false;
   }
   if (entry.workspaceId && !workspaces.some((w) => w.id === entry.workspaceId)) {
     return false;
@@ -206,6 +211,19 @@ function isEntryValid(entry: NavigationEntry): boolean {
     return false;
   }
   return true;
+}
+
+/**
+ * Resolve a requested sessionId to one safe to select right now. Returns null
+ * if the id refers to a session that's been removed or is currently hidden by
+ * the showBaseBranchSessions setting (i.e. shouldn't be visible in the UI).
+ */
+function resolveSelectableSessionId(sessionId: string | null | undefined): string | null {
+  if (!sessionId) return null;
+  const session = useAppStore.getState().sessions.find((s) => s.id === sessionId);
+  if (!session) return null;
+  const { showBaseBranchSessions } = useSettingsStore.getState();
+  return isSelectableSession(session, showBaseBranchSessions) ? sessionId : null;
 }
 
 /** Apply a navigation entry to the app and tab state */
@@ -220,10 +238,13 @@ function applyEntry(entry: NavigationEntry): void {
     // Use selectSession for session changes (it auto-selects first conversation)
     // But if we have a specific conversationId, override after
     if (entry.sessionId !== undefined) {
-      appStore.selectSession(entry.sessionId);
+      const safeId = resolveSelectableSessionId(entry.sessionId);
+      appStore.selectSession(safeId);
       // Auto-expand collapsed sidebar groups so the selected session is visible
-      const session = appStore.sessions.find(s => s.id === entry.sessionId && !s.archived);
-      if (session) expandGroupsForSession(session);
+      if (safeId) {
+        const session = appStore.sessions.find((s) => s.id === safeId);
+        if (session) expandGroupsForSession(session);
+      }
     }
     if (entry.conversationId !== undefined) {
       appStore.selectConversation(entry.conversationId);
@@ -284,6 +305,12 @@ export function navigate(params: NavigateParams): void {
       useSettingsStore.getState().markWorkspaceRead(params.workspaceId);
     }
 
+    // Resolve the requested session id once: a hidden base session (or a stale
+    // id) collapses to null so it can't slip into selection or the active tab.
+    const safeSessionId = params.sessionId !== undefined
+      ? resolveSelectableSessionId(params.sessionId)
+      : undefined;
+
     const applyMutations = () => {
       const appStore = useAppStore.getState();
       const settingsStore = useSettingsStore.getState();
@@ -291,10 +318,10 @@ export function navigate(params: NavigateParams): void {
       if (params.workspaceId !== undefined) {
         appStore.selectWorkspace(params.workspaceId);
       }
-      if (params.sessionId !== undefined) {
-        appStore.selectSession(params.sessionId);
+      if (safeSessionId !== undefined) {
+        appStore.selectSession(safeSessionId);
       }
-      if (params.conversationId !== undefined) {
+      if (params.conversationId !== undefined && safeSessionId !== null) {
         appStore.selectConversation(params.conversationId);
       }
       if (params.contentView !== undefined) {
@@ -305,8 +332,10 @@ export function navigate(params: NavigateParams): void {
       if (ENABLE_BROWSER_TABS) {
         useTabStore.getState().updateActiveTab({
           ...(params.workspaceId !== undefined && { selectedWorkspaceId: params.workspaceId }),
-          ...(params.sessionId !== undefined && { selectedSessionId: params.sessionId }),
-          ...(params.conversationId !== undefined && { selectedConversationId: params.conversationId }),
+          ...(safeSessionId !== undefined && { selectedSessionId: safeSessionId }),
+          ...(params.conversationId !== undefined && safeSessionId !== null && {
+            selectedConversationId: params.conversationId,
+          }),
           ...(params.contentView !== undefined && { contentView: params.contentView }),
           label: params.label ?? buildLabelForParams(params),
         });

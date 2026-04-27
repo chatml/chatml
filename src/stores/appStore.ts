@@ -35,6 +35,7 @@ import { useSettingsStore } from './settingsStore';
 import { refreshPRStatus } from '@/lib/api';
 import { buildTurnConfigLabel, supportsExtendedContext } from '@/lib/models';
 import { omitKey } from '@/lib/utils';
+import { isSelectableSession } from '@/lib/sessionFilters';
 import { cleanupConversationState } from '@/hooks/useWebSocket';
 
 // Throttle on-select PR refresh to avoid excessive API calls.
@@ -1084,8 +1085,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       const otherSessions = updatedSessions.filter(
         (s) =>
           s.workspaceId === session.workspaceId &&
-          !s.archived &&
-          (s.sessionType !== 'base' || showBaseBranchSessions)
+          isSelectableSession(s, showBaseBranchSessions)
       );
       newSelectedSessionId = otherSessions[0]?.id || null;
 

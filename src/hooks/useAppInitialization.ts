@@ -14,6 +14,7 @@ import { initAuth, listenForOAuthCallback, validateStoredToken, OAUTH_TIMEOUT_MS
 import { getLinearAuthStatus } from '@/lib/linearAuth';
 import { registerSession, getSessionDirName } from '@/lib/tauri';
 import { navigate } from '@/lib/navigation';
+import { findSelectableSession, isSelectableSession } from '@/lib/sessionFilters';
 import { expandGroupsForSession } from '@/hooks/useSidebarSessions';
 import { useToast } from '@/components/ui/toast';
 import {
@@ -263,12 +264,19 @@ export function useAppInitialization() {
           ? activeTab.selectedWorkspaceId
           : mappedWorkspaces[0]?.id ?? null;
 
+        // Hidden base sessions must never be auto-selected via fallback paths;
+        // the sidebar already filters them out, so the conversation view should match.
+        const { showBaseBranchSessions } = useSettingsStore.getState();
+
         // Determine target session before fetching conversations (only need active session's convs)
         const sessionValid = hasPersistedTab && activeTab.selectedSessionId &&
-          allSessions.some(s => s.id === activeTab.selectedSessionId && !s.archived);
+          allSessions.some(s =>
+            s.id === activeTab.selectedSessionId &&
+            isSelectableSession(s, showBaseBranchSessions)
+          );
         const targetSessionId = sessionValid
           ? activeTab.selectedSessionId
-          : allSessions.find(s => s.workspaceId === targetWorkspaceId && !s.archived)?.id ?? null;
+          : findSelectableSession(allSessions, targetWorkspaceId, showBaseBranchSessions)?.id ?? null;
 
         const contentViewWorkspaceId = activeTab?.contentView &&
           'workspaceId' in activeTab.contentView
@@ -285,7 +293,11 @@ export function useAppInitialization() {
           if (workspaceValid) {
             selectWorkspace(activeTab.selectedWorkspaceId);
             if (!sessionValid) {
-              const fallbackSession = allSessions.find(s => s.workspaceId === activeTab.selectedWorkspaceId && !s.archived);
+              const fallbackSession = findSelectableSession(
+                allSessions,
+                activeTab.selectedWorkspaceId,
+                showBaseBranchSessions,
+              );
               if (fallbackSession) selectSession(fallbackSession.id);
             }
           }
@@ -302,7 +314,9 @@ export function useAppInitialization() {
         // Auto-expand collapsed sidebar groups so the restored session is visible
         const selectedId = useAppStore.getState().selectedSessionId;
         if (selectedId) {
-          const selectedSession = allSessions.find(s => s.id === selectedId && !s.archived);
+          const selectedSession = allSessions.find(
+            (s) => s.id === selectedId && isSelectableSession(s, showBaseBranchSessions),
+          );
           if (selectedSession) expandGroupsForSession(selectedSession);
         }
 

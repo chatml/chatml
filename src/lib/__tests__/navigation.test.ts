@@ -10,7 +10,26 @@ const mockSelectSession = vi.fn();
 const mockSelectConversation = vi.fn();
 const mockSetContentView = vi.fn();
 
-const mockAppState = {
+type MockSession = {
+  id: string;
+  name: string;
+  branch: string;
+  workspaceId: string;
+  sessionType?: 'worktree' | 'base';
+  archived?: boolean;
+};
+
+const mockAppState: {
+  selectedWorkspaceId: string | null;
+  selectedSessionId: string | null;
+  selectedConversationId: string | null;
+  workspaces: { id: string; name: string }[];
+  sessions: MockSession[];
+  conversations: { id: string; name: string; sessionId: string }[];
+  selectWorkspace: typeof mockSelectWorkspace;
+  selectSession: typeof mockSelectSession;
+  selectConversation: typeof mockSelectConversation;
+} = {
   selectedWorkspaceId: 'ws-1',
   selectedSessionId: 'sess-1',
   selectedConversationId: 'conv-1',
@@ -27,6 +46,7 @@ const mockSettingsState = {
   setContentView: mockSetContentView,
   markWorkspaceRead: vi.fn(),
   markSessionRead: vi.fn(),
+  showBaseBranchSessions: false,
 };
 
 vi.mock('@/stores/appStore', () => ({
@@ -93,8 +113,13 @@ describe('navigation helpers', () => {
     mockAppState.selectedSessionId = 'sess-1';
     mockAppState.selectedConversationId = 'conv-1';
     mockSettingsState.contentView = { type: 'conversation' };
+    mockSettingsState.showBaseBranchSessions = false;
     mockAppState.workspaces = [{ id: 'ws-1', name: 'My Repo' }];
-    mockAppState.sessions = [{ id: 'sess-1', name: 'boston', branch: 'main', workspaceId: 'ws-1' }];
+    mockAppState.sessions = [
+      { id: 'sess-1', name: 'boston', branch: 'main', workspaceId: 'ws-1' },
+      { id: 'sess-2', name: 'denver', branch: 'feat', workspaceId: 'ws-1' },
+      { id: 'sess-prev', name: 'prev', branch: 'feat', workspaceId: 'ws-1' },
+    ];
     mockAppState.conversations = [{ id: 'conv-1', name: 'Task Chat', sessionId: 'sess-1' }];
     mockTabStoreState.activeTabId = 'default';
   });
@@ -201,6 +226,46 @@ describe('navigation helpers', () => {
       expect(mockSelectWorkspace).toHaveBeenCalledWith(null);
       expect(mockSelectSession).toHaveBeenCalledWith(null);
     });
+
+    it('drops a hidden base sessionId to null when the visibility flag is off', () => {
+      mockAppState.sessions = [
+        { id: 'sess-1', name: 'boston', branch: 'main', workspaceId: 'ws-1' },
+        { id: 'base-1', name: 'main', branch: 'main', workspaceId: 'ws-1', sessionType: 'base' },
+      ];
+      mockSettingsState.showBaseBranchSessions = false;
+
+      // navigate() debounces consecutive sessionId calls via a module-scoped timer;
+      // run any pending timer so this assertion isn't subject to test order.
+      vi.useFakeTimers();
+      try {
+        navigate({ sessionId: 'base-1', conversationId: 'conv-1' });
+        vi.runAllTimers();
+      } finally {
+        vi.useRealTimers();
+      }
+
+      expect(mockSelectSession).toHaveBeenCalledWith(null);
+      // Conversation must not be applied either, since the session was nulled.
+      expect(mockSelectConversation).not.toHaveBeenCalled();
+    });
+
+    it('keeps a base sessionId when the visibility flag is on', () => {
+      mockAppState.sessions = [
+        { id: 'sess-1', name: 'boston', branch: 'main', workspaceId: 'ws-1' },
+        { id: 'base-1', name: 'main', branch: 'main', workspaceId: 'ws-1', sessionType: 'base' },
+      ];
+      mockSettingsState.showBaseBranchSessions = true;
+
+      vi.useFakeTimers();
+      try {
+        navigate({ sessionId: 'base-1' });
+        vi.runAllTimers();
+      } finally {
+        vi.useRealTimers();
+      }
+
+      expect(mockSelectSession).toHaveBeenCalledWith('base-1');
+    });
   });
 
   // ---------- goBack ----------
@@ -269,6 +334,26 @@ describe('navigation helpers', () => {
       const tab = getTab();
       const forwardLabels = tab.forwardStack.map((e) => e.label);
       expect(forwardLabels).not.toContain('invalid');
+    });
+
+    it('skips entries pointing at a hidden base session and discards them', () => {
+      mockAppState.sessions = [
+        { id: 'sess-1', name: 'boston', branch: 'main', workspaceId: 'ws-1' },
+        { id: 'base-1', name: 'main', branch: 'main', workspaceId: 'ws-1', sessionType: 'base' },
+      ];
+      mockSettingsState.showBaseBranchSessions = false;
+      const hiddenBaseEntry = makeEntry({ sessionId: 'base-1', label: 'hidden-base' });
+      const validEntry = makeEntry({ sessionId: 'sess-1', label: 'valid' });
+      useNavigationStore.setState({
+        tabs: { default: { backStack: [validEntry, hiddenBaseEntry], forwardStack: [] } },
+      });
+
+      goBack();
+
+      expect(mockSelectSession).toHaveBeenCalledWith('sess-1');
+      const tab = getTab();
+      const forwardLabels = tab.forwardStack.map((e) => e.label);
+      expect(forwardLabels).not.toContain('hidden-base');
     });
 
     it('sets and clears isRestoring during apply', () => {
