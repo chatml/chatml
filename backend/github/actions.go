@@ -118,7 +118,9 @@ func (c *Client) ListWorkflowRuns(ctx context.Context, owner, repo, branch strin
 		return nil, err
 	}
 
-	var runs []WorkflowRun
+	// Initialized as empty (non-nil) so a zero-result response serializes as
+	// `[]` not `null`, which the frontend treats as a hard contract violation.
+	runs := []WorkflowRun{}
 	for page := 1; page <= maxWorkflowRunPages; page++ {
 		q := url.Values{}
 		q.Set("per_page", strconv.Itoa(pagePerPage))
@@ -247,7 +249,9 @@ func (c *Client) ListWorkflowJobs(ctx context.Context, owner, repo string, runID
 		return nil, err
 	}
 
-	var jobs []WorkflowJob
+	// Initialized as empty (non-nil) so a zero-result response serializes as
+	// `[]` not `null`, which the frontend treats as a hard contract violation.
+	jobs := []WorkflowJob{}
 	for page := 1; page <= maxWorkflowJobPages; page++ {
 		q := url.Values{}
 		q.Set("per_page", strconv.Itoa(pagePerPage))

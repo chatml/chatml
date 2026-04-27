@@ -416,6 +416,56 @@ func TestGetCombinedStatus_Success(t *testing.T) {
 	require.Equal(t, "chatml/ai-review", combined.Statuses[1].Context)
 }
 
+// Regression: a Go nil slice marshals to JSON `null`, which crashes the
+// frontend Checks panel when it does `runs.some(...)`. ListWorkflowRuns must
+// always return a non-nil slice when the API responds 200 with zero runs.
+func TestListWorkflowRuns_EmptyResultSerializesAsArray(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"total_count":   0,
+			"workflow_runs": []map[string]interface{}{},
+		})
+	}))
+	defer server.Close()
+
+	client := NewClient("", "")
+	client.SetToken("test_token")
+	client.SetAPIURL(server.URL)
+
+	runs, err := client.ListWorkflowRuns(context.Background(), "owner", "repo", "")
+	require.NoError(t, err)
+	require.NotNil(t, runs, "must be non-nil so JSON serializes as `[]` not `null`")
+	require.Len(t, runs, 0)
+
+	encoded, err := json.Marshal(runs)
+	require.NoError(t, err)
+	require.Equal(t, "[]", string(encoded))
+}
+
+// Regression: same nil-slice pitfall as above, for ListWorkflowJobs.
+func TestListWorkflowJobs_EmptyResultSerializesAsArray(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"total_count": 0,
+			"jobs":        []map[string]interface{}{},
+		})
+	}))
+	defer server.Close()
+
+	client := NewClient("", "")
+	client.SetToken("test_token")
+	client.SetAPIURL(server.URL)
+
+	jobs, err := client.ListWorkflowJobs(context.Background(), "owner", "repo", 12345)
+	require.NoError(t, err)
+	require.NotNil(t, jobs, "must be non-nil so JSON serializes as `[]` not `null`")
+	require.Len(t, jobs, 0)
+
+	encoded, err := json.Marshal(jobs)
+	require.NoError(t, err)
+	require.Equal(t, "[]", string(encoded))
+}
+
 func TestWorkflowRun_TimeFields(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(map[string]interface{}{
