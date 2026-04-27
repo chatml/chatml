@@ -2,11 +2,14 @@ package server
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
+	"github.com/chatml/chatml-backend/models"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -243,4 +246,225 @@ func TestResolveGitHubContext_NotGitHubRepo(t *testing.T) {
 	assert.Nil(t, ghCtx)
 	// GetGitHubRemote fails because the remote is a local path, not a GitHub URL
 	assert.Equal(t, http.StatusInternalServerError, w.Code)
+}
+
+// ============================================================================
+// GetCIFailureContext — happy-path / status-field tests
+//
+// These tests guard the regression that caused "Fix Issues" to falsely report
+// "No CI failures found" — a discrepancy between the panel (which surfaces
+// action_required as a failure) and this handler (which used to drop it),
+// plus the fact that an empty failedRuns array could mean "all passed",
+// "still in progress", or "no runs" — ambiguity the frontend had to invent
+// a hardcoded reply for.
+// ============================================================================
+
+// setupCIFailureContextTest wires together a mock GitHub server, a real git
+// repo with a github.com remote, a workspace, and a session on a feature
+// branch — i.e. the minimum to drive GetCIFailureContext end-to-end.
+func setupCIFailureContextTest(t *testing.T, ghServer *httptest.Server) (*Handlers, *http.Request, *httptest.ResponseRecorder) {
+	t.Helper()
+
+	h, s := setupTestHandlersWithGitHub(t, ghServer)
+
+	repoPath := createTestGitRepo(t)
+	runGit(t, repoPath, "remote", "set-url", "origin", "https://github.com/owner/repo.git")
+	createTestRepo(t, s, "ws-ci", repoPath)
+
+	// Create a session on a feature branch — the handler reads
+	// session.Branch when calling ListWorkflowRuns.
+	require.NoError(t, s.AddSession(context.Background(), &models.Session{
+		ID:          "sess-ci",
+		WorkspaceID: "ws-ci",
+		Name:        "CI Test Session",
+		Status:      "idle",
+		Branch:      "feature/test",
+	}))
+
+	req := httptest.NewRequest("GET", "/api/repos/ws-ci/sessions/sess-ci/ci/failure-context", nil)
+	req = withChiContext(req, map[string]string{"id": "ws-ci", "sessionId": "sess-ci"})
+	w := httptest.NewRecorder()
+
+	return h, req, w
+}
+
+// TestGetCIFailureContext_NoRuns asserts that when GitHub returns no workflow
+// runs, the response carries Status="no_runs" so the frontend can craft an
+// honest message instead of the misleading "no failures found."
+func TestGetCIFailureContext_NoRuns(t *testing.T) {
+	ghServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.True(t, strings.HasPrefix(r.URL.Path, "/repos/owner/repo/actions/runs"))
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"total_count":   0,
+			"workflow_runs": []interface{}{},
+		})
+	}))
+	defer ghServer.Close()
+
+	h, req, w := setupCIFailureContextTest(t, ghServer)
+	h.GetCIFailureContext(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	var resp CIFailureContext
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	assert.Equal(t, CIStatusNoRuns, resp.Status)
+	assert.Empty(t, resp.FailedRuns)
+	assert.Equal(t, 0, resp.TotalFailed)
+}
+
+// TestGetCIFailureContext_AllPassed asserts that when all latest-SHA runs
+// completed successfully, Status="all_passed" and failedRuns is empty.
+func TestGetCIFailureContext_AllPassed(t *testing.T) {
+	ghServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Only the runs listing is hit here — no eligible runs means jobs
+		// are never fetched.
+		require.Contains(t, r.URL.Path, "/actions/runs")
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"total_count": 1,
+			"workflow_runs": []map[string]interface{}{
+				{
+					"id":          int64(1),
+					"name":        "ci",
+					"status":      "completed",
+					"conclusion":  "success",
+					"head_sha":    "sha-1",
+					"head_branch": "feature/test",
+				},
+			},
+		})
+	}))
+	defer ghServer.Close()
+
+	h, req, w := setupCIFailureContextTest(t, ghServer)
+	h.GetCIFailureContext(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	var resp CIFailureContext
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	assert.Equal(t, CIStatusAllPassed, resp.Status)
+	assert.Empty(t, resp.FailedRuns)
+}
+
+// TestGetCIFailureContext_InProgress asserts that when latest-SHA runs are
+// still queued or in-progress with no failed jobs surfaced, Status reports
+// "in_progress" — the frontend must NOT mislabel this as "all passed."
+func TestGetCIFailureContext_InProgress(t *testing.T) {
+	ghServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.Contains(r.URL.Path, "/actions/runs/1/jobs"):
+			// One in-progress job, no failures yet.
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
+				"total_count": 1,
+				"jobs": []map[string]interface{}{
+					{
+						"id":         int64(11),
+						"run_id":     int64(1),
+						"name":       "build",
+						"status":     "in_progress",
+						"conclusion": nil,
+						"steps":      []interface{}{},
+					},
+				},
+			})
+		case strings.Contains(r.URL.Path, "/actions/runs"):
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
+				"total_count": 1,
+				"workflow_runs": []map[string]interface{}{
+					{
+						"id":          int64(1),
+						"name":        "ci",
+						"status":      "in_progress",
+						"conclusion":  nil,
+						"head_sha":    "sha-1",
+						"head_branch": "feature/test",
+					},
+				},
+			})
+		default:
+			t.Fatalf("unexpected GH path: %s", r.URL.Path)
+		}
+	}))
+	defer ghServer.Close()
+
+	h, req, w := setupCIFailureContextTest(t, ghServer)
+	h.GetCIFailureContext(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	var resp CIFailureContext
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	assert.Equal(t, CIStatusInProgress, resp.Status)
+	assert.Empty(t, resp.FailedRuns)
+}
+
+// TestGetCIFailureContext_ActionRequired asserts that a run/job concluded as
+// "action_required" surfaces in failedRuns. The Checks panel,
+// PRHoverCard, and pr_status.go all treat action_required as a failure;
+// this handler must agree, otherwise users see red checks in the panel
+// while Fix Issues silently sees nothing.
+func TestGetCIFailureContext_ActionRequired(t *testing.T) {
+	// Declare ghServer up front so the handler can build a Location header
+	// pointing back at this same test server (avoids any real network I/O).
+	var ghServer *httptest.Server
+	ghServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/logs/job-11":
+			// Body served at the redirect target — keeps the log fetch
+			// inside the test server.
+			_, _ = w.Write([]byte("error: deploy step failed\n"))
+		case strings.Contains(r.URL.Path, "/actions/jobs/11/logs"):
+			// 302 → redirect target on this same server so we never
+			// hit the network.
+			w.Header().Set("Location", ghServer.URL+"/logs/job-11")
+			w.WriteHeader(http.StatusFound)
+		case strings.Contains(r.URL.Path, "/actions/runs/1/jobs"):
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
+				"total_count": 1,
+				"jobs": []map[string]interface{}{
+					{
+						"id":         int64(11),
+						"run_id":     int64(1),
+						"name":       "deploy",
+						"status":     "completed",
+						"conclusion": "action_required",
+						"html_url":   "https://github.com/owner/repo/actions/runs/1/job/11",
+						"steps":      []interface{}{},
+					},
+				},
+			})
+		case strings.Contains(r.URL.Path, "/actions/runs"):
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
+				"total_count": 1,
+				"workflow_runs": []map[string]interface{}{
+					{
+						"id":          int64(1),
+						"name":        "deploy",
+						"status":      "completed",
+						"conclusion":  "action_required",
+						"head_sha":    "sha-1",
+						"head_branch": "feature/test",
+						"html_url":    "https://github.com/owner/repo/actions/runs/1",
+					},
+				},
+			})
+		default:
+			t.Fatalf("unexpected GH path: %s", r.URL.Path)
+		}
+	}))
+	defer ghServer.Close()
+
+	h, req, w := setupCIFailureContextTest(t, ghServer)
+	h.GetCIFailureContext(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	var resp CIFailureContext
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	assert.Equal(t, CIStatusHasFailures, resp.Status)
+	require.Len(t, resp.FailedRuns, 1)
+	require.Len(t, resp.FailedRuns[0].FailedJobs, 1)
+	assert.Equal(t, "deploy", resp.FailedRuns[0].FailedJobs[0].JobName)
+	assert.Equal(t, 1, resp.TotalFailed)
+	// Verify the log-fetch path actually executed end-to-end and the body
+	// from the redirect target landed on the job. Without this, a regression
+	// that breaks log fetching would still let the test pass.
+	assert.Contains(t, resp.FailedRuns[0].FailedJobs[0].Logs, "deploy step failed")
 }

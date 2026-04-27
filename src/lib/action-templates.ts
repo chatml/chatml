@@ -72,6 +72,8 @@ export const ACTION_TEMPLATES: Record<ActionTemplateKey, string> = {
 
   'fix-issues': `## Fix CI Failures
 
+If the attached "CI Failure Details" lists failing jobs, focus on those. If instead the attachment is "Backend CI snapshot" with no failed jobs, the snapshot may be stale, filtered, or pre-completion — verify with \`gh run list --branch <branch>\` and \`gh run view <run-id> --log-failed\` before concluding there is nothing to fix. If checks really did pass, say so to the user clearly.
+
 1. Analyze the failing checks and their error output carefully. Categorize each failure:
    - **Code failures**: build errors, type errors, test failures, lint errors
    - **Infrastructure failures**: timeouts, OOM, Docker issues, dependency resolution — these are not code problems
