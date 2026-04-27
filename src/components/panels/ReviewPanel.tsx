@@ -10,6 +10,7 @@ import {
   CheckCircle2,
   MessageSquare,
   MessageSquarePlus,
+  MessageSquareDot,
   Check,
   FileCode,
   ChevronRight,
@@ -60,17 +61,17 @@ interface ReviewPanelProps {
   workspaceId: string | null;
   sessionId: string | null;
   onFileSelect?: (path: string, line?: number) => void;
-  onSendFeedback?: () => void;
   showResolved?: boolean;
 }
 
-export function ReviewPanel({ workspaceId, sessionId, onFileSelect, onSendFeedback, showResolved }: ReviewPanelProps) {
+export function ReviewPanel({ workspaceId, sessionId, onFileSelect, showResolved }: ReviewPanelProps) {
   const [filter, setFilter] = useState<CommentSeverity | 'all'>('all');
   const [loading, setLoading] = useState(false);
   const [fetchSession, setFetchSession] = useState<string | null>(null);
   const [collapsedFiles, setCollapsedFiles] = useState<Set<string>>(new Set());
   const [groupByFile, setGroupByFile] = useState(false);
   const [addedToChatIds, setAddedToChatIds] = useState<Set<string>>(new Set());
+  const [justFixedAll, setJustFixedAll] = useState(false);
   const [scorecards, setScorecards] = useState<ReviewScorecardDTO[]>([]);
 
   const comments = useAppStore((s) =>
@@ -234,6 +235,38 @@ export function ReviewPanel({ workspaceId, sessionId, onFileSelect, onSendFeedba
     handleAddToChat(comment);
     setAddedToChatIds((prev) => new Set(prev).add(comment.id));
   }, []);
+
+  // Unresolved comments not yet added to chat — drives both the Fix all
+  // dispatch and the footer's visibility so the button hides when there's
+  // nothing left to add.
+  const fixableComments = useMemo(
+    () => comments.filter((c) => !c.resolved && !addedToChatIds.has(c.id)),
+    [comments, addedToChatIds],
+  );
+
+  const handleFixAll = useCallback(() => {
+    if (fixableComments.length === 0) return;
+
+    dispatchAppEvent('compose-action', {
+      text: 'Fix the attached review comments',
+      attachments: [commentsToBulkAttachment(fixableComments)],
+    });
+
+    setAddedToChatIds((prev) => {
+      const next = new Set(prev);
+      for (const c of fixableComments) next.add(c.id);
+      return next;
+    });
+    setJustFixedAll(true);
+  }, [fixableComments]);
+
+  // Briefly keep the footer mounted with a confirming label so the click has
+  // explicit feedback rather than the footer flickering away.
+  useEffect(() => {
+    if (!justFixedAll) return;
+    const id = setTimeout(() => setJustFixedAll(false), 1500);
+    return () => clearTimeout(id);
+  }, [justFixedAll]);
 
   if (!sessionId) {
     return (
@@ -453,16 +486,24 @@ export function ReviewPanel({ workspaceId, sessionId, onFileSelect, onSendFeedba
         </ScrollArea>
       )}
 
-      {/* Send Feedback footer */}
-      {onSendFeedback && counts.all > 0 && !loading && (
+      {/* Fix all footer — stays mounted briefly after click to confirm, then hides. */}
+      {(fixableComments.length > 0 || justFixedAll) && !loading && (
         <div className="px-2 py-1.5 border-t shrink-0">
           <Button
             variant="outline"
             size="sm"
             className="w-full h-7 text-xs"
-            onClick={onSendFeedback}
+            onClick={handleFixAll}
+            disabled={justFixedAll}
           >
-            Fix all
+            {justFixedAll ? (
+              <>
+                <Check className="h-3 w-3 mr-1 text-green-500" />
+                Added to chat
+              </>
+            ) : (
+              `Fix all (${fixableComments.length})`
+            )}
           </Button>
         </div>
       )}
@@ -470,9 +511,13 @@ export function ReviewPanel({ workspaceId, sessionId, onFileSelect, onSendFeedba
   );
 }
 
-/** Create an instruction attachment from a review comment. */
+function commentTitle(comment: ReviewComment): string {
+  return comment.title || comment.content.split('\n')[0].slice(0, 60);
+}
+
+/** Create an instruction attachment from a single review comment. */
 function commentToAttachment(comment: ReviewComment): Attachment {
-  const title = comment.title || comment.content.split('\n')[0].slice(0, 60);
+  const title = commentTitle(comment);
   const content = [
     `## Review Comment: ${title}`,
     '',
@@ -498,10 +543,65 @@ function commentToAttachment(comment: ReviewComment): Attachment {
   };
 }
 
+/**
+ * Create a single instruction attachment that bundles many review comments,
+ * grouped by file and sorted by line number. Used by "Fix all" so the composer
+ * gets one attachment instead of N.
+ */
+function commentsToBulkAttachment(comments: ReviewComment[]): Attachment {
+  const byFile = new Map<string, ReviewComment[]>();
+  for (const c of comments) {
+    const existing = byFile.get(c.filePath);
+    if (existing) existing.push(c);
+    else byFile.set(c.filePath, [c]);
+  }
+  for (const list of byFile.values()) {
+    list.sort((a, b) => a.lineNumber - b.lineNumber);
+  }
+
+  const lines: string[] = [
+    `# Review Feedback`,
+    '',
+    `The following ${comments.length} review comment${comments.length === 1 ? '' : 's'} need${comments.length === 1 ? 's' : ''} to be addressed.`,
+    '',
+  ];
+
+  for (const [filePath, fileComments] of byFile) {
+    lines.push(`## ${filePath}`, '');
+    for (const c of fileComments) {
+      lines.push(`### Line ${c.lineNumber} — ${commentTitle(c)}`);
+      lines.push(`**Comment ID:** \`${c.id}\``);
+      lines.push(`**Severity:** ${c.severity || 'info'}`);
+      lines.push('');
+      lines.push(c.content);
+      lines.push('');
+    }
+  }
+
+  lines.push(
+    '---',
+    '',
+    '**Action:** After fixing each comment, call `resolve_review_comment` with its `Comment ID`.',
+  );
+
+  const content = lines.join('\n');
+  return {
+    id: `review-bulk-${Date.now()}`,
+    type: 'file',
+    name: `Review Feedback (${comments.length})`,
+    mimeType: 'text/markdown',
+    size: new Blob([content]).size,
+    lineCount: content.split('\n').length,
+    base64Data: toBase64(content),
+    preview: content.slice(0, 200),
+    isInstruction: true,
+  };
+}
+
 function handleAddToChat(comment: ReviewComment) {
   const attachment = commentToAttachment(comment);
   dispatchAppEvent('compose-action', {
-    text: `Fix the attached review comments`,
+    text: `Fix the attached review comment`,
     attachments: [attachment],
   });
 }
@@ -600,14 +700,14 @@ function ReviewCommentCard({
                   }}
                 >
                   {addedToChat ? (
-                    <Check className="h-3 w-3 text-green-500" />
+                    <MessageSquareDot className="h-3 w-3 text-foreground" />
                   ) : (
                     <MessageSquarePlus className="h-3 w-3" />
                   )}
                 </Button>
               </TooltipTrigger>
               <TooltipContent side="bottom">
-                {addedToChat ? 'Add to chat again' : 'Add to chat'}
+                {addedToChat ? 'Re-add to chat' : 'Add to chat'}
               </TooltipContent>
             </Tooltip>
           )}
