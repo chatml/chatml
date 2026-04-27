@@ -58,6 +58,10 @@ const FETCH_RETRY_BASE_DELAY_MS = 300;
 // underlying request instead of fanning out across the wire. Cleared as soon
 // as the shared promise settles so subsequent calls re-issue freshly.
 //
+// Each entry carries its own AbortController so the underlying fetch can be
+// cancelled imperatively (today only used by the test reset hook below; in
+// the future this is also where waiter-refcount cancellation would plug in).
+//
 // Constraint — the dedup key is the URL alone:
 //   - Concurrent GETs to the same URL with **different headers**
 //     (e.g. custom Accept, If-None-Match, per-call auth overrides) silently
@@ -69,16 +73,26 @@ const FETCH_RETRY_BASE_DELAY_MS = 300;
 //     token that rotates between two near-simultaneous calls is captured
 //     once. Effectively a no-op in this app since token rotation is rare and
 //     the dedup window is sub-second.
-const inFlightGets = new Map<string, Promise<Response>>();
+type InFlightEntry = {
+  promise: Promise<Response>;
+  controller: AbortController;
+};
+const inFlightGets = new Map<string, InFlightEntry>();
 
 /**
- * Test-only escape hatch: drops all in-flight dedup entries.
+ * Test-only escape hatch: aborts and drops all in-flight dedup entries.
  *
- * Tests rotate MSW handlers between cases for the same URL; if a previous
- * test's shared promise is still tracked when a new test starts, the new
- * test would see stale data. Vitest setup wires this into afterEach.
+ * Vitest setup runs MSW with `onUnhandledRequest: 'error'`. Without this hook,
+ * a component fetch left in flight at test teardown would land after MSW
+ * handlers have been reset and fail the run with an unhandled-rejection. We
+ * replicate the previous (pre-dedup) behavior — where component AbortSignals
+ * cancelled their own fetches on unmount — by aborting each entry's master
+ * controller. Production code does not call this.
  */
 export function __resetInFlightGetsForTests() {
+  for (const entry of inFlightGets.values()) {
+    entry.controller.abort();
+  }
   inFlightGets.clear();
 }
 
@@ -134,23 +148,33 @@ export async function fetchWithAuth(url: string, options: RequestInit = {}): Pro
     return rawFetchWithAuth(url, options);
   }
 
-  let shared = inFlightGets.get(url);
-  if (!shared) {
-    // Issue the underlying request without the caller's AbortSignal so one
-    // caller's abort cannot cancel the work other waiters are sharing.
+  let entry = inFlightGets.get(url);
+  if (!entry) {
+    // Issue the underlying request with our own master AbortController, NOT
+    // the caller's AbortSignal — one caller's abort cannot cancel work other
+    // waiters are sharing.
     //
     // Trade-off: even if every waiter aborts, the shared fetch runs to
     // completion. For a typical 3-5 panel session-switch fan-out this is
     // negligible. If profiling ever shows abandoned fetches dominating, we
-    // can refcount waiters and abort the underlying fetch only when the
-    // count drops to zero.
+    // can refcount waiters and abort the master controller when the count
+    // drops to zero. The master also lets the test reset hook abort
+    // mid-flight fetches at teardown so they don't outlive their MSW handlers.
     const { signal: _ignored, ...rest } = options;
     void _ignored;
-    shared = rawFetchWithAuth(url, rest).finally(() => {
+    const controller = new AbortController();
+    const promise = rawFetchWithAuth(url, { ...rest, signal: controller.signal }).finally(() => {
       inFlightGets.delete(url);
     });
-    inFlightGets.set(url, shared);
+    // Silence unhandled-rejection if every waiter has gone away by the time
+    // the shared promise settles (e.g. component unmounted and the test
+    // reset hook aborted the master controller). Per-caller derivative
+    // promises still see the rejection through their own .then chains.
+    promise.catch(() => {});
+    entry = { promise, controller };
+    inFlightGets.set(url, entry);
   }
+  const shared = entry.promise;
 
   // Invariant: never read the shared Response's body directly — only clone.
   // The shared Response is observed by every concurrent waiter; Response.clone()
