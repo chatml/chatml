@@ -79,10 +79,13 @@ export function useCIRuns(
 
     try {
       const data = await getCIRuns(wsId, sessId);
+      // Coerce nullish to []. A nil Go slice marshals as JSON `null`; without
+      // this guard, `setRuns(null)` would crash the next render at `runs.some`.
+      const safeData = data ?? [];
       if (!signal?.aborted) {
-        setRuns(data);
+        setRuns(safeData);
         setError(null);
-        setChecksData(wsId, sessId, { runs: data });
+        setChecksData(wsId, sessId, { runs: safeData });
       }
     } catch (err) {
       if (signal?.aborted) return;
@@ -110,13 +113,17 @@ export function useCIRuns(
     await fetchRuns();
   }, [fetchRuns]);
 
-  // Get jobs for a workflow run
+  // Get jobs for a workflow run.
+  // Coerces nullish to [] for the same reason as `fetchRuns` above: a nil Go
+  // slice marshals as JSON `null`, which would crash the consumer's
+  // `[...jobs].sort(...)` in ChecksPanel.
   const getJobs = useCallback(
     async (runId: number): Promise<WorkflowJobDTO[]> => {
       if (!workspaceId || !sessionId) {
         throw new Error('No active session');
       }
-      return getCIJobs(workspaceId, sessionId, runId);
+      const data = await getCIJobs(workspaceId, sessionId, runId);
+      return data ?? [];
     },
     [workspaceId, sessionId]
   );

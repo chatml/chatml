@@ -76,7 +76,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { ErrorBoundary } from '@/components/shared/ErrorBoundary';
-import { InlineErrorFallback } from '@/components/shared/ErrorFallbacks';
+import { InlineErrorFallback, PanelErrorFallback } from '@/components/shared/ErrorFallbacks';
 import type { FileTab } from '@/lib/types';
 import { useShortcuts } from '@/hooks/useShortcut';
 import { getShortcutById, formatShortcutKeys } from '@/lib/shortcuts';
@@ -950,7 +950,11 @@ export function ChangesPanel() {
                   />
                 )}
                 <div className="flex-1 min-h-0 p-1">
-                  <ErrorBoundary section="FileTree" fallback={<InlineErrorFallback message="Unable to display file tree" />}>
+                  <ErrorBoundary
+                    section="FileTree"
+                    fallback={<InlineErrorFallback message="Unable to display file tree" />}
+                    resetKeys={[selectedWorkspaceId, selectedSessionId]}
+                  >
                     <FileTree
                       ref={fileTreeRef}
                       files={files}
@@ -1000,12 +1004,32 @@ export function ChangesPanel() {
             )}
           </div>
           <div className={cn("h-full", selectedTab !== 'review' && 'hidden')}>
-            <ErrorBoundary section="ReviewPanel" fallback={<InlineErrorFallback message="Unable to display review" />}>
+            <ErrorBoundary
+              section="ReviewPanel"
+              fallback={({ error, retry }) => (
+                <PanelErrorFallback
+                  title="Couldn't load review"
+                  error={error}
+                  onRetry={retry}
+                />
+              )}
+              resetKeys={[selectedWorkspaceId, selectedSessionId]}
+            >
               <ReviewPanel workspaceId={selectedWorkspaceId} sessionId={selectedSessionId} onFileSelect={handleReviewFileSelect} showResolved={showResolved} />
             </ErrorBoundary>
           </div>
           <div className={cn("h-full", selectedTab !== 'checks' && 'hidden')}>
-            <ErrorBoundary section="ChecksPanel" fallback={<InlineErrorFallback message="Unable to display checks" />}>
+            <ErrorBoundary
+              section="ChecksPanel"
+              fallback={({ error, retry }) => (
+                <PanelErrorFallback
+                  title="Couldn't load checks"
+                  error={error}
+                  onRetry={retry}
+                />
+              )}
+              resetKeys={[selectedWorkspaceId, selectedSessionId]}
+            >
               <ChecksPanel ref={checksPanelRef} onSendMessage={handleGitActionMessage} onPrUrlChange={setPrUrl} active={selectedTab === 'checks'} />
             </ErrorBoundary>
           </div>
@@ -1043,7 +1067,11 @@ export function ChangesPanel() {
             {/* Tab content — CSS visibility toggling prevents unmount/remount */}
             <div className="flex-1 min-h-0">
               <div className={cn("h-full", bottomTab !== 'todos' && 'hidden')}>
-                <ErrorBoundary section="TodoPanel" fallback={<InlineErrorFallback message="Unable to display tasks" />}>
+                <ErrorBoundary
+                  section="TodoPanel"
+                  fallback={<InlineErrorFallback message="Unable to display tasks" />}
+                  resetKeys={[selectedSessionId, selectedConversationId]}
+                >
                   <TodoPanel />
                 </ErrorBoundary>
               </div>
@@ -1059,12 +1087,20 @@ export function ChangesPanel() {
               </div>
               {/* CSS 'hidden' keeps the component mounted; isVisible gates network fetches */}
               <div className={cn("h-full", bottomTab !== 'file-history' && 'hidden')}>
-                <ErrorBoundary section="FileHistory" fallback={<InlineErrorFallback message="Unable to display file history" />}>
+                <ErrorBoundary
+                  section="FileHistory"
+                  fallback={<InlineErrorFallback message="Unable to display file history" />}
+                  resetKeys={[selectedWorkspaceId, selectedSessionId]}
+                >
                   <FileHistoryPanel isVisible={bottomTab === 'file-history'} />
                 </ErrorBoundary>
               </div>
               <div className={cn("h-full", bottomTab !== 'background' && 'hidden')}>
-                <ErrorBoundary section="BackgroundTasks" fallback={<InlineErrorFallback message="Unable to display background tasks" />}>
+                <ErrorBoundary
+                  section="BackgroundTasks"
+                  fallback={<InlineErrorFallback message="Unable to display background tasks" />}
+                  resetKeys={[selectedConversationId]}
+                >
                   <BackgroundTasksPanel conversationId={selectedConversationId} />
                 </ErrorBoundary>
               </div>

@@ -211,6 +211,27 @@ describe('useCIRuns', () => {
       expect(mockedGetCIRuns).toHaveBeenCalledTimes(2);
       expect(mockedGetCIRuns).toHaveBeenLastCalledWith('ws-1', 'session-2');
     });
+
+    // Regression: Go's encoding/json marshals a nil slice as `null` rather than
+    // `[]`, so a backend that constructs its result with `var runs []WorkflowRun`
+    // and never appends will return JSON `null` to the client. Without this
+    // coercion the hook would call `setRuns(null)` and the next render would
+    // throw `runs.some is not a function` inside the ChecksPanel ErrorBoundary.
+    it('coerces a null payload from getCIRuns to an empty array', async () => {
+      mockedGetCIRuns.mockResolvedValue(
+        null as unknown as WorkflowRunDTO[]
+      );
+
+      const { result } = renderHook(() =>
+        useCIRuns('ws-1', 'session-1')
+      );
+
+      await flushAndAdvance();
+
+      expect(result.current.runs).toEqual([]);
+      expect(result.current.error).toBeNull();
+      expect(result.current.loading).toBe(false);
+    });
   });
 
   // ---------------------------------------------------------------------------
@@ -596,6 +617,28 @@ describe('useCIRuns', () => {
           await result.current.getJobs(1);
         })
       ).rejects.toThrow('No active session');
+    });
+
+    // Regression: same nil-slice pitfall as `getCIRuns`. If the backend ever
+    // returns JSON `null` for jobs, the consumer's `[...jobs].sort()` would
+    // crash. Ensure getJobs hands back an array unconditionally.
+    it('coerces a null payload from getCIJobs to an empty array', async () => {
+      mockedGetCIJobs.mockResolvedValue(
+        null as unknown as WorkflowJobDTO[]
+      );
+
+      const { result } = renderHook(() =>
+        useCIRuns('ws-1', 'session-1')
+      );
+
+      await flushAndAdvance();
+
+      let returnedJobs: WorkflowJobDTO[];
+      await act(async () => {
+        returnedJobs = await result.current.getJobs(1);
+      });
+
+      expect(returnedJobs!).toEqual([]);
     });
   });
 
