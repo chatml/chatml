@@ -154,9 +154,22 @@ pub fn start_global_watcher(
     // Create a channel to receive file change events
     let (tx, rx) = channel();
 
-    // Create a debounced watcher — 500ms is responsive enough for UX while
-    // still batching rapid multi-file changes (e.g. git checkout, build output).
-    let mut debouncer = new_debouncer(Duration::from_millis(500), tx)
+    // Create a debounced watcher.
+    //
+    // 800ms is a compromise between two competing pressures:
+    //   - Bursty FS operations (git checkout, npm install, branch switch) on
+    //     macOS FSEvents arrive as multiple bursts with ~200-400ms quiet
+    //     periods between them. A short window (e.g. 500ms) emits each burst
+    //     as a separate event, producing 5-6 events/s per workspace and
+    //     triggering downstream snapshot/diff fetch storms.
+    //   - A long window (e.g. 1200ms) catches all inter-burst gaps but adds
+    //     perceptible latency to single-file editor saves, which are NOT a
+    //     burst — they're a single event that pays the full window before
+    //     the changes panel updates.
+    //
+    // 800ms catches typical burst quiet periods while keeping single-save
+    // latency below the threshold of feeling sluggish in editor flows.
+    let mut debouncer = new_debouncer(Duration::from_millis(800), tx)
         .map_err(|e| AppError::Watcher(format!("Failed to create file watcher: {}", e)))?;
 
     // Start watching the entire base directory recursively

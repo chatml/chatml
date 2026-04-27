@@ -12,6 +12,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/chatml/chatml-core/git"
 	"github.com/go-chi/chi/v5"
@@ -58,7 +59,7 @@ func (h *Handlers) ListRepoFiles(w http.ResponseWriter, r *http.Request) {
 	}
 
 	nodeCount := 0
-	tree, err := buildFileTree(repo.Path, "", maxDepth, 0, &nodeCount)
+	tree, err := buildFileTree(ctx, repo.Path, "", maxDepth, 0, &nodeCount)
 	if err != nil {
 		writeInternalError(w, "failed to list files", err)
 		return
@@ -72,7 +73,14 @@ func (h *Handlers) ListRepoFiles(w http.ResponseWriter, r *http.Request) {
 // buildFileTree recursively builds the file tree.
 // nodeCount tracks the total nodes added across all recursive calls;
 // when *nodeCount reaches maxNodeCount the current level is marked truncated.
-func buildFileTree(basePath, relativePath string, maxDepth, currentDepth int, nodeCount *int) ([]*FileNode, error) {
+//
+// ctx is checked at each directory boundary so a slow/pathological worktree
+// (huge directories, network FS, contended disk) can't pin the goroutine
+// past the caller's deadline.
+func buildFileTree(ctx context.Context, basePath, relativePath string, maxDepth, currentDepth int, nodeCount *int) ([]*FileNode, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	fullPath := filepath.Join(basePath, relativePath)
 	entries, err := os.ReadDir(fullPath)
 	if err != nil {
@@ -141,8 +149,16 @@ func buildFileTree(basePath, relativePath string, maxDepth, currentDepth int, no
 
 		// Recursively build children if within depth limit and under node cap
 		if *nodeCount < maxNodeCount && (maxDepth == -1 || currentDepth < maxDepth) {
-			children, err := buildFileTree(basePath, nodePath, maxDepth, currentDepth+1, nodeCount)
-			if err == nil {
+			children, err := buildFileTree(ctx, basePath, nodePath, maxDepth, currentDepth+1, nodeCount)
+			if err != nil {
+				if ctx.Err() != nil {
+					// Propagate cancellation/deadline up so the singleflight
+					// shared call returns the failure (and skips caching).
+					return nil, err
+				}
+				// Non-cancellation errors (permission denied, race with rm)
+				// are non-fatal — continue with whatever we have.
+			} else {
 				node.Children = children
 			}
 		} else if *nodeCount >= maxNodeCount {
@@ -673,25 +689,57 @@ func (h *Handlers) ListSessionFiles(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Check cache first
 	cacheKey := fmt.Sprintf("session:%s:depth:%d", session.WorktreePath, maxDepth)
+
+	// Fast path: serve from TTL cache if fresh.
 	if cached, ok := h.dirCache.Get(cacheKey); ok {
 		writeJSON(w, cached)
 		return
 	}
 
-	// Build file tree from worktree path
-	nodeCount := 0
-	tree, err := buildFileTree(session.WorktreePath, "", maxDepth, 0, &nodeCount)
-	if err != nil {
-		writeInternalError(w, "failed to list files", err)
-		return
-	}
+	// Coalesce concurrent callers (3-4 panels typically subscribe on session
+	// switch, all returning a 200KB+ payload). Without singleflight each one
+	// walks the worktree before the first finishes populating dirCache.
+	//
+	// The shared walk runs under a context derived from h.serverCtx (bounded
+	// by fileTreeWalkTimeout), not r.Context(): one panel disconnecting must
+	// not cancel the work the other waiters are sharing. Each caller can
+	// still bail on its own r.Context() via the DoChan + select below.
+	worktreePath := session.WorktreePath
+	ch := h.filesSF.DoChan(cacheKey, func() (any, error) {
+		if cached, ok := h.dirCache.Get(cacheKey); ok {
+			return cached, nil
+		}
+		walkCtx, cancel := context.WithTimeout(h.serverCtx, fileTreeWalkTimeout)
+		defer cancel()
+		nodeCount := 0
+		tree, err := buildFileTree(walkCtx, worktreePath, "", maxDepth, 0, &nodeCount)
+		if err != nil {
+			return nil, err
+		}
+		h.dirCache.Set(cacheKey, tree)
+		return tree, nil
+	})
 
-	// Cache the result
-	h.dirCache.Set(cacheKey, tree)
-	writeJSON(w, tree)
+	select {
+	case <-ctx.Done():
+		// Client disconnected — release this handler goroutine immediately;
+		// the shared walk continues for any remaining waiters.
+		return
+	case res := <-ch:
+		if res.Err != nil {
+			writeInternalError(w, "failed to list files", res.Err)
+			return
+		}
+		writeJSON(w, res.Val.([]*FileNode))
+	}
 }
+
+// fileTreeWalkTimeout caps how long a singleflight'd file-tree walk can run.
+// On a pathological worktree (huge directories, slow disk, network FS) this
+// is the upper bound before the walk aborts and returns a context error to
+// every coalesced waiter.
+const fileTreeWalkTimeout = 30 * time.Second
 
 // SaveFileRequest represents a request to save file content
 type SaveFileRequest struct {

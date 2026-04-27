@@ -17,6 +17,16 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
+// prStatusCacheKey scopes the pr-status SFCache by sessionID. We considered
+// keying by (owner, repo, PR#) so two sessions tracking the same PR could
+// share a single GitHub fetch, but invalidation then required resolving the
+// session → repo → GitHub-remote chain (the last step shells out to git
+// config), adding 10–25ms to every user-initiated refresh. Sessions sharing
+// a PR is rare enough in practice that the dedup win wasn't worth that cost.
+func prStatusCacheKey(sessionID string) string {
+	return sessionID
+}
+
 // GetSessionPRStatus returns PR details including CI check status for a session
 func (h *Handlers) GetSessionPRStatus(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
@@ -67,8 +77,19 @@ func (h *Handlers) GetSessionPRStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Get PR details from GitHub
-	prDetails, err := h.ghClient.GetPRDetails(ctx, owner, repoName, session.PRNumber)
+	// Get PR details from GitHub. Multiple panels subscribe to pr-status on
+	// session switch; SFCache collapses concurrent callers into one call and
+	// caches the result for 15s.
+	//
+	// The shared GitHub call runs against a context derived from h.serverCtx
+	// (bounded by ghFetchTimeout), not r.Context(), so one disconnecting
+	// panel can't poison the upstream fetch for the other waiters. Each
+	// caller can still bail on its own r.Context() via DoContext.
+	prDetails, err := h.prStatusCache.DoContext(ctx, prStatusCacheKey(sessionID), func() (*github.PRDetails, error) {
+		fetchCtx, cancel := context.WithTimeout(h.serverCtx, ghFetchTimeout)
+		defer cancel()
+		return h.ghClient.GetPRDetails(fetchCtx, owner, repoName, session.PRNumber)
+	})
 	if err != nil {
 		writeInternalError(w, "failed to get PR details", err)
 		return
@@ -89,6 +110,11 @@ func (h *Handlers) RefreshPRStatus(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusServiceUnavailable)
 		return
 	}
+
+	// Drop the cached pr-status entry so the next GET re-fetches from GitHub
+	// instead of waiting up to 15s for the SFCache TTL to expire. Keying by
+	// sessionID makes this a constant-time map delete with no DB or os/exec.
+	h.prStatusCache.Invalidate(prStatusCacheKey(sessionID))
 
 	h.prWatcher.ForceCheckSession(sessionID)
 	w.WriteHeader(http.StatusAccepted)

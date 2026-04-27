@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"math"
@@ -19,6 +20,12 @@ import (
 	"github.com/chatml/chatml-backend/store"
 	"github.com/go-chi/chi/v5"
 )
+
+// errCorruptedActionTemplates is returned by the action-templates SFCache
+// closure when the persisted JSON fails to unmarshal. It lets the call site
+// distinguish corrupted-data (500 INTERNAL) from a generic DB error via
+// errors.Is, without coupling the response code to a hardcoded message prefix.
+var errCorruptedActionTemplates = errors.New("corrupted action templates data")
 
 // getReviewPrompts reads review prompt overrides from the given settings key.
 func (h *Handlers) getReviewPrompts(w http.ResponseWriter, ctx context.Context, key string) {
@@ -96,20 +103,34 @@ func (h *Handlers) SetWorkspaceReviewPrompts(w http.ResponseWriter, r *http.Requ
 }
 
 // getActionTemplates reads action template overrides from the given settings key.
+//
+// Wrapped in a 60s singleflight + TTL cache: action templates are configuration
+// data that rarely changes, but every session switch fetches both the global
+// (/api/settings/action-templates) and workspace-scoped variants 4-6 times
+// across panels.
 func (h *Handlers) getActionTemplates(w http.ResponseWriter, ctx context.Context, key string) {
-	value, found, err := h.store.GetSetting(ctx, key)
+	templates, err := h.actionTemplatesCache.Do(key, func() (map[string]string, error) {
+		value, found, err := h.store.GetSetting(ctx, key)
+		if err != nil {
+			return nil, err
+		}
+		if !found {
+			return map[string]string{}, nil
+		}
+		var t map[string]string
+		if err := json.Unmarshal([]byte(value), &t); err != nil {
+			return nil, fmt.Errorf("%w: %v", errCorruptedActionTemplates, err)
+		}
+		return t, nil
+	})
 	if err != nil {
+		// Surfaces as a 500 INTERNAL with a distinct code so the frontend
+		// can tell "DB unavailable" apart from "stored value won't parse".
+		if errors.Is(err, errCorruptedActionTemplates) {
+			writeError(w, http.StatusInternalServerError, ErrCodeInternal, "corrupted action templates data", err)
+			return
+		}
 		writeDBError(w, err)
-		return
-	}
-	if !found {
-		writeJSON(w, map[string]any{"templates": map[string]string{}})
-		return
-	}
-
-	var templates map[string]string
-	if err := json.Unmarshal([]byte(value), &templates); err != nil {
-		writeError(w, http.StatusInternalServerError, ErrCodeInternal, "corrupted action templates data", err)
 		return
 	}
 
@@ -144,6 +165,10 @@ func (h *Handlers) setActionTemplates(w http.ResponseWriter, r *http.Request, ke
 			return
 		}
 	}
+
+	// Drop the cached entry so the next GET reflects the new value rather
+	// than waiting up to 60s for the TTL to expire.
+	h.actionTemplatesCache.Invalidate(key)
 
 	writeJSON(w, map[string]string{"status": "ok"})
 }

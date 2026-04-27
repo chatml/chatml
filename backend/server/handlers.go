@@ -22,6 +22,7 @@ import (
 	"github.com/chatml/chatml-core/scripts"
 	"github.com/chatml/chatml-backend/store"
 	"github.com/fsnotify/fsnotify"
+	"golang.org/x/sync/singleflight"
 )
 
 // SessionLockManager provides per-path mutex locks to serialize operations on the same session.
@@ -564,6 +565,18 @@ type Handlers struct {
 	statsComputer    *stats.Computer
 	diffCache        *DiffCache
 	snapshotCache    *SnapshotCache
+
+	// Singleflight groups collapse concurrent identical requests into a single
+	// underlying call. Used in front of caches to prevent thundering-herd on
+	// session switch where multiple panels each fetch the same endpoint.
+	snapshotSF singleflight.Group
+	filesSF    singleflight.Group
+
+	// Singleflight + TTL caches for endpoints with no existing cache.
+	prStatusCache        *SFCache[*github.PRDetails]
+	ciRunsCache          *SFCache[[]github.WorkflowRun]
+	actionTemplatesCache *SFCache[map[string]string]
+
 	aiClient         ai.Provider
 	scriptRunner     *scripts.Runner
 	scheduler        ScheduledTaskTrigger // Set after init via SetScheduler
@@ -696,7 +709,7 @@ func NewHandlers(ctx context.Context, s *store.SQLiteStore, am *agent.Manager, d
 		sc.SetSnapshotCache(snapshotCache)
 	}
 
-	return &Handlers{
+	h := &Handlers{
 		store:            s,
 		repoManager:      rm,
 		worktreeManager:  git.NewWorktreeManager(),
@@ -717,11 +730,31 @@ func NewHandlers(ctx context.Context, s *store.SQLiteStore, am *agent.Manager, d
 		statsComputer:    sc,
 		diffCache:        diffCache,
 		snapshotCache:    snapshotCache,
-		aiClient:         aiClient,
+		// PR status changes via WebSocket push from pr-watcher; 15s TTL is a
+		// short fallback for the polling clients while collapsing the 3-5
+		// concurrent subscribers (per-session) into one upstream GitHub call.
+		// Keyed by sessionID — see prStatusCacheKey for the rationale.
+		prStatusCache: NewSFCache[*github.PRDetails](15 * time.Second),
+		// CI workflow runs change relatively slowly; 30s coalesces the 30s
+		// polling loop subscribers without serving meaningfully stale data.
+		ciRunsCache: NewSFCache[[]github.WorkflowRun](30 * time.Second),
+		// Action templates are configuration; 60s eliminates 4-6× round-trips
+		// on every session switch with effectively no staleness risk.
+		actionTemplatesCache: NewSFCache[map[string]string](60 * time.Second),
+		aiClient:             aiClient,
 		scriptRunner:     scriptRunner,
 		serverCtx:        serverCtx,
 		serverCancel:     serverCancel,
 	}
+	// Sweep stale entries from the per-session/per-PR caches every 5 minutes.
+	// Without this, keys for closed PRs and deleted branches would accumulate
+	// over the server's lifetime since opportunistic in-lookup eviction only
+	// runs for keys that get re-read. actionTemplatesCache has a tiny fixed
+	// key space and doesn't need sweeping.
+	const sfCacheSweepInterval = 5 * time.Minute
+	h.prStatusCache.StartSweeper(serverCtx, sfCacheSweepInterval)
+	h.ciRunsCache.StartSweeper(serverCtx, sfCacheSweepInterval)
+	return h
 }
 
 // SetScheduler injects the scheduler after initialization (avoids circular dependency)

@@ -2,6 +2,7 @@ import '@testing-library/jest-dom/vitest';
 import { vi, beforeAll, afterEach, afterAll } from 'vitest';
 import { cleanup } from '@testing-library/react';
 import { server } from '@/__mocks__/server';
+import { __resetInFlightGetsForTests } from '@/lib/api/base';
 
 // Polyfill localStorage for jsdom (node's --localstorage-file may not work)
 if (typeof globalThis.localStorage === 'undefined' || typeof globalThis.localStorage.setItem !== 'function') {
@@ -22,6 +23,9 @@ beforeAll(() => server.listen({ onUnhandledRequest: 'error' }));
 afterEach(() => {
   server.resetHandlers();
   cleanup();
+  // Drop any in-flight GET dedup state so MSW handler rotation between tests
+  // doesn't bleed cached responses across cases.
+  __resetInFlightGetsForTests();
 });
 afterAll(() => server.close());
 

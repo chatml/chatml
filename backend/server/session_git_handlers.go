@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"os"
@@ -528,7 +529,7 @@ func (h *Handlers) GetSessionSnapshot(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	sessionID := chi.URLParam(r, "sessionId")
 
-	// Check snapshot cache first
+	// Fast path: serve from TTL cache if fresh.
 	if h.snapshotCache != nil {
 		if cached, ok := h.snapshotCache.Get(sessionID); ok {
 			writeJSON(w, cached)
@@ -549,15 +550,65 @@ func (h *Handlers) GetSessionSnapshot(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Coalesce concurrent callers for the same session into a single git
+	// fetch. The shared work runs against a context derived from
+	// h.serverCtx (bounded by snapshotComputeTimeout) so that:
+	//   - a single panel disconnecting can't poison the result for other
+	//     waiters sharing the singleflight slot, and
+	//   - a pathological worktree (slow disk, huge diff) can't run
+	//     unbounded after every caller has bailed.
+	//
+	// DoChan + select lets each caller bail on its own r.Context() without
+	// disrupting the shared call: the underlying compute keeps running for
+	// any remaining waiters and still populates the snapshot cache.
+	ch := h.snapshotSF.DoChan(sessionID, func() (any, error) {
+		// Re-check cache: another caller may have populated it while we
+		// were queued behind the singleflight.
+		if h.snapshotCache != nil {
+			if cached, ok := h.snapshotCache.Get(sessionID); ok {
+				return cached, nil
+			}
+		}
+		workCtx, cancel := context.WithTimeout(h.serverCtx, snapshotComputeTimeout)
+		defer cancel()
+		return h.computeSessionSnapshot(workCtx, session, workingPath, baseRef)
+	})
+
+	select {
+	case <-ctx.Done():
+		// Client disconnected — release this handler goroutine immediately;
+		// the shared compute continues for any remaining waiters.
+		return
+	case res := <-ch:
+		if res.Err != nil {
+			writeInternalError(w, "failed to get git status", res.Err)
+			return
+		}
+		writeJSON(w, res.Val.(*SessionSnapshot))
+	}
+}
+
+// snapshotComputeTimeout caps how long a single snapshot computation can
+// keep its parallel git ops alive after every connected caller bails out.
+const snapshotComputeTimeout = 30 * time.Second
+
+// computeSessionSnapshot runs the parallel git operations that produce a
+// SessionSnapshot and stores the result in the snapshot cache on success.
+// Caller is responsible for singleflight coalescing.
+func (h *Handlers) computeSessionSnapshot(ctx context.Context, session *models.SessionWithWorkspace, workingPath, baseRef string) (*SessionSnapshot, error) {
 	// Run all git operations in parallel. Each group is independent.
 	var (
-		gitStatus      *git.GitStatus
-		headChanges    []git.FileChange   // diff vs HEAD (uncommitted)
-		baseChanges    []git.FileChange   // diff vs baseRef (branch total)
-		untracked      []git.FileChange   // untracked files (shared)
-		branchCommits  []git.BranchCommit
-		statusErr, headErr, baseErr, untrackedErr, commitsErr error
-		wg sync.WaitGroup
+		gitStatus     *git.GitStatus
+		headChanges   []git.FileChange // diff vs HEAD (uncommitted)
+		baseChanges   []git.FileChange // diff vs baseRef (branch total)
+		untracked     []git.FileChange // untracked files (shared)
+		branchCommits []git.BranchCommit
+		statusErr     error
+		headErr       error
+		baseErr       error
+		untrackedErr  error
+		commitsErr    error
+		wg            sync.WaitGroup
 	)
 
 	wg.Add(5)
@@ -596,19 +647,26 @@ func (h *Handlers) GetSessionSnapshot(w http.ResponseWriter, r *http.Request) {
 	wg.Wait()
 
 	if statusErr != nil {
-		writeInternalError(w, "failed to get git status", statusErr)
-		return
+		return nil, statusErr
 	}
 
-	// Restore human-readable branch name for frontend display (same as GetSessionGitStatus)
+	// Even though the secondary git ops gracefully fall back to empty slices,
+	// we must not cache a partial snapshot: callers and the next 30s of
+	// requests would otherwise see a misleading "clean" view. Track whether
+	// any secondary op failed so we can skip the cache write below.
+	parallelOpFailed := headErr != nil || baseErr != nil || untrackedErr != nil || commitsErr != nil
+	if parallelOpFailed {
+		logger.Handlers.Warnf("computeSessionSnapshot: partial result for session=%s (headErr=%v baseErr=%v untrackedErr=%v commitsErr=%v) — skipping cache",
+			session.ID, headErr, baseErr, untrackedErr, commitsErr)
+	}
+
+	// Restore human-readable branch name for frontend display.
 	displayBranch := session.EffectiveTargetBranch()
 	displayBranch = strings.TrimPrefix(displayBranch, session.EffectiveRemote()+"/")
 	gitStatus.Sync.BaseBranch = displayBranch
 
-	// Combine untracked with head changes (uncommitted view)
 	changes := append(untracked, headChanges...)
 
-	// Combine untracked with base changes (all changes view), deduplicating
 	seen := make(map[string]bool, len(baseChanges))
 	for _, c := range baseChanges {
 		seen[c.Path] = true
@@ -621,11 +679,9 @@ func (h *Handlers) GetSessionSnapshot(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Filter gitignored files ONCE for the union of all paths
 	changes = h.repoManager.FilterGitIgnored(ctx, workingPath, changes)
 	allChanges = h.repoManager.FilterGitIgnored(ctx, workingPath, allChanges)
 
-	// Compute branch stats
 	var branchStats *BranchStats
 	if len(allChanges) > 0 {
 		bs := BranchStats{TotalFiles: len(allChanges)}
@@ -644,12 +700,13 @@ func (h *Handlers) GetSessionSnapshot(w http.ResponseWriter, r *http.Request) {
 		BranchStats:   branchStats,
 	}
 
-	// Cache the result — only if the request context is still valid (not cancelled/disconnected).
-	// A cancelled context means some goroutines may have returned empty slices silently;
-	// caching that partial data would serve a misleading "clean" snapshot to the next client.
-	if h.snapshotCache != nil && ctx.Err() == nil {
-		h.snapshotCache.Set(sessionID, snapshot)
+	// Cache the result only when the work context is still valid AND every
+	// parallel op succeeded. A cancelled context (or any op-level failure)
+	// means we may be holding empty slices that would otherwise show as a
+	// misleading "clean" snapshot to the next 30s of requests.
+	if h.snapshotCache != nil && ctx.Err() == nil && !parallelOpFailed {
+		h.snapshotCache.Set(session.ID, snapshot)
 	}
 
-	writeJSON(w, snapshot)
+	return snapshot, nil
 }
