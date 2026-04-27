@@ -4,8 +4,11 @@ import {
   formatDuration,
   computeJobDuration,
   formatCIFailureMessage,
+  buildCIStatusNote,
+  getCIStatusToast,
+  type EmptyCISnapshotStatus,
 } from '../check-utils';
-import type { CIFailureContextDTO } from '@/lib/api';
+import type { CIFailureContextDTO, CIFailureContextStatus } from '@/lib/api';
 
 // ============================================================================
 // getCheckStatusInfo
@@ -191,6 +194,7 @@ describe('formatCIFailureMessage', () => {
   it('formats a single failed run with a single failed job', () => {
     const context: CIFailureContextDTO = {
       branch: 'main',
+      status: 'has_failures',
       failedRuns: [{
         runId: 1,
         runName: 'CI',
@@ -222,6 +226,7 @@ describe('formatCIFailureMessage', () => {
   it('shows truncation notice for log output', () => {
     const context: CIFailureContextDTO = {
       branch: 'main',
+      status: 'has_failures',
       failedRuns: [{
         runId: 1,
         runName: 'CI',
@@ -247,6 +252,7 @@ describe('formatCIFailureMessage', () => {
   it('shows unavailable message when logs are missing', () => {
     const context: CIFailureContextDTO = {
       branch: 'main',
+      status: 'has_failures',
       failedRuns: [{
         runId: 1,
         runName: 'CI',
@@ -273,6 +279,7 @@ describe('formatCIFailureMessage', () => {
   it('shows truncation note when total failures are truncated', () => {
     const context: CIFailureContextDTO = {
       branch: 'main',
+      status: 'has_failures',
       failedRuns: [{
         runId: 1,
         runName: 'CI',
@@ -299,6 +306,7 @@ describe('formatCIFailureMessage', () => {
   it('handles multiple failed steps', () => {
     const context: CIFailureContextDTO = {
       branch: 'main',
+      status: 'has_failures',
       failedRuns: [{
         runId: 1,
         runName: 'CI',
@@ -324,6 +332,7 @@ describe('formatCIFailureMessage', () => {
   it('omits failed steps line when no steps provided', () => {
     const context: CIFailureContextDTO = {
       branch: 'main',
+      status: 'has_failures',
       failedRuns: [{
         runId: 1,
         runName: 'CI',
@@ -344,5 +353,57 @@ describe('formatCIFailureMessage', () => {
 
     const msg = formatCIFailureMessage(context);
     expect(msg).not.toContain('Failed steps:');
+  });
+});
+
+// ============================================================================
+// buildCIStatusNote / getCIStatusToast
+//
+// These guard the "Fix Issues" handler regression — when the backend snapshot
+// was empty, the UI used to fake a hardcoded assistant reply. The handler now
+// always sends to the agent, but uses these helpers to give the agent and the
+// user an honest status note instead of "no failures found."
+// ============================================================================
+
+describe('buildCIStatusNote', () => {
+  // has_failures is intentionally excluded by the `EmptyCISnapshotStatus`
+  // type — buildCIStatusNote is only called when the snapshot has no failed
+  // jobs, so testing the failure case here would assert against a code path
+  // that is structurally unreachable.
+  const emptyStatuses: EmptyCISnapshotStatus[] = ['all_passed', 'in_progress', 'no_runs'];
+
+  it.each(emptyStatuses)('includes branch and verification commands for status "%s"', (status) => {
+    const note = buildCIStatusNote(status, 'feature/x');
+    expect(note).toContain('feature/x');
+    // Always tells the agent how to verify with `gh`, regardless of status.
+    expect(note).toContain('gh run list');
+    expect(note).toContain('gh run view');
+  });
+
+  it('falls back to (unknown) when branch is empty', () => {
+    const note = buildCIStatusNote('all_passed', '');
+    expect(note).toContain('(unknown)');
+  });
+
+  it('uses a status-specific headline so the agent can tell snapshots apart', () => {
+    expect(buildCIStatusNote('all_passed', 'b')).toContain('all checks');
+    expect(buildCIStatusNote('in_progress', 'b')).toContain('in progress');
+    expect(buildCIStatusNote('no_runs', 'b')).toContain('no workflow runs');
+  });
+});
+
+describe('getCIStatusToast', () => {
+  it('returns null for has_failures so the failure attachment speaks for itself', () => {
+    expect(getCIStatusToast('has_failures')).toBeNull();
+  });
+
+  it.each<[CIFailureContextStatus, string]>([
+    ['all_passed', 'passed'],
+    ['in_progress', 'still running'],
+    ['no_runs', 'No workflow runs'],
+  ])('returns a non-null toast describing status "%s"', (status, fragment) => {
+    const toast = getCIStatusToast(status);
+    expect(toast).not.toBeNull();
+    expect(toast).toContain(fragment);
   });
 });

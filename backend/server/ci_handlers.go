@@ -311,12 +311,31 @@ func (h *Handlers) AnalyzeCIFailure(w http.ResponseWriter, r *http.Request) {
 }
 
 // CIFailureContext holds aggregated CI failure information for all failing jobs.
+//
+// Status describes the snapshot so the frontend (and the agent) can tell apart
+// the four reasons FailedRuns can be empty:
+//   - "has_failures" — FailedRuns is non-empty.
+//   - "all_passed"   — runs exist on the latest SHA and all completed without
+//                       a failure-equivalent conclusion.
+//   - "in_progress"  — runs exist on the latest SHA but at least one is still
+//                       queued/in-progress and no failed jobs have surfaced yet.
+//   - "no_runs"      — no workflow runs were returned for the branch.
 type CIFailureContext struct {
 	Branch      string             `json:"branch"`
+	Status      string             `json:"status"`
 	FailedRuns  []FailedRunContext `json:"failedRuns"`
 	TotalFailed int                `json:"totalFailed"`
 	Truncated   bool               `json:"truncated"`
 }
+
+// CI status values for CIFailureContext.Status. Kept as constants so callers
+// can reference them without typo risk.
+const (
+	CIStatusHasFailures = "has_failures"
+	CIStatusAllPassed   = "all_passed"
+	CIStatusInProgress  = "in_progress"
+	CIStatusNoRuns      = "no_runs"
+)
 
 // FailedRunContext holds failure details for a single workflow run.
 type FailedRunContext struct {
@@ -386,6 +405,7 @@ func (h *Handlers) GetCIFailureContext(w http.ResponseWriter, r *http.Request) {
 	if latestSHA == "" {
 		writeJSON(w, CIFailureContext{
 			Branch:      branch,
+			Status:      CIStatusNoRuns,
 			FailedRuns:  []FailedRunContext{},
 			TotalFailed: 0,
 		})
@@ -396,15 +416,26 @@ func (h *Handlers) GetCIFailureContext(w http.ResponseWriter, r *http.Request) {
 	// Include both fully-completed failed runs and in-progress runs (their
 	// individual jobs may already be completed with a failure conclusion).
 	// Skip runs that are still queued/waiting and have no jobs to inspect yet.
+	//
+	// hasPendingOnLatestSHA tracks whether any latest-SHA run is still queued
+	// or in-progress, so we can distinguish "still running" from "all passed"
+	// when no failures surface.
 	var eligibleRuns []github.WorkflowRun
+	hasPendingOnLatestSHA := false
 	for _, run := range runs {
 		if run.HeadSHA != latestSHA {
 			continue
 		}
+		if run.Status != "completed" {
+			hasPendingOnLatestSHA = true
+		}
 		if run.Status == "queued" || run.Status == "waiting" || run.Status == "pending" || run.Status == "requested" {
 			continue
 		}
-		if run.Status == "completed" && run.Conclusion != "failure" && run.Conclusion != "timed_out" {
+		if run.Status == "completed" &&
+			run.Conclusion != "failure" &&
+			run.Conclusion != "timed_out" &&
+			run.Conclusion != "action_required" {
 			continue
 		}
 		eligibleRuns = append(eligibleRuns, run)
@@ -444,7 +475,19 @@ func (h *Handlers) GetCIFailureContext(w http.ResponseWriter, r *http.Request) {
 
 		var failedJobs []FailedJobContext
 		for _, job := range jobResults[i].jobs {
-			if job.Conclusion != "failure" && job.Conclusion != "timed_out" {
+			if job.Status != "completed" {
+				// Defensive: GitHub usually completes all jobs before
+				// flipping run.Status, so the run-level pending check
+				// above already covers this. Keep the per-job set in
+				// case a straggler job appears under a "completed" run.
+				hasPendingOnLatestSHA = true
+			}
+			// action_required is a failure-equivalent: GitHub flags the run
+			// red and the Checks panel surfaces it the same way. Stay
+			// consistent with frontend and pr_status filters.
+			if job.Conclusion != "failure" &&
+				job.Conclusion != "timed_out" &&
+				job.Conclusion != "action_required" {
 				continue
 			}
 
@@ -509,8 +552,18 @@ func (h *Handlers) GetCIFailureContext(w http.ResponseWriter, r *http.Request) {
 	}
 	wg.Wait()
 
+	status := CIStatusHasFailures
+	if len(failedRuns) == 0 {
+		if hasPendingOnLatestSHA {
+			status = CIStatusInProgress
+		} else {
+			status = CIStatusAllPassed
+		}
+	}
+
 	result := CIFailureContext{
 		Branch:      branch,
+		Status:      status,
 		FailedRuns:  failedRuns,
 		TotalFailed: totalFailed,
 		Truncated:   truncatedOverall,

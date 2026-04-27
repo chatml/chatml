@@ -140,8 +140,18 @@ export interface FailedRunContext {
   failedJobs: FailedJobContext[];
 }
 
+// Snapshot status from GetCIFailureContext. Lets callers tell apart the
+// reasons failedRuns can be empty so the UX (and the agent) can react
+// honestly instead of always saying "no failures."
+export type CIFailureContextStatus =
+  | 'has_failures'
+  | 'all_passed'
+  | 'in_progress'
+  | 'no_runs';
+
 export interface CIFailureContextDTO {
   branch: string;
+  status: CIFailureContextStatus;
   failedRuns: FailedRunContext[];
   totalFailed: number;
   truncated: boolean;

@@ -20,7 +20,7 @@ import {
 import { ACTION_TEMPLATES, ACTION_TEMPLATE_NAMES, fetchMergedActionTemplates } from '@/lib/action-templates';
 import type { ActionTemplateKey } from '@/lib/action-templates';
 import { dispatchAppEvent, useAppEventListener } from '@/lib/custom-events';
-import { formatCIFailureMessage } from '@/lib/check-utils';
+import { buildCIStatusNote, formatCIFailureMessage, getCIStatusToast } from '@/lib/check-utils';
 import { useToast } from '@/components/ui/toast';
 import { copyToClipboard, openInApp } from '@/lib/tauri';
 import { cn, toBase64 } from '@/lib/utils';
@@ -347,38 +347,51 @@ export function SessionToolbarContent() {
       return;
     }
 
-    // Step 2: handle no-failures case
-    if (context.failedRuns.length === 0) {
-      setStreaming(selectedConversationId, false);
-      updateConversation(selectedConversationId, { status: 'idle' });
-      addMessage({
-        id: crypto.randomUUID(),
-        conversationId: selectedConversationId,
-        role: 'assistant',
-        content: 'No CI failures found. All checks may have passed.',
-        timestamp: new Date().toISOString(),
-      });
-      showWarning('No CI failures found. Checks may have passed.');
-      setFixIssuesLoading(false);
-      return;
+    // Step 2: build a second attachment.
+    //  - has_failures → "CI Failure Details" with the formatted log excerpts.
+    //  - empty snapshot → "Backend CI snapshot" status note that explains what
+    //    the backend saw and tells the agent to verify with `gh` before
+    //    concluding there is nothing to fix. We *always* send to the agent —
+    //    silently faking an assistant reply hid real failures (e.g. when the
+    //    snapshot's filters dropped them) and broke user trust.
+    let secondaryContent: string;
+    let secondaryName: string;
+    if (context.failedRuns.length > 0) {
+      secondaryContent = formatCIFailureMessage(context);
+      secondaryName = 'CI Failure Details';
+    } else {
+      // Runtime invariant: failedRuns is empty in this branch, so status
+      // can't be 'has_failures'. Narrow defensively for the type system —
+      // a misreporting backend gets coerced to 'no_runs' rather than
+      // generating a self-contradicting note.
+      const emptyStatus = context.status === 'has_failures' ? 'no_runs' : context.status;
+      secondaryContent = buildCIStatusNote(emptyStatus, context.branch);
+      secondaryName = 'Backend CI snapshot';
     }
-
-    // Step 3: send with failure details attached
-    const failureContent = formatCIFailureMessage(context);
-    const failureAttachment: AttachmentDTO = {
+    const secondaryAttachment: AttachmentDTO = {
       id: crypto.randomUUID(),
       type: 'file',
-      name: 'CI Failure Details',
+      name: secondaryName,
       mimeType: 'text/markdown',
-      size: new Blob([failureContent]).size,
-      lineCount: failureContent.split('\n').length,
-      base64Data: toBase64(failureContent),
-      preview: failureContent.slice(0, 200),
+      size: new Blob([secondaryContent]).size,
+      lineCount: secondaryContent.split('\n').length,
+      base64Data: toBase64(secondaryContent),
+      preview: secondaryContent.slice(0, 200),
       isInstruction: false,
     };
+
+    // Step 3: send to agent with both attachments and surface a non-blocking
+    // toast when the snapshot was empty so the user knows what was forwarded.
     try {
-      await sendConversationMessage(selectedConversationId, 'Fix the failing CI checks', { attachments: [templateAttachment, failureAttachment] });
-    } catch {
+      await sendConversationMessage(
+        selectedConversationId,
+        'Fix the failing CI checks',
+        { attachments: [templateAttachment, secondaryAttachment] }
+      );
+      const toast = getCIStatusToast(context.status);
+      if (toast) showWarning(toast);
+    } catch (error) {
+      console.error('Failed to send Fix Issues message:', error);
       setStreaming(selectedConversationId, false);
       updateConversation(selectedConversationId, { status: 'idle' });
       showWarning('Failed to send message to agent.');

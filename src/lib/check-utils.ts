@@ -8,7 +8,7 @@ import {
   Play,
   type LucideIcon,
 } from 'lucide-react';
-import type { CIFailureContextDTO } from '@/lib/api';
+import type { CIFailureContextDTO, CIFailureContextStatus } from '@/lib/api';
 
 export interface StatusInfo {
   icon: LucideIcon;
@@ -118,4 +118,68 @@ export function formatCIFailureMessage(context: CIFailureContextDTO): string {
   }
 
   return parts.join('\n');
+}
+
+/**
+ * The empty-snapshot statuses — `has_failures` is intentionally excluded
+ * because `buildCIStatusNote` is only meaningful when there are no failed
+ * jobs to attach. The type prevents callers from generating a self-
+ * contradicting note.
+ */
+export type EmptyCISnapshotStatus = Exclude<CIFailureContextStatus, 'has_failures'>;
+
+/**
+ * Markdown attachment content sent to the agent when the backend's CI snapshot
+ * came back without failed jobs. The snapshot can be empty for several
+ * non-equivalent reasons (all-passed, in-progress, no runs at all), and any of
+ * them can also be a false negative — so the note tells the agent to verify
+ * with `gh` before concluding there is nothing to fix.
+ */
+export function buildCIStatusNote(
+  status: EmptyCISnapshotStatus,
+  branch: string
+): string {
+  const headline: Record<EmptyCISnapshotStatus, string> = {
+    all_passed: 'Backend CI snapshot: all checks on the latest commit appear to have passed.',
+    in_progress: 'Backend CI snapshot: workflow runs on the latest commit are still queued or in progress.',
+    no_runs: 'Backend CI snapshot: no workflow runs were found for this branch yet.',
+  };
+
+  return [
+    headline[status],
+    '',
+    `Branch: ${branch || '(unknown)'}`,
+    '',
+    'No failed jobs are pre-loaded for you. Possible reasons:',
+    '- All checks have passed on the latest commit.',
+    '- Workflow runs are still queued or in progress.',
+    '- No workflow runs exist for this branch yet.',
+    '- The snapshot only inspects the latest commit\'s SHA; older runs are excluded.',
+    '- The snapshot may have missed something the live API would reflect.',
+    '',
+    'Verify before concluding there is nothing to fix:',
+    '- `gh run list --branch <branch> --limit 20` to list recent runs.',
+    '- `gh run view <run-id> --log-failed` for any run that looks failed or pending.',
+    '',
+    'If checks really did pass, say so to the user clearly. If checks are still running, offer to wait or summarize what is pending. If the snapshot is wrong, fix the failures you find.',
+  ].join('\n');
+}
+
+/**
+ * Short user-facing toast message for the CI snapshot status. Returns null
+ * when the status doesn't warrant a warning (i.e., real failures were found
+ * and the failure attachment will speak for itself).
+ */
+export function getCIStatusToast(status: CIFailureContextStatus): string | null {
+  switch (status) {
+    case 'all_passed':
+      return 'Latest commit\'s checks all passed — agent will verify.';
+    case 'in_progress':
+      return 'CI is still running — agent will verify.';
+    case 'no_runs':
+      return 'No workflow runs for this branch yet — agent will check.';
+    case 'has_failures':
+    default:
+      return null;
+  }
 }
