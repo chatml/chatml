@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"path/filepath"
 	"sync"
 	"testing"
 	"time"
@@ -1094,11 +1095,11 @@ API_SECRET=topsecret
 // newAIClient Multi-Source Credential Tests
 // ============================================================================
 
-func TestNewAIClient_Source1_SQLiteApiKey(t *testing.T) {
+func TestNewAIClient_SqliteApiKey_WhenNoOAuth(t *testing.T) {
 	ctx := context.Background()
 	m, s := setupTestManager(t)
 
-	// Store an encrypted API key in SQLite settings
+	// Store an encrypted API key in SQLite settings (Source 4 in the cascade).
 	encrypted, err := crypto.Encrypt("sk-ant-api03-sqlite-test-key")
 	require.NoError(t, err)
 	require.NoError(t, s.SetSetting(ctx, "anthropic-api-key", encrypted))
@@ -1120,7 +1121,7 @@ func TestNewAIClient_Source1_SQLiteApiKey(t *testing.T) {
 	assert.Equal(t, "x-api-key", client.AuthHeader())
 }
 
-func TestNewAIClient_Source2_EnvVar(t *testing.T) {
+func TestNewAIClient_EnvVar_WhenNoOAuth(t *testing.T) {
 	m, _ := setupTestManager(t)
 
 	// No SQLite key configured, set env var instead
@@ -1141,11 +1142,11 @@ func TestNewAIClient_Source2_EnvVar(t *testing.T) {
 	assert.Equal(t, "x-api-key", client.AuthHeader())
 }
 
-func TestNewAIClient_Source1_TakesPriorityOverSource2(t *testing.T) {
+func TestNewAIClient_SqliteBeatsEnvVar(t *testing.T) {
 	ctx := context.Background()
 	m, s := setupTestManager(t)
 
-	// Set BOTH SQLite key and env var
+	// Set BOTH SQLite key and env var. SQLite (Source 4) wins over env var (Source 5).
 	encrypted, err := crypto.Encrypt("sk-sqlite-priority")
 	require.NoError(t, err)
 	require.NoError(t, s.SetSetting(ctx, "anthropic-api-key", encrypted))
@@ -1162,7 +1163,7 @@ func TestNewAIClient_Source1_TakesPriorityOverSource2(t *testing.T) {
 
 	provider := m.newAIClient()
 	require.NotNil(t, provider)
-	// Client should use SQLite key (source 1), not env var (source 2)
+	// Client should use SQLite key, not env var
 	client, ok := provider.(*ai.Client)
 	require.True(t, ok, "expected *ai.Client, got %T", provider)
 	assert.Equal(t, "x-api-key", client.AuthHeader())
@@ -1181,7 +1182,7 @@ func TestNewAIClient_NoSources_ReturnsNil(t *testing.T) {
 		}
 	}()
 
-	// No SQLite key, no env var. Source 3 (keychain) may or may not work
+	// No SQLite key, no env var. Sources 1-3 (OAuth) may or may not work
 	// depending on the machine, but we can at least verify it doesn't panic.
 	client := m.newAIClient()
 	// On CI/machines without Claude Code credentials, this should be nil.
@@ -1204,8 +1205,8 @@ func TestNewAIClient_EmptyEnvVar_SkipsToNextSource(t *testing.T) {
 		}
 	}()
 
-	// No SQLite key, empty env var — should fall through to source 3 (keychain)
-	// On CI this returns nil, on dev machines it might return OAuth client
+	// No SQLite key, empty env var — should fall through to OAuth sources (1-3).
+	// On CI without keychain access this returns nil; on dev machines OAuth may resolve.
 	client := m.newAIClient()
 	_ = client // just verifying no panic
 }
@@ -1225,8 +1226,9 @@ func TestNewAIClient_EnvVarsOnlyWithoutAnthropicKey(t *testing.T) {
 		}
 	}()
 
-	// loadEnvVars will return a map with DB_HOST and PORT but no ANTHROPIC_API_KEY
-	// Should fall through to source 2, then source 3
+	// loadEnvVars returns DB_HOST and PORT but no ANTHROPIC_API_KEY, so the
+	// SQLite-key path (Source 4) is skipped and the env-var path (Source 5) is empty.
+	// Falls through to OAuth sources, which on CI without keychain access return nil.
 	client := m.newAIClient()
 	// On CI: nil; on dev machine: might get OAuth client
 	_ = client
@@ -1284,6 +1286,40 @@ func TestNewAIClient_EncryptedKeyOverridesEnvVarsSetting(t *testing.T) {
 	client, ok := provider.(*ai.Client)
 	require.True(t, ok, "expected *ai.Client, got %T", provider)
 	assert.Equal(t, "sk-encrypted-wins", client.AuthValue())
+}
+
+// TestNewAIClient_OAuthBeatsApiKey verifies that when both an OAuth credentials file
+// and an API key (SQLite + env var) are present, the OAuth subscription wins. This
+// guards against regression of the "Subscription over API Key" priority change.
+func TestNewAIClient_OAuthBeatsApiKey(t *testing.T) {
+	ctx := context.Background()
+	m, s := setupTestManager(t)
+
+	// Stage a valid OAuth credentials file at $HOME/.claude/.credentials.json with a
+	// year-3000 expiry so the cascade picks it up on every machine, including CI.
+	dir := t.TempDir()
+	claudeDir := filepath.Join(dir, ".claude")
+	require.NoError(t, os.MkdirAll(claudeDir, 0o700))
+	credContent := []byte(`{"claudeAiOauth":{"accessToken":"sk-ant-oat01-oauth-wins","expiresAt":32503680000000}}`)
+	require.NoError(t, os.WriteFile(filepath.Join(claudeDir, ".credentials.json"), credContent, 0o600))
+	t.Setenv("HOME", dir)
+
+	// Also configure both API-key paths — these MUST lose to the OAuth credentials file.
+	encrypted, err := crypto.Encrypt("sk-api-key-should-lose")
+	require.NoError(t, err)
+	require.NoError(t, s.SetSetting(ctx, "anthropic-api-key", encrypted))
+
+	t.Setenv("ANTHROPIC_API_KEY", "sk-env-should-also-lose")
+
+	provider := m.newAIClient()
+	require.NotNil(t, provider, "should create an OAuth client")
+	client, ok := provider.(*ai.Client)
+	require.True(t, ok, "expected *ai.Client, got %T", provider)
+	// OAuth clients use Authorization: Bearer; API-key clients use x-api-key.
+	// Don't assert the exact token value — the keychain (Source 1) may resolve to
+	// a real token on dev machines and beat the staged credentials file (Source 2).
+	assert.Equal(t, "Authorization", client.AuthHeader(),
+		"expected OAuth subscription to win over API key")
 }
 
 // ============================================================================

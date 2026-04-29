@@ -954,6 +954,45 @@ func TestGetClaudeAuthStatus_CliCredentialsFallbackToFile(t *testing.T) {
 	assert.Equal(t, "claude_subscription", result["credentialSource"])
 }
 
+// TestGetClaudeAuthStatus_CliCredentialsBeatsApiKey verifies that when both an
+// OAuth credentials file and an ANTHROPIC_API_KEY are configured, the reported
+// credentialSource is the subscription. Mirrors the priority enforced by
+// newAIClient — OAuth wins so users on a Max/Pro plan don't burn API quota.
+func TestGetClaudeAuthStatus_CliCredentialsBeatsApiKey(t *testing.T) {
+	h, st := setupTestHandlers(t)
+	defer st.Close()
+
+	// Stage a valid OAuth credentials file at $HOME/.claude/.credentials.json.
+	dir := t.TempDir()
+	claudeDir := filepath.Join(dir, ".claude")
+	require.NoError(t, os.MkdirAll(claudeDir, 0o700))
+	credContent := []byte(`{"claudeAiOauth":{"accessToken":"sk-ant-oat01-test","expiresAt":32503680000000}}`)
+	require.NoError(t, os.WriteFile(filepath.Join(claudeDir, ".credentials.json"), credContent, 0o600))
+	t.Setenv("HOME", dir)
+
+	// Also set ANTHROPIC_API_KEY — with the new gating, it will NOT be auto-imported
+	// because OAuth credentials are already present.
+	t.Setenv("ANTHROPIC_API_KEY", "sk-ant-api-should-lose")
+
+	req := httptest.NewRequest("GET", "/api/settings/auth-status", nil)
+	w := httptest.NewRecorder()
+	h.GetClaudeAuthStatus(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var result map[string]interface{}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &result))
+
+	assert.Equal(t, true, result["configured"])
+	assert.Equal(t, true, result["hasCliCredentials"])
+	assert.Equal(t, true, result["hasEnvKey"])
+	// hasStoredKey stays false: auto-import is suppressed when OAuth is present
+	// so subscription users don't accumulate unused persisted API keys.
+	assert.Equal(t, false, result["hasStoredKey"])
+	assert.Equal(t, "claude_subscription", result["credentialSource"],
+		"OAuth subscription must beat both stored and env API keys")
+}
+
 func TestGetClaudeEnv_NoFile(t *testing.T) {
 	h, st := setupTestHandlers(t)
 	defer st.Close()

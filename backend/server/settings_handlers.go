@@ -569,31 +569,6 @@ func (h *Handlers) GetClaudeAuthStatus(w http.ResponseWriter, r *http.Request) {
 	// Check 2: ANTHROPIC_API_KEY environment variable
 	hasEnvKey := os.Getenv("ANTHROPIC_API_KEY") != ""
 
-	// Auto-import: if no stored key, discover ANTHROPIC_API_KEY from external
-	// sources and persist it into ChatML's encrypted settings store so the
-	// banner resolves and the key is available for non-agent tasks (e.g. title
-	// generation). This runs once — subsequent calls find the stored key above.
-	if !hasStoredKey {
-		discoveredKey := ""
-		if k := os.Getenv("ANTHROPIC_API_KEY"); k != "" {
-			discoveredKey = k
-		} else if claudeSettings != nil && claudeSettings.Env["ANTHROPIC_API_KEY"] != "" {
-			discoveredKey = claudeSettings.Env["ANTHROPIC_API_KEY"]
-		} else if chatmlEnvVars["ANTHROPIC_API_KEY"] != "" {
-			discoveredKey = chatmlEnvVars["ANTHROPIC_API_KEY"]
-		}
-
-		if discoveredKey != "" {
-			if enc, encErr := crypto.Encrypt(discoveredKey); encErr != nil {
-				log.Printf("WARN: auto-import ANTHROPIC_API_KEY encrypt failed: %v", encErr)
-			} else if setErr := h.store.SetSetting(ctx, settingKeyAnthropicAPIKey, enc); setErr != nil {
-				log.Printf("WARN: auto-import ANTHROPIC_API_KEY store failed: %v", setErr)
-			} else {
-				hasStoredKey = true
-			}
-		}
-	}
-
 	// Check 3: Claude Code CLI credentials via OS keychain (validates token contents + expiration)
 	_, cliErr := ai.ReadClaudeCodeOAuthToken()
 	hasCliCredentials := cliErr == nil
@@ -619,19 +594,49 @@ func (h *Handlers) GetClaudeAuthStatus(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Auto-import: if no stored key and no higher-priority credential source (OAuth or
+	// Bedrock), discover ANTHROPIC_API_KEY from external sources and persist it into
+	// ChatML's encrypted settings store so the banner resolves and the key is available
+	// for non-agent tasks (e.g. title generation). This runs once — subsequent calls
+	// find the stored key above.
+	// Skip when OAuth or Bedrock is active: users on a subscription or Bedrock config
+	// should not have an unused API key silently persisted in their settings.
+	if !hasStoredKey && !hasCliCredentials && !hasBedrock {
+		discoveredKey := ""
+		if k := os.Getenv("ANTHROPIC_API_KEY"); k != "" {
+			discoveredKey = k
+		} else if claudeSettings != nil && claudeSettings.Env["ANTHROPIC_API_KEY"] != "" {
+			discoveredKey = claudeSettings.Env["ANTHROPIC_API_KEY"]
+		} else if chatmlEnvVars["ANTHROPIC_API_KEY"] != "" {
+			discoveredKey = chatmlEnvVars["ANTHROPIC_API_KEY"]
+		}
+
+		if discoveredKey != "" {
+			if enc, encErr := crypto.Encrypt(discoveredKey); encErr != nil {
+				log.Printf("WARN: auto-import ANTHROPIC_API_KEY encrypt failed: %v", encErr)
+			} else if setErr := h.store.SetSetting(ctx, settingKeyAnthropicAPIKey, enc); setErr != nil {
+				log.Printf("WARN: auto-import ANTHROPIC_API_KEY store failed: %v", setErr)
+			} else {
+				hasStoredKey = true
+			}
+		}
+	}
+
 	configured := hasStoredKey || hasEnvKey || hasCliCredentials || hasBedrock
 
 	// Determine the primary credential source for UI display.
-	// Order must match newAIClient() priority: Bedrock > stored key > env key > CLI credentials.
+	// Order must match newAIClient() priority: Bedrock > CLI credentials > stored key > env key.
+	// Subscription/OAuth wins over API key so users on a Claude Max/Pro plan don't burn API quota
+	// when both are configured.
 	credentialSource := ""
 	if hasBedrock {
 		credentialSource = "aws_bedrock"
+	} else if hasCliCredentials {
+		credentialSource = "claude_subscription"
 	} else if hasStoredKey {
 		credentialSource = "api_key"
 	} else if hasEnvKey {
 		credentialSource = "env_var"
-	} else if hasCliCredentials {
-		credentialSource = "claude_subscription"
 	}
 
 	writeJSON(w, map[string]interface{}{
