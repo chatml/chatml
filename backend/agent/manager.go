@@ -2382,11 +2382,13 @@ func formatSessionName(name string) string {
 
 // newAIClient creates a fresh AI client by checking multiple credential sources in order:
 // 0. AWS Bedrock via Claude Code settings.json or ChatML env vars
-// 1. Encrypted API key stored in SQLite settings
-// 2. ANTHROPIC_API_KEY environment variable
-// 3. Claude Code OAuth token from macOS Keychain
-// 4. Claude Code credentials file (~/.claude/.credentials.json)
-// 5. Cached OAuth token from agent-runner SDK
+// 1. Claude Code OAuth token from macOS Keychain
+// 2. Claude Code credentials file (~/.claude/.credentials.json)
+// 3. Cached OAuth token from agent-runner SDK
+// 4. Encrypted API key stored in SQLite settings
+// 5. ANTHROPIC_API_KEY environment variable
+// Subscription/OAuth sources are preferred over API keys so users on a Claude
+// Max/Pro plan don't unintentionally burn API quota when both are configured.
 // Returns nil if no credentials are available.
 func (m *Manager) newAIClient() ai.Provider {
 	// Read Claude Code settings once — shared by Bedrock check and env var merge.
@@ -2409,23 +2411,7 @@ func (m *Manager) newAIClient() ai.Provider {
 		return client
 	}
 
-	// Source 1: SQLite settings (explicit user-configured API key)
-	if envVars != nil {
-		if apiKey := envVars["ANTHROPIC_API_KEY"]; apiKey != "" {
-			logger.Manager.Debugf("AI client: using API key from settings")
-			m.signalCredentialsReady()
-			return ai.NewClient(apiKey)
-		}
-	}
-
-	// Source 2: Process environment variable
-	if apiKey := os.Getenv("ANTHROPIC_API_KEY"); apiKey != "" {
-		logger.Manager.Debugf("AI client: using API key from environment")
-		m.signalCredentialsReady()
-		return ai.NewClient(apiKey)
-	}
-
-	// Source 3: Claude Code OAuth token from OS keychain
+	// Source 1: Claude Code OAuth token from OS keychain
 	var keychainErr, credFileErr error
 	token, keychainErr := ai.ReadClaudeCodeOAuthToken()
 	if keychainErr == nil {
@@ -2434,7 +2420,7 @@ func (m *Manager) newAIClient() ai.Provider {
 		return ai.NewClientWithOAuth(token)
 	}
 
-	// Source 4: Credentials file fallback (~/.claude/.credentials.json)
+	// Source 2: Credentials file fallback (~/.claude/.credentials.json)
 	token, credFileErr = ai.ReadClaudeCodeCredentialsFile()
 	if credFileErr == nil {
 		logger.Manager.Debugf("AI client: using OAuth token from credentials file")
@@ -2442,13 +2428,29 @@ func (m *Manager) newAIClient() ai.Provider {
 		return ai.NewClientWithOAuth(token)
 	}
 
-	// Source 5: Cached OAuth token from agent-runner SDK
-	// In release builds, sources 1-4 often fail (no env var from Finder launch,
-	// keychain ACL blocks access). The SDK authenticates independently and we
-	// cache its credentials on the first init event.
+	// Source 3: Cached OAuth token from agent-runner SDK
+	// In release builds, the keychain/credfile sources often fail (no env var from
+	// Finder launch, keychain ACL blocks access). The SDK authenticates
+	// independently and we cache its credentials on the first init event.
 	if cached := m.getCachedOAuthToken(); cached != "" {
 		logger.Manager.Debugf("AI client: using cached OAuth token from SDK")
 		return ai.NewClientWithOAuth(cached)
+	}
+
+	// Source 4: SQLite settings (explicit user-configured API key)
+	if envVars != nil {
+		if apiKey := envVars["ANTHROPIC_API_KEY"]; apiKey != "" {
+			logger.Manager.Debugf("AI client: using API key from settings")
+			m.signalCredentialsReady()
+			return ai.NewClient(apiKey)
+		}
+	}
+
+	// Source 5: Process environment variable
+	if apiKey := os.Getenv("ANTHROPIC_API_KEY"); apiKey != "" {
+		logger.Manager.Debugf("AI client: using API key from environment")
+		m.signalCredentialsReady()
+		return ai.NewClient(apiKey)
 	}
 
 	logger.Manager.Warnf("AI client unavailable: no credentials found (keychain: %v, credfile: %v)", keychainErr, credFileErr)
@@ -2549,6 +2551,21 @@ func (m *Manager) setCachedOAuthToken(token string) {
 	defer m.cachedOAuthTokenMu.Unlock()
 	m.cachedOAuthToken = token
 	m.signalCredentialsReady()
+}
+
+// hasOAuthCredentials returns true when any OAuth/subscription source is available.
+// Used to suppress ANTHROPIC_API_KEY injection into the agent-runner subprocess env:
+// the Agent SDK prefers env vars over OAuth, which would defeat the subscription-first
+// priority established in newAIClient.
+func (m *Manager) hasOAuthCredentials() bool {
+	if m.getCachedOAuthToken() != "" {
+		return true
+	}
+	if _, err := ai.ReadClaudeCodeOAuthToken(); err == nil {
+		return true
+	}
+	_, err := ai.ReadClaudeCodeCredentialsFile()
+	return err == nil
 }
 
 // getCachedOAuthToken returns the cached OAuth token, if any.
@@ -3306,21 +3323,28 @@ func (m *Manager) loadEnvVars(ctx context.Context, claudeSettings *ai.ClaudeCode
 		}
 	}
 
-	// Load encrypted Anthropic API key if configured
-	encrypted, found, err := m.store.GetSetting(ctx, "anthropic-api-key")
-	if err != nil {
-		return envMap, nil // non-fatal: proceed without the key
-	}
-	if found && encrypted != "" {
-		decrypted, err := crypto.Decrypt(encrypted)
+	var encrypted string // reused across the encrypted-setting loads below
+
+	// Load encrypted Anthropic API key if configured.
+	// Skip when OAuth credentials are present: the Agent SDK picks up
+	// ANTHROPIC_API_KEY from env before checking keychain/credfile, which
+	// would bypass subscription auth and burn API quota unintentionally.
+	if !m.hasOAuthCredentials() {
+		encrypted, found, err = m.store.GetSetting(ctx, "anthropic-api-key")
 		if err != nil {
-			logger.Manager.Errorf("failed to decrypt Anthropic API key: %v", err)
-			return envMap, nil
+			return envMap, nil // non-fatal: proceed without the key
 		}
-		if envMap == nil {
-			envMap = make(map[string]string)
+		if found && encrypted != "" {
+			decrypted, err := crypto.Decrypt(encrypted)
+			if err != nil {
+				logger.Manager.Errorf("failed to decrypt Anthropic API key: %v", err)
+				return envMap, nil
+			}
+			if envMap == nil {
+				envMap = make(map[string]string)
+			}
+			envMap["ANTHROPIC_API_KEY"] = decrypted
 		}
-		envMap["ANTHROPIC_API_KEY"] = decrypted
 	}
 
 	// Load encrypted GitHub personal access token if configured.
