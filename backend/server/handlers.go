@@ -730,14 +730,22 @@ func NewHandlers(ctx context.Context, s *store.SQLiteStore, am *agent.Manager, d
 		statsComputer:    sc,
 		diffCache:        diffCache,
 		snapshotCache:    snapshotCache,
-		// PR status changes via WebSocket push from pr-watcher; 15s TTL is a
-		// short fallback for the polling clients while collapsing the 3-5
-		// concurrent subscribers (per-session) into one upstream GitHub call.
+		// PR details are kept warm by pr-watcher's 30s/45s polling cycle
+		// (see SetOnPRDetails wire-up below). The 90s freshness TTL is
+		// comfortably longer than the slow-tier interval, so /pr-status
+		// polls served to the user almost always hit the cache and avoid
+		// a 1.0–1.5s GitHub round-trip on the request path. The 10-minute
+		// stale window keeps the last-known value usable as a fallback
+		// when GitHub is unreachable, so a transient outage degrades the
+		// UI to "slightly stale" instead of broken panels.
 		// Keyed by sessionID — see prStatusCacheKey for the rationale.
-		prStatusCache: NewSFCache[*github.PRDetails](15 * time.Second),
+		prStatusCache: NewSFCacheWithStale[*github.PRDetails](90*time.Second, 10*time.Minute),
 		// CI workflow runs change relatively slowly; 30s coalesces the 30s
 		// polling loop subscribers without serving meaningfully stale data.
-		ciRunsCache: NewSFCache[[]github.WorkflowRun](30 * time.Second),
+		// The 5-minute stale window provides the same outage fallback as
+		// pr-status: rather than 502 panels, users see a slightly older run
+		// list while GitHub recovers.
+		ciRunsCache: NewSFCacheWithStale[[]github.WorkflowRun](30*time.Second, 5*time.Minute),
 		// Action templates are configuration; 60s eliminates 4-6× round-trips
 		// on every session switch with effectively no staleness risk.
 		actionTemplatesCache: NewSFCache[map[string]string](60 * time.Second),
@@ -754,6 +762,14 @@ func NewHandlers(ctx context.Context, s *store.SQLiteStore, am *agent.Manager, d
 	const sfCacheSweepInterval = 5 * time.Minute
 	h.prStatusCache.StartSweeper(serverCtx, sfCacheSweepInterval)
 	h.ciRunsCache.StartSweeper(serverCtx, sfCacheSweepInterval)
+
+	// Have the PR watcher feed prStatusCache so /pr-status polls served to
+	// users hit the cache instead of paying a synchronous GitHub call.
+	if prw != nil {
+		prw.SetOnPRDetails(func(sessionID string, details *github.PRDetails) {
+			h.prStatusCache.Set(prStatusCacheKey(sessionID), details)
+		})
+	}
 	return h
 }
 

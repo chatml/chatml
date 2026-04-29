@@ -282,6 +282,40 @@ describe('useFileWatcher', () => {
     expect(mockedSendNotification).not.toHaveBeenCalled();
   });
 
+  it('skips per-tab reload work for burst events but still updates the store', async () => {
+    // Burst events represent a checkout / install storm with hundreds of files.
+    // The hook must NOT iterate every file checking for tab conflicts (wasted
+    // work; the downstream snapshot refetch handles bulk refresh) but still
+    // needs to write the event to the store so other consumers react.
+    const tab = makeFileTab({ isDirty: false });
+    useAppStore.setState({ fileTabs: [tab] });
+
+    renderHook(() => useFileWatcher());
+
+    await act(async () => {
+      await flushAsync();
+    });
+
+    await act(async () => {
+      capturedFileChangeHandler!({
+        workspaceId: 'ws-1',
+        path: 'src/file.ts',
+        fullPath: '/workspaces/ws-1/src/file.ts',
+        files: [{ path: 'src/file.ts', fullPath: '/workspaces/ws-1/src/file.ts' }],
+        fileCount: 1500,
+        burst: true,
+      });
+      await flushAsync();
+    });
+
+    // Store should still receive the change so consumers can refetch snapshot.
+    const lastChange = useAppStore.getState().lastFileChange;
+    expect(lastChange?.burst).toBe(true);
+    // But the hook must NOT do per-file reload work on a burst.
+    expect(mockedGetRepoFileContent).not.toHaveBeenCalled();
+    expect(mockedSendNotification).not.toHaveBeenCalled();
+  });
+
   it('cleans up listener on unmount', async () => {
     const { unmount } = renderHook(() => useFileWatcher());
 

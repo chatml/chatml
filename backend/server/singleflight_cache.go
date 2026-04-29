@@ -23,28 +23,59 @@ import (
 // value as read-only — mutating it races with other readers and silently
 // corrupts the cache entry. If you need to mutate, copy first.
 type SFCache[T any] struct {
-	sf  singleflight.Group
-	ttl time.Duration
+	sf       singleflight.Group
+	ttl      time.Duration // freshness window — Do/DoContext serve directly within this
+	staleTTL time.Duration // extended grace period; entries past ttl but within staleTTL
+	// remain in the map and are usable as a stale-on-error fallback.
 
 	mu      sync.RWMutex
 	entries map[string]sfEntry[T]
 }
 
 type sfEntry[T any] struct {
-	value     T
-	expiresAt time.Time
+	value      T
+	expiresAt  time.Time // after this: not fresh (Do refetches)
+	staleUntil time.Time // after this: evicted (entry is gone)
 }
 
+// CacheState describes how DoContextWithStaleOnError served its result.
+type CacheState int
+
+const (
+	// CacheFresh means the value was served from fresh cache or from a
+	// successful upstream refresh.
+	CacheFresh CacheState = iota
+	// CacheStaleError means the upstream refresh returned an error and the
+	// caller is being served a previously-cached value as a fallback.
+	// Surface this to the client (e.g. via X-Cache-Status: stale-error)
+	// so degraded responses are visible.
+	CacheStaleError
+)
+
 // NewSFCache returns a singleflight-backed TTL cache. ttl must be > 0.
+// The cache has no extended stale window — entries are evicted at ttl.
 //
 // Without an explicit eviction strategy, entries that are written once and
 // never re-stored (e.g. a feature branch that's deleted, a closed PR) would
 // stay in the map until process exit. Use StartSweeper for long-lived caches
 // whose key cardinality grows with usage.
 func NewSFCache[T any](ttl time.Duration) *SFCache[T] {
+	return NewSFCacheWithStale[T](ttl, ttl)
+}
+
+// NewSFCacheWithStale returns a cache with separate freshness and staleness
+// windows. Entries are served directly while within freshTTL; past freshTTL
+// but within staleTTL they remain in the map and can be served by
+// DoContextWithStaleOnError as a fallback when an upstream refresh fails.
+// staleTTL is clamped up to freshTTL.
+func NewSFCacheWithStale[T any](freshTTL, staleTTL time.Duration) *SFCache[T] {
+	if staleTTL < freshTTL {
+		staleTTL = freshTTL
+	}
 	return &SFCache[T]{
-		ttl:     ttl,
-		entries: make(map[string]sfEntry[T]),
+		ttl:      freshTTL,
+		staleTTL: staleTTL,
+		entries:  make(map[string]sfEntry[T]),
 	}
 }
 
@@ -121,6 +152,58 @@ func (c *SFCache[T]) DoContext(ctx context.Context, key string, fn func() (T, er
 	}
 }
 
+// DoContextWithStaleOnError is like DoContext but, when fn returns an error
+// and a stale cached value is still within the staleTTL window, returns that
+// value with CacheStaleError instead of surfacing the error. This trades
+// momentary staleness for UI continuity during upstream outages: the
+// alternative is the user seeing 5xx panels every poll until the upstream
+// recovers.
+//
+// Behaviour matrix:
+//   - fresh hit:                  → (value, CacheFresh, nil)
+//   - miss + fn ok:               → (value, CacheFresh, nil)
+//   - miss + fn error + stale:    → (stale, CacheStaleError, nil)
+//   - miss + fn error + no stale: → (zero,  CacheFresh,      err)
+//   - ctx cancelled:              → (zero,  CacheFresh,      ctx.Err())
+//
+// Caller's ctx can abort their wait without cancelling the underlying fn —
+// see DoContext for the singleflight semantics.
+func (c *SFCache[T]) DoContextWithStaleOnError(ctx context.Context, key string, fn func() (T, error)) (T, CacheState, error) {
+	if v, ok := c.lookup(key); ok {
+		return v, CacheFresh, nil
+	}
+
+	ch := c.sf.DoChan(key, func() (any, error) {
+		if v, ok := c.lookup(key); ok {
+			return v, nil
+		}
+		result, err := fn()
+		if err != nil {
+			var zero T
+			return zero, err
+		}
+		c.store(key, result)
+		return result, nil
+	})
+
+	select {
+	case <-ctx.Done():
+		var zero T
+		return zero, CacheFresh, ctx.Err()
+	case res := <-ch:
+		if res.Err != nil {
+			// Refresh failed — fall back to a stale cached value if one
+			// exists. This is the entire point of the staleTTL window.
+			if v, ok := c.lookupStale(key); ok {
+				return v, CacheStaleError, nil
+			}
+			var zero T
+			return zero, CacheFresh, res.Err
+		}
+		return res.Val.(T), CacheFresh, nil
+	}
+}
+
 // Invalidate drops any cached value for key. Safe to call when nothing is cached.
 func (c *SFCache[T]) Invalidate(key string) {
 	c.mu.Lock()
@@ -128,6 +211,18 @@ func (c *SFCache[T]) Invalidate(key string) {
 	c.mu.Unlock()
 }
 
+// Set populates the cache for key with the configured TTL. Use this when an
+// external producer (e.g. a background poller) has already fetched the value
+// and wants subsequent Do/DoContext calls to hit instead of refetching.
+//
+// The stored value is treated as read-only — see the SFCache contract.
+func (c *SFCache[T]) Set(key string, value T) {
+	c.store(key, value)
+}
+
+// lookup returns the cached value if it is still fresh. Past the freshness
+// window but within the stale window, the entry is intentionally retained so
+// DoContextWithStaleOnError can fall back to it on upstream failure.
 func (c *SFCache[T]) lookup(key string) (T, bool) {
 	c.mu.RLock()
 	entry, ok := c.entries[key]
@@ -136,30 +231,56 @@ func (c *SFCache[T]) lookup(key string) (T, bool) {
 		var zero T
 		return zero, false
 	}
-	if time.Now().After(entry.expiresAt) {
-		// Opportunistic eviction: drop the stale entry so a key that's
-		// looked up once and never re-stored doesn't pin memory forever.
-		// Re-check under the write lock — another caller may have
-		// refreshed the entry between our read and write.
+	now := time.Now()
+	if now.After(entry.staleUntil) {
+		// Past stale window — drop the entry so a key looked up once and
+		// never re-stored doesn't pin memory forever. Re-check under the
+		// write lock to avoid racing a fresh write.
 		c.mu.Lock()
-		if cur, ok := c.entries[key]; ok && time.Now().After(cur.expiresAt) {
+		if cur, ok := c.entries[key]; ok && time.Now().After(cur.staleUntil) {
 			delete(c.entries, key)
 		}
 		c.mu.Unlock()
 		var zero T
 		return zero, false
 	}
+	if now.After(entry.expiresAt) {
+		// Stale-but-retained: not a fresh hit. Don't evict; the
+		// stale-on-error path may still need this value.
+		var zero T
+		return zero, false
+	}
 	return entry.value, true
 }
 
-// Sweep walks the entries map once and deletes anything past its TTL. Cheap
-// even for caches with thousands of keys (just a map walk under a write lock).
-// Exposed for tests; production callers should use StartSweeper.
+// lookupStale returns any retained value (fresh or past-fresh-but-within-
+// staleTTL). Used by DoContextWithStaleOnError as the fallback path when
+// the upstream refresh fails. Does not evict on miss.
+func (c *SFCache[T]) lookupStale(key string) (T, bool) {
+	c.mu.RLock()
+	entry, ok := c.entries[key]
+	c.mu.RUnlock()
+	if !ok {
+		var zero T
+		return zero, false
+	}
+	if time.Now().After(entry.staleUntil) {
+		var zero T
+		return zero, false
+	}
+	return entry.value, true
+}
+
+// Sweep walks the entries map once and deletes anything past its stale
+// deadline (entries past freshness but still within staleTTL are retained
+// for stale-on-error fallback). Cheap even for caches with thousands of
+// keys (just a map walk under a write lock). Exposed for tests;
+// production callers should use StartSweeper.
 func (c *SFCache[T]) Sweep() {
 	now := time.Now()
 	c.mu.Lock()
 	for k, e := range c.entries {
-		if now.After(e.expiresAt) {
+		if now.After(e.staleUntil) {
 			delete(c.entries, k)
 		}
 	}
@@ -188,7 +309,12 @@ func (c *SFCache[T]) StartSweeper(ctx context.Context, interval time.Duration) {
 }
 
 func (c *SFCache[T]) store(key string, value T) {
+	now := time.Now()
 	c.mu.Lock()
-	c.entries[key] = sfEntry[T]{value: value, expiresAt: time.Now().Add(c.ttl)}
+	c.entries[key] = sfEntry[T]{
+		value:      value,
+		expiresAt:  now.Add(c.ttl),
+		staleUntil: now.Add(c.staleTTL),
+	}
 	c.mu.Unlock()
 }

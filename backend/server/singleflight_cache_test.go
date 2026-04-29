@@ -191,6 +191,118 @@ func TestSFCache_Invalidate(t *testing.T) {
 	}
 }
 
+func TestSFCache_SetPopulatesEntryAndSuppressesFn(t *testing.T) {
+	c := NewSFCache[int](5 * time.Second)
+	var calls int64
+
+	c.Set("k", 7)
+
+	for i := 0; i < 3; i++ {
+		v, err := c.Do("k", func() (int, error) {
+			atomic.AddInt64(&calls, 1)
+			return 99, nil
+		})
+		if err != nil || v != 7 {
+			t.Fatalf("iter %d: got (%d, %v), want (7, nil)", i, v, err)
+		}
+	}
+	if got := atomic.LoadInt64(&calls); got != 0 {
+		t.Errorf("expected 0 underlying calls (Set should populate cache), got %d", got)
+	}
+}
+
+func TestSFCache_StaleOnError_ReturnsStaleAfterFailedRefresh(t *testing.T) {
+	// Fresh window short, stale window long: the entry expires almost
+	// immediately but stays available as a fallback for ~5s.
+	c := NewSFCacheWithStale[string](20*time.Millisecond, 5*time.Second)
+
+	// Seed a cached value via a successful first call.
+	if _, _, err := c.DoContextWithStaleOnError(context.Background(), "k", func() (string, error) {
+		return "v1", nil
+	}); err != nil {
+		t.Fatalf("seed call: unexpected error: %v", err)
+	}
+
+	// Let freshness elapse but keep stale window valid.
+	time.Sleep(40 * time.Millisecond)
+
+	// Refresh fails — caller should still see the cached value tagged stale.
+	v, state, err := c.DoContextWithStaleOnError(context.Background(), "k", func() (string, error) {
+		return "", errors.New("upstream down")
+	})
+	if err != nil {
+		t.Fatalf("expected nil error from stale fallback, got %v", err)
+	}
+	if v != "v1" {
+		t.Errorf("expected stale value v1, got %q", v)
+	}
+	if state != CacheStaleError {
+		t.Errorf("expected CacheStaleError, got %v", state)
+	}
+}
+
+func TestSFCache_StaleOnError_PropagatesErrorWithNoFallback(t *testing.T) {
+	// A miss with no prior successful call has no stale value to fall back
+	// on; the error must surface so the caller can render an error state.
+	c := NewSFCacheWithStale[int](20*time.Millisecond, 5*time.Second)
+	sentinel := errors.New("upstream down")
+
+	_, state, err := c.DoContextWithStaleOnError(context.Background(), "k", func() (int, error) {
+		return 0, sentinel
+	})
+	if !errors.Is(err, sentinel) {
+		t.Errorf("expected sentinel error, got %v", err)
+	}
+	if state != CacheFresh {
+		t.Errorf("expected CacheFresh marker on hard error path, got %v", state)
+	}
+}
+
+func TestSFCache_StaleOnError_FreshHitDoesNotCallFn(t *testing.T) {
+	c := NewSFCacheWithStale[string](5*time.Second, 30*time.Second)
+	_, _, err := c.DoContextWithStaleOnError(context.Background(), "k", func() (string, error) {
+		return "v1", nil
+	})
+	if err != nil {
+		t.Fatalf("seed call: unexpected error: %v", err)
+	}
+
+	called := false
+	v, state, err := c.DoContextWithStaleOnError(context.Background(), "k", func() (string, error) {
+		called = true
+		return "v2", nil
+	})
+	if err != nil || v != "v1" {
+		t.Errorf("expected fresh hit (v1, nil), got (%q, %v)", v, err)
+	}
+	if state != CacheFresh {
+		t.Errorf("expected CacheFresh, got %v", state)
+	}
+	if called {
+		t.Error("fresh hit must not invoke fn")
+	}
+}
+
+func TestSFCache_StaleOnError_EntryEvictedAfterStaleWindow(t *testing.T) {
+	// Past the stale window, the value is gone and the next failure surfaces.
+	c := NewSFCacheWithStale[string](10*time.Millisecond, 30*time.Millisecond)
+	_, _, err := c.DoContextWithStaleOnError(context.Background(), "k", func() (string, error) {
+		return "v1", nil
+	})
+	if err != nil {
+		t.Fatalf("seed call: unexpected error: %v", err)
+	}
+
+	time.Sleep(60 * time.Millisecond)
+	sentinel := errors.New("upstream down")
+	_, _, err = c.DoContextWithStaleOnError(context.Background(), "k", func() (string, error) {
+		return "", sentinel
+	})
+	if !errors.Is(err, sentinel) {
+		t.Errorf("past stale window: expected sentinel error, got %v", err)
+	}
+}
+
 func TestSFCache_LookupEvictsExpiredEntry(t *testing.T) {
 	c := NewSFCache[int](20 * time.Millisecond)
 
