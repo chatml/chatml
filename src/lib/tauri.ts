@@ -261,6 +261,13 @@ export interface FileChangedEvent {
   files?: { path: string; fullPath: string }[];
   /** Total number of files changed in this batch */
   fileCount?: number;
+  /**
+   * True when the watcher emitted this event after burst-cooldown expired
+   * (e.g. a `git checkout` or `npm install` storm). Consumers should treat
+   * the file list as a hint that "many things changed" and prefer one bulk
+   * refetch over per-file reload work.
+   */
+  burst?: boolean;
 }
 
 /**

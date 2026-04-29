@@ -16,13 +16,52 @@ import (
 
 // retryTransport wraps an http.RoundTripper with automatic retry and
 // exponential backoff for GitHub API rate-limit responses (429 and 403).
+//
+// It also fronts a per-host circuit breaker (when configured): once the
+// host has produced enough consecutive transport failures the breaker
+// opens, and subsequent requests fail fast with ErrCircuitOpen instead of
+// paying the full retry budget. This bounds the user-visible freeze when
+// GitHub is unreachable to one full retry cycle, not one per dependent
+// endpoint per panel.
 type retryTransport struct {
 	base       http.RoundTripper
 	maxRetries int
 	baseDelay  time.Duration
+	breaker    *circuitBreaker // optional; no-op when nil
 }
 
 func (t *retryTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	// Short-circuit when the breaker is open — return immediately so callers
+	// see a fast-path failure they can treat the same as any other transport
+	// error (typically: serve a stale cached response).
+	if t.breaker != nil {
+		if !t.breaker.allow(req.URL.Host) {
+			return nil, fmt.Errorf("%w: %s", ErrCircuitOpen, req.URL.Host)
+		}
+	}
+
+	resp, err := t.roundTripWithRetries(req)
+
+	// Record outcome for the breaker. Context cancel/deadline don't reflect
+	// host health (the user/upstream cancelled), so they don't count as
+	// failures. A response — even a 5xx — counts as success because the host
+	// is reachable; the breaker only exists to suppress connection-level
+	// failures, not server-side error rates.
+	if t.breaker != nil {
+		switch {
+		case errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):
+			// Don't move the breaker either way.
+		case err != nil:
+			t.breaker.recordFailure(req.URL.Host)
+		case resp != nil:
+			t.breaker.recordSuccess(req.URL.Host)
+		}
+	}
+
+	return resp, err
+}
+
+func (t *retryTransport) roundTripWithRetries(req *http.Request) (*http.Response, error) {
 	// Buffer the request body so it can be replayed on retry.
 	if req.Body != nil && req.GetBody == nil {
 		bodyBytes, err := io.ReadAll(req.Body)

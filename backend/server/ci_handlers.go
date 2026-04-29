@@ -91,7 +91,7 @@ func (h *Handlers) ListCIRuns(w http.ResponseWriter, r *http.Request) {
 	}
 
 	cacheKey := fmt.Sprintf("%s/%s@%s", ghCtx.owner, ghCtx.repo, ghCtx.session.Branch)
-	runs, err := h.ciRunsCache.DoContext(r.Context(), cacheKey, func() ([]github.WorkflowRun, error) {
+	runs, cacheState, err := h.ciRunsCache.DoContextWithStaleOnError(r.Context(), cacheKey, func() ([]github.WorkflowRun, error) {
 		fetchCtx, cancel := context.WithTimeout(h.serverCtx, ghFetchTimeout)
 		defer cancel()
 		return h.ghClient.ListWorkflowRuns(fetchCtx, ghCtx.owner, ghCtx.repo, ghCtx.session.Branch)
@@ -101,6 +101,12 @@ func (h *Handlers) ListCIRuns(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if cacheState == CacheStaleError {
+		// GitHub call failed but we have a cached run list — return it with
+		// a degraded-cache header instead of a 502 so the UI keeps showing
+		// the last-known runs through the outage.
+		w.Header().Set("X-Cache-Status", "stale-error")
+	}
 	writeJSON(w, runs)
 }
 

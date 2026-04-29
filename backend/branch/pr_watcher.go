@@ -58,6 +58,7 @@ type PRWatcher struct {
 	store         PRWatcherStore
 	prCache       *github.PRCache // Shared cache with ListPRs handler
 	onChange      func(PRChangeEvent)
+	onPRDetails   func(sessionID string, details *github.PRDetails) // Wired by handlers to keep prStatusCache warm.
 	ctx           context.Context
 	cancel        context.CancelFunc
 	backfillOnce  sync.Once
@@ -85,6 +86,32 @@ func NewPRWatcher(
 
 	go w.run()
 	return w
+}
+
+// SetOnPRDetails registers a callback fired whenever the watcher obtains fresh
+// PRDetails for a session — either from a GitHub fetch or from the shared
+// prCache. Used by the HTTP layer to populate its per-session SFCache so that
+// /pr-status polls hit the cache instead of paying a GitHub round-trip on the
+// request path. Safe to leave unset.
+func (w *PRWatcher) SetOnPRDetails(cb func(sessionID string, details *github.PRDetails)) {
+	w.mu.Lock()
+	w.onPRDetails = cb
+	w.mu.Unlock()
+}
+
+// emitPRDetails invokes onPRDetails without holding w.mu, so the callback can
+// freely take other locks (e.g. an SFCache write). Reads the callback under
+// RLock to stay safe with concurrent SetOnPRDetails.
+func (w *PRWatcher) emitPRDetails(sessionID string, details *github.PRDetails) {
+	if details == nil {
+		return
+	}
+	w.mu.RLock()
+	cb := w.onPRDetails
+	w.mu.RUnlock()
+	if cb != nil {
+		cb(sessionID, details)
+	}
 }
 
 // WatchSession starts watching a session for PR status changes.
@@ -389,6 +416,11 @@ func (w *PRWatcher) enrichPRMetadata(sessionID string, prNumber int) {
 		logger.PRWatcher.Warnf("enrichPRMetadata: failed to get PR #%d details for session %s: %v", prNumber, sessionID, err)
 		return
 	}
+
+	// Populate per-session pr-status cache so the HTTP handler can serve
+	// instantly. Done before any further state checks so a stale entry/PR
+	// mismatch below doesn't suppress the cache write.
+	w.emitPRDetails(sessionID, details)
 
 	w.mu.Lock()
 	// Re-check entry still exists and matches the same PR
@@ -748,11 +780,17 @@ func (w *PRWatcher) checkSessionPR(owner, repo string, entry *PRWatchEntry, bran
 		if details != nil {
 			checkStatus = string(details.CheckStatus)
 			mergeable = details.Mergeable
+			// Warm the per-session pr-status cache (handler reads this on GET).
+			w.emitPRDetails(entry.SessionID, details)
 		}
 	} else if entry.PRStatus == models.PRStatusOpen && entry.PRNumber > 0 {
 		// Had an open PR but it's no longer in the open list - check if merged or closed
 		details, err := w.ghClient.GetPRDetails(w.ctx, owner, repo, entry.PRNumber)
 		if err == nil && details != nil {
+			// Even on lifecycle transitions, freshly-fetched details should
+			// warm the per-session cache so /pr-status reflects merged/closed
+			// state without another GitHub call.
+			w.emitPRDetails(entry.SessionID, details)
 			if details.State == "closed" {
 				// Check if it was merged using the `merged` boolean from the PR response,
 				// falling back to the dedicated /merge endpoint

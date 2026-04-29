@@ -377,6 +377,110 @@ func TestPRWatcher_CheckSessionPR_MergedPR_ClearsMergeConflict(t *testing.T) {
 	require.NotNil(t, capturedEvent, "should have emitted a change event")
 }
 
+func TestPRWatcher_OnPRDetails_FiresForOpenPR(t *testing.T) {
+	// SetOnPRDetails is the contract that lets the HTTP layer keep its
+	// per-session pr-status cache warm. Verify it fires when the watcher
+	// resolves details for a session with an open PR.
+	store := newMockStore()
+	store.sessions["sess-1"] = &models.Session{
+		ID:         "sess-1",
+		PRStatus:   "none",
+		TaskStatus: models.TaskStatusInProgress,
+	}
+
+	repoMgr := &mockPRWatcherRepoManager{owner: "org", repo: "myrepo"}
+	w := newTestPRWatcher(store, repoMgr, nil)
+	w.onChange = func(evt PRChangeEvent) {}
+	defer w.Close()
+
+	mergeable := true
+	ts := newMockGitHubServer(t, mockGitHubResponses{
+		prDetails: &mockPRDetails{state: "open", merged: false, mergeable: &mergeable},
+	})
+	defer ts.Close()
+
+	ghClient := github.NewClient("", "")
+	ghClient.SetToken("test-token")
+	ghClient.SetAPIURL(ts.URL)
+	w.ghClient = ghClient
+
+	var capturedSession string
+	var capturedDetails *github.PRDetails
+	w.SetOnPRDetails(func(sessionID string, details *github.PRDetails) {
+		capturedSession = sessionID
+		capturedDetails = details
+	})
+
+	w.mu.Lock()
+	w.sessions["sess-1"] = &PRWatchEntry{
+		SessionID: "sess-1",
+		Branch:    "feature/foo",
+		RepoPath:  "/repo/path",
+		PRStatus:  "none",
+	}
+	w.mu.Unlock()
+
+	branchToPR := map[string]*github.PRListItem{
+		"feature/foo": {Number: 42, Branch: "feature/foo", HTMLURL: "https://github.com/org/myrepo/pull/42"},
+	}
+	w.checkSessionPR("org", "myrepo", w.sessions["sess-1"], branchToPR)
+
+	assert.Equal(t, "sess-1", capturedSession, "callback should have fired with the session id")
+	require.NotNil(t, capturedDetails, "callback should have received PR details")
+	require.NotNil(t, capturedDetails.Mergeable)
+	assert.True(t, *capturedDetails.Mergeable)
+}
+
+func TestPRWatcher_OnPRDetails_FiresForMergedTransition(t *testing.T) {
+	// When a previously-open PR drops out of the open list, the watcher
+	// fetches details to discover merged/closed state. That fetch should
+	// also warm the per-session cache so /pr-status reflects the new state
+	// without another GitHub round-trip.
+	store := newMockStore()
+	store.sessions["sess-1"] = &models.Session{
+		ID:         "sess-1",
+		PRStatus:   models.PRStatusOpen,
+		PRNumber:   42,
+		TaskStatus: models.TaskStatusInReview,
+	}
+
+	repoMgr := &mockPRWatcherRepoManager{owner: "org", repo: "myrepo"}
+	w := newTestPRWatcher(store, repoMgr, nil)
+	w.onChange = func(evt PRChangeEvent) {}
+	defer w.Close()
+
+	ts := newMockGitHubServer(t, mockGitHubResponses{
+		prDetails: &mockPRDetails{state: "closed", merged: true, mergeable: nil},
+		prMerged:  boolPtr(true),
+	})
+	defer ts.Close()
+
+	ghClient := github.NewClient("", "")
+	ghClient.SetToken("test-token")
+	ghClient.SetAPIURL(ts.URL)
+	w.ghClient = ghClient
+
+	var calls int
+	w.SetOnPRDetails(func(sessionID string, details *github.PRDetails) {
+		calls++
+	})
+
+	w.mu.Lock()
+	w.sessions["sess-1"] = &PRWatchEntry{
+		SessionID: "sess-1",
+		Branch:    "feature/foo",
+		RepoPath:  "/repo/path",
+		PRStatus:  models.PRStatusOpen,
+		PRNumber:  42,
+	}
+	w.mu.Unlock()
+
+	// Empty branchToPR — the open list no longer includes this branch.
+	w.checkSessionPR("org", "myrepo", w.sessions["sess-1"], map[string]*github.PRListItem{})
+
+	assert.Equal(t, 1, calls, "callback should fire exactly once for the merged-transition fetch")
+}
+
 func TestPRWatcher_CheckSessionPR_OpenPR_SetsMergeConflict(t *testing.T) {
 	// When a PR is open and mergeable is false, HasMergeConflict should be true.
 	store := newMockStore()

@@ -78,14 +78,17 @@ func (h *Handlers) GetSessionPRStatus(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Get PR details from GitHub. Multiple panels subscribe to pr-status on
-	// session switch; SFCache collapses concurrent callers into one call and
-	// caches the result for 15s.
+	// session switch; SFCache collapses concurrent callers into one call.
+	// The cache is kept warm by pr-watcher (see SetOnPRDetails wiring) so
+	// most polls served here hit the fresh window without ever calling
+	// GitHub. The stale-on-error path returns the last-known value when
+	// GitHub is unreachable rather than failing the request, preserving UI
+	// continuity through transient outages.
 	//
 	// The shared GitHub call runs against a context derived from h.serverCtx
 	// (bounded by ghFetchTimeout), not r.Context(), so one disconnecting
-	// panel can't poison the upstream fetch for the other waiters. Each
-	// caller can still bail on its own r.Context() via DoContext.
-	prDetails, err := h.prStatusCache.DoContext(ctx, prStatusCacheKey(sessionID), func() (*github.PRDetails, error) {
+	// panel can't poison the upstream fetch for the other waiters.
+	prDetails, cacheState, err := h.prStatusCache.DoContextWithStaleOnError(ctx, prStatusCacheKey(sessionID), func() (*github.PRDetails, error) {
 		fetchCtx, cancel := context.WithTimeout(h.serverCtx, ghFetchTimeout)
 		defer cancel()
 		return h.ghClient.GetPRDetails(fetchCtx, owner, repoName, session.PRNumber)
@@ -99,6 +102,12 @@ func (h *Handlers) GetSessionPRStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if cacheState == CacheStaleError {
+		// Surface that the response is a degraded fallback so the UI can
+		// render an "offline" indicator instead of pretending nothing is
+		// wrong. Set before WriteHeader (which writeJSON triggers).
+		w.Header().Set("X-Cache-Status", "stale-error")
+	}
 	writeJSON(w, prDetails)
 }
 

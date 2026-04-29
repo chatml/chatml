@@ -39,6 +39,15 @@ export function useFileWatcher(enabled: boolean = true) {
   // Reads fileTabs from the store directly to always get the latest state,
   // avoiding stale closures when the Tauri listener outlives a render cycle.
   const handleFileChange = useCallback(async (event: FileChangedEvent) => {
+    // Burst events represent a checkout / install / branch-switch storm
+    // (hundreds-to-thousands of files at once). The downstream snapshot
+    // refetch driven by setLastFileChange already handles the bulk refresh;
+    // running per-tab conflict checks against thousands of paths here just
+    // burns the main thread without any UX benefit.
+    if (event.burst) {
+      return;
+    }
+
     const { fileTabs, updateFileTab } = useAppStore.getState();
 
     // Determine which file paths to check for tab conflicts

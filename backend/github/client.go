@@ -51,16 +51,23 @@ type Client struct {
 
 // NewClient creates a new GitHub client
 func NewClient(clientID, clientSecret string) *Client {
+	// Shared per-host circuit breaker: state is keyed by URL.Host so a
+	// failing api.github.com trips both transports together (they target
+	// the same host most of the time), avoiding double-counting failures
+	// or losing track of recovery.
+	breaker := newCircuitBreaker()
 	rt := &retryTransport{
 		base:       http.DefaultTransport,
 		maxRetries: 3,
 		baseDelay:  1 * time.Second,
+		breaker:    breaker,
 	}
 	// Fewer retries for the no-redirect client used in interactive log fetching.
 	noRedirectRT := &retryTransport{
 		base:       http.DefaultTransport,
 		maxRetries: 1,
 		baseDelay:  500 * time.Millisecond,
+		breaker:    breaker,
 	}
 	return &Client{
 		clientID:     clientID,

@@ -4,7 +4,7 @@ use serde::Serialize;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, OnceLock, RwLock};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tauri::{Emitter, Manager};
 
 use crate::error::{AppError, AppResult};
@@ -39,6 +39,11 @@ struct FileChangedPayload<'a> {
     full_path: &'a str,
     files: Vec<FileEntry<'a>>,
     file_count: usize,
+    /// True when this event was emitted from a burst-cooldown window (e.g. a
+    /// `git checkout` or `npm install` storm). Consumers should treat the file
+    /// list as a hint that "many things changed" and prefer a single bulk
+    /// refetch over per-file reload work.
+    burst: bool,
 }
 
 #[derive(Serialize, Clone)]
@@ -67,7 +72,36 @@ const IGNORED_DIRECTORIES: &[&str] = &[
     "build",
     ".venv",
     "venv",
+    ".turbo",
+    ".swc",
+    ".parcel-cache",
+    "coverage",
+    ".nyc_output",
 ];
+
+/// File-count threshold above which a single debounce window is treated as a
+/// burst (git checkout, npm install, branch switch). Picked to comfortably
+/// exceed the largest plausible single-edit batch (a few dozen files at most)
+/// while catching the multi-thousand-file storms observed in the wild.
+const BURST_THRESHOLD: usize = 500;
+
+/// How long to suppress emissions after entering burst cooldown for a workspace.
+/// During this window, additional file events are accumulated into the same
+/// burst rather than emitted as separate events. Long enough to absorb the
+/// inter-burst quiet periods of macOS FSEvents during a checkout, short enough
+/// that the UI updates feel "near-immediate" rather than stuck.
+const BURST_COOLDOWN: Duration = Duration::from_millis(2500);
+
+/// Receiver poll interval. The thread blocks on `recv_timeout` rather than
+/// `recv` so it can periodically flush expired bursts even when no new
+/// events arrive (e.g. a checkout finishes and the disk goes quiet).
+const RECV_POLL_INTERVAL: Duration = Duration::from_millis(500);
+
+/// State for a workspace currently in burst cooldown.
+struct BurstState {
+    entered_at: Instant,
+    accumulated: WorkspaceChanges,
+}
 
 /// Pre-compiled ignore patterns to avoid heap allocations on every file event.
 /// Uses `OnceLock` (stable since Rust 1.70) instead of `LazyLock` (1.80+) for MSRV compat.
@@ -109,6 +143,47 @@ fn extract_session_dir(base_path: &Path, event_path: &Path) -> Option<String> {
                 None
             }
         })
+}
+
+/// Emit a `file-changed` event for one workspace. Centralised so the normal
+/// path and the burst-flush path stay in sync (same payload shape, same log
+/// line). `burst=true` tells the frontend that the file list is a hint about
+/// "many things changed at once" rather than per-file edits worth reloading
+/// individually.
+fn emit_file_changed(
+    window: &tauri::WebviewWindow,
+    workspace_id: &str,
+    files: &WorkspaceChanges,
+    burst: bool,
+) {
+    let count = files.len();
+    let Some((last_path, last_full)) = files.last() else {
+        return;
+    };
+    let file_list: Vec<FileEntry<'_>> = files
+        .iter()
+        .map(|(path, full)| FileEntry {
+            path: path.as_str(),
+            full_path: full.as_str(),
+        })
+        .collect();
+    let payload = FileChangedPayload {
+        workspace_id,
+        path: last_path.as_str(),
+        full_path: last_full.as_str(),
+        files: file_list,
+        file_count: count,
+        burst,
+    };
+    if let Err(e) = window.emit("file-changed", payload) {
+        log::error!("Failed to emit file-changed event: {}", e);
+    }
+    log::debug!(
+        "File changes detected in workspace {}: {} files (burst={})",
+        workspace_id,
+        count,
+        burst
+    );
 }
 
 /// Start the global file watcher on the base worktrees directory.
@@ -181,15 +256,26 @@ pub fn start_global_watcher(
     // Spawn a thread to handle file change events.
     // Lifecycle: The thread runs until the channel closes. When stop_global_watcher()
     // drops the GlobalFileWatcher (and its debouncer), the sender channel closes,
-    // causing rx.recv() to return Err and the thread to exit gracefully.
+    // causing rx.recv_timeout() to return Disconnected and the thread to exit gracefully.
     std::thread::spawn(move || {
+        use std::sync::mpsc::RecvTimeoutError;
+
         log::info!(
             "Global file watcher started on base directory: {}",
             watcher_base_path.display()
         );
 
+        // Per-workspace burst-cooldown state. A workspace enters burst cooldown
+        // when a single debounce window emits ≥ BURST_THRESHOLD files (the
+        // signature of `git checkout` / `npm install` etc). While in cooldown,
+        // additional events are accumulated and a single `file-changed` event
+        // with `burst=true` is emitted when the cooldown expires. This collapses
+        // the 5–6 emit storm that a branch switch otherwise produces into one
+        // user-visible event and one downstream snapshot refetch.
+        let mut bursts: HashMap<String, BurstState> = HashMap::new();
+
         loop {
-            match rx.recv() {
+            match rx.recv_timeout(RECV_POLL_INTERVAL) {
                 Ok(Ok(events)) => {
                     // Collect changed files per workspace, emitting ONE event per workspace
                     // instead of per-file to avoid flooding the WebView event loop.
@@ -275,45 +361,84 @@ pub fn start_global_watcher(
                         }
                     }
 
-                    // Emit one event per workspace with all changed file paths
-                    if let Some(window) = app_handle.get_webview_window("main") {
-                        for (workspace_id, files) in &workspace_changes {
-                            let count = files.len();
-                            let Some((last_path, last_full)) = files.last() else {
-                                continue;
-                            };
-                            let file_list: Vec<FileEntry<'_>> = files
-                                .iter()
-                                .map(|(path, full)| FileEntry {
-                                    path: path.as_str(),
-                                    full_path: full.as_str(),
-                                })
-                                .collect();
-                            let payload = FileChangedPayload {
-                                workspace_id: workspace_id.as_str(),
-                                path: last_path.as_str(),
-                                full_path: last_full.as_str(),
-                                files: file_list,
-                                file_count: count,
-                            };
-                            if let Err(e) = window.emit("file-changed", payload) {
-                                log::error!("Failed to emit file-changed event: {}", e);
-                            }
+                    let window = app_handle.get_webview_window("main");
+                    for (workspace_id, files) in workspace_changes {
+                        // If this workspace is already in burst cooldown, accumulate
+                        // and skip emission — the flush pass below or a later batch
+                        // will release it as a single `burst=true` event.
+                        if let Some(state) = bursts.get_mut(&workspace_id) {
+                            state.accumulated.extend(files);
+                            continue;
+                        }
+
+                        // First debounce window for this workspace. If it crosses the
+                        // burst threshold, withhold emission and start cooldown so the
+                        // (typically multi-window) storm collapses into one event.
+                        if files.len() >= BURST_THRESHOLD {
                             log::debug!(
-                                "File changes detected in workspace {}: {} files",
+                                "Entering burst cooldown for workspace {} ({} files)",
                                 workspace_id,
-                                count
+                                files.len()
                             );
+                            bursts.insert(
+                                workspace_id,
+                                BurstState {
+                                    entered_at: Instant::now(),
+                                    accumulated: files,
+                                },
+                            );
+                            continue;
+                        }
+
+                        // Normal-sized batch — emit immediately with burst=false.
+                        if let Some(window) = window.as_ref() {
+                            emit_file_changed(window, &workspace_id, &files, false);
                         }
                     }
                 }
                 Ok(Err(error)) => {
                     log::error!("Global file watcher error: {:?}", error);
                 }
-                Err(_) => {
-                    // Channel closed, watcher was stopped
+                Err(RecvTimeoutError::Timeout) => {
+                    // Fall through to flush expired bursts even when the disk is quiet.
+                }
+                Err(RecvTimeoutError::Disconnected) => {
+                    // Channel closed, watcher was stopped. Flush any pending bursts
+                    // so accumulated changes aren't silently dropped on shutdown.
+                    if let Some(window) = app_handle.get_webview_window("main") {
+                        for (workspace_id, state) in bursts.drain() {
+                            emit_file_changed(&window, &workspace_id, &state.accumulated, true);
+                        }
+                    }
                     log::info!("Global file watcher stopped");
                     break;
+                }
+            }
+
+            // Flush any bursts whose cooldown window has expired. This runs after
+            // every batch and after every timeout, so the worst-case extra latency
+            // for a burst flush is RECV_POLL_INTERVAL.
+            if !bursts.is_empty() {
+                let now = Instant::now();
+                let expired: Vec<String> = bursts
+                    .iter()
+                    .filter(|(_, state)| now.duration_since(state.entered_at) >= BURST_COOLDOWN)
+                    .map(|(k, _)| k.clone())
+                    .collect();
+                if !expired.is_empty() {
+                    if let Some(window) = app_handle.get_webview_window("main") {
+                        for ws_id in expired {
+                            if let Some(state) = bursts.remove(&ws_id) {
+                                emit_file_changed(&window, &ws_id, &state.accumulated, true);
+                            }
+                        }
+                    } else {
+                        // No window to emit to — drop the bursts to avoid
+                        // accumulating memory indefinitely.
+                        for ws_id in expired {
+                            bursts.remove(&ws_id);
+                        }
+                    }
                 }
             }
         }
