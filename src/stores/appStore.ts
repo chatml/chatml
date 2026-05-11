@@ -641,7 +641,7 @@ interface AppState {
   setInterruptedState: (conversationId: string, info: InterruptedInfo | null) => void;
   setInterruptedResuming: (conversationId: string, resuming: boolean) => void;
   clearInterruptedState: (conversationId: string) => void;
-  injectInterruptedAssistantMessage: (conversationId: string, snapshot: { text: string; textSegments?: { text: string; timestamp: number }[]; thinking?: string }) => void;
+  injectInterruptedAssistantMessage: (conversationId: string, snapshot: { text: string; textSegments?: { text: string; timestamp: number }[]; thinking?: string; pendingPlanApproval?: { planContent?: string } | null }) => void;
 
   // File watcher actions
   setLastFileChange: (event: { workspaceId: string; path: string; fullPath: string }) => void;
@@ -2938,24 +2938,33 @@ updateFileTabContent: (id, content) => set((state) => ({
     },
   })),
   injectInterruptedAssistantMessage: (conversationId, snapshot) => set((state) => {
-    if (!snapshot.text) return state;
+    const hasPlan = !!snapshot.pendingPlanApproval?.planContent;
+    if (!snapshot.text && !hasPlan) return state;
     const existing = state.messagesByConversation[conversationId] ?? [];
     // Dedup: skip if the last message is already an assistant message with matching content
     // (backend's ConvertSnapshotsToMessages may have already persisted it)
     const lastMsg = existing[existing.length - 1];
-    if (lastMsg && lastMsg.role === 'assistant' && lastMsg.content === snapshot.text) {
+    const expectedPlanContent = snapshot.pendingPlanApproval?.planContent ?? '';
+    if (lastMsg && lastMsg.role === 'assistant' && lastMsg.content === (snapshot.text ?? '') && (lastMsg.planContent ?? '') === expectedPlanContent) {
       return state;
     }
-    // Build timeline from text segments
-    const timeline: import('@/lib/types').TimelineEntry[] = snapshot.textSegments?.length
-      ? snapshot.textSegments.filter(s => s.text).map(s => ({ type: 'text' as const, content: s.text }))
-      : [{ type: 'text' as const, content: snapshot.text }];
+    // Build timeline from text segments and plan content
+    const timeline: import('@/lib/types').TimelineEntry[] = [];
+    if (snapshot.textSegments?.length) {
+      timeline.push(...snapshot.textSegments.filter(s => s.text).map(s => ({ type: 'text' as const, content: s.text })));
+    } else if (snapshot.text) {
+      timeline.push({ type: 'text' as const, content: snapshot.text });
+    }
+    if (hasPlan) {
+      timeline.push({ type: 'plan' as const, content: snapshot.pendingPlanApproval!.planContent! });
+    }
     const message: import('@/lib/types').Message = {
       id: `interrupted-${conversationId}-${Date.now()}`,
       conversationId,
       role: 'assistant',
-      content: snapshot.text,
+      content: snapshot.text ?? '',
       thinkingContent: snapshot.thinking,
+      planContent: hasPlan ? snapshot.pendingPlanApproval!.planContent : undefined,
       timeline,
       timestamp: new Date().toISOString(),
     };

@@ -2230,29 +2230,34 @@ func (s *SQLiteStore) CleanupStaleConversations(ctx context.Context) error {
 // ConvertSnapshotsToMessages converts orphaned streaming snapshots into persisted
 // assistant messages. This recovers partial agent responses that were lost when
 // the app was killed mid-turn (e.g., SIGKILL before the output handler could flush).
-// Returns the number of conversations whose snapshots were converted.
-func (s *SQLiteStore) ConvertSnapshotsToMessages(ctx context.Context) (int, error) {
+// Returns the IDs of conversations whose snapshots were converted.
+func (s *SQLiteStore) ConvertSnapshotsToMessages(ctx context.Context) ([]string, error) {
 	interrupted, err := s.GetInterruptedConversations(ctx)
 	if err != nil {
-		return 0, fmt.Errorf("ConvertSnapshotsToMessages: %w", err)
+		return nil, fmt.Errorf("ConvertSnapshotsToMessages: %w", err)
 	}
 
 	// Minimal struct for deserializing snapshot JSON within the store package
 	// (cannot import agent package due to circular dependency).
 	// Intentionally ignores: activeTools, isThinking, planModeActive, subAgents,
-	// pendingPlanApproval, pendingUserQuestion — these are transient UI state
-	// that is not meaningful to recover as a persisted message.
+	// pendingUserQuestion — these are transient UI state not meaningful to
+	// recover as a persisted message. pendingPlanApproval IS recovered because
+	// the plan content is valuable for the user to see after a crash.
 	type snapshotTextSegment struct {
 		Text      string `json:"text"`
 		Timestamp int64  `json:"timestamp"`
 	}
+	type snapshotPlanApproval struct {
+		PlanContent string `json:"planContent"`
+	}
 	type snapshot struct {
-		Text         string                `json:"text"`
-		TextSegments []snapshotTextSegment `json:"textSegments"`
-		Thinking     string                `json:"thinking"`
+		Text                string                `json:"text"`
+		TextSegments        []snapshotTextSegment `json:"textSegments"`
+		Thinking            string                `json:"thinking"`
+		PendingPlanApproval *snapshotPlanApproval `json:"pendingPlanApproval"`
 	}
 
-	converted := 0
+	var recovered []string
 	for _, ic := range interrupted {
 		var snap snapshot
 		if err := json.Unmarshal(ic.SnapshotJSON, &snap); err != nil {
@@ -2264,8 +2269,9 @@ func (s *SQLiteStore) ConvertSnapshotsToMessages(ctx context.Context) (int, erro
 			continue
 		}
 
-		// Skip empty snapshots (agent started but hadn't produced any text or thinking)
-		if snap.Text == "" && snap.Thinking == "" {
+		// Skip empty snapshots (agent started but hadn't produced any text, thinking, or plan)
+		hasPlanContent := snap.PendingPlanApproval != nil && snap.PendingPlanApproval.PlanContent != ""
+		if snap.Text == "" && snap.Thinking == "" && !hasPlanContent {
 			// Clear the empty snapshot
 			if err := s.ClearStreamingSnapshot(ctx, ic.ID); err != nil {
 				logger.Store.Errorf("ConvertSnapshotsToMessages: failed to clear empty snapshot for conv %s: %v", ic.ID, err)
@@ -2276,15 +2282,21 @@ func (s *SQLiteStore) ConvertSnapshotsToMessages(ctx context.Context) (int, erro
 		// Dedup: check if the last message is already an assistant message with matching content.
 		// This handles the case where the output handler successfully flushed (Change 1) but
 		// ClearStreamingSnapshot failed (e.g., timeout).
-		var lastRole, lastContent sql.NullString
+		// plan_content is included to avoid false-positive matches for plan-only snapshots
+		// (text="") which could otherwise match any empty-content assistant message.
+		var lastRole, lastContent, lastPlanContent sql.NullString
 		row := s.db.QueryRowContext(ctx,
-			`SELECT role, content FROM messages WHERE conversation_id = ? ORDER BY position DESC LIMIT 1`,
+			`SELECT role, content, plan_content FROM messages WHERE conversation_id = ? ORDER BY position DESC LIMIT 1`,
 			ic.ID)
-		if err := row.Scan(&lastRole, &lastContent); err != nil && err != sql.ErrNoRows {
+		if err := row.Scan(&lastRole, &lastContent, &lastPlanContent); err != nil && err != sql.ErrNoRows {
 			logger.Store.Errorf("ConvertSnapshotsToMessages: failed to check last message for conv %s: %v", ic.ID, err)
 			continue
 		}
-		if lastRole.Valid && lastRole.String == "assistant" && lastContent.Valid && lastContent.String == snap.Text {
+		expectedPlanContent := ""
+		if hasPlanContent {
+			expectedPlanContent = snap.PendingPlanApproval.PlanContent
+		}
+		if lastRole.Valid && lastRole.String == "assistant" && lastContent.String == snap.Text && lastPlanContent.String == expectedPlanContent {
 			// Already persisted — just clear the snapshot
 			if err := s.ClearStreamingSnapshot(ctx, ic.ID); err != nil {
 				logger.Store.Errorf("ConvertSnapshotsToMessages: failed to clear duplicate snapshot for conv %s: %v", ic.ID, err)
@@ -2292,7 +2304,7 @@ func (s *SQLiteStore) ConvertSnapshotsToMessages(ctx context.Context) (int, erro
 			continue
 		}
 
-		// Build timeline from text segments and thinking blocks.
+		// Build timeline from text segments, thinking blocks, and plan content.
 		// Thinking is prepended since it typically precedes text output.
 		var timeline []models.TimelineEntry
 		if snap.Thinking != "" {
@@ -2308,12 +2320,18 @@ func (s *SQLiteStore) ConvertSnapshotsToMessages(ctx context.Context) (int, erro
 			// Fallback: single text entry if no segments
 			timeline = append(timeline, models.TimelineEntry{Type: "text", Content: snap.Text})
 		}
+		var recoveredPlanContent string
+		if hasPlanContent {
+			recoveredPlanContent = snap.PendingPlanApproval.PlanContent
+			timeline = append(timeline, models.TimelineEntry{Type: "plan", Content: recoveredPlanContent})
+		}
 
 		msg := models.Message{
 			ID:              uuid.New().String()[:8],
 			Role:            "assistant",
 			Content:         snap.Text,
 			ThinkingContent: snap.Thinking,
+			PlanContent:     recoveredPlanContent,
 			Timeline:        timeline,
 			Timestamp:       time.Now(),
 		}
@@ -2327,11 +2345,11 @@ func (s *SQLiteStore) ConvertSnapshotsToMessages(ctx context.Context) (int, erro
 			logger.Store.Errorf("ConvertSnapshotsToMessages: failed to clear snapshot after conversion for conv %s: %v", ic.ID, err)
 		}
 
-		converted++
-		logger.Store.Infof("ConvertSnapshotsToMessages: recovered interrupted assistant message for conv %s (%d chars)", ic.ID, len(snap.Text))
+		recovered = append(recovered, ic.ID)
+		logger.Store.Infof("ConvertSnapshotsToMessages: recovered interrupted assistant message for conv %s (%d chars text, plan=%v)", ic.ID, len(snap.Text), hasPlanContent)
 	}
 
-	return converted, nil
+	return recovered, nil
 }
 
 // ============================================================================

@@ -5,9 +5,189 @@ import (
 	"encoding/json"
 	"testing"
 
+	"github.com/chatml/chatml-backend/models"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+// setupInterruptedConv creates a conversation with an agent_session_id set (required
+// by GetInterruptedConversations) and a streaming snapshot.
+func setupInterruptedConv(t *testing.T, s *SQLiteStore, convID string, snapshot map[string]interface{}) {
+	t.Helper()
+	ctx := context.Background()
+	repo := createTestRepo(t, s, "repo-"+convID)
+	session := createTestSession(t, s, "sess-"+convID, repo.ID)
+	createTestConversation(t, s, convID, session.ID)
+	require.NoError(t, s.UpdateConversation(ctx, convID, func(c *models.Conversation) {
+		c.AgentSessionID = "agent-session-" + convID
+	}))
+	data, err := json.Marshal(snapshot)
+	require.NoError(t, err)
+	require.NoError(t, s.SetStreamingSnapshot(ctx, convID, data))
+}
+
+func TestConvertSnapshotsToMessages_PlanOnly(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+
+	setupInterruptedConv(t, s, "conv-1", map[string]interface{}{
+		"text":     "",
+		"thinking": "",
+		"pendingPlanApproval": map[string]interface{}{
+			"planContent": "Step 1: do the thing\nStep 2: profit",
+		},
+	})
+
+	recovered, err := s.ConvertSnapshotsToMessages(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"conv-1"}, recovered)
+
+	page, err := s.GetConversationMessages(ctx, "conv-1", nil, 10, false)
+	require.NoError(t, err)
+	require.Len(t, page.Messages, 1)
+
+	msg := page.Messages[0]
+	assert.Equal(t, "assistant", msg.Role)
+	assert.Equal(t, "", msg.Content)
+	assert.Equal(t, "Step 1: do the thing\nStep 2: profit", msg.PlanContent)
+	require.Len(t, msg.Timeline, 1)
+	assert.Equal(t, "plan", msg.Timeline[0].Type)
+	assert.Equal(t, "Step 1: do the thing\nStep 2: profit", msg.Timeline[0].Content)
+
+	// Snapshot should be cleared after conversion
+	snap, err := s.GetStreamingSnapshot(ctx, "conv-1")
+	require.NoError(t, err)
+	assert.Nil(t, snap)
+}
+
+func TestConvertSnapshotsToMessages_TextAndPlan(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+
+	setupInterruptedConv(t, s, "conv-1", map[string]interface{}{
+		"text":     "Here is my plan:",
+		"thinking": "let me think...",
+		"pendingPlanApproval": map[string]interface{}{
+			"planContent": "Step 1: do stuff",
+		},
+	})
+
+	recovered, err := s.ConvertSnapshotsToMessages(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"conv-1"}, recovered)
+
+	page, err := s.GetConversationMessages(ctx, "conv-1", nil, 10, false)
+	require.NoError(t, err)
+	require.Len(t, page.Messages, 1)
+
+	msg := page.Messages[0]
+	assert.Equal(t, "assistant", msg.Role)
+	assert.Equal(t, "Here is my plan:", msg.Content)
+	assert.Equal(t, "let me think...", msg.ThinkingContent)
+	assert.Equal(t, "Step 1: do stuff", msg.PlanContent)
+
+	types := make([]string, len(msg.Timeline))
+	for i, e := range msg.Timeline {
+		types[i] = e.Type
+	}
+	assert.Equal(t, []string{"thinking", "text", "plan"}, types)
+}
+
+func TestConvertSnapshotsToMessages_EmptyPlanContent(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+
+	// pendingPlanApproval present but planContent is empty — treated as empty snapshot
+	setupInterruptedConv(t, s, "conv-1", map[string]interface{}{
+		"text":     "",
+		"thinking": "",
+		"pendingPlanApproval": map[string]interface{}{
+			"planContent": "",
+		},
+	})
+
+	recovered, err := s.ConvertSnapshotsToMessages(ctx)
+	require.NoError(t, err)
+	assert.Empty(t, recovered)
+
+	page, err := s.GetConversationMessages(ctx, "conv-1", nil, 10, false)
+	require.NoError(t, err)
+	assert.Empty(t, page.Messages)
+
+	// Empty snapshot should be cleared
+	snap, err := s.GetStreamingSnapshot(ctx, "conv-1")
+	require.NoError(t, err)
+	assert.Nil(t, snap)
+}
+
+func TestConvertSnapshotsToMessages_DedupPlanOnly(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+
+	// Simulate a previous recovery: there's already an assistant message with
+	// empty content and planContent = "Plan A". A second snapshot with the same
+	// plan content arrives — should be deduped and not create a duplicate message.
+	repo := createTestRepo(t, s, "repo-conv-1")
+	session := createTestSession(t, s, "sess-conv-1", repo.ID)
+	createTestConversation(t, s, "conv-1", session.ID)
+	require.NoError(t, s.UpdateConversation(ctx, "conv-1", func(c *models.Conversation) {
+		c.AgentSessionID = "agent-session-conv-1"
+	}))
+
+	existingMsg := models.Message{
+		ID:          "msg-1",
+		Role:        "assistant",
+		Content:     "",
+		PlanContent: "Plan A",
+	}
+	require.NoError(t, s.AddMessageToConversation(ctx, "conv-1", existingMsg))
+
+	// Same content in the snapshot
+	data := []byte(`{"text":"","thinking":"","pendingPlanApproval":{"planContent":"Plan A"}}`)
+	require.NoError(t, s.SetStreamingSnapshot(ctx, "conv-1", data))
+
+	recovered, err := s.ConvertSnapshotsToMessages(ctx)
+	require.NoError(t, err)
+	assert.Empty(t, recovered) // deduped, not recovered again
+
+	page, err := s.GetConversationMessages(ctx, "conv-1", nil, 10, false)
+	require.NoError(t, err)
+	assert.Len(t, page.Messages, 1) // still only the original message
+}
+
+func TestConvertSnapshotsToMessages_DifferentPlanNotDeduped(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+
+	// Existing message has Plan A; snapshot has Plan B — must NOT be deduped.
+	repo := createTestRepo(t, s, "repo-conv-1")
+	session := createTestSession(t, s, "sess-conv-1", repo.ID)
+	createTestConversation(t, s, "conv-1", session.ID)
+	require.NoError(t, s.UpdateConversation(ctx, "conv-1", func(c *models.Conversation) {
+		c.AgentSessionID = "agent-session-conv-1"
+	}))
+
+	existingMsg := models.Message{
+		ID:          "msg-1",
+		Role:        "assistant",
+		Content:     "",
+		PlanContent: "Plan A",
+	}
+	require.NoError(t, s.AddMessageToConversation(ctx, "conv-1", existingMsg))
+
+	// Different plan in the snapshot
+	data := []byte(`{"text":"","thinking":"","pendingPlanApproval":{"planContent":"Plan B"}}`)
+	require.NoError(t, s.SetStreamingSnapshot(ctx, "conv-1", data))
+
+	recovered, err := s.ConvertSnapshotsToMessages(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"conv-1"}, recovered)
+
+	page, err := s.GetConversationMessages(ctx, "conv-1", nil, 10, false)
+	require.NoError(t, err)
+	require.Len(t, page.Messages, 2)
+	assert.Equal(t, "Plan B", page.Messages[1].PlanContent)
+}
 
 func TestSetStreamingSnapshot_Basic(t *testing.T) {
 	s := newTestStore(t)

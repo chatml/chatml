@@ -22,7 +22,9 @@ import (
 	"github.com/google/uuid"
 )
 
-const snapshotDebounceInterval = 500 * time.Millisecond
+// 200ms gives good recovery granularity (minimal output lost on crash) without
+// excessive SQLite write pressure; 500ms lost too much content in practice.
+const snapshotDebounceInterval = 200 * time.Millisecond
 const initRetryDelay = 3 * time.Second
 
 // Suggestion filtering patterns (used by suggestion generation, not PR detection).
@@ -99,6 +101,12 @@ type Manager struct {
 	// ollamaMgr manages the lifecycle of the bundled Ollama binary for local model inference.
 	// Set at startup via SetOllamaManager. Nil means local models are unavailable.
 	ollamaMgr OllamaManager
+
+	// recentlyRecoveredConvIDs holds conversation IDs whose streaming snapshots
+	// were converted to persisted messages during Init(). Used by the frontend
+	// to show an "interrupted session" indicator even after snapshots are cleared.
+	recentlyRecoveredConvIDs   []string
+	recentlyRecoveredConvIDsMu sync.RWMutex
 }
 
 func NewManager(ctx context.Context, s *store.SQLiteStore, wm *git.WorktreeManager, backendPort int) *Manager {
@@ -124,10 +132,13 @@ func (m *Manager) Init(ctx context.Context) error {
 	// Convert orphaned streaming snapshots into persisted assistant messages.
 	// This recovers partial agent responses that were lost when the app was
 	// killed mid-turn (safety net for when the output handler's flush fails).
-	if converted, err := m.store.ConvertSnapshotsToMessages(ctx); err != nil {
+	if recovered, err := m.store.ConvertSnapshotsToMessages(ctx); err != nil {
 		logger.Manager.Errorf("Failed to convert snapshots to messages: %v", err)
-	} else if converted > 0 {
-		logger.Manager.Infof("Recovered %d interrupted assistant messages from snapshots", converted)
+	} else if len(recovered) > 0 {
+		logger.Manager.Infof("Recovered %d interrupted assistant messages from snapshots", len(recovered))
+		m.recentlyRecoveredConvIDsMu.Lock()
+		m.recentlyRecoveredConvIDs = recovered
+		m.recentlyRecoveredConvIDsMu.Unlock()
 	}
 	return nil
 }
@@ -2320,6 +2331,20 @@ func (m *Manager) GetActiveStreamingConversations() []string {
 		}
 	}
 	return active
+}
+
+// GetRecentlyRecoveredConversations returns the IDs of conversations whose
+// streaming snapshots were converted to persisted messages during Init().
+// The list is populated once at startup and never changes — it is the
+// authoritative set of "interrupted then recovered" conversations for the
+// current app session. The frontend uses this to show an interrupted-session
+// indicator even after all snapshots have been cleared.
+func (m *Manager) GetRecentlyRecoveredConversations() []string {
+	m.recentlyRecoveredConvIDsMu.RLock()
+	defer m.recentlyRecoveredConvIDsMu.RUnlock()
+	result := make([]string, len(m.recentlyRecoveredConvIDs))
+	copy(result, m.recentlyRecoveredConvIDs)
+	return result
 }
 
 // betasForModel returns comma-separated beta flags for the given model.

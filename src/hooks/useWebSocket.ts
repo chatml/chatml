@@ -15,7 +15,7 @@ import { getAuthToken } from '@/lib/auth-token';
 import { getBackendPort } from '@/lib/backend-port';
 import { useConnectionStore } from '@/stores/connectionStore';
 import { dispatchAppEvent } from '@/lib/custom-events';
-import { getConversationDropStats, getActiveStreamingConversations, getInterruptedConversations, getConversationMessages, getStreamingSnapshot, toStoreMessage, updateSession as updateSessionApi, refreshPRStatus, addSystemMessage, listAllSessions, mapSessionDTO } from '@/lib/api';
+import { getConversationDropStats, getActiveStreamingConversations, getInterruptedConversations, getRecentlyRecoveredConversations, getConversationMessages, getStreamingSnapshot, toStoreMessage, updateSession as updateSessionApi, refreshPRStatus, addSystemMessage, listAllSessions, mapSessionDTO } from '@/lib/api';
 import { useScheduledTaskStore } from '@/stores/scheduledTaskStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useBranchCacheStore } from '@/stores/branchCacheStore';
@@ -1288,13 +1288,15 @@ export function useWebSocket(enabled: boolean = true) {
       console.warn('Failed to reconcile initial streaming state:', err);
     }
 
-    // Phase 2: Discover conversations interrupted by app shutdown
+    // Phase 2: Discover conversations interrupted by app shutdown (snapshot still present)
+    const phase2ConvIds = new Set<string>();
     try {
       const interrupted = await getInterruptedConversations();
       for (const item of interrupted) {
         const conv = store.conversations.find(c => c.id === item.id);
         if (!conv) continue;
 
+        phase2ConvIds.add(item.id);
         store.updateConversation(item.id, { status: 'idle' });
         store.setInterruptedState(item.id, {
           agentSessionId: item.agentSessionId,
@@ -1304,16 +1306,41 @@ export function useWebSocket(enabled: boolean = true) {
           elicitationMcpServer: item.snapshot?.pendingElicitation?.mcpServerName,
           snapshot: item.snapshot,
         });
-        // Inject the snapshot's text as a visible assistant message so the user
-        // can see what the agent produced before the interruption. The dedup
-        // inside injectInterruptedAssistantMessage prevents duplicates if the
-        // backend's ConvertSnapshotsToMessages already persisted it.
-        if (item.snapshot?.text) {
+        // Inject the snapshot content (text + plan) as a visible assistant message so the
+        // user can see what the agent produced before the interruption. The dedup inside
+        // injectInterruptedAssistantMessage prevents duplicates if ConvertSnapshotsToMessages
+        // already persisted it.
+        const hasContent = !!(item.snapshot?.text || item.snapshot?.pendingPlanApproval?.planContent);
+        if (item.snapshot && hasContent) {
           store.injectInterruptedAssistantMessage(item.id, item.snapshot);
         }
       }
     } catch (err) {
       console.warn('Failed to reconcile interrupted conversations:', err);
+    }
+
+    // Phase 3: Show interrupted indicator for conversations that were already recovered
+    // by ConvertSnapshotsToMessages on startup (their snapshots are cleared but the
+    // recovered messages are in the DB and have already been loaded by the frontend).
+    try {
+      const { conversationIds } = await getRecentlyRecoveredConversations();
+      for (const convId of conversationIds) {
+        const conv = store.conversations.find(c => c.id === convId);
+        if (!conv) continue;
+        // Only set interrupted state if not already set by Phase 2 (snapshot still present).
+        // Uses a local Set rather than store.interruptedState since store is a snapshot
+        // captured before Phase 2 ran and would not reflect Phase 2's mutations.
+        if (phase2ConvIds.has(convId)) continue;
+        store.setInterruptedState(convId, {
+          agentSessionId: '',
+          hadPendingPlan: false,
+          hadPendingQuestion: false,
+          hadPendingElicitation: false,
+          snapshot: null,
+        });
+      }
+    } catch (err) {
+      console.warn('Failed to reconcile recently-recovered conversations:', err);
     }
   // getStore is a stable reference (useAppStore.getState), no deps needed
   // eslint-disable-next-line react-hooks/exhaustive-deps
