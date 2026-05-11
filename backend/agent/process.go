@@ -311,6 +311,9 @@ func NewProcessWithOptions(opts ProcessOptions) *Process {
 	if opts.SettingSources != "" {
 		args = append(args, "--setting-sources", opts.SettingSources)
 	}
+	if opts.Skills != "" {
+		args = append(args, "--skills", opts.Skills)
+	}
 	if opts.Betas != "" {
 		args = append(args, "--betas", opts.Betas)
 	}

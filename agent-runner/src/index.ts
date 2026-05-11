@@ -213,7 +213,13 @@ let prePlanPermissionMode: PermissionMode = "bypassPermissions";
 // Task 6: Settings Sources Configuration
 const settingSourcesArg = getArg("--setting-sources");
 const settingSources = settingSourcesArg
-  ? settingSourcesArg.split(',').map(s => s.trim()) as ('project' | 'user' | 'local')[]
+  ? settingSourcesArg.split(',').map(s => s.trim()).filter(s => s) as ('project' | 'user' | 'local')[]
+  : undefined;
+
+// Skills Configuration (SDK 0.2.120/0.2.133)
+const skillsArg = getArg("--skills");
+const skills: string[] | "all" | undefined = skillsArg
+  ? (skillsArg === "all" ? "all" : skillsArg.split(',').map(s => s.trim()).filter(s => s))
   : undefined;
 
 // Task 7: Beta Features Flag
@@ -2260,6 +2266,7 @@ async function main(): Promise<void> {
         ? { type: "enabled", budgetTokens: maxThinkingTokens } satisfies ThinkingConfig
         : undefined,
       settingSources,
+      ...(skills !== undefined ? { skills } : {}),
       betas,
       model,
       // Effort level controls adaptive thinking depth (Opus 4.6+)
@@ -2737,6 +2744,7 @@ function handleMessage(message: SDKMessage): void {
         checkpoint_uuid?: string;
         message_index?: number;
         permission_denials?: Array<{ tool_name: string; tool_use_id: string; tool_input: unknown }>;
+        origin?: "user" | "task_notification"; // SDK 0.2.126+
       };
 
       // If the turn produced no streamed text but the result has content,
@@ -2785,6 +2793,7 @@ function handleMessage(message: SDKMessage): void {
           sessionId: resultMsg.session_id,
           fastModeState: resultMsg.fast_mode_state,
           ...(permissionDenials ? { permissionDenials } : {}),
+          ...(resultMsg.origin ? { origin: resultMsg.origin } : {}),
           stats: {
             toolCalls: runStats.toolCalls,
             toolsByType: runStats.toolsByType,
@@ -2816,6 +2825,7 @@ function handleMessage(message: SDKMessage): void {
           sessionId: resultMsg.session_id,
           fastModeState: resultMsg.fast_mode_state,
           ...(permissionDenials ? { permissionDenials } : {}),
+          ...(resultMsg.origin ? { origin: resultMsg.origin } : {}),
           stats: {
             toolCalls: runStats.toolCalls,
             toolsByType: runStats.toolsByType,
