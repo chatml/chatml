@@ -299,6 +299,7 @@ func NewRouter(ctx context.Context, s *store.SQLiteStore, hub *Hub, agentMgr *ag
 	r.Route("/api/conversations", func(r chi.Router) {
 		r.Get("/active-streaming", h.GetActiveStreamingConversations)
 		r.Get("/interrupted", h.GetInterruptedConversations)
+		r.Get("/recently-recovered", h.GetRecentlyRecoveredConversations)
 		r.Get("/{convId}", h.GetConversation)
 		r.Get("/{convId}/messages", h.GetConversationMessages)
 		r.Get("/{convId}/messages/{msgId}", h.GetMessage)

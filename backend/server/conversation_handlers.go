@@ -486,6 +486,18 @@ func (h *Handlers) GetInterruptedConversations(w http.ResponseWriter, r *http.Re
 	writeJSON(w, result)
 }
 
+// GetRecentlyRecoveredConversations returns the IDs of conversations whose
+// streaming snapshots were converted to persisted messages during this app
+// startup. The frontend uses this to show an interrupted-session indicator
+// after snapshots have already been cleared by ConvertSnapshotsToMessages.
+func (h *Handlers) GetRecentlyRecoveredConversations(w http.ResponseWriter, r *http.Request) {
+	ids := h.agentManager.GetRecentlyRecoveredConversations()
+	if ids == nil {
+		ids = []string{}
+	}
+	writeJSON(w, map[string][]string{"conversationIds": ids})
+}
+
 // ResumeAgent restarts a dead agent process for an interrupted conversation
 // using the SDK resume mechanism.
 func (h *Handlers) ResumeAgent(w http.ResponseWriter, r *http.Request) {

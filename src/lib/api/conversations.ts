@@ -357,6 +357,11 @@ export async function getInterruptedConversations(): Promise<InterruptedConversa
   return handleResponse(res);
 }
 
+export async function getRecentlyRecoveredConversations(): Promise<{ conversationIds: string[] }> {
+  const res = await fetchWithAuth(`${getApiBase()}/api/conversations/recently-recovered`);
+  return handleResponse(res);
+}
+
 export async function resumeAgent(convId: string): Promise<{ status: string }> {
   const res = await fetchWithAuth(`${getApiBase()}/api/conversations/${convId}/resume-agent`, { method: 'POST' });
   return handleResponse(res);
