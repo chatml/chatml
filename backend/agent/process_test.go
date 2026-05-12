@@ -1215,3 +1215,55 @@ func TestNewProcessWithOptions_SkipDotMcpDefaultFalse(t *testing.T) {
 	assert.False(t, p.Options().SkipDotMcp, "SkipDotMcp should default to false")
 	assert.NotContains(t, p.cmd.Args, "--skip-dot-mcp")
 }
+
+func TestNewProcessWithOptions_SkillsList(t *testing.T) {
+	opts := ProcessOptions{
+		ID:             "skills-list-test",
+		Workdir:        "/tmp",
+		ConversationID: "conv-skills-list",
+		Skills:         "init,security-review",
+	}
+	p := NewProcessWithOptions(opts)
+
+	args := p.cmd.Args
+	found := false
+	for i, arg := range args {
+		if arg == "--skills" && i+1 < len(args) && args[i+1] == "init,security-review" {
+			found = true
+			break
+		}
+	}
+	assert.True(t, found, "Expected --skills init,security-review in args: %v", args)
+}
+
+func TestNewProcessWithOptions_SkillsAll(t *testing.T) {
+	opts := ProcessOptions{
+		ID:             "skills-all-test",
+		Workdir:        "/tmp",
+		ConversationID: "conv-skills-all",
+		Skills:         "all",
+	}
+	p := NewProcessWithOptions(opts)
+
+	args := p.cmd.Args
+	found := false
+	for i, arg := range args {
+		if arg == "--skills" && i+1 < len(args) && args[i+1] == "all" {
+			found = true
+			break
+		}
+	}
+	assert.True(t, found, "Expected --skills all in args: %v", args)
+}
+
+func TestNewProcessWithOptions_SkillsEmpty(t *testing.T) {
+	opts := ProcessOptions{
+		ID:             "skills-empty-test",
+		Workdir:        "/tmp",
+		ConversationID: "conv-skills-empty",
+	}
+	p := NewProcessWithOptions(opts)
+
+	assert.Empty(t, p.Options().Skills)
+	assert.NotContains(t, p.cmd.Args, "--skills")
+}

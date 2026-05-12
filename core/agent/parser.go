@@ -23,6 +23,7 @@ type AgentEvent struct {
 	Cwd            string                 `json:"cwd,omitempty"`
 	Reason         string                 `json:"reason,omitempty"`
 	Subtype        string                 `json:"subtype,omitempty"`
+	Origin         string                 `json:"origin,omitempty"` // SDK 0.2.126+: "user" | "task_notification"
 	Errors         []string               `json:"errors,omitempty"`
 	Cost           float64                `json:"cost,omitempty"`
 	Turns          int                    `json:"turns,omitempty"`
